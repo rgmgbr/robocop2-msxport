@@ -37,6 +37,29 @@ hud_map:
         ld a,HUD_BANK + 1
         jp bank_a000
 
+        if SPLITDIAG
+; A (0-99; 99 above) -> its two BCD digits.
+dg_bcd: cp 100
+        jr c,dgb_ok
+        ld a,0x99
+        ret
+dgb_ok: push bc
+        ld b,0xFF
+dgb_lp: inc b
+        sub 10
+        jr nc,dgb_lp
+        add a,10
+        ld c,a
+        ld a,b
+        rlca
+        rlca
+        rlca
+        rlca
+        or c
+        pop bc
+        ret
+        endif
+
 ; (The HUD's state at a new game: cold.asm hud_init.)
 
 ; Once per frame, right after the VBLANK: the ticker, then one other piece of work: a job
@@ -67,6 +90,21 @@ hud_frame:
         ld (hud_score + 2),hl
         ld hl,(AM + 0x169C)
         ld (en_target),hl           ; the can follows the game's shown level ($89BE: en_update)
+        endif
+        if SPLITDIAG
+        ld a,(dg_min)
+        call dg_bcd
+        ld (hud_timer),a            ; SPLITDIAG: the timer shows this step's fewest and most polls
+        ld a,(dg_max)               ;   (isr.asm isr_split), the score the step
+        call dg_bcd
+        ld (hud_timer + 1),a
+        xor a
+        ld (hud_score),a
+        ld (hud_score + 1),a
+        ld (hud_score + 2),a
+        ld a,(dg_step)
+        call dg_bcd
+        ld (hud_score + 3),a
         endif
         call hud_map
         call hud_ticker

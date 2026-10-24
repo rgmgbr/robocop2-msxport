@@ -264,7 +264,11 @@ split_dly:  equ 0xE5A8              ; the split's delays on this machine (isr.as
 split_dly2: equ 0xE5A9              ;   level start): before its blank, before its display-on
 sp_palp:    equ 0xE5AA              ; 2: the palette the split writes (hud_palette; split_cal: pf_pal)
 cal_list:   equ 0xE5AC              ; 8: split_cal's register pairs (split_init)
-                                    ; (E5B4h-E5FFh: free, the old background upload ring's)
+dg_step:    equ 0xE5B4              ; SPLITDIAG builds: the display-on's step (0-15: 14 T-states each),
+dg_cnt:     equ 0xE5B5              ;   the frames of this step (256 a step), the fewest and the most
+dg_min:     equ 0xE5B6              ;   polls from the display-on to the match of display line 169
+dg_max:     equ 0xE5B7              ;   this step (isr.asm isr_split, hud.asm hud_frame)
+                                    ; (E5B8h-E5FFh: free, the old background upload ring's)
 pq_buf:     equ 0xE600              ; [type, slot / SAT entry, id (2)] ... 0: the published frame's
                                     ; uploads (sprites.asm Q_...)
 SLOT_PG:    equ 0xE7                ; page of four 64-byte tables per slot:
@@ -662,7 +666,7 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E7FFh: pat_slot and the sprite queues; E800h-E8FFh: bf_htab; EA22h-EA3Fh,
-; C0ECh-C0EEh, C0F2h-C0F3h, CA7Ch, F1CFh, F1E2h, F271h-F27Fh, E5B4h-E5FFh, E601h-E6FFh,
+; C0ECh-C0EEh, C0F2h-C0F3h, CA7Ch, F1CFh, F1E2h, F271h-F27Fh, E5B8h-E5FFh, E601h-E6FFh,
 ; F16Fh-F190h, F1A0h-F1C2h: free; EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 

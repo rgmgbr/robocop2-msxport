@@ -93,7 +93,11 @@ isr_split:
         xor a
         ld (split_armed),a
         call sp_fh                  ; FH of line V-2
+        if SPLITDIAG
+        jp nc,sp_late               ; (the diagnostic's code puts it out of a JR's reach)
+        else
         jr nc,sp_late
+        endif
         ld a,(split_dly)
         or a
         call nz,sp_wait
@@ -116,6 +120,12 @@ isr_split:
         ld a,(split_dly2)
         or a
         call nz,sp_wait
+        if SPLITDIAG
+        ld a,(dg_step)
+        inc a
+        ld b,a
+dg_dl:  djnz dg_dl                  ; SPLITDIAG: dg_step x 14 T-states more before the display-on
+        endif
 sp_on:  ld a,R1_ON
         out (c),a
         ld a,0x81
@@ -127,7 +137,40 @@ sp_on:  ld a,R1_ON
         out (c),a
         ld a,0x99
         out (c),a                   ; V9958: no border mask in the HUD
-sp_r19: ld a,SPLIT_R19
+sp_r19:
+        if SPLITDIAG
+        ld a,(HUD_R23 + 169) & 255
+        out (c),a
+        ld a,0x93
+        out (c),a                   ; SPLITDIAG: R#19 for the end of display line 169
+        ld b,0
+dg_fh:  in a,(c)
+        rrca
+        jr c,dg_got
+        djnz dg_fh
+dg_got: ld a,b
+        neg                         ; the polls from the display-on to that match
+        ld hl,dg_min
+        cp (hl)
+        jr nc,dg_n1
+        ld (hl),a
+dg_n1:  inc hl
+        cp (hl)
+        jr c,dg_n2
+        ld (hl),a                   ; the fewest and the most this step
+dg_n2:  ld hl,dg_cnt
+        inc (hl)
+        jr nz,dg_x
+        ld hl,dg_step
+        ld a,(hl)
+        inc a
+        and 15
+        ld (hl),a                   ; a step every 256 frames
+        ld hl,0x00FF
+        ld (dg_min),hl              ; dg_min 255, dg_max 0
+dg_x:
+        endif
+        ld a,SPLIT_R19
         out (c),a
         ld a,0x93
         out (c),a                   ; R#19 against the HUD's R#23: its match (line V-5) is behind

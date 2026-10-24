@@ -88,6 +88,9 @@ OPTIONS = {
     "DIAG": (0, "1 = test build: after the sound detection, at its place, a screen of what this machine showed it"
                 " (slots, the mapper, every SCC read, stores and loads by instruction form, the CPU's speed), then SCC"
                 " test tones; no game (music.asm dg_main)"),
+    "SPLITDIAG": (0, "1 = test build: the HUD split's display-on later by 14 T-states a step, steps 0-15 of 256"
+                     " frames each (the step in the score's last digits); the timer shows this step's fewest and"
+                     " most polls from the display-on to the match of display line 169 (msx/isr.asm isr_split)"),
     "DAMAGE_X": (3, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them): 3 = the user's choice"
                     " for the fewer enemies (ENEMY_CAP), 1 = the original, for trace tests; the missile (enemy bullet"
                     " types 1 and 2, damage 40h) at most 2, the user's choice (msx/hits.asm)"),

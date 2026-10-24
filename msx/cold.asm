@@ -233,6 +233,14 @@ pl_init:
         ld (split_dly),a            ; (0 and 1 until display_on's split_cal: 3.58 MHz values
         inc a                       ;  are 0 and 0-1; the front end shows no split before a level)
         ld (split_dly2),a
+        if SPLITDIAG
+        xor a
+        ld (dg_step),a
+        ld (dg_cnt),a
+        ld (dg_max),a
+        dec a
+        ld (dg_min),a
+        endif
         ld a,0x7F
         ld (ac_jmask),a             ; ($B02B)
         xor a
