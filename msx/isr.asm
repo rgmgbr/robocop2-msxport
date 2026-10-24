@@ -293,6 +293,11 @@ SPLIT_K:    equ 1                   ; (the accesses' difference and the polls' h
 split_cal:
         di
         ld c,VDP_CTRL
+        ld a,R0_IE1_ON
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; (FH latched until read: with IE1 off it is a pulse of ~48
+                                    ;  T-states a poll slowed by a cartridge's waits can miss)
         xor a
         out (c),a
         ld a,0x97
@@ -403,7 +408,9 @@ sc_dflt:
         ld (split_dly),a            ; (a V9938 at 3.58 MHz)
         ld a,1
         ld (split_dly2),a
-sc_end: xor a
+sc_end: in a,(c)                    ; (S#1: the last match acknowledged)
+        xor a
+        ld (split_armed),a          ; (no split before the VBLANK arms it)
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 0

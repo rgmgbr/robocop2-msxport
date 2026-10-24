@@ -596,6 +596,8 @@ snd_init:
         ld a,7
         ld e,PSG_MIX
         call psg_w
+        ld a,PSG_MIX
+        ld (snd_mix),a              ; (vm_cal's vm_play restores R7 from it before sq_init runs)
         ld a,8
         ld e,0
         call psg_w

@@ -490,5 +490,7 @@ field_end:
 music_tab:
         ds (0x100 - (music_tab & 0xFF)) & 0xFF, 0xFF  ; (voice_tab: 256-byte aligned)
         include "voice.inc"         ; RoboCop's speech: its PSG tables (tools/msxvoice.py)
+        ds (VOICE_RATE_T - 322) * 0x4000  ; (music.asm vm_cal aims at 322 T-states a sample: an
+                                    ;  error here when tools/msxvoice.py's RATE_T changes)
 music_end:
         ds 0xC000 - music_end, 0xFF

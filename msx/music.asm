@@ -1301,7 +1301,7 @@ mum_r:  ld a,(mus_mode)
 ; trigger A): pressed once released (vp_rel), it ends the speech, vm_hit = 1. Then the mixer as
 ; it was (the volumes as the last sample left them), the 8000h window act_8000's again. The
 ; delay a sample is vm_dly's djnz turns, worked out on this machine at the power-on (vm_cal).
-; (vm_plh: HL = the first sample's address in the window.) Keeps IX.
+; (vm_plh: HL = the first sample's address in the window.) Keeps IY.
 vm_play:
         ld hl,0x8000
 vm_plh: ld (vm_bank),a
@@ -1309,8 +1309,8 @@ vm_plh: ld (vm_bank),a
         xor a
         ld (mus_speak),a
         ld (vm_hit),a
-        push ix
-        ld ix,vm_dly
+        push iy
+        ld iy,(vm_dly)              ; (IYL = vm_dly)
         ld a,7
         out (PSG_ADDR),a
         ld a,PSG_MIX
@@ -1333,26 +1333,27 @@ vm_lp:  ld a,(hl)                   ; 8 (T-states, with the M1 wait)
         out (PSG_ADDR),a            ; 12
         ld a,(bc)                   ; 8
         out (PSG_DATA),a            ; 12  A's
-        ld a,h                      ; 5
-        cp 0xA0                     ; 8
-        jr z,vm_bnk                 ; 8
-vm_b:   ld a,l                      ; 5
+        ld a,l                      ; 5
         or a                        ; 5
-        jr z,vm_fire                ; 8
+        jr z,vm_pg                  ; 8 (every 256th sample: H went up, fire)
 vm_c:   dec de                      ; 7
         ld a,d                      ; 5
         or e                        ; 5
         jr z,vm_end                 ; 8
-        ld b,(ix+0)                 ; 21: vm_dly (the loop's own 251 T-states, M1 waits counted:
-                                    ; 251 + 14 vm_dly, 321 with 5 at 3.58 MHz without waits)
+        nop                         ; 5 (so that 7 turns make 322 at 3.58 MHz)
+        db 0xFD, 0x45               ; 10: ld b,iyl, vm_dly (z80asm's IYL: bytes); the loop's own
+                                    ; 224 T-states, M1 waits counted, 46 ROM reads: 224 + 14
+                                    ; vm_dly, 322 with 7 at 3.58 MHz without waits
 vm_w:   djnz vm_w                   ; 14 a turn, 9 the last
         jr vm_lp                    ; 13
-vm_bnk: ld h,0x80                   ; (the window's end: the next bank)
+vm_pg:  ld a,h                      ; (the window's end at A000h: the next bank)
+        cp 0xA0
+        jr nz,vm_fire
+        ld h,0x80
         ld a,(vm_bank)
         inc a
         ld (vm_bank),a
         ld (BANK_8000),a
-        jr vm_b
 vm_fire:
         ld a,15
         out (PSG_ADDR),a
@@ -1384,13 +1385,16 @@ vm_end: ld a,7
         out (PSG_DATA),a
         ld a,(act_8000)
         ld (BANK_8000),a
-        pop ix
+        pop iy
         ret
 
-; The speech's delay on this machine (vm_dly: vm_play's djnz turns a sample, 5 at 3.58 MHz on a
-; plain Z80), at the power-on (rc2.asm; the interrupts off): vm_play's own loop on VC_K samples
-; of the padding past the speech (voice.bin's last sample: voices at 0, 0 and 2, about silent),
-; timed by the VDP's line matches as split_cal times the HUD split. sc_count's loop gives P, its
+; The speech's delay on this machine (vm_dly: vm_play's djnz turns a sample, 7 at 3.58 MHz on a
+; plain Z80), at the power-on (rc2.asm): vm_play's own loop on VC_K samples of the padding past
+; the speech (voice.bin's last sample: voices at 0, 0 and 2, about silent), timed by the VDP's
+; line matches as split_cal times the HUD split, with the interrupts off (their state kept) and
+; IE1 on so that FH stays up until read (with IE1 off it is a pulse of ~48 T-states, which a
+; poll slowed by a cartridge's waits steps over: the MSX2 Hotbit with the MSX Pico+ got a delay
+; of 6-7 turns too many, the speech still low, 2026-10-24). sc_count's loop gives P, its
 ; iterations in 32 lines; then from the match of line VC_L0, the samples with vm_dly 1 and the
 ; iterations left until the match of line VC_L0 + 180 (R1), the same with vm_dly 7 (R2). The
 ; samples took 180 P / 32 - R iterations less the fixed path around them and plus P's own
@@ -1398,16 +1402,25 @@ vm_end: ld a,7
 ; first); VOICE_RATE_T, 322 T-states of a 3.58 MHz Z80 a sample, makes VC_K samples VC_K x 322
 ; / 228 lines (a VDP line is 228 such T-states, at 50 Hz as at 60 Hz). So vm_dly = 1 + 6 x
 ; 79 / 80 x (R1 + VC_OVH - X) / (R1 - R2), X = (180 - 80 x 322 / 228) P / 32 = 2.094 P (2 P +
-; 3 P / 32), rounded, 1 to 255: whatever the CPU, its speed and the cartridge's waits (the MSX
-; Pico+ with its turbo off played the speech a tone low, 2026-10-24). A match missing (no
-; VDP): 5. (C-BIOS_MSX2 at 3.58 MHz: P 173, R1 468, R1 - R2 161, 5.2: 5, 321 T-states a sample.)
+; 3 P / 32), rounded, 1 to 255: whatever the cartridge's waits and the CPU's speed up to ~4.7
+; times a 3.58 MHz Z80 (sc_count's 8192 polls over most of a frame). Any match missing (no
+; VDP, a faster CPU), R1 - R2 not positive: 7. The loop alone takes 238 T-states with one turn
+; plus ~48 for each wait state on its ROM reads: beyond ~1.75 a read nothing makes it fast
+; enough.
 VC_L0:      equ 2
 VC_K:       equ 80
 VC_OVH:     equ 7                   ; (the fixed paths' net, in iterations: their T-states over 41)
 vm_cal:
-        ld a,5
+        ld a,i
+        push af                     ; (P/V: the interrupts' state)
+        di
+        ld a,7
         ld (vm_dly),a
         ld c,VDP_CTRL
+        ld a,R0_IE1_ON
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; IE1 on: FH latched (the interrupts are off)
         xor a
         out (c),a
         ld a,0x97
@@ -1428,17 +1441,17 @@ vm_cal:
         ld (vc_p),hl
         ld a,1
         call vc_run
-        jp nc,vc_x
+        jp nc,vc_f
         ld (vc_r1),hl
         ld a,7
         call vc_run
-        jp nc,vc_x
+        jp nc,vc_f
         ex de,hl
         ld hl,(vc_r1)
         or a
-        sbc hl,de                   ; R1 - R2: VC_K x 6 djnz turns
-        jp c,vc_x
-        jp z,vc_x
+        sbc hl,de                   ; R1 - R2: (VC_K - 1) x 6 djnz turns
+        jp c,vc_f
+        jp z,vc_f
         ld (vc_den),hl
         ld hl,(vc_p)
         ld d,h
@@ -1490,12 +1503,22 @@ vc_div: or a
         inc a
         jr nz,vc_div
         dec a                       ; (255 at most)
+        jr vc_set
+vc_f:   ld a,7                      ; (a run failed: the 3.58 MHz value, not its trial one)
 vc_set: ld (vm_dly),a
 vc_x:   ld c,VDP_CTRL
+        in a,(c)                    ; (S#1: the last match acknowledged)
+        ld a,R0_IE1_OFF
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; IE1 off again (vdp_setup's)
         xor a
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 0
+        pop af
+        ret po                      ; (the interrupts were off)
+        ei
         ret
 
 ; A = vm_dly: from the match of line VC_L0, vm_play on VC_K samples of the padding, the voices

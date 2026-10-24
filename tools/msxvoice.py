@@ -243,6 +243,8 @@ def main(argv: list[str]) -> int:
     # the PCM bytes, padded to whole banks
     pcm = bytes(idx)
     banks = -(-len(pcm) // BANK)
+    if banks * BANK - len(pcm) < 81:           # msx/music.asm vm_cal plays the last 81 bytes
+        banks += 1
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "voice.bin").write_bytes(pcm + bytes([idx[-1]]) * (banks * BANK - len(pcm)))
     ticks = math.ceil(len(pcm) / RATE * ms.TICK_HZ)
