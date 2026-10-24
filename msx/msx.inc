@@ -69,7 +69,8 @@ IM2_TABLE:  equ 0xC100              ; 257 bytes, all = IM2_VEC (I = IM2_I)
 IM2_I:      equ 0xC1
 IM2_VEC:    equ 0xC2
 IM2_JUMP:   equ 0xC2C2              ; JP isr
-; the title music on the SCC / OPLL (music.asm), in the gap of IM2_TABLE..IM2_JUMP (C201h-C2C1h)
+; the title music and the game's sound effects on the SCC / OPLL (music.asm, sound.asm), in the
+; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2A6h-C2C1h free)
 mus_mode:   equ 0xC201              ; what plays it (MM_SCC, MM_FM, MM_RHY; 0: the PSG player)
 mus_on:     equ 0xC202              ; 1 while it plays (the VBLANK interrupt ticks it)
 mus_div:    equ 0xC203              ; VBLANKs into the sixth one (60 Hz: skipped)
@@ -241,7 +242,7 @@ demo_tab:   equ 0xC580              ; demo actors (sprites.asm)
 ent_pages:  equ 0x2000              ; (page 0 RAM) MAX_OBJ x 2 pages of 256 bytes: entries
                                     ; (sprites.asm ENT_SIZE)
 ln_cnt:     equ 0xE000              ; budget: VIEW_LINES (E000h-E0A2h, 256-byte aligned): the sprites
-                                    ;   on each line of the play area (E0A3h-E0FFh: free)
+                                    ;   on each line of the play area (E0A3h-E0FDh: field.asm's state)
 pat_slot:   equ 0xE100              ; 1024 (256-aligned): per pattern id & 3FFh the slot it was put in
                                     ; last (FFh: none; a hint: pat_held says what each slot holds)
 pg_list:    equ 0xE500              ; 16: plan: the BOB objects whose category can have parts, FFh
@@ -262,7 +263,7 @@ split_r19:  equ 0xE5A6              ; the split's R#19 for the frame shown: a ma
 j_jumpb:    equ 0xE5A7              ; 1: the joystick's trigger B is held: a jump (plmove.asm pm_jb)
 split_dly:  equ 0xE5A8              ; the split's delays on this machine (isr.asm split_cal, every
 split_dly2: equ 0xE5A9              ;   level start): before its blank, before its display-on
-sp_palp:    equ 0xE5AA              ; 2: the palette the split writes (hud_palette; split_cal: pf_pal)
+sp_palp:    equ 0xE5AA              ; 2: the palette the split writes (SR_PAL; split_cal: pf_pal)
 cal_list:   equ 0xE5AC              ; 8: split_cal's register pairs (split_init)
 dg_step:    equ 0xE5B4              ; SPLITDIAG builds: the display-on's step (0-15: 14 T-states each),
 dg_cnt:     equ 0xE5B5              ;   the frames of this step (256 a step), the fewest and the most
@@ -275,7 +276,7 @@ vc_p:       equ 0xE5BA              ; 2: vm_cal: the poll loop's iterations in 3
 vc_r1:      equ 0xE5BC              ; 2:   those left after the samples with one turn,
 vc_den:     equ 0xE5BE              ; 2:   and that less those with seven
 SR_RAM:     equ 0xE5C0              ; E5C0h-E6FFh: the HUD split's timed path and split_cal's
-SR_ROOM:    equ 0x0140              ;   measures (isr.asm sr_rom: SR_LEN bytes, copied there at the
+SR_ROOM:    equ 0x0140              ;   measures (split.asm sr_rom: SR_LEN bytes, copied there at the
                                     ;   power-on by cold.asm isr_init; the old background upload
                                     ;   ring's place and the upload queue's)
 SR_PAL:     equ 0xEA22              ; 30: the HUD's colours 1-15 for the split (hud_palette's copy)
@@ -620,7 +621,7 @@ su_vrchk:   equ 0xF16C              ; spr_upload: 1 to stop at the vertical blan
 spr_dsp:    equ 0xF16D              ; R#5 of the sprite set on screen (the interrupt's: sprites.asm iv_sat)
 pcr_next:   equ 0xF16E              ; rows_sync: the SAT entry whose colour row follows the last one
                                     ;   written (FFh: none; pc_rows sets an address only otherwise)
-                                    ; (F16Fh-F190h and F1A0h-F1C2h: free since the alternation went)
+                                    ; (F170h-F190h and F1A0h-F1C2h: free since the alternation went)
 pq_rd:      equ 0xF1C3              ; 2: the published list's queue: where its upload goes on
 rs_held:    equ 0xF1C5              ; 2: rows_sync: the col_held of the set being prepared,
 rs_colhi:   equ 0xF1C7              ;   its colour table's high address byte (port 99h form)
@@ -677,8 +678,9 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
-; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, F1CFh, F1E2h, F271h-F27Fh,
-; F16Fh-F190h, F1A0h-F1C2h: free; EA60h-EC41h: bob_list,
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2A6h-C2C1h, C2C5h-C2FFh,
+; C67Dh-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
+; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 
 ; --- page 0 RAM (0000h-3FFFh: the main RAM once the BIOS is no longer needed, tiles.asm ram_page0)

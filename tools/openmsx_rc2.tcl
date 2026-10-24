@@ -891,7 +891,7 @@ proc rc2_guard {secs split_line nl vis labels} {
 	set ::rg_split1 [rc2_label $labels isr_vblank]
 	set ::rg_ram0 0
 	set ::rg_ram1 0
-	if {![catch {rc2_label $labels sr_end} e]} {   ;# (the split's timed part in RAM: isr.asm sr_rom)
+	if {![catch {rc2_label $labels sr_end} e]} {   ;# (the split's timed part in RAM: split.asm sr_rom)
 		set ::rg_ram0 $::rg_split0
 		set ::rg_ram1 $e
 		set ::rg_split0 [rc2_label $labels sp_r19]

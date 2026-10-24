@@ -2,7 +2,8 @@
 ; Written for the user's MSX2 Hotbit (a real V9938) with the MSX Pico+, on which the HUD split
 ; failed in all three of the cartridge's turbo modes while every openMSX machine was clean
 ; (2026-10-24). No game; the interrupts off (split_cal's EI meets a stub of the lab's own at
-; IM2_JUMP). It measures again and again and shows, in hex (front.asm dg_show, dg_row):
+; IM2_JUMP). "MEASURING..." until the first run is done (~12 s); then it measures again and
+; again and shows, in hex (front.asm dg_show, dg_row):
 ;   0  the VDP (vdp_id: 0 V9938, 2 V9958), R#9 as the BIOS left it (bit 1: 50 Hz), the runs
 ;   1  the speech's calibration at the power-on (music.asm vm_cal): P (vc_p), vm_dly
 ;   2  the split's (isr.asm split_cal, run here): split_dly, split_dly2
@@ -26,15 +27,17 @@
 ;      later), how many of them gave another sum since the start (FFh at most; 32 passes a
 ;      run): a cartridge that answers a read too late gives wrong bytes (the Pico+'s risky mode
 ;      drops /WAIT; its normal mode may miss the Z80's sampling on a machine whose slot signals
-;      come late). The sum expected is the ROM file's (tools: the bytes of bank BANK_MUSIC's
-;      first 4 KiB).
+;      come late). The sum expected is the ROM file's own (the bytes of bank BANK_MUSIC's first
+;      4 KiB: each build's differs). A cartridge that gives a wrong opcode after an OUT would
+;      hang the lab instead (the screen stays at "MEASURING..." or at its last run).
 ; openMSX's C-BIOS_MSX2 (a V9938, a plain Z80 at 3.58 MHz, no cartridge waits): P 00AE, DLY 07,
 ; split 00 / 02; LOOP 00AD 00AE from RAM and from the cartridge, DATA 0060 0061 both; line 101
 ; 10 10 10 0F 00 00 00 00 from RAM, 10 10 10 0E 00 00 00 00 from the cartridge (the match at
 ; the line's right border, R#19 compared live: the write past it from D = 3 on); line 102 10
 ; everywhere; no match missing. Its FS-A1FX (a V9958 through the T9769B, whose VDP ports take
 ; cycles more): P 00A5, split 00 / 00, LOOP 00A5 00A6, DATA 005E 005F, line 101 10 10 10 06 00...
-; The read test: the sum that build's ROM file gives (A15A for the first lab build), no pass bad.
+; The read test: the sum the ROM file gives, no pass bad. (Written for a 3.58 MHz Z80: on a much
+; faster one LAB_POLLS ends before line 102's match.)
 LAB_RAM:    equ 0xD000              ; (the probes' copies: no game runs; the AM area)
 LAB_V:      equ 0xD100              ; the lab's variables:
 lab_run:    equ LAB_V               ;   the runs so far,
@@ -67,7 +70,15 @@ lab_main:
         ld bc,LAB_V_END - LAB_V - 1
         ld (hl),0
         ldir
-        call lab_text
+        ld hl,dg_txt
+        ld de,dg_txt + 1
+        ld bc,32 * 24 - 1
+        ld (hl),' '
+        ldir
+        ld bc,0x0000
+        call dg_at
+        ld hl,lbs_wait
+        call dg_str                 ; (no numbers until the first run's)
         ld hl,dg_show
         call front_call             ; (the screen: BANK_FRONT at 8000h from now on)
         ld hl,dgv_pal
@@ -79,6 +90,8 @@ lab_main:
         call split_cal
         di                          ; (its EI)
 lab_lp: call lab_meas
+        ld hl,lab_run
+        inc (hl)                    ; (the runs shown: 01 on the first numbers)
         call lab_text
         ld b,0
 lab_rw: push bc
@@ -89,8 +102,6 @@ lab_rw: push bc
         ld a,b
         cp 24
         jr nz,lab_rw
-        ld hl,lab_run
-        inc (hl)
         jr lab_lp
 
 ; The measures (IE1 on so that FH stays up until read; R#23 = 0, R#15 = 1 meanwhile).
@@ -158,11 +169,12 @@ lab_n16:
         ld (lab_min),hl
         ld hl,0
         ld (lab_max),hl
-        in a,(c)                    ; (an FH pending: acknowledged)
         ld b,16
 ln_lp:  push bc
         ld a,LAB_L0
         call lab_wr19
+        in a,(c)                    ; (an FH the old R#19 latched meanwhile: acknowledged after the
+                                    ;  write, so that only line LAB_L0's can be the first match)
         call lab_ix                 ; (the first match)
         jr nc,ln_nx
         ld a,LAB_L0 + 32
@@ -521,6 +533,7 @@ lab_hex16:
         ld a,l
         jp dg_hex
 
+lbs_wait:   db "VDP LAB  MEASURING...", 0
 lbs_0:      db "VDP LAB  VDP ", 0
 lbs_r9:     db "  R9 ", 0
 lbs_run:    db "  RUN ", 0

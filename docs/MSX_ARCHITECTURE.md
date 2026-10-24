@@ -1110,7 +1110,7 @@ machine's I/O waits count as they do in the split's polls and writes) between th
 and that of line 72, then four times from a match runs `sp_regs` on a list of R#16 writes and
 the play field's palette (the same timing as the HUD's), sets R#19 for 8 lines on and counts the
 iterations M left until that match (their mean). `split_dly` = N / 64 - 3 (0 at 3.58 MHz: the
-routine's own 145 T-states between the match and the blank, its four port writes included,
+routine's own ~148 T-states between the match and the blank, its four port writes included,
 R#19's first, are the delay; 1 / 0 at 5.37 MHz on C-BIOS_MSX2+ / the FS-A1FX, 5 at 10.74) and
 `split_dly2` = M + 2 - 27 N / 256 (`SPLIT_K` 2; at 3.58 MHz 2 on the V9938 machines and 1 on the
 V9958 ones, the T9769 engines' clamped at 0; 13 / 10 at 5.37 MHz on C-BIOS_MSX2+ / the FS-A1FX,
@@ -1165,36 +1165,39 @@ The split in RAM (2026-10-24; the user's MSX2 Hotbit, a Brazilian Sharp machine 
 MSX2, so a real V9938, with the MSX Pico+). With the split's code in the ROM the Hotbit's HUD
 was wrong in every one of the Pico+'s turbo modes: with turbo normal it did not show, or showed
 garbled; with turbo off or risky most of it, or one line, flickered. The SX-2 flickered a line
-with turbo off and risky and was steady with turbo normal. The likeliest cause is the cartridge's
-wait states: the split's writes are timed by counting T-states from a match, and R#19 for line
-V-1 went out only 240-470 ticks (40-80 T-states) before its match, which about 1.5 wait states
-on each of the ~30 ROM reads of that path overrun (`sp_fh` then times out and the HUD shows ~22
-lines late, most of it missing); the display-on came after ~110 more ROM reads (`sp_regs`'
-opcodes and the palette bytes). The calibration cannot see waits that differ between frames, or
-between its own loops and the split's path. Now the split's timed part (`isr_split` up to the
-display-on and the V9958's R#25, `sp_fh`, `sp_wait`, `sp_regs`) and `split_cal`'s measures
-(`sc_meas`, `sc_r19`, `sc_count`) run from RAM: `split.asm`, 309 bytes assembled for `SR_RAM`
-(E5C0h-E6FFh, the old background upload ring's place; an assembly-time check against
+with turbo off and risky and was steady with turbo normal. The likeliest cause is the
+cartridge's wait states: the split's writes are timed by counting T-states from a match, and
+R#19 for line V-1 went out only 240-470 ticks (40-80 T-states) before its match, which about 1.5
+wait states on each of the ~30 ROM reads of that path overrun (`sp_fh` then times out and the
+HUD shows ~22 lines late, most of it missing); the display-on came after ~110 more ROM reads
+(`sp_regs`' opcodes and the palette bytes). The calibration cannot see waits that differ between
+frames, or between its own loops and the split's path. Now the split's timed part (`isr_split`
+up to the display-on and the V9958's R#25, `sp_fh`, `sp_wait`, `sp_regs`) and `split_cal`'s
+measures (`sc_meas`, `sc_r19`, `sc_count`) run from RAM: `split.asm`, 309 bytes assembled for
+`SR_RAM` (E5C0h-E6FFh, the old background upload ring's place; an assembly-time check against
 `SR_ROOM`) and stored in `BANK_FRONT`, copied by `cold.asm` `isr_init` at the power-on (after
 the last BIOS call, before `vm_cal`); the HUD's 30 palette bytes too (`hud_palette`, there as
-well, to `SR_PAL`, EA22h). The fixed area got 339 bytes back. No cartridge read comes between a match and the writes timed from it. What
-has no deadline stays in the ROM: the interrupt's entry (`isr`, three lines before the first
-match), `sp_late`, and after the display-on `sp_r19` (R#19 = `SPLIT_R19`, R#15, `isr_fbgo`,
-the uploads). R#19 for line V-1 now goes out right after the match of line V-2, 660-920 ticks
-ahead of its own, and `split_dly` = N / 64 - 3 keeps the blank mid-line. `SPLIT_K` went from 1
-to 2: the three VDP models agree on a window of 344-1554 ticks after a match for a write meant
-for the next line (blueMSX, in the CocoaMSX source on this disk, latches R#1 186 ticks after
-the match, openMSX 230, the ESE-VDP 344), and without wait states the V9958's display-on came
-326-554 ticks after its match, partly before the ESE-VDP's 344: the SX-2 could have shown a line
-of page 3 above the HUD in some frames. Now every machine's display-on lands 590-1100 after its
-match and the blank 890-1180 after its own. `vm_cal` keeps cartridge copies of the two helpers
-(`music.asm` `vc_r19`, `vc_count`): the speech's rate, checked on the user's machines with that
-loop, stays what it was (the loop and the fixed paths around `vm_play` slowed alike by a
-cartridge's waits). The upload queue's byte
-(`pq_buf`, only its 0 since the uploads went direct) moved to CA7Ch to free the room. A test
-build, `tools/mkrom.py DIAG=2` (`msx/lab.asm`), measures on the machine itself the cartridge's
-wait states a read (the split's loop run from RAM and from the cartridge) and what a VDP does
-with R#19 rewritten after a match.
+well, to `SR_PAL`, EA22h). The fixed area got 325 bytes back (against 0.1.2-test4). No cartridge
+read comes between a match and the writes timed from it. What has no deadline stays in the ROM:
+the interrupt's entry (`isr`, three lines before the first match), `sp_late`, and after the
+display-on `sp_r19` (R#19 = `SPLIT_R19`, R#15, `isr_fbgo`, the uploads). R#19 for line V-1 now
+goes out right after the match of line V-2, 660-920 ticks ahead of its own, and `split_dly` = N
+/ 64 - 3 keeps the blank mid-line. `SPLIT_K` went from 1 to 2: the three VDP models agree on a
+window of 344-1554 ticks after a match for a write meant for the next line (blueMSX, in the
+CocoaMSX source on this disk, latches R#1 186 ticks after the match, openMSX 230, the ESE-VDP
+344), and without wait states the V9958's display-on came 326-554 ticks after its match, partly
+before the ESE-VDP's 344: the SX-2 could have shown a line of page 3 above the HUD in some
+frames. Now every machine's display-on lands 590-1100 after its match and the blank 890-1180
+after its own. `vm_cal` keeps cartridge copies of the two helpers (`music.asm` `vc_r19`,
+`vc_count`): the speech's rate, checked on the user's machines with that loop, stays what it was
+(the loop and the fixed paths around `vm_play` slowed alike by a cartridge's waits). Both
+calibrations, now that FH stays latched, write their first R#19 before they acknowledge FH (a
+match of the old R#19 latched between an acknowledge and the write had been taken for the first
+match about once in a thousand runs: a wrong N or P). The upload queue's byte (`pq_buf`, only
+its 0 since the uploads went direct) moved to CA7Ch to free the room. A test build,
+`tools/mkrom.py DIAG=2` (`msx/lab.asm`), measures on the machine itself the cartridge's wait
+states a read (the split's loop run from RAM and from the cartridge) and what a VDP does with
+R#19 rewritten after a match.
 
 Measured through the MSX-AI MCP on the product ROM, 1500 frames each (VDP line:cycle of the
 writes, line 0 at the frame's first display line, cycle 0 at the line's sync; a write takes

@@ -192,9 +192,10 @@ split_cal:
         out (c),a
         ld a,0x8F
         out (c),a                   ; S#1
-        in a,(c)                    ; (an FH pending: acknowledged)
         ld a,CAL_LINE
         call sc_r19
+        in a,(c)                    ; (an FH the old R#19 latched meanwhile: acknowledged after the
+                                    ;  write, so that only line CAL_LINE's can be the first match)
         call sc_count               ; (the first match)
         jr nc,sc_dflt
         call sc_meas                ; (RAM) HL = N, DE = M

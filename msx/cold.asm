@@ -279,11 +279,11 @@ isr_init:
         ld hl,sr_rom
         ld de,SR_RAM
         ld bc,SR_LEN
-        ldir                        ; the split's timed path and split_cal's measures (isr.asm)
+        ldir                        ; the split's timed path and split_cal's measures (split.asm)
         ld hl,hud_palette
         ld de,SR_PAL
         ld bc,30
-        ldir                        ; the HUD's colours 1-15 the split writes (rc2.asm)
+        ldir                        ; the HUD's colours 1-15 the split writes (split.asm)
         ld hl,IM2_TABLE
         ld de,IM2_TABLE+1
         ld bc,256

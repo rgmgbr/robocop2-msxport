@@ -1429,9 +1429,10 @@ vm_cal:
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 1: S#1
-        in a,(c)                    ; (an FH pending: acknowledged)
         ld a,VC_L0
         call vc_r19
+        in a,(c)                    ; (an FH the old R#19 latched meanwhile: acknowledged after the
+                                    ;  write, so that only line VC_L0's can be the first match)
         call vc_count               ; (the first match)
         jp nc,vc_x
         ld a,VC_L0 + 32
