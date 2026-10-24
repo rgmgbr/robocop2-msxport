@@ -1391,36 +1391,43 @@ vm_end: ld a,7
 ; The speech's delay on this machine (vm_dly: vm_play's djnz turns a sample, 7 at 3.58 MHz on a
 ; plain Z80), at the power-on (rc2.asm): vm_play's own loop on VC_K samples of the padding past
 ; the speech (voice.bin's last sample: voices at 0, 0 and 2, about silent), timed by the VDP's
-; line matches as split_cal times the HUD split, with the interrupts off (their state kept) and
-; IE1 on so that FH stays up until read (with IE1 off it is a pulse of ~48 T-states, which a
-; poll slowed by a cartridge's waits steps over: the MSX2 Hotbit with the MSX Pico+ got a delay
-; of 6-7 turns too many, the speech still low, 2026-10-24). vc_count's loop gives P, its
-; iterations in 32 lines; then from the match of line VC_L0, the samples with vm_dly 1 and the
-; iterations left until the match of line VC_L0 + 180 (R1), the same with vm_dly 7 (R2). The
-; samples took 180 P / 32 - R iterations less the fixed path around them and plus P's own
-; (VC_OVH net), linear in vm_dly (79 of the 80 samples take the delay: the last one ends
-; first); VOICE_RATE_T, 322 T-states of a 3.58 MHz Z80 a sample, makes VC_K samples VC_K x 322
-; / 228 lines (a VDP line is 228 such T-states, at 50 Hz as at 60 Hz). So vm_dly = 1 + 6 x
-; 79 / 80 x (R1 + VC_OVH - X) / (R1 - R2), X = (180 - 80 x 322 / 228) P / 32 = 2.094 P (2 P +
-; 3 P / 32), rounded, 1 to 255: whatever the cartridge's waits and the CPU's speed up to ~4.7
-; times a 3.58 MHz Z80 (vc_count's 8192 polls over most of a frame). Any match missing (no
-; VDP, a faster CPU), R1 - R2 not positive: 7. The loop alone takes 238 T-states with one turn
-; plus ~48 for each wait state on its ROM reads: beyond ~1.75 a read nothing makes it fast
+; line matches as split_cal times the HUD split, with the interrupts off (their state kept) but
+; in split.asm's waits, which take each match by its interrupt (IE1 on): a poll of S#1 missed
+; matches on the user's MSX2 Hotbit, a real V9938 (the VDP lab, 2026-10-24; with IE1 off FH is
+; a pulse of ~48 T-states a poll slowed by a cartridge's waits steps over, found earlier that
+; day). The turns of split.asm's 14 T-state loop give P, from the match of line VC_L0 (and the
+; fixed path after it) to that of line VC_L0 + 32; then from the match of line VC_L0, the
+; samples with vm_dly 1 and the turns left until the match of line VC_L0 + 180 (R1), the same
+; with vm_dly 7 (R2). The samples took 180 P / 32 - R turns less the fixed path around them and
+; plus P's own (VC_OVH net), linear in vm_dly (79 of the 80 samples take the delay: the last
+; one ends first); VOICE_RATE_T, 322 T-states of a 3.58 MHz Z80 a sample, makes VC_K samples
+; VC_K x 322 / 228 lines (a VDP line is 228 such T-states, at 50 Hz as at 60 Hz). So vm_dly = 1
+; + 6 x 79 / 80 x (R1 + VC_OVH - X) / (R1 - R2), X = (180 - 80 x 322 / 228) P / 32 = 2.094 P (2
+; P + 3 P / 32), rounded, 1 to 255: whatever the cartridge's waits, up to ~6 times a 3.58 MHz
+; Z80 (R1 within sc_cnt's 64 wraps). Any match missing (no VDP, a faster CPU), R1 - R2 not
+; positive: 7. The loop alone takes 238 T-states with one
+; turn plus ~48 for each wait state on its ROM reads: beyond ~1.75 a read nothing makes it fast
 ; enough.
 VC_L0:      equ 2
 VC_K:       equ 80
-VC_OVH:     equ 7                   ; (the fixed paths' net, in iterations: their T-states over 41)
+VC_OVH:     equ 6                   ; (the fixed paths' net in turns, fitted at 3.58 MHz)
 vm_cal:
         ld a,i
         push af                     ; (P/V: the interrupts' state)
         di
+        ld hl,(IM2_JUMP)
+        push hl                     ; (its jump: isr_init's; split.asm's waits change it)
         ld a,7
         ld (vm_dly),a
         ld c,VDP_CTRL
+        ld a,R1_CAL
+        out (c),a
+        ld a,0x81
+        out (c),a                   ; R#1: display off, no VBLANK interrupt (vdp_setup's already)
         ld a,R0_IE1_ON
         out (c),a
         ld a,0x80
-        out (c),a                   ; IE1 on: FH latched (the interrupts are off)
+        out (c),a                   ; IE1 on (the interrupts off but in split.asm's waits)
         xor a
         out (c),a
         ld a,0x97
@@ -1430,15 +1437,13 @@ vm_cal:
         ld a,0x8F
         out (c),a                   ; R#15 = 1: S#1
         ld a,VC_L0
-        call vc_r19
-        in a,(c)                    ; (an FH the old R#19 latched meanwhile: acknowledged after the
-                                    ;  write, so that only line VC_L0's can be the first match)
-        call vc_count               ; (the first match)
+        call sc_sync                ; the match of line VC_L0 (split.asm)
         jp nc,vc_x
         ld a,VC_L0 + 32
-        call vc_r19
-        call vc_count               ; P
+        call sc_ack                 ; R#19 for 32 lines on
+        call sc_cnt                 ; P: the turns to its match
         jp nc,vc_x
+        call sc_turns               ; (isr.asm)
         ld (vc_p),hl
         ld a,1
         call vc_run
@@ -1450,7 +1455,7 @@ vm_cal:
         ex de,hl
         ld hl,(vc_r1)
         or a
-        sbc hl,de                   ; R1 - R2: (VC_K - 1) x 6 djnz turns
+        sbc hl,de                   ; R1 - R2: (VC_K - 1) x 6 of vm_play's turns
         jp c,vc_f
         jp z,vc_f
         ld (vc_den),hl
@@ -1458,7 +1463,7 @@ vm_cal:
         ld d,h
         ld e,l
         add hl,hl
-        add hl,de                   ; 3 P (P below 8192)
+        add hl,de                   ; 3 P (P below 16.6K: sc_cnt's 64 wraps)
         ld b,5
 vc_sh:  srl h
         rr l
@@ -1517,23 +1522,24 @@ vc_x:   ld c,VDP_CTRL
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 0
+        pop hl
+        ld (IM2_JUMP),hl            ; (its jump back)
         pop af
         ret po                      ; (the interrupts were off)
         ei
         ret
 
 ; A = vm_dly: from the match of line VC_L0, vm_play on VC_K samples of the padding, the voices
-; at 0 again, then vc_count until the match of line VC_L0 + 180 -> C and HL = its iterations;
-; NC when a match did not come.
+; at 0 again, then split.asm's sc_cnt until the match of line VC_L0 + 180 -> C and HL = its
+; turns; NC when a match did not come.
 vc_run:
         ld (vm_dly),a
         ld c,VDP_CTRL
         ld a,VC_L0
-        call vc_r19
-        call vc_count               ; (the frame's first match)
+        call sc_sync                ; the frame's match of line VC_L0
         ret nc
         ld a,VC_L0 + 180
-        call vc_r19
+        call sc_ack                 ; R#19 for 180 lines on
         ld a,VOICE_MIX_BANK - 1     ; (voice.bin's last bank: it ends with the padding)
         ld hl,0xA000 - VC_K - 1
         ld de,VC_K
@@ -1548,35 +1554,6 @@ vcr_z:  ld a,b
         cp 11
         jr nz,vcr_z
         ld c,VDP_CTRL
-        jp vc_count
-
-; isr.asm's sc_r19 and sc_count as they were, run from the cartridge as vm_play is: the split's
-; own copies run from RAM (split.asm) and the speech's rate was checked on the user's machines
-; with this loop (P, R1 and R2 counted by a loop the cartridge's wait states slow as they slow
-; the fixed paths around vm_play: VC_OVH stays right). A = a line: R#19 = it (R#23 is 0).
-; Keeps C.
-vc_r19: out (c),a
-        ld a,0x93
-        out (c),a
-        ret
-
-; Polls S#1 for FH with the split's 41 T-state loop, 8192 times at most -> C and HL = the
-; iterations until it came, NC when it did not. Keeps C.
-vc_count:
-        ld b,0
-        ld h,0
-vcc_lp: in a,(c)
-        rrca
-        jr c,vcc_x
-        djnz vcc_lp
-        inc h
-        ld a,h
-        cp 0x20
-        jr nz,vcc_lp
-        ld l,0
-        ret
-vcc_x:  xor a
-        sub b
-        ld l,a
-        scf
-        ret
+        call sc_cnt                 ; R: the turns left to its match
+        ret nc
+        jp sc_turns

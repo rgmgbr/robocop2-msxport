@@ -54,8 +54,14 @@ HUD_VRAM_LINE: equ 208
 VRAM_HUD:   equ 0x18000 + HUD_VRAM_LINE*128
 HUD_R23:    equ (HUD_VRAM_LINE - VIEW_LINES - HUD_BLACK) & 255   ; R#23 that shows it at line 167
 SPLIT_R19:  equ (HUD_R23 + SPLIT_LINE) & 255    ; R#19 after the split: its match is behind (isr.asm)
-SPLIT_POLLS: equ 128                ; the split's polls for a line match at most (isr.asm sp_fh:
-                                    ;   its first wait is ~11 at 3.58 MHz, ~46 at 10.74)
+SP_GAP:     equ 8                   ; the split's turns (14 T-states) before its R#19 write: none
+                                    ;   right after the read of S#1 that acknowledged FH (split.asm)
+SP_TURNS:   equ 255                 ; its wait for the match's interrupt at most (split.asm sp_irq:
+                                    ;   ~16 turns at 3.58 MHz, ~114 at 10.74: 3 lines less a path of
+                                    ;   ~460 T-states; 255 holds up to ~5.9 times a 3.58 MHz Z80)
+SC_WRAPS:   equ 0                   ; split_cal's and vm_cal's waits for a match: 256 x 256 turns
+SC_GAP:     equ 8                   ; their turns between acknowledging FH and writing R#19
+R1_CAL:     equ 0x02                ; display off, no interrupt: the calibration's blank (split.asm sp_seq)
 SPR_PAT:    equ 0x1D800             ; R#6 = 3Bh
 SPR_COL_A:  equ 0x1E000             ; SAT = SPR_COL_A + 200h, R#5 = C7h
 SPR_COL_B:  equ 0x1E400             ; SAT = SPR_COL_B + 200h, R#5 = CFh
@@ -272,7 +278,8 @@ dg_max:     equ 0xE5B7              ;   this step (isr.asm isr_split, hud.asm hu
 fb_w2:      equ 0xE5B8              ; the split's wait for a pair's first part: what is left of it for
                                     ;   the VBLANK (isr.asm ifg_vr, ifg_fin)
 vm_dly:     equ 0xE5B9              ; the speech's djnz turns a sample on this machine (music.asm vm_cal)
-vc_p:       equ 0xE5BA              ; 2: vm_cal: the poll loop's iterations in 32 lines,
+vc_p:       equ 0xE5BA              ; 2: vm_cal: split.asm's 14 T-state turns from line VC_L0's match
+                                    ;   (and the path after it) to line VC_L0 + 32's (sc_turns),
 vc_r1:      equ 0xE5BC              ; 2:   those left after the samples with one turn,
 vc_den:     equ 0xE5BE              ; 2:   and that less those with seven
 SR_RAM:     equ 0xE5C0              ; E5C0h-E6FFh: the HUD split's timed path and split_cal's
@@ -328,6 +335,10 @@ demo_msg:   equ 0xC673              ; demo: next message
 hud_last:   equ 0xC674              ; 8 bytes: the values when every digit cell was last up to date
 hud_cost:   equ 0xC67C              ; work the HUD did this frame, in sprite upload units (with
                                     ; spr_cost: the upload takes what is left of UP_TOTAL)
+split_dly1: equ 0xC67D              ; the split's turns after its blank: past line V-1's last pixel
+sp_v1:      equ 0xC67E              ; the split's R#1 for its blank (R1_BLANK; split_cal: R1_CAL)
+cal_n:      equ 0xC67F              ; 2: split_cal: the fewest turns of 32 lines, then n32
+cal_m:      equ 0xC681              ; 2:   the fewest left after sp_seq (isr.asm)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -679,7 +690,7 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2A6h-C2C1h, C2C5h-C2FFh,
-; C67Dh-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
+; C683h-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
 ; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 

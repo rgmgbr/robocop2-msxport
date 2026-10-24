@@ -879,26 +879,29 @@ which as sprites were striped, cut or left out.
   when L wraps (every 256th sample, with the fire read), so a sample is 224 + 14 x `vm_dly`
   T-states with 46 ROM reads (a `nop` makes 7 turns exactly 322 at 3.58 MHz); one turn leaves
   room for ~1.75 wait states a read. `vm_cal` works the delay out at the power-on (`rc2.asm`,
-  after `mus_init`; the interrupts off, their state kept): `vm_play`'s own loop on 80 samples
-  of `voice.bin`'s padding (its last sample, PSG volumes 0, 0 and 2: about silent), timed by
-  the VDP's line matches with copies of `split_cal`'s helpers that run from the cartridge, as
-  `vm_play` does (`vc_r19`, `vc_count`; the split's own run from RAM): P, the poll loop's
-  iterations in 32 lines; from the match of line 2, the samples with `vm_dly` 1, then 7, and
-  the polls left until the match of line 182 (R1, R2); the time is linear in `vm_dly`, and a VDP
+  after `mus_init`; the interrupts off, their state kept): `vm_play`'s own loop on 80 samples of
+  `voice.bin`'s padding (its last sample, PSG volumes 0, 0 and 2: about silent), timed by the
+  VDP's line matches, each taken by its interrupt with `split.asm`'s waits in RAM (`sc_sync`,
+  `sc_ack`, `sc_cnt`: the HUD split's below): P, the waits' 14 T-state turns from the match of
+  line 2 to that of line 34; from the match of line 2, the samples with `vm_dly` 1, then 7, and
+  the turns left until the match of line 182 (R1, R2); the time is linear in `vm_dly`, and a VDP
   line is 228 T-states of a 3.58 MHz Z80 at 50 Hz as at 60 Hz, so 322 T a sample is 322 / 228
-  lines: `vm_dly` = 1 + 6 x 79 / 80 x (R1 + 7 - X) / (R1 - R2), X = 2 P + 3 P / 32, rounded, 1
-  to 255; 7 when a match is missing or R1 - R2 is not positive. The line interrupt is on during
-  it (the interrupts off): with IE1 off FH is a pulse of ~48 T-states (openMSX's model of the
-  chips), which the first version's polls stepped over once a cartridge's waits slowed them: the
-  count slipped a frame and `vm_dly` stayed at its trial 7, the speech still low on the Hotbit
-  (reproduced in openMSX with the Z80 at 2.5 MHz: P 1134 instead of 120, the speech 36 % slow;
-  now 120 and the fastest the loop allows). `split_cal` latches FH the same way (it acknowledges
-  the last match and leaves the split disarmed), and `snd_init` sets `snd_mix` so that the
-  calibration's `vm_play` restores a valid R7 before the sound player starts. Measured through
-  the MSX-AI MCP (the time between samples during the title's speech): every machine at 3.58 MHz
-  (V9938, V9958, the T9769 engines, 50 and 60 Hz) `vm_dly` 7, 322 T-states a sample (-0.27 %
-  with the fire reads); the Z80 at 5.37 MHz 18-19 (±1.6 %, a step is 9 T-states there), at
-  10.74 MHz 53 (-0.09 %), where the fixed delay played it 50 % and 200 % fast.
+  lines: `vm_dly` = 1 + 6 x 79 / 80 x (R1 + 6 - X) / (R1 - R2), X = 2 P + 3 P / 32, rounded, 1
+  to 255, up to ~6 times a 3.58 MHz Z80; 7 when a match is missing (no VDP, a faster CPU) or
+  R1 - R2 is not positive. The first version polled S#1 with IE1 off, when FH is a pulse of ~48
+  T-states (openMSX's model of the chips), which its polls stepped over once a cartridge's waits
+  slowed them: the count slipped a frame and `vm_dly` stayed at its trial 7, the speech still
+  low on the Hotbit (reproduced in openMSX with the Z80 at 2.5 MHz: P 1134 instead of 120, the
+  speech 36 % slow; then 120 and the fastest the loop allows). The second latched FH (IE1 on)
+  and polled it, which gave the Hotbit its speech; the VDP lab then showed polls of S#1 missing
+  latched matches there as well (the HUD split, below), so the third takes each match by its
+  interrupt. `split_cal` leaves the split disarmed (it acknowledges the last match), and
+  `snd_init` sets `snd_mix` so that the calibration's `vm_play` restores a valid R7 before the
+  sound player starts. Measured through the MSX-AI MCP (the time between samples during the
+  title's speech): every machine at 3.58 MHz (V9938, V9958, the T9769 engines, 50 and 60 Hz)
+  `vm_dly` 7, 322 T-states a sample (-0.27 % with the fire reads); the Z80 at 5.37 MHz 18-19
+  (±1.6 %, a step is 9 T-states there), at 10.74 MHz 53 (-0.09 %), where the fixed delay played
+  it 50 % and 200 % fast.
 - The original's music and sound effects are tunes of the same player (MU1 at `$18000`):
   `tools/rc2music.py` models it exactly; `tools/msxsound.py` turns its output (per Amiga channel
   and tick: period, volume, instrument, key-ons) and the samples into PSG streams
@@ -1075,54 +1078,58 @@ digit read as an 8 (user's choice). On the V9958 the split turns
 the left-border mask off for the HUD. Positions of the run-time elements (digit cells,
 message line, weapon icon, heads, can) are written to `build/msx/hud_layout.json`.
 
-The split interrupt (`isr.asm` `isr_split`, V = `VIEW_LINES` = 162) goes by the VDP's line
-match only (since 2026-10-23, third design of the day, its writes moved that evening; its timed
-part runs from RAM since 2026-10-24, below):
+The split interrupt (`split.asm` `isr_split`, V = `VIEW_LINES` = 162) goes by one VDP line match
+a frame, taken by its interrupt (since the evening of 2026-10-24; the third design of 2026-10-23
+polled two; its timed part runs from RAM since that afternoon, below):
 
-1. It fires at the end of display line V-5 (157); the routine at once writes R#19 =
-   `split_r19` (the play field's R#23 + V - 2: the VBLANK takes it from the list's first pair,
-   which every list makes R#23) and polls S#1 for that match, the end of line V-2 (`sp_fh`,
-   ~13 polls at 3.58 MHz; at most `SPLIT_POLLS`), at once writes R#19 for the end of line V-1
-   (660-920 ticks ahead of that match at 3.58 MHz), waits the split delay (`split_dly`, below)
-   and writes R#1 = blank: 890-1180 VDP ticks after the match of line V-2 at 3.58 MHz,
-   mid-line V-1, past that line's latch of R#1 (openMSX's V9938: the next line's sync + 144
-   ticks, 230 after the match; the ESE-VDP's source: the dot before the next line's first
-   pixel, 344 after) and well before line V's (1598 and 1712 after): the display is off from
-   line V.
-2. At FH of line V-1 (its pixels drawn: nothing visible changes from there on) it writes R#8 =
-   sprites off, then `split_list` (built by `split_init`): R#2 = page 3, on the V9938 R#18 = 0,
-   R#23 = `HUD_R23`, on the V9958 R#26/R#27, then R#16 = 1 and the 30 palette bytes
+1. It fires at the end of display line V-5 (157); after `SP_GAP` turns (no VDP write right after
+   the read of S#1 that acknowledged it) the routine writes R#19 = `split_r19` (the play field's
+   R#23 + V - 2: the VBLANK takes it from the list's first pair, which every list makes R#23)
+   and waits for that match's interrupt, the end of line V-2 (`split.asm` `sp_irq`: the
+   interrupts on in a loop of 14 T-state turns, IM2_JUMP's first two bytes "pop hl / ret"
+   meanwhile, so the interrupt returns to the routine 49 T-states after the match on average,
+   0-14 of them the turn under way: the only jitter; no read of S#1 before it, a match that came
+   between the R#19 write and the EI being taken at once). Then `split_dly` turns and R#1 = blank,
+   900-1070 VDP ticks after the match: mid-line V-1, past that line's latch of R#1 (blueMSX
+   takes R#1 for the next line 186 ticks after a match, openMSX 230, the ESE-VDP 344) and well
+   before line V's (1554, 1598, 1712): the display is off from line V.
+2. `split_dly1` turns, past the last pixel of line V-1 (nothing visible changes from there on),
+   then R#8 = sprites off and `split_list` (built by `split_init`): R#2 = page 3, on the V9938
+   R#18 = 0, R#23 = `HUD_R23`, on the V9958 R#26/R#27, then R#16 = 1 and the 30 palette bytes
    (`hud_palette` = `gen/hud_split.pal`, colours 1-15; colour 0 is the play field's,
    `tools/mkrom.py` checks) with unrolled OUTIs (`sp_regs`, 38 port writes on the V9938, 40 on
    the V9958): ~4600-4800 ticks on a plain Z80 at 3.58 MHz, ~5300 on the T9769 engines, inside
-   the blank lines V..V+4.
-3. Then the second delay and R#1 = display on, 590-1100 ticks after the end of line V+3 by
-   machine at 3.58 MHz (the table below): the HUD shows from line V+5 = 167. Then the V9958's R#25 (no
-   border mask in the HUD) and, back in the ROM (`sp_r19`), R#19 = `SPLIT_R19` (`(HUD_R23 +
+   the blank lines V..V+4 (`sp_seq` does the blank, the sprites-off and this).
+3. `split_dly2` turns and R#1 = display on, 840-980 ticks after the match of line V+3 on every
+   machine and speed (the table below): the HUD shows from line V+5 = 167. Then the V9958's R#25
+   (no border mask in the HUD) and, back in the ROM (`sp_r19`), R#19 = `SPLIT_R19` (`(HUD_R23 +
    SPLIT_LINE) & 255`: a match already behind; one the play field's R#19 made against the HUD's
-   R#23 meanwhile is harmless, the ISR ignores FH with `split_armed` 0), an S#1 read, R#15 = 0
-   and `isr_fbgo`.
+   R#23 meanwhile is harmless, the ISR ignores FH with `split_armed` 0), an S#1 read (FH of line
+   V-2, left up since the wait), R#15 = 0, IM2_JUMP's jump back and `isr_fbgo`.
 
-The delays are the machine's: `split_cal` (`display_on`, every level start, the display off)
-sets R#23 = 0 and runs its measures from RAM as the split runs (`sc_meas`): it counts the
-iterations N of the split's own poll loop (`sp_wait`: 41 T-states with a port read, so a
-machine's I/O waits count as they do in the split's polls and writes) between the FH of line 40
-and that of line 72, then four times from a match runs `sp_regs` on a list of R#16 writes and
-the play field's palette (the same timing as the HUD's), sets R#19 for 8 lines on and counts the
-iterations M left until that match (their mean). `split_dly` = N / 64 - 3 (0 at 3.58 MHz: the
-routine's own ~148 T-states between the match and the blank, its four port writes included,
-R#19's first, are the delay; 1 / 0 at 5.37 MHz on C-BIOS_MSX2+ / the FS-A1FX, 5 at 10.74) and
-`split_dly2` = M + 2 - 27 N / 256 (`SPLIT_K` 2; at 3.58 MHz 2 on the V9938 machines and 1 on the
-V9958 ones, the T9769 engines' clamped at 0; 13 / 10 at 5.37 MHz on C-BIOS_MSX2+ / the FS-A1FX,
-53 / 49 at 10.74 on C-BIOS_MSX2+ / the FS-A1GT), 0 below: the writes land mid-line whatever the
-CPU and its I/O waits. `split_dly2` moves in
-coarse steps (the first costs the call too: ~350 ticks at 3.58 MHz, against ~190 for the
-V9958's two more register writes), so the display-on lands 690-910 ticks after its match on
-the V9958 machines with a plain Z80, 770-1000 on the V9938 ones, 850-1100 on the FS-A1FX and
-590-830 on the FS-A1GT, whose delays are clamped at 0. A split serviced past line V-2 (never seen: the main program's
-longest DI is ~50 T-states) finds its first match behind (`sp_fh` returns NC after
-`SPLIT_POLLS` polls, ~22 lines at 3.58 MHz) and writes everything at once (`sp_late`): the
-HUD that much late that frame.
+The delays are the machine's: `split_cal` (`display_on`, every level start, the display off and
+the VBLANK interrupt off: from the title the front end leaves R#1 = `R1_BLANK`, whose interrupt
+`split_cal` would take for a match) takes its matches by their interrupts too (`sc_sync`,
+`sc_ack`, `sc_cnt`, `sc_turns`), and each measure is the least of four (a match missed only
+makes a count longer). N: the turns from the match of line 40 to that of line 72, so n32 = N +
+`SC_GAP` + 15 turns in 32 lines (521 at 3.58 MHz, 781 at 5.37, 1564 at 10.74). M: the turns left
+to the match of line 88 after `sp_seq` ran from that of line 80 exactly as the split runs it
+from its own (`sc_mrun`, from RAM: the same return, jump and call; delays at 0; a blank enabling
+no interrupt, `R1_CAL`; R#16 writes and the play field's colours), so the time from a match to
+the end of `sp_seq` is known whatever the VDP's port waits and the cartridge's (N's few
+cartridge reads cost a cartridge's waits about a turn in 521). With n = n32 / 32: `split_dly` =
+0.6875 n - 11 (0 / 5 / 22), `split_dly1` = n - 14 - `split_dly` (2 / 5 / 12), `split_dly2` = M +
+`SC_GAP` + 6 - 2.31 n - the two (13 on the V9938 machines at 3.58 MHz, 11 on the V9958 ones with
+a plain Z80, 4 on the FS-A1FX, 8 on the FS-A1GT; 49 / 43 at 5.37 on C-BIOS_MSX2+ / the FS-A1FX,
+164 / 160 at 10.74 on C-BIOS_MSX2+ / the FS-A1GT). Any measure missing (no VDP): 0 / 2 / 11,
+which suit every machine here at 3.58 MHz. A split serviced so late that its R#19 write comes
+past line V-2's match (never seen: that write comes ~310 T-states ahead of the match at 3.58
+MHz, and the interrupt's service varies by up to ~130 T-states in openMSX, `vram_write`'s DI
+being ~150) gets no match that frame and gives up after `SP_TURNS` turns (~16 lines at 3.58 MHz;
+the wait is ~16 turns at 3.58 MHz, ~114 at 10.74, and 255 holds up to ~5.9 times a 3.58 MHz
+Z80), then writes everything at once (`sp_late`), the HUD that much late that frame. The results
+hold up to ~4.2 times a 3.58 MHz Z80 (`split_dly2` saturates at 255 there); `vm_cal`'s up to ~6
+times (`sc_cnt` gives up after 64 wraps).
 
 Why (2026-10-23, the user's SX-2, an OCM-PLD machine). The first design of the day polled S#2
 HR from wherever the interrupt was serviced; the second from the FH edge of line V-2. Both
@@ -1199,37 +1206,60 @@ its 0 since the uploads went direct) moved to CA7Ch to free the room. A test bui
 states a read (the split's loop run from RAM and from the cartridge) and what a VDP does with
 R#19 rewritten after a match.
 
+The split by interrupt (2026-10-24, evening). With the RAM split the SX-2 showed the HUD perfect
+in all three Pico+ modes, but the Hotbit (Ademir Carchano's MSX2 kit 2.0, a V9938 at 60 Hz)
+stayed wrong in all three. The VDP lab on it (photos of the three modes) showed reads of the
+cartridge always right (the sum of 4 KiB with and without an OUT before each read the same, no
+pass bad; the Pico+ adding ~1.3 wait states a read with its turbo off, none with risky) but line
+matches missed by polls of S#1 in every mode: counts of 32 lines that ran into the next frame
+(the match of line 72 missed, the next frame's caught) and R#19-rewrite tries that never saw
+their match even two lines ahead (lines 101 and 102: 0-16 of 16 by the delay, where openMSX and
+the SX-2 give 16 everywhere), the very same counts in the turbo-off and normal modes, which time
+the code alike: deterministic, set by the polls' phase against the VDP. The likeliest cause is a
+read of S#1 that meets FH's setting and clears it unseen, which the emulators do not model; the
+calibration took such misses for long counts (the turbo-off photo: `split_dly2` FFh, the HUD
+gone for the level). So nothing polls FH any more: the split and both calibrations wait for the
+match's interrupt, which the CPU takes whatever it reads, with S#1 read only well after FH's
+setting (to acknowledge it); the split needs one match a frame instead of two (no R#19 rewrite
+for line V-1: from the match of line V-2 everything is timed), the calibration keeps the least
+of four counts. `vm_cal` takes its matches with the same waits (its cartridge copies of the
+polled helpers, `vc_r19` and `vc_count`, are gone), and the RAM block is 306 bytes of its 320
+(313 with `SPLITDIAG`). The lab (`DIAG=2`) has interrupt rows next to the polled ones (R19 101
+IRQ, R19 102 IRQ) and shows the calibration's raw measures (N32, M) to confirm it on the Hotbit.
+The 14 machines of the MCP's openMSX home (all but the CocoaMSX Gradiente, whose twin the MCP
+runs) through the keyboard plan for 40 s from the title: no freeze, RoboCop never off the
+published camera, guard vbl/cpu/pal/reg 0 (its timing of `isr_split` itself, `rc2_rg_isr`, keyed
+on the routine's new first bytes: it had keyed on the old `ld a,(split_r19)` and was off until
+the review found it; it fires on every split), the changed-cell tears 1-6.
+
 Measured through the MSX-AI MCP on the product ROM, 1500 frames each (VDP line:cycle of the
 writes, line 0 at the frame's first display line, cycle 0 at the line's sync; a write takes
-effect from the next line when its cycle is past 144; the match of line 160 is at 160:1282,
-that of 161 (the R#19 column's) at 161:1282, that of 165 at 165:1282):
+effect from the next line when its cycle is past 144 in openMSX; the match of line 160 is at
+160:1282, that of 161 at 161:1282, that of 165 at 165:1282):
 
-| machine | display off (R#1 = 22h) | R#19 for line V-1 | display on (R#1 = 62h) | split_dly / dly2 |
+| machine | display off (R#1 = 22h) | sprites off (R#8) | display on (R#1 = 62h) | split_dly / dly1 / dly2 |
 |---|---|---|---|---|
-| C-BIOS_MSX2 (V9938) | 161:834-1062 ×1500 | 161:390-618 ×1500 | 166:684-912 ×1500 | 0 / 2 |
-| C-BIOS_MSX2_EU (V9938, 50 Hz) | 161:834-1062 ×1500 | 161:390-618 ×1500 | 166:684-912 ×1500 | 0 / 2 |
-| Gradiente Expert 2.0 (V9938) | 161:834-1062 ×1500 | 161:390-618 ×1500 | 166:684-912 ×1500 | 0 / 2 |
-| C-BIOS_MSX2+ (V9958) | 161:804-1032 ×1500 | 161:360-588 ×1500 | 166:600-822 ×1500 | 0 / 1 |
-| Sony HB-F1XDJ (V9958, S1985) | 161:804-1032 ×1500 | 161:360-588 ×1500 | 166:600-822 ×1500 | 0 / 1 |
-| Panasonic FS-A1FX (V9958, T9769B) | 161:852-1092 ×1500 | 161:384-624 ×1500 | 166:768-1008 ×1500 | 0 / 0 |
-| Panasonic FS-A1GT, Z80 (V9958, T9769C) | 161:828-1062 ×1500 | 161:372-606 ×1500 | 166:504-738 ×1500 | 0 / 0 |
-| C-BIOS_MSX2+ at 5.37 MHz | 161:744-896 ×1500 | 161:212-364 ×1500 | 166:512-664 ×1500 | 1 / 13 |
-| C-BIOS_MSX2+ at 10.74 MHz | 161:656-732 ×1500 | 161:62-138 ×1500 | 166:756-832 ×1500 | 5 / 53 |
-| FS-A1FX at 5.37 MHz | 161:540-700 ×1500 | 161:228-388 ×1500 | 166:452-612 ×1500 | 0 / 10 |
-| FS-A1GT at 10.74 MHz | 161:674-752 ×1500 | 161:65-143 ×1500 | 166:614-692 ×1500 | 5 / 49 |
+| C-BIOS_MSX2 (V9938) | 161:906-984 ×1500 | 162:132-210 ×1500 | 166:804-882 ×1500 | 0 / 2 / 13 |
+| C-BIOS_MSX2_EU (V9938, 50 Hz) | 161:906-984 ×1500 | 162:132-210 ×1500 | 166:804-882 ×1500 | 0 / 2 / 13 |
+| Gradiente Expert 2.0 (V9938) | 161:906-984 ×1500 | 162:132-210 ×1500 | 166:804-882 ×1500 | 0 / 2 / 13 |
+| C-BIOS_MSX2+ (V9958) | 161:876-954 ×1500 | 162:102-180 ×1500 | 166:792-870 ×1500 | 0 / 2 / 11 |
+| Sony HB-F1XDJ (V9958, S1985) | 161:876-954 ×1500 | 162:102-180 ×1500 | 166:792-870 ×1500 | 0 / 2 / 11 |
+| Panasonic FS-A1FX (V9958, T9769B) | 161:900-978 ×1500 | 162:150-228 ×1500 | 166:756-834 ×1500 | 0 / 2 / 4 |
+| Panasonic FS-A1GT, Z80 (V9958, T9769C) | 161:888-966 ×1500 | 162:126-204 ×1500 | 166:816-894 ×1500 | 0 / 2 / 8 |
+| C-BIOS_MSX2+ at 5.37 MHz | 161:816-868 ×1500 | 162:12-64 ×1500 | 166:776-828 ×1500 | 5 / 5 / 49 |
+| C-BIOS_MSX2+ at 10.74 MHz | 161:840-866 ×1500 | 161:1318-1344 ×1500 | 166:816-842 ×1500 | 22 / 12 / 164 |
+| FS-A1FX at 5.37 MHz | 161:832-884 ×1500 | 162:44-96 ×1500 | 166:808-860 ×1500 | 5 / 5 / 43 |
+| FS-A1GT at 10.74 MHz | 161:845-869 ×1500 | 161:1325-1352 ×1500 | 166:797-821 / 824-851 ×1500 | 22 / 12 / 160 / 161 |
 
-(In these probes openMSX adds no wait to C-BIOS_MSX2+'s VDP accesses at 5.37 and 10.74 MHz
-and ~2 T-states to the FS-A1FX's; the OCM's turbo gives 2 and 6 clocks.) The same probe, 300 frames on each of the 14 machines of the MCP's
-openMSX home at 3.58 MHz: the display off in line 161 and on in line 166 in every frame, no
-split lost; the V9958 machines with a plain Z80 (C-BIOS_MSX2+ and the HB-F1XDJ, as the SX-2)
-write the blank at 161:510-738, R#19 at 161:786-1014 and the display-on at 166:240-468 (326-554
-ticks after its match), the V9938 ones at 161:540-768, 161:816-1044 and 166:438-666. Cost: the split ends by line ~167
-instead of ~169 (`drive_play` 26.3 pictures/s on C-BIOS_MSX2, 25.6 on the FS-A1FX, the ticks
-at full speed). The logic traces are the Amiga's (4401 and 1400 game frames, 0 differ); 120
-recorded pictures on C-BIOS_MSX2, the FS-A1FX and the HB-F1XDJ match the map and show RoboCop
-whole; the 14 machines (all but the CocoaMSX Gradiente, whose twin the MCP runs) through the
-keyboard plan for 40 s from the title: no freeze, RoboCop never off the published camera, guard
-vbl/pal/reg 0, the changed-cell tears 0-9 (1-8 before).
+The blank lands 900-1070 ticks after its match everywhere, the sprites-off past the last pixel
+of line V-1 (36-62 ticks at 10.74 MHz, 100-310 elsewhere), the display-on 840-980 ticks after
+its match; the spread of each is the 0-14 T-state turn under way when the interrupt comes (78
+ticks at 3.58 MHz; the FS-A1GT at 10.74 MHz gave `split_dly2` 160 in one run and 161 in another,
+M's least of four moved by the T9769C's port waits). The speech's `vm_dly` stays 7 at 3.58 MHz,
+19 at 5.37, 53 at 10.74. The logic traces are the Amiga's (4401 and 1400 game frames, 0 differ),
+the start checks clean on both VDPs (guard 0, patcheck 0), `drive_play` 26.1 pictures/s on
+C-BIOS_MSX2 and 25.4-25.5 on the FS-A1FX, the ticks at full speed; 120 recorded pictures on
+C-BIOS_MSX2, the FS-A1FX and the HB-F1XDJ match the map and show RoboCop whole.
 
 The changed cells the engines draw at once while the play area is shown ("a change never waits":
 `scroll9938.asm` `s38r_late`, `scroll9958.asm` `swr_late`) tear when the beam crosses them, and

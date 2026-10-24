@@ -230,8 +230,10 @@ pl_init:
         ld (jump_pend),a
         ld (j_nojump),a
         ld (j_jumpb),a
-        ld (split_dly),a            ; (0 and 2 until display_on's split_cal: 3.58 MHz values
-        ld a,2                      ;  are 0 and 0-2; the front end shows no split before a level)
+        ld (split_dly),a            ; (split_cal's defaults 0 / 2 / 11 until display_on's
+        ld a,2                      ;  split_cal, which runs before any split: the front end shows
+        ld (split_dly1),a           ;  none before a level)
+        ld a,11
         ld (split_dly2),a
         if SPLITDIAG
         xor a

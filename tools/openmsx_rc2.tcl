@@ -909,8 +909,9 @@ proc rc2_guard {secs split_line nl vis labels} {
 		lappend ::rg_pbs [debug probe set_bp VDP.commandExecuting {[debug probe read VDP.commandExecuting] == 0} rc2_rg_cend]
 	}
 	set ::rg_bp [debug set_bp [rc2_label $labels iv_late] {} rc2_rg_vbl]   ;# (the list and its SAT in)
-	set a [rc2_label $labels isr_split]
-	set ::rg_isb [debug set_bp $a "\[peek $a\] == 0x3A" rc2_rg_isr]   ;# (where the split routine really runs: its ld a,(split_r19))
+	set ::rg_isa [rc2_label $labels isr_split]
+	unset -nocomplain ::rg_isk                         ;# (its first bytes, taken at the first line interrupt: rc2_rg_split)
+	set ::rg_isb [debug set_bp $::rg_isa {[info exists ::rg_isk] && [peek $::rg_isa] == [lindex $::rg_isk 0] && [peek [expr {$::rg_isa + 1}]] == [lindex $::rg_isk 1]} rc2_rg_isr]   ;# (where the split routine really runs)
 	after time $secs rc2_rg_end
 	return "guarding"
 }
@@ -1072,6 +1073,7 @@ proc rc2_rg_isr {} {
 }
 
 proc rc2_rg_split {} {
+	if {[info exists ::rg_isa] && ![info exists ::rg_isk]} { set ::rg_isk [list [peek $::rg_isa] [peek [expr {$::rg_isa + 1}]]] }   ;# (a line interrupt: only the game enables IE1, after isr_init's RAM copy)
 	if {[peek 0xC002] == 0} { return }
 	set t [machine_info time]
 	if {$::rg_tv >= 0} {

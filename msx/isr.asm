@@ -38,7 +38,7 @@ isr:    push af
         jr z,isr_r15
         ld a,(split_armed)
         or a
-        call nz,isr_split           ; (R#15 still 1: the split polls S#1 first)
+        call nz,isr_split           ; (R#15 still 1: sp_r19 reads S#1)
 isr_r15:
         xor a
         out (c),a
@@ -53,55 +53,59 @@ isr_r15:
         ei
         reti
 
-; HUD split (V = VIEW_LINES): the interrupt fires at the end of line V-5. The routine goes by
-; the line match (S#1 FH, R#19 against the line + R#23 at the line's last pixel: the same on the
-; V9938, the V9958 and the One Chip MSX's ESE-VDP) and delays worked out on this machine
-; (split_cal), never by S#2 HR, whose window differs between those chips. Its timed part runs
-; from RAM (split.asm, at SR_RAM), as do split_cal's measures: no cartridge read comes between a
-; match and the writes timed from it, so that a cartridge's wait states cannot move them (the
-; MSX Pico+ holds the Z80 on ROM reads, more in some frames than in others: with this code in
-; the ROM the user's SX-2 flickered a line of the HUD with the Pico+'s turbo off, and the user's
-; MSX2 Hotbit, a real V9938, most of the HUD in every turbo mode, 2026-10-24). With R#19 at the
-; play field's R#23 + V - 2 (split_r19) it polls FH for the end of line V-2, at once sets R#19
-; for the end of line V-1, 660-920 VDP ticks ahead of that match at 3.58 MHz (written after the
-; blank, as up to 0.1.1, it came 240-470 ticks before it, which a few wait states a read
-; overran: the HUD ~22 lines late), waits split_dly and blanks the display. The blank lands
-; 890-1180 ticks after the match of line V-2 at 3.58 MHz, mid-line V-1: past that line's latch
-; of R#1 (the next line's sync + 144 ticks in openMSX's V9938, the dot before the next line's
-; first pixel in the ESE-VDP's source: 230 and 344 ticks after the match) and well before line
-; V's (1598 and 1712 after): display off from line V. At FH of line V-1 (its pixels drawn:
-; nothing visible changes any more) the sprites go off and the page, the scroll and the HUD's
-; colours 1-15 go in during the blank lines V..V+4 (sp_regs: 38-40 port accesses, 3.9 lines on
-; the T9769 engines, whose VDP ports take cycles more, 3.4-3.5 on a plain Z80), then split_dly2
-; and the display on, 590-1100 ticks after the end of line V+3 at 3.58 MHz (split_cal times
-; sp_regs itself; the delay's first step costs ~350 ticks, the next ~250, and it is 0 on the
-; T9769 engines: 690-910 on the V9958 with a plain Z80, 770-1000 on the V9938, 850-1100 on the
-; FS-A1FX, 590-830 on the FS-A1GT), so the HUD shows from line V+5. That is inside the window
-; the VDP models agree on, 344-1554 ticks after a match (a write latched for the next line:
-; blueMSX takes R#1 186 ticks after the match, openMSX 230, the ESE-VDP 344); before 2026-10-24
-; the V9958's 326-554 started before the ESE-VDP's 344. The blank lines are five (HUD_BLACK):
-; four held the registers and the palette only with the display-on just before the HUD's first
-; line (0.1.0's split landed a line late on the FS-A1FX), and the design of that morning wrote
-; 10 colours while the HUD showed. Colour 0 is not written: the HUD's is the play field's
-; (tools/mkrom.py checks). On the V9958 the border mask is turned off (the HUD's left columns
-; are still black there) so that the HUD uses all 256 px. Then, back in the ROM (sp_r19), R#19
-; goes behind (SPLIT_R19) and S#1 is read: the line interrupt stays enabled, a match the play
-; field's R#19 makes against the HUD's R#23 is acknowledged and ignored (isr: split_armed 0). A
-; split serviced past line V-2 (never seen: the main program's longest DI is ~50 T) finds its
-; first match behind (sp_fh: SPLIT_POLLS, ~22 lines at 3.58 MHz) and writes everything at once
-; (sp_late): the HUD that much late that frame.
+IM2_JP0:    equ 0xC3 + (isr & 0xFF) * 256   ; IM2_JUMP's first two bytes: "jp isr" (isr_init)
 
-; (The split's timed path, sp_fh, sp_wait, sp_regs and split_cal's measures run from RAM:
+; HUD split (V = VIEW_LINES): the interrupt fires at the end of line V-5. The routine goes by
+; one line match a frame, the end of line V-2 (S#1 FH, R#19 against the line + R#23 at the
+; line's last pixel: the same on the V9938, the V9958 and the One Chip MSX's ESE-VDP), and from
+; it by delays worked out on this machine (split_cal), never by S#2 HR, whose window differs
+; between those chips. It takes that match by its interrupt (split.asm sp_irq: the interrupts on
+; in a loop, IM2_JUMP "pop hl / ret" meanwhile), not by polls of S#1: the user's MSX2 Hotbit, a
+; real V9938, lost FH in 0-75 % of polls by their phase (2026-10-24, the VDP lab). Its timed
+; part runs from RAM (split.asm, at SR_RAM), as do split_cal's waits and its M run: no cartridge
+; read comes between the match and the writes timed from it, so that a cartridge's wait states
+; cannot move them (the MSX Pico+ holds the Z80 on ROM reads, more in some frames than in
+; others, 2026-10-24). After SP_GAP turns (no VDP write right after the read of S#1 that acknowledged
+; the interrupt at V-5) it sets R#19 = split_r19 (the play field's R#23 + V - 2) and waits for
+; its interrupt; then split_dly turns and the blank, 900-1070 VDP ticks after the match,
+; mid-line V-1: past that line's latch of R#1 and well before line V's in every VDP model
+; (blueMSX takes R#1 for the next line 186 ticks after a match, openMSX 230, the ESE-VDP 344;
+; line V's 1554, 1598 and 1712 after); split_dly1 turns, past the last pixel of line V-1, and
+; the sprites off; the page, the scroll and the HUD's colours 1-15 during the blank lines V..V+4
+; (sp_regs: 38-40 port accesses, 3.9 lines on the T9769 engines, whose VDP ports take cycles
+; more, 3.4-3.5 on a plain Z80); split_dly2 turns and the display on, 840-980 ticks after the
+; match of line V+3 on every machine (the measured table: docs/MSX_ARCHITECTURE.md), so the HUD
+; shows from line V+5. The jitter is the turn under way when the interrupt comes: 0-14 T-states.
+; The blank lines are five (HUD_BLACK): four held the registers and the palette only with the
+; display-on just before the HUD's first line (0.1.0's split landed a line late on the FS-A1FX),
+; and the design of that morning wrote 10 colours while the HUD showed. Colour 0 is not written:
+; the HUD's is the play field's (tools/mkrom.py checks). On the V9958 the border mask is turned
+; off (the HUD's left columns are still black there) so that the HUD uses all 256 px. Then, back
+; in the ROM (sp_r19), R#19 goes behind (SPLIT_R19), S#1 is read (FH of line V-2, up since the
+; wait) and IM2_JUMP gets its jump back: the line interrupt stays enabled, a match the play
+; field's R#19 makes against the HUD's R#23 is acknowledged and ignored (isr: split_armed 0). A
+; split serviced so late that its R#19 write comes past line V-2's match (never seen: that write
+; comes ~310 T-states ahead of the match at 3.58 MHz, ~220 ahead of sp_irq's EI, and the
+; interrupt's service varies by up to ~130 T-states in openMSX, vdp.asm vram_write's DI being
+; ~150) gets no match that frame: after SP_TURNS turns (~15.7 lines at 3.58 MHz) it writes
+; everything at once (sp_late), the HUD that much late that frame. One whose match came between
+; that write and sp_irq's EI finds FH up and its interrupt taken at once: timed as usual, 65-79
+; T-states late.
+
+; (The split's timed path, its wait for the match, sp_regs and split_cal's waits run from RAM:
 ; split.asm.)
 
 ; The split's end, from RAM (sp_on): R#19 behind, the HUD's work for the frame.
 sp_r19:
         if SPLITDIAG
+        in a,(c)                    ; (FH of line V-2, up since the split's sync: acknowledged)
+        ld b,SC_GAP
+dg_gp:  djnz dg_gp
         ld a,(HUD_R23 + 169) & 255
         out (c),a
         ld a,0x93
         out (c),a                   ; SPLITDIAG: R#19 for the end of display line 169
-        ld b,0
+        ld b,0                      ; (polls: on a real V9938 they can miss FH, msx/lab.asm)
 dg_fh:  in a,(c)
         rrca
         jr c,dg_got
@@ -132,11 +136,14 @@ dg_x:
         out (c),a
         ld a,0x93
         out (c),a                   ; R#19 against the HUD's R#23: its match (line V-5) is behind
-        in a,(c)                    ; (S#1: a match that came meanwhile is acknowledged)
+        in a,(c)                    ; (S#1: FH of line V-2, up since the split's sync, and a match
+                                    ;  that came meanwhile, acknowledged)
         xor a
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 0
+        ld hl,IM2_JP0
+        ld (IM2_JUMP),hl            ; (the ISR's jump again: sp_irq left "pop hl / ret")
         call isr_fbgo               ; a play-field copy waiting: it starts as the beam leaves
         jp spr_upload               ; sprites off until the next frame: their uploads
 sp_late:
@@ -152,38 +159,42 @@ sp_late:
         call sp_regs
         jp sp_on
 
-; The split's delays for this machine (split_dly, split_dly2: iterations of sp_wait's loop),
-; worked out with the display off (display_on, every level start; interrupts off meanwhile,
-; the VDP's are off: display_on turns them on after; leaves R#15 = 0). R#23 = 0 meanwhile (the
-; VBLANK's list sets the play field's again). The measures run from RAM (sc_meas), the loop's
-; iterations N between the FH of line CAL_LINE and that of line CAL_LINE + 32 (174 at 3.58 MHz;
-; the loop is 41 T-states with a port read: I/O waits count as they do in the split's own polls
-; and writes), then, four times from a match: sp_regs on cal_list (R#16 writes) and the play
-; field's palette, R#23 = 0 and R#19 for 8 lines on, and the iterations left until that match
-; (M, their mean: a poll's worth of jitter in each). The blank must land ~0.5 line (684 ticks)
-; after its match: split_dly = 0.5 N / 32 - the routine's own time between the match and the
-; write (~148 T-states with its 4 port writes, R#19's first, ~3.6 iterations; 18 more once
-; sp_wait runs) - the poll's half ~= N / 64 - 3, 0 below (it lands 890-1180 after at 3.58 MHz,
-; where it is 0). The display-on aims at ~0.5 line after the end of line V+3, 4.5 lines after
-; the match of line V-1 from which the writes run: split_dly2 = 4.5 N / 32 - (8 N / 32 - M - the
-; 4 accesses after sp_regs here) - the sprites-off (an iteration at any speed) and the 2
-; accesses before the display-on there = M - 28 N / 256 + K; the code keeps 27 N / 256 and
-; SPLIT_K, measured at 3.58 MHz, takes the rest, 0 below (2 since 2026-10-24: 1 put the V9958's
-; display-on 326-554 ticks after its match, partly before the ESE-VDP's latch at 344; 2 gives it
-; a step, 686-908). Its steps are coarse (the first costs the call too: ~350 ticks at 3.58 MHz)
-; and the T9769 engines' is 0, so the display-on lands 590-1100 after its match by machine
-; (docs/MSX_ARCHITECTURE.md, the split). Any match missing (no VDP): the 3.58 MHz values of a
-; V9938.
+; The split's delays for this machine (split_dly, split_dly1, split_dly2: turns of 14 T-states),
+; worked out with the display off (display_on, every level start; the interrupts off but in
+; split.asm's waits for a match, whose interrupts only FH can raise: R#1 = R1_CAL, IE0 off;
+; leaves R#15 = 0, IM2_JUMP as it found it, R#1 with the display off). R#23 = 0 meanwhile (the
+; VBLANK's list sets the play field's again). Each measure is the least of CAL_TRIES (a match
+; missed only makes a count longer). N: the turns from split.asm's return at the match of line
+; CAL_LINE to that of line CAL_LINE + 32 (sc_cnt), so n32 = N + SC_GAP + 15 turns in 32 lines
+; (the fixed path from the match, 212 + 14 SC_GAP T-states; sc_turns adds the wraps'; its few
+; cartridge reads cost a cartridge's waits about a turn in 521). M: the turns left to the match
+; of line CAL_LINE + 48 after sp_seq ran from that of line CAL_LINE + 40 exactly as the split runs
+; it from its own (split.asm sc_mrun, from RAM: the same return, the same jump and call, sp_seq's
+; delays at 0, a blank enabling no interrupt, cal_list and the play field's colours instead of
+; the HUD's), so the time from a match to the end of sp_seq is 8 lines - 14 M - 155 - 14 SC_GAP
+; T-states, whatever the VDP's port waits and the cartridge's. Then, n = n32 / 32 the turns of a line: split_dly =
+; 0.6875 n - 11 puts the blank 0.69 line after the match of line V-2 (169 T-states after it at
+; 3.58 MHz, where it is 0: 970-1060 ticks); split_dly1 = n - 14 - split_dly puts the sprites-off
+; past the last pixel of line V-1; split_dly2 = M + SC_GAP + 6 - 2.31 n - split_dly - split_dly1
+; puts the display-on 0.69 line after the match of line V+3 (5.69 lines after line V-2's). Any
+; measure missing (no VDP): 0 / 2 / 11, which suit every machine here at 3.58 MHz.
 CAL_LINE:   equ 40                  ; (the first line of split_cal's measures)
-SPLIT_K:    equ 2                   ; (the accesses' difference and the polls' halves, in iterations: measured)
+CAL_TRIES:  equ 4
 split_cal:
         di
+        ld hl,(IM2_JUMP)
+        push hl                     ; (its jump's first two bytes: the game's, or the lab's)
         ld c,VDP_CTRL
+        ld a,R1_CAL
+        out (c),a
+        ld a,0x81
+        out (c),a                   ; R#1: display off, no VBLANK interrupt (from the title the
+                                    ;  front end leaves it on: it took split.asm's waits, its F
+                                    ;  never read; display_on sets R#1 again after)
         ld a,R0_IE1_ON
         out (c),a
         ld a,0x80
-        out (c),a                   ; (FH latched until read: with IE1 off it is a pulse of ~48
-                                    ;  T-states a poll slowed by a cartridge's waits can miss)
+        out (c),a                   ; IE1 on (the interrupts off but in split.asm's waits)
         xor a
         out (c),a
         ld a,0x97
@@ -192,87 +203,179 @@ split_cal:
         out (c),a
         ld a,0x8F
         out (c),a                   ; S#1
+        xor a
+        ld (split_dly),a
+        ld (split_dly1),a           ; (sp_seq timed with no delay)
+        ld a,R1_CAL
+        ld (sp_v1),a                ; (and a blank that enables no interrupt)
+        ld hl,pf_pal + 2
+        ld (sp_palp),hl             ; (the play field's colours 1-15: what the VBLANK writes)
+        ld hl,0xFFFF
+        ld (cal_n),hl
+        ld (cal_m),hl
+        ld b,CAL_TRIES
+scl_n:  push bc
         ld a,CAL_LINE
-        call sc_r19
-        in a,(c)                    ; (an FH the old R#19 latched meanwhile: acknowledged after the
-                                    ;  write, so that only line CAL_LINE's can be the first match)
-        call sc_count               ; (the first match)
-        jr nc,sc_dflt
-        call sc_meas                ; (RAM) HL = N, DE = M
-        push af
-        push hl
+        call sc_sync                ; the match of line CAL_LINE
+        jr nc,scln_x
+        ld a,CAL_LINE + 32
+        call sc_ack                 ; R#19 for 32 lines on
+        call sc_cnt                 ; N: the turns to its match
+        jr nc,scln_x
+        call sc_turns
+        ld de,cal_n
+        call sc_min
+scln_x: pop bc
+        djnz scl_n
+        ld b,CAL_TRIES
+scl_m:  push bc
+        call sc_mrun                ; M: from the match of line CAL_LINE + 40, sp_seq (R#16 writes
+        jr nc,sclm_x                ;  and pf_pal here), the turns left to that of CAL_LINE + 48
+        call sc_turns
+        ld de,cal_m
+        call sc_min
+sclm_x: pop bc
+        djnz scl_m
         ld hl,SR_PAL
         ld (sp_palp),hl             ; (the HUD's colours again)
-        pop hl
-        pop af
-        jr nc,sc_dflt
-        push de
-        ld d,h
-        ld e,l
+        ld a,R1_BLANK
+        ld (sp_v1),a
+        ld hl,(cal_m)
+        ld a,h
+        and l
+        inc a
+        jr z,sc_dflt                ; (no M: no VDP)
+        ld hl,(cal_n)
+        ld a,h
+        and l
+        inc a
+        jr z,sc_dflt                ; (no N)
+        ld de,SC_GAP + 15
+        add hl,de                   ; n32: the turns of 32 lines
+        ld (cal_n),hl
         srl h
         rr l
         srl h
-        rr l
-        srl h
-        rr l                        ; N / 8
+        rr l                        ; n32 / 4 (~130 a multiple of a 3.58 MHz Z80: x 74 below fits
+                                    ;  16 bits up to ~6.8 times; split_dly2 saturates from ~4.2)
         push hl
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l                        ; N / 64
-        ld a,l                      ; (N below 8192: one byte)
-        sub 3
-        jr nc,sc_db
-        xor a
-sc_db:  ld (split_dly),a            ; split_dly = N / 64 - 3
-        pop hl                      ; N / 8 (one byte: N below 2048)
         ld d,h
         ld e,l
         add hl,hl
-        add hl,de
+        push hl                     ; (2)
+        add hl,hl
+        add hl,hl
+        add hl,de                   ; 9
+        pop de
+        add hl,de                   ; 11
+        add hl,hl                   ; 22 (n32 / 4)
+        ld a,h                      ; 0.6875 n
+        sub 11
+        jr nc,scl_s
+        xor a
+scl_s:   ld (split_dly),a
+        ld e,a                      ; split_dly
+        ld hl,(cal_n)
         add hl,hl
         add hl,hl
         add hl,hl
+        ld a,h                      ; n (n32 / 32: below 256)
+        sub 14
+        jr c,scl_d1z
+        sub e
+        jr nc,scl_d1
+scl_d1z: xor a
+scl_d1:  ld (split_dly1),a
+        add a,e
+        ld e,a                      ; split_dly + split_dly1
+        pop hl                      ; n32 / 4
+        add hl,hl
+        push hl                     ; (2)
+        add hl,hl
+        add hl,hl
+        push hl                     ; (8)
+        add hl,hl
+        add hl,hl
+        add hl,hl                   ; 64
+        pop bc
+        add hl,bc                   ; 72
+        pop bc
+        add hl,bc                   ; 74 (n32 / 4)
+        ld a,h                      ; 2.31 n
+        ld b,0
+        add a,e                     ; + the two delays
+        ld c,a
+        jr nc,scl_m0
+        inc b
+scl_m0:  ld hl,(cal_m)
+        ld de,SC_GAP + 6
         add hl,de
-        add hl,de
-        add hl,de                   ; 27 N / 8
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l                        ; 27 N / 256 = 0.1055 N
-        ld b,l
-        pop hl                      ; M
+        or a
+        sbc hl,bc                   ; split_dly2 = M + SC_GAP + 6 - 2.31 n - the two delays
+        jr c,scl_d2z
         ld a,h
         or a
-        ld a,255
-        jr nz,sc_dp                 ; (M >= 256: a very fast CPU, 255 at most)
         ld a,l
-        add a,SPLIT_K
-        sub b
-        jr nc,sc_dp
-        xor a
-sc_dp:  ld (split_dly2),a           ; split_dly2 = M + SPLIT_K - 27 N / 256
+        jr z,scl_d2
+        ld a,255
+        jr scl_d2
+scl_d2z: xor a
+scl_d2:  ld (split_dly2),a
         jr sc_end
 sc_dflt:
         xor a
-        ld (split_dly),a            ; (a V9938 at 3.58 MHz)
+        ld (split_dly),a            ; (what suits every machine at 3.58 MHz)
         ld a,2
+        ld (split_dly1),a
+        ld a,11
         ld (split_dly2),a
-sc_end: in a,(c)                    ; (S#1: the last match acknowledged)
+sc_end: ld c,VDP_CTRL
+        in a,(c)                    ; (S#1: the last match acknowledged)
         xor a
         ld (split_armed),a          ; (no split before the VBLANK arms it)
         out (c),a
         ld a,0x8F
         out (c),a                   ; R#15 = 0
+        pop hl
+        ld (IM2_JUMP),hl            ; (its jump back)
         ei
+        ret
+
+; After sc_cnt (split.asm): HL = its turns, 2 more a 256-turn wrap (26 T-states), and the 256 of
+; a wrap that ended just as the interrupt came, before sc_cnt counted it (DE = scn_inc, the PC
+; the interrupt left: 9 T-states of each wrap's 3610) -> C (vm_cal's vc_run returns through it).
+; Uses A.
+sc_turns:
+        xor a
+        sub b
+        ld l,a                      ; HL = 256 H + (-B & 255)
+        ld a,h
+        add a,a
+        add a,l
+        ld l,a
+        jr nc,sct_w
+        inc h
+sct_w:  ld a,e
+        cp scn_inc & 0xFF
+        jr nz,sct_c
+        ld a,d
+        cp scn_inc >> 8
+        jr nz,sct_c
+        inc h                       ; (that wrap's 256 turns: B is 0)
+sct_c:  scf
+        ret
+
+; HL less than the word at DE: stored there. Uses A, DE, HL.
+sc_min: ex de,hl
+        ld a,e
+        sub (hl)
+        inc hl
+        ld a,d
+        sbc a,(hl)
+        ret nc
+        ld (hl),d
+        dec hl
+        ld (hl),e
         ret
 
 ; A play-field copy for the page shown waiting (field.asm fb_cq 1 or 3), its picture published
@@ -511,6 +614,8 @@ si_cal: ld (hl),1
         djnz si_cal
         ld hl,SR_PAL
         ld (sp_palp),hl             ; (hud_palette's RAM copy: cold.asm isr_init)
+        ld a,R1_BLANK
+        ld (sp_v1),a                ; (split.asm sp_seq's blank)
         ret
 
 ; Publishes the register list at HL (filled by the engine) for the next VBLANK.

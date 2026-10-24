@@ -6,41 +6,39 @@
 ; cartridge read comes between a line match and the writes timed from it, so that a
 ; cartridge's wait states cannot move them (the MSX Pico+, isr.asm). Then hud_palette, which
 ; isr_init copies to SR_PAL.
+;
+; Every wait for a line match is its interrupt, never a poll of S#1 (2026-10-24): the user's
+; MSX2 Hotbit, a real V9938 on Ademir Carchano's MSX2 kit, missed FH in 0-75 % of polls
+; depending on their phase (the VDP lab, msx/lab.asm: the same counts again for the same
+; timing, never a miss in openMSX or on the SX-2), most likely when a read of S#1 met FH's
+; setting; the interrupt is taken whatever the CPU reads. While a wait lasts the interrupts
+; are on in a loop of 14 T-state turns and IM2_JUMP's first two bytes are "pop hl / ret" (or
+; "pop de / ret"): the match's interrupt drops the loop's address and returns to the waiter's
+; caller, carry set, 49 T-states after the match on average (the turn under way, 0-14, the
+; IM 2 response, 20, the two instructions, 22). FH then stays up until read: the split reads
+; S#1 at its end (sp_r19), split_cal after its timed writes.
 sr_rom:
         org SR_RAM
 isr_split:
+        xor a
+        ld (split_armed),a
+        ld b,SP_GAP
+spg_lp: djnz spg_lp                 ; (no VDP write soon after isr's read of S#1: the Hotbit lost
+                                    ;  R#19 writes made right after the read that acknowledged FH)
         ld a,(split_r19)
-        ld l,a                      ; (HL is saved by the ISR)
         out (c),a
         ld a,0x93
         out (c),a                   ; R#19: a match at the end of line V-2
-        xor a
-        ld (split_armed),a
-        call sp_fh                  ; FH of line V-2
-        jp nc,sp_late               ; (serviced too late for its matches: the ROM's)
-        ld a,l
-        inc a
-        out (c),a
-        ld a,0x93
-        out (c),a                   ; R#19: the end of line V-1, well ahead of its match (on the
-                                    ;  ESE-VDP the write clears FH: none is up now)
-        ld a,(split_dly)
-        or a
-        call nz,sp_wait
-        ld a,R1_BLANK
-        out (c),a
-        ld a,0x81
-        out (c),a                   ; display off from line V
-        call sp_fh                  ; FH of line V-1
-        ld a,R8_SPR_OFF
-        out (c),a
-        ld a,0x88
-        out (c),a                   ; sprites off (the display is)
+        call sp_irq                 ; its interrupt
+        jp nc,sp_late               ; (none within SP_TURNS turns: serviced too late, all at once)
         ld hl,split_list+1
-        call sp_regs                ; the HUD's page, scroll and palette (lines V..V+4 are blank)
+        call sp_seq                 ; the blank, the sprites off, the page, scroll and colours
         ld a,(split_dly2)
         or a
-        call nz,sp_wait
+        jr z,sp_d2x
+        ld b,a
+spd2_w: djnz spd2_w                 ; split_dly2 turns: the display-on mid-line V+4
+sp_d2x:
         if SPLITDIAG
         ld a,(dg_step)
         inc a
@@ -60,25 +58,47 @@ sp_on:  ld a,R1_ON
         out (c),a                   ; V9958: no border mask in the HUD
         jp sp_r19                   ; (the ROM's: the rest has no deadline)
 
-; Polls S#1 (R#15 = 1) for FH, the match R#19 was set for, SPLIT_POLLS times at most (the read
-; acknowledges it) -> C when it came, NC when the bound ran out (its match was behind). Keeps C.
-sp_fh:  ld b,SPLIT_POLLS
-spf_lp: in a,(c)
-        rrca
-        ret c
-        djnz spf_lp
+; Waits for the interrupt of the match R#19 was just set for (IE1 on) -> C at it, 49 T-states
+; after it on average; NC when no match came within SP_TURNS turns (a split serviced past line
+; V-2: R#19 named a line gone, no match this frame). No read of S#1 here: a match that came
+; between the R#19 write and the EI has left FH up, and its interrupt is taken at once (65-79
+; T-states late, the writes still mid-line). IM2_JUMP stays "pop hl / ret" until sp_r19 puts its
+; jump back. Uses A, B, HL; keeps C.
+sp_irq: ld hl,0xC9E1
+        ld (IM2_JUMP),hl            ; pop hl / ret
+        ld b,SP_TURNS
+        scf                         ; (the interrupt returns with carry set)
+        ei
+spi_lp: djnz spi_lp
+        di
+        ld hl,IM2_JP0
+        ld (IM2_JUMP),hl            ; (none: the jump back)
+        or a
         ret
 
-; A (not 0) iterations of the split's timing loop (sp_wait: a poll of S#1 whose test never
-; passes, bit 7 is the light pen's; split_cal counts the same loop): 41 T-states with the M1
-; waits, a port read included, each.
-sp_wait:
+; The split's timed writes from its match (sp_irq's return; split_cal's M runs them too, on
+; cal_list with sp_v1 at R1_CAL and its delays at 0): split_dly turns, R#1 = (sp_v1): the blank
+; mid-line V-1, split_dly1 turns (past the last pixel of line V-1), R#8 = sprites off, sp_regs
+; on HL (lines V..V+4 are blank). Keeps C = VDP_CTRL.
+sp_seq: ld a,(split_dly)
+        or a
+        jr z,sps_b
         ld b,a
-spw_lp: in a,(c)
-        rlca
-        jr c,spw_x                  ; (never)
-        djnz spw_lp
-spw_x:  ret
+sps_w:  djnz sps_w
+sps_b:  ld a,(sp_v1)
+        out (c),a
+        ld a,0x81
+        out (c),a                   ; R#1: display off from line V
+        ld a,(split_dly1)
+        or a
+        jr z,sps_s
+        ld b,a
+sps_v:  djnz sps_v
+sps_s:  ld a,R8_SPR_OFF
+        out (c),a
+        ld a,0x88
+        out (c),a                   ; sprites off (the display is)
+        ; (falls into sp_regs)
 
 ; The HUD's registers (HL = the pairs of split_list: R#2 = page 3, V9938: R#18 = 0, R#23 =
 ; HUD_R23, V9958: R#26/R#27 = page 3 unscrolled; split_init) and the palette at sp_palp
@@ -136,76 +156,73 @@ sp_pal: ld a,1
         ld c,VDP_CTRL
         ret
 
-; split_cal's measures, right after its count saw the FH of line CAL_LINE (R#15 = 1, R#23 = 0,
-; C = VDP_CTRL): N, the iterations of sc_count's loop until that of line CAL_LINE + 32, then four
-; times from a match sp_regs on cal_list and the play field's palette, R#23 = 0, R#19 for 8 lines
-; on and the iterations left until that match -> NC when the match of line CAL_LINE + 32 did not
-; come (no VDP); else HL = N, DE = M, the mean of the four (a match missed among them: the sum so
-; far, 0 on the first).
-sc_meas:
-        ld a,CAL_LINE + 32
-        call sc_r19
-        call sc_count               ; N: the iterations of 32 lines
-        ret nc
-        push hl
-        ld hl,pf_pal + 2
-        ld (sp_palp),hl             ; (the play field's colours 1-15: what the VBLANK writes)
-        ld de,0                     ; the sum of the four M
-        ld a,CAL_LINE + 40
-scm_lp: push de
-        push af
-        ld hl,cal_list
-        call sp_regs                ; (from the match just seen)
-        xor a
+; split_cal's and vm_cal's waits (R#15 = 1, IE1 on, no other interrupt enabled): R#19 = A, FH
+; acknowledged after the write (an FH the old R#19 latched meanwhile cannot count), then up to
+; SC_WRAPS x 256 turns (0: 256 x 256, 15 frames at 3.58 MHz, 5 at 10.74) for the match's
+; interrupt -> C at it (FH left up: sc_ack before the next wait), NC when none came (IM2_JUMP
+; left "pop hl / ret": the caller puts its jump back). Uses A, B, E, HL; keeps C.
+sc_sync:
         out (c),a
-        ld a,0x97
-        out (c),a                   ; R#23 = 0 (cal_list leaves it; the HUD's list would not)
-        pop af
-        push af
-        call sc_r19                 ; R#19: 8 lines on
-        call sc_count               ; M: the iterations left of the 8 lines
-        pop af
-        pop de
-        jr nc,scm_no                ; (its match missed: the slowest machine's value)
-        add hl,de
-        ex de,hl
-        add a,8
-        cp CAL_LINE + 40 + 4*8
-        jr nz,scm_lp
-        srl d
-        rr e
-        srl d
-        rr e                        ; DE = the mean M
-scm_no: pop hl                      ; HL = N
+        ld a,0x93
+        out (c),a
+        in a,(c)
+        ld hl,0xC9E1
+        ld (IM2_JUMP),hl            ; pop hl / ret
+        ld e,SC_WRAPS
+        ld b,0
         scf
+        ei
+scs_lp: djnz scs_lp
+        dec e
+        jr nz,scs_lp
+        di
+        or a
         ret
 
-; A = a line: R#19 = it (R#23 is 0). Keeps C.
-sc_r19: out (c),a
+; FH acknowledged, SC_GAP turns (the Hotbit lost R#19 writes made right after that read), R#19
+; = A. Keeps C.
+sc_ack: in b,(c)                    ; (A kept: the line)
+        ld b,SC_GAP
+sck_w:  djnz sck_w
+        out (c),a
         ld a,0x93
         out (c),a
         ret
 
-; Polls S#1 for FH with sp_wait's loop, 8192 times at most -> C and HL = the iterations until it
-; came, NC when it did not (8192). Keeps C.
-sc_count:
-        ld b,0
-        ld h,0
-scc_lp: in a,(c)
-        rrca
-        jr c,scc_x
-        djnz scc_lp
+; Counts turns of 14 T-states until the interrupt of the match R#19 was set for (IM2_JUMP: "pop
+; de / ret") -> C, H = the 256-turn wraps (each 26 T-states more, net), B = 256 - the turns of
+; the last; DE = the PC the interrupt left (scn_inc: a wrap ended, H not counting it yet; isr.asm
+; sc_turns adds it). NC after 64 wraps. FH is left up. Uses A, B, DE, HL; keeps C.
+sc_cnt: ld hl,0xC9D1
+        ld (IM2_JUMP),hl            ; pop de / ret
+        ld hl,0
+        ld b,l
+        scf
+        ei
+scn_lp: djnz scn_lp
+scn_inc:
         inc h
         ld a,h
-        cp 0x20
-        jr nz,scc_lp
-        ld l,0                      ; (8192: NC)
+        cp 64
+        jr nz,scn_lp
+        di
+        or a
         ret
-scc_x:  xor a
-        sub b
-        ld l,a                      ; HL = 256 * H + (256 - B) & 255
-        scf
-        ret
+
+; split_cal's M run (isr.asm): the match of line CAL_LINE + 40 (sc_sync), sp_seq on cal_list from
+; it as isr_split runs sp_seq from its own match (the same return, jump and call, all in RAM: no
+; cartridge read between the match and the count), R#19 for 8 lines on (sc_ack), then the turns
+; left to that match (sc_cnt) -> as sc_cnt; NC when a match did not come.
+sc_mrun:
+        ld a,CAL_LINE + 40
+        call sc_sync                ; the match of line CAL_LINE + 40
+        jp nc,scm_x                 ; (as isr_split's jp nc,sp_late)
+        ld hl,cal_list              ; (as its ld hl,split_list+1)
+        call sp_seq
+        ld a,CAL_LINE + 48
+        call sc_ack                 ; R#19 for 8 lines on
+        call sc_cnt                 ; M: the turns left to its match
+scm_x:  ret
 sr_end:
         org sr_rom + sr_end - SR_RAM
 SR_LEN:     equ sr_end - SR_RAM     ; (msx.inc: SR_RAM's room, SR_ROOM)

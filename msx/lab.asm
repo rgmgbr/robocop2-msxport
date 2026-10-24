@@ -1,25 +1,28 @@
 ; Test build (tools/mkrom.py DIAG=2; BANK_MUSIC at A000h, from diag.asm dg_main): the VDP lab.
 ; Written for the user's MSX2 Hotbit (a real V9938) with the MSX Pico+, on which the HUD split
 ; failed in all three of the cartridge's turbo modes while every openMSX machine was clean
-; (2026-10-24). No game; the interrupts off (split_cal's EI meets a stub of the lab's own at
-; IM2_JUMP). "MEASURING..." until the first run is done (~12 s); then it measures again and
-; again and shows, in hex (front.asm dg_show, dg_row):
+; (2026-10-24). No game; the interrupts off but in the waits that take a match by its interrupt
+; (split.asm's, lab_r19i's), the lab's own stub at IM2_JUMP otherwise. "MEASURING..." until the
+; first run is done (~12 s); then it measures again and again and shows, in hex (front.asm
+; dg_show, dg_row):
 ;   0  the VDP (vdp_id: 0 V9938, 2 V9958), R#9 as the BIOS left it (bit 1: 50 Hz), the runs
 ;   1  the speech's calibration at the power-on (music.asm vm_cal): P (vc_p), vm_dly
-;   2  the split's (isr.asm split_cal, run here): split_dly, split_dly2
-;   4-7  the iterations of a poll loop between the line matches of lines 40 and 72 (32 lines),
-;      the fewest and the most of 16 runs. LOOP: the split's loop (split_cal's sc_count: 41
-;      T-states an iteration with the M1 waits and a port read), run from RAM, then from the
+;   2  the split's (isr.asm split_cal, run here once): split_dly, split_dly1, split_dly2
+;   3  split_cal's measures, each the least of its 4 runs: N32 (cal_n: the 14 T-state turns of
+;      32 lines) and M (cal_m); FFFF: no match came (and N32 is then N)
+;   4-7  the iterations of a poll loop of S#1 between the line matches of lines 40 and 72 (32
+;      lines), the fewest and the most of 16 runs. LOOP: 41 T-states an iteration with the M1
+;      waits and a port read (the split's polls up to 0.1.2-test5), run from RAM, then from the
 ;      cartridge (5 opcode fetches and 2 operand reads an iteration there); a cartridge's wait
 ;      states a read = 41 x (RAM / ROM - 1) / 7. DATA: that loop with 4 data reads more (73
 ;      T-states) from RAM, reading RAM, then the cartridge; its wait states a data read = 73 x
-;      (RAM / ROM - 1) / 4.
-;   9-16  R#19 rewritten D iterations of the split's delay loop (D = 0-7, the columns) after the
-;      match of line 100, for line 101 (the split's case: its R#19 for line V-1 goes out right
-;      after the match of line V-2, about D = 0 here; up to 0.1.1 about 1.5 iterations later)
-;      and, as a control, for line 102: how many of 16 tries saw that match (10h: all), the
-;      probe run from RAM and from the cartridge. A VDP that took R#19 at the start of the line
-;      would give 00 for line 101 at any D.
+;      (RAM / ROM - 1) / 4. A most of a frame's iterations or more: a match the polls missed.
+;   9-16  R#19 rewritten D iterations of a 41 T-state delay loop (D = 0-7, the columns) after
+;      the match of line 100, for line 101 and, as a control, for line 102: how many of 16
+;      tries saw that match (10h: all), the matches polled (RAM, the probe run from RAM) and
+;      taken by their interrupts (IRQ, the game's way since 0.1.2-test6: from the interrupt
+;      ~49 T-states after the match, S#1 read at once, then the delay). A VDP that took R#19
+;      at the start of the line would give 00 for line 101 at any D.
 ;   18  tries whose match of line 100 never came (none on any VDP)
 ;   19  the sum of the cartridge's A000h-AFFFh (this bank) read with nothing written between the
 ;      reads, and of 32 more passes with an OUT before each read (to the PSG's address port,
@@ -30,14 +33,17 @@
 ;      come late). The sum expected is the ROM file's own (the bytes of bank BANK_MUSIC's first
 ;      4 KiB: each build's differs). A cartridge that gives a wrong opcode after an OUT would
 ;      hang the lab instead (the screen stays at "MEASURING..." or at its last run).
-; openMSX's C-BIOS_MSX2 (a V9938, a plain Z80 at 3.58 MHz, no cartridge waits): P 00AE, DLY 07,
-; split 00 / 02; LOOP 00AD 00AE from RAM and from the cartridge, DATA 0060 0061 both; line 101
-; 10 10 10 0F 00 00 00 00 from RAM, 10 10 10 0E 00 00 00 00 from the cartridge (the match at
-; the line's right border, R#19 compared live: the write past it from D = 3 on); line 102 10
-; everywhere; no match missing. Its FS-A1FX (a V9958 through the T9769B, whose VDP ports take
-; cycles more): P 00A5, split 00 / 00, LOOP 00A5 00A6, DATA 005E 005F, line 101 10 10 10 06 00...
-; The read test: the sum the ROM file gives, no pass bad. (Written for a 3.58 MHz Z80: on a much
-; faster one LAB_POLLS ends before line 102's match.)
+; openMSX's C-BIOS_MSX2 (a V9938, a plain Z80 at 3.58 MHz, no cartridge waits): P 01F2, DLY 07,
+; split 00 / 02 / 0D, N32 0209, M 0026; LOOP 00AD 00AE from RAM and from the cartridge, DATA
+; 0060 0061 / 0061 0061; line 101 polled 10 10 10 10 00 00 00 00, by interrupt 10 10 10 00 00
+; 00 00 00 (the match at the line's right border, R#19 compared live: the write past it from D
+; = 4 / 3 on); line 102 10 everywhere, both ways; no match missing. Its C-BIOS_MSX2+ (V9958):
+; split 00 / 02 / 0B, N32 020A, M 0024, line 101 polled 10 10 10 0E 00..., by interrupt as on
+; the V9938. Its FS-A1FX (a V9958 through the T9769B, whose VDP ports take cycles more): split
+; 00 / 02 / 04 or 05, N32 0208, M 001D or 001E by run, LOOP 00A5 00A6, DATA 005E 005F, line 101
+; polled 10 10 10 05 00..., by interrupt 10 10 0D 00... The read test: the sum the ROM file
+; gives, no pass bad.
+; (Written for a 3.58 MHz Z80: on a much faster one LAB_POLLS ends before line 102's match.)
 LAB_RAM:    equ 0xD000              ; (the probes' copies: no game runs; the AM area)
 LAB_V:      equ 0xD100              ; the lab's variables:
 lab_run:    equ LAB_V               ;   the runs so far,
@@ -47,7 +53,7 @@ lab_min:    equ LAB_V + 4           ;   2: the fewest so far,
 lab_max:    equ LAB_V + 6           ;   2: the most,
 lab_n:      equ LAB_V + 8           ;   4 x 4: LOOP RAM, LOOP ROM, DATA RAM, DATA ROM (fewest,
                                     ;   most),
-lab_h:      equ LAB_V + 24          ;   4 x 8: the R#19 tries (line 101 RAM, ROM; line 102 RAM, ROM)
+lab_h:      equ LAB_V + 24          ;   4 x 8: the R#19 tries (101 polled, by interrupt; 102 too)
 lab_sum:    equ LAB_V + 56          ;   2: the bank's sum read with no write between the reads,
 lab_bad:    equ LAB_V + 58          ;   the passes with an OUT before each read that gave another
 LAB_V_END:  equ LAB_V + 60
@@ -89,6 +95,10 @@ lab_main:
         call split_init             ; (cal_list: isr.asm)
         call split_cal
         di                          ; (its EI)
+        ld a,0x40
+        out (VDP_CTRL),a
+        ld a,0x81
+        out (VDP_CTRL),a            ; R#1: display on again (split_cal turns it off), no interrupt
 lab_lp: call lab_meas
         ld hl,lab_run
         inc (hl)                    ; (the runs shown: 01 on the first numbers)
@@ -137,18 +147,18 @@ lab_meas:
         ld e,LAB_L1 + 1
         ld hl,lab_h
         call lab_r8                 ; line 101 from RAM
-        ld ix,lab_r19
+        ld ix,LAB_RAM + lab_r19i - lab_cnt
         ld e,LAB_L1 + 1
         ld hl,lab_h + 8
-        call lab_r8                 ; line 101 from the cartridge
+        call lab_r8                 ; line 101 by its interrupt
         ld ix,LAB_RAM + lab_r19 - lab_cnt
         ld e,LAB_L1 + 2
         ld hl,lab_h + 16
         call lab_r8                 ; line 102 from RAM
-        ld ix,lab_r19
+        ld ix,LAB_RAM + lab_r19i - lab_cnt
         ld e,LAB_L1 + 2
         ld hl,lab_h + 24
-        call lab_r8                 ; line 102 from the cartridge
+        call lab_r8                 ; line 102 by its interrupt
         call lab_rd                 ; the cartridge's bytes read after a write
         xor a
         out (c),a
@@ -321,7 +331,7 @@ lab_isr:
 
 ; ----- the probes: relative jumps only (they run here and as copies at LAB_RAM) -----
 
-; Polls S#1 for FH with the split's loop (isr.asm sc_count), 8192 times at most -> C and HL =
+; Polls S#1 for FH with the split's old loop (up to 0.1.2-test5), 8192 times at most -> C and HL =
 ; the iterations until it came, NC when it did not. Keeps C, DE.
 lab_cnt:
         ld b,0
@@ -366,7 +376,7 @@ ld_x:   xor a
         scf
         ret
 
-; D = a delay (iterations of the split's 41 T-state loop, isr.asm sp_wait), E = a line: R#19 =
+; D = a delay (iterations of a 41 T-state loop, the split's old one), E = a line: R#19 =
 ; LAB_L1, its match, D iterations, R#19 = E -> C when the match of line E came within LAB_POLLS
 ; polls. Uses AF, B, HL; keeps C, DE.
 lab_r19:
@@ -404,6 +414,67 @@ lr_p:   in a,(c)
         rrca
         ret c
         djnz lr_p
+        ret
+
+; The same with each match taken by its interrupt (IE1 on; IM2_JUMP "pop hl / ret" meanwhile,
+; as the game's split.asm waits) instead of polls of S#1: D = a delay, E = a line -> C when the
+; match of line E came within LAB_POLLS x 39 T-states of the write. Uses AF, B, HL; keeps C, DE.
+lab_r19i:
+        ld a,LAB_L1
+        out (c),a
+        ld a,0x93
+        out (c),a                   ; R#19 = LAB_L1
+        in a,(c)                    ; (an FH pending: acknowledged)
+        call LAB_RAM + lri_long - lab_cnt
+        jr c,lri_f
+        ld hl,lab_nofh
+        inc (hl)                    ; (its match never came)
+        or a
+        ret
+lri_f:  in a,(c)                    ; (FH of LAB_L1, up since the interrupt: acknowledged)
+        ld a,d
+        or a
+        jr z,lri_r
+        ld b,a
+lri_dl: in a,(c)
+        rlca
+        jr c,lri_r                  ; (never)
+        djnz lri_dl
+lri_r:  ld a,e
+        out (c),a
+        ld a,0x93
+        out (c),a                   ; R#19 = E
+        call LAB_RAM + lri_short - lab_cnt
+        push af
+        in a,(c)                    ; (FH of line E, if it came: acknowledged)
+        ld hl,0xC3 + (lab_isr & 0xFF) * 256
+        ld (IM2_JUMP),hl            ; (the lab's own stub again)
+        pop af
+        ret
+
+; Waits for a match's interrupt: up to 32 x 256 turns, or LAB_POLLS x 39 / 14 turns -> C at it.
+lri_long:
+        ld hl,0xC9E1
+        ld (IM2_JUMP),hl            ; pop hl / ret
+        ld b,0
+        ld a,0x20
+        scf
+        ei
+lrl_w:  djnz lrl_w
+        dec a
+        jr nz,lrl_w
+        di
+        or a
+        ret
+lri_short:
+        ld hl,0xC9E1
+        ld (IM2_JUMP),hl
+        ld b,LAB_POLLS * 39 / 14
+        scf
+        ei
+lrs_w:  djnz lrs_w
+        di
+        or a
         ret
 lab_end:
 
@@ -444,10 +515,24 @@ lab_text:
         call dg_str
         ld a,(split_dly)
         call dg_hex
+        ld hl,lbs_dly1
+        call dg_str
+        ld a,(split_dly1)
+        call dg_hex
         ld hl,lbs_dly2
         call dg_str
         ld a,(split_dly2)
         call dg_hex
+        ld bc,0x0300
+        call dg_at
+        ld hl,lbs_cal
+        call dg_str
+        ld hl,(cal_n)
+        call lab_hex16
+        ld hl,lbs_m
+        call dg_str
+        ld hl,(cal_m)
+        call lab_hex16
         ld de,lbs_n                 ; (the rows' labels in turn)
         ld hl,lab_n
         ld bc,4 * 256 + 4           ; (4 rows from row 4)
@@ -540,15 +625,18 @@ lbs_run:    db "  RUN ", 0
 lbs_sp:     db "SPEECH P ", 0
 lbs_dly:    db "  DLY ", 0
 lbs_spl:    db "SPLIT DLY ", 0
+lbs_dly1:   db "  DLY1 ", 0
 lbs_dly2:   db "  DLY2 ", 0
+lbs_cal:    db "CAL N32 ", 0
+lbs_m:      db "  M ", 0
 lbs_n:      db "LOOP RAM ", 0
             db "LOOP ROM ", 0
             db "DATA RAM ", 0
             db "DATA ROM ", 0
             db "R19 101 RAM  D 0-7", 0
-            db "R19 101 ROM", 0
+            db "R19 101 IRQ", 0
             db "R19 102 RAM", 0
-            db "R19 102 ROM", 0
+            db "R19 102 IRQ", 0
 lbs_nofh:   db "NO MATCH 100: ", 0
 lbs_sum:    db "READ SUM ", 0
 lbs_bad:    db "  AFTER OUT BAD ", 0
