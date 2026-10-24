@@ -809,6 +809,10 @@ which as sprites were striped, cut or left out.
     without the SCC, otherwise with the SCC. This image had both (the OPLL search's texts and
     its `ld hl,4018h`): `cold.asm` now keeps the texts complemented (compared after a `cpl`)
     and loads `4018h` as `ld l,18h`, and `tools/mkrom.py` refuses an image holding "OPLL".
+  - Its turbo setting (the user, 2026-10-24): off, the HUD's top line flickers in some frames
+    (0.1.0 too); normal, the HUD is steady; risky, the game is unstable. With turbo off it most
+    likely holds the Z80 (WAIT) on some ROM reads, and the HUD split's code runs from the ROM
+    (above, the split). The release notes advise turbo normal.
   - Observed on the user's machine before the fix (the DIAG build): the cartridge's slot 1
     expanded, game in subslot 1-0, and with 3Fh at `9000h` every read of `9800h` the ROM's own
     byte (bank 63 at `1800h`) from the first probe on; three test cartridges without that pair
@@ -1029,9 +1033,9 @@ match only (since 2026-10-23, third design of the day, its writes moved that eve
    writes R#1 = blank and at once R#19 for the end of line V-1: the blank 600-950 VDP ticks
    after the match (up to 860 at 3.58 MHz), mid-line V-1, past that line's latch of R#1
    (openMSX's V9938: the next line's sync + 144 ticks, 230 after the match; the ESE-VDP's
-   source: the dot before the next line's first pixel, 344 after) and before line V's, which
-   the user's SX-2 takes ~1060-1100 ticks after the match (below): the display is off from
-   line V. R#19 lands 200 ticks or more before its match.
+   source: the dot before the next line's first pixel, 344 after) and well before line V's
+   (1598 and 1712 after): the display is off from line V. R#19 lands 200 ticks or more before
+   its match.
 2. At FH of line V-1 (its pixels drawn: nothing visible changes from there on) it writes R#8 =
    sprites off, then `split_list` (built by `split_init`): R#2 = page 3, on the V9938 R#18 = 0,
    R#23 = `HUD_R23`, on the V9958 R#26/R#27, then R#16 = 1 and the 30 palette bytes
@@ -1072,7 +1076,8 @@ whose window is not the same on the chips: openMSX's V9938/V9958 raise it for 31
 the right border, the ESE-VDP (OCM-PLD `esemsx3/src/video`, read that day) from 125 ticks
 later for 236 (H_CNT 0-235 of 1368, R#18 does not move it), and the SX-2 showed the play field's
 last line flickering with the first design and the HUD's first lines with the second, while
-all 15 machines here were clean. With FH only, the chips agree (R#19 against the line + R#23,
+all 15 machines here were clean (the SX-2's flicker had another cause, below, but HR's window
+does differ). With FH only, the chips agree (R#19 against the line + R#23,
 live, at the line's last pixel); with the whole palette in the blank, nothing is written to
 the VDP while the HUD is drawn. The fifth blank line (the play area 162 lines instead of 163;
 the view scales to the game's 176 as before) pays for it: four lines held the registers and
@@ -1082,25 +1087,23 @@ an FH sync of the display-on after the palette did not fit either: on the T9769 
 ends after the end of line V+3 (38-40 port accesses at ~23 T-states), so the writes run from
 the match of line V-1 with the delay measured.
 
-The third design as first made wrote R#19 for line V-1 before the delay and the sprites-off
-with the blank, and both R#1 writes ~1000 ticks after their match (the display-on at
-1004-1232, the blank at 902-1130 on C-BIOS_MSX2): the SX-2 still showed the HUD's first line
-black in some frames. The user's video (30 pictures, ~46 camera pixels a line) had the HUD's
-top edge a line lower and a line thinner in 4 of them and dimmer in 7 more. The SX-2 is an
-MSX2+, so it runs the V9958 path, whose display-on came 914-1142 ticks after the match on the
-machines with a plain Z80 (the HB-F1XDJ row of that table): that VDP takes line 167's display
-enable ~1060-1100 ticks after the match of line 165 (in the units below, at ~975-1015 of line
-166; ~1150-1190 if it ran like the V9938 path), not 344 after as the ESE-VDP's source does, so
-a write after that showed from line 168. On that path the writes now land far from it: the
-blank 596-824 and the display-on 326-554 ticks after their match. VRAM page 3's rows above the
-HUD hold data, so a display-on a line early would show too: with the ESE-VDP source's latch at
-344 and openMSX's FH timing, the display-on would come a line early in about a quarter of the
-frames, but with that latch the old writes could never have been late, which the video shows
-they were; if the SX-2's FH comes later than openMSX's instead, every write moves with it.
-R#19 follows the blank at once: written after the
-sprites-off, it came past its match on the FS-A1FX and the FS-A1GT (their VDP ports take
-cycles more), whose splits then polled 128 times and showed the HUD ~22 lines late in 85 % and
-10 % of the frames of that probe; the sprites go off at FH of line V-1, in the blank.
+The third design as first made wrote R#19 for line V-1 before the delay and the sprites-off with
+the blank, and both R#1 writes ~1000 ticks after their match (the display-on at 1004-1232, the
+blank at 902-1130 on C-BIOS_MSX2): the SX-2 still showed the HUD's first line black in some
+frames (the user's video: in 4 of 30 pictures the HUD's top edge a line lower and a line
+thinner, dimmer in 7 more). Taking that for a VDP that latches R#1 earlier, both writes were
+moved mid-line (0.1.1, below); it flickered just the same, and so did a test build that swept
+the display-on over a line (`SPLITDIAG`). The user found the cause on 2026-10-24: the MSX
+Pico+'s turbo setting. With it off the HUD's top line flickers (0.1.0 too), with turbo normal it
+is steady, and with turbo risky the game is unstable; most likely the cartridge holds the Z80
+(WAIT) on some ROM reads with turbo off, so the split's code, which runs from the ROM, comes
+late in some frames (the calibration at the level's start cannot see waits that come only in
+some frames). The release notes advise turbo normal; running the split from RAM would make it
+immune (not done: the user's choice). The mid-line writes stay (checked on every machine here,
+table below). R#19 follows the blank at once: written after the sprites-off, it came past its
+match on the FS-A1FX and the FS-A1GT (their VDP ports take cycles more), whose splits then
+polled 128 times and showed the HUD ~22 lines late in 85 % and 10 % of the frames of that probe;
+the sprites go off at FH of line V-1, in the blank.
 
 Measured through the MSX-AI MCP on the product ROM, 1500 frames each (VDP line:cycle of the
 writes, line 0 at the frame's first display line, cycle 0 at the line's sync; a write takes
@@ -1165,7 +1168,8 @@ scroll: the camera's rise on the vehicle sweeps every scroll, and with R#23 240 
 the split, and the split ran in the blank: the next picture showed page 3 in the HUD palette
 (openMSX, a drive of the ride: 6 such splits, in two bursts of 3 pictures). `iv_list` now reads
 S#1 right after the list's registers (no match is due in the blank): none in the same ride,
-where the pair met the line 7 times.
+where the pair met the line 7 times (25 on the V9938 engine, where the old build made 14 such
+splits); confirmed on the user's SX-2 the same day.
 
 The split's wait for a pair's first part (`isr_fbgo`: a play-field copy in two parts, the
 V9958 ring's x or y 256 crossed, both started by the split so that both show from the same

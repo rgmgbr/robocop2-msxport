@@ -56,24 +56,23 @@ isr_r15:
 ; HUD split (V = VIEW_LINES): the interrupt fires at the end of line V-5. The routine goes by the
 ; line match (S#1 FH, R#19 against the line + R#23 at the line's last pixel: the same on the
 ; V9938, the V9958 and the One Chip MSX's ESE-VDP) and delays worked out on this machine
-; (split_cal), never by S#2 HR, whose window differs between those chips (2026-10-23: the
-; user's SX-2 flickered at the play field's end). With R#19 at the play field's R#23 + V - 2
-; (split_r19) it polls FH for the end of line V-2, waits split_dly, blanks the display and at
-; once sets R#19 for the end of line V-1 (the sprites-off between them put that write past
-; the match on the T9769 engines). The blank lands 600-950 VDP ticks after the match (up to
-; 860 at 3.58 MHz), mid-line V-1: past that line's latch of R#1 (the next line's sync + 144
-; ticks in openMSX's V9938, the dot before the next line's first pixel in the ESE-VDP's
-; source: 230 and 344 ticks after the match) and before line V's, which the user's SX-2 takes
-; ~1060-1100 ticks after the match (its HUD's first line was black in 20-40 % of the frames
-; with the display-on written 910-1140 after its match on the V9958 path, from the video of
-; 2026-10-23; openMSX takes it 1598 after): display off from line V. At FH of line V-1 (its
-; pixels drawn: nothing visible changes any more) the sprites go off and the page, the scroll
-; and the HUD's colours 1-15 go in during the blank lines V..V+4 (sp_regs: 38-40 port
-; accesses, 3.9 lines on the T9769 engines, whose VDP ports take cycles more, 3.4-3.5 on a
-; plain Z80), then split_dly2 and the display on, 330-1100 ticks after the end of line V+3
-; (split_cal times sp_regs itself; the delay's first step costs ~350 ticks at 3.58 MHz, the
-; next ~250, and it is 0 on the T9769 engines: 330-550 on the V9958 with a plain Z80, as the
-; SX-2, 520-750 on the V9938, 850-1100 on the FS-A1FX), so the HUD shows from line V+5. The blank
+; (split_cal), never by S#2 HR, whose window differs between those chips. With R#19 at the
+; play field's R#23 + V - 2 (split_r19) it polls FH for the end of line V-2, waits split_dly,
+; blanks the display and at once sets R#19 for the end of line V-1 (the sprites-off between
+; them put that write past the match on the T9769 engines). The blank lands 600-950 VDP ticks
+; after the match (up to 860 at 3.58 MHz), mid-line V-1: past that line's latch of R#1 (the
+; next line's sync + 144 ticks in openMSX's V9938, the dot before the next line's first pixel
+; in the ESE-VDP's source: 230 and 344 ticks after the match) and well before line V's (1598
+; and 1712 after): display off from line V. (The HUD's top line the user's SX-2 showed black
+; in some frames, 2026-10-23, came from its MSX Pico+'s turbo being off, most likely wait
+; states on the ROM reads of this code; turbo normal: steady. Not the write's place.) At FH of
+; line V-1 (its pixels drawn: nothing visible changes any more) the sprites go off and the
+; page, the scroll and the HUD's colours 1-15 go in during the blank lines V..V+4 (sp_regs:
+; 38-40 port accesses, 3.9 lines on the T9769 engines, whose VDP ports take cycles more,
+; 3.4-3.5 on a plain Z80), then split_dly2 and the display on, 330-1100 ticks after the end of
+; line V+3 (split_cal times sp_regs itself; the delay's first step costs ~350 ticks at 3.58
+; MHz, the next ~250, and it is 0 on the T9769 engines: 330-550 on the V9958 with a plain Z80,
+; 520-750 on the V9938, 850-1100 on the FS-A1FX), so the HUD shows from line V+5. The blank
 ; lines are five (HUD_BLACK): four held the registers and the palette only with the display-on
 ; just before the HUD's first line (0.1.0's split landed a line late on the FS-A1FX), and the
 ; design of that morning wrote 10 colours while the HUD showed. Colour 0 is not written: the
