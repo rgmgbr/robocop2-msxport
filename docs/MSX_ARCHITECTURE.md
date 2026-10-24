@@ -846,7 +846,7 @@ which as sprites were striped, cut or left out.
 - The original's music and sound effects are tunes of the same player (MU1 at `$18000`):
   `tools/rc2music.py` models it exactly; `tools/msxsound.py` turns its output (per Amiga channel
   and tick: period, volume, instrument, key-ons) and the samples into PSG streams
-  (`build/msx/sound.inc`, 7571 bytes with `--budget 7680`): the title's music (TITM tune 1,
+  (`build/msx/sound.inc`, 7543 bytes with `--budget 7680`): the title's music (TITM tune 1,
   three voices that loop together after 5184 ticks) and the 42 in-game effects (MU1, one voice
   each). Its docstring gives the mapping and why: each instrument's pitch measured from its
   sample (the 8SVX headers' samples per cycle are a default 32), the tunings snapped to one
@@ -956,7 +956,7 @@ which as sprites were striped, cut or left out.
   a tone, 164 tone + noise, 231 noise; an SCC plays the tones with the samples' own waveforms
   (#0, a 22-byte synthetic cycle, exactly), the PSG keeps the noise (the SCC has none). Without
   an SCC the effects stay as they were (`sndplay.asm`).
-- **Data**: `tools/msxsccfx.py` (`sccfx.bin` in `SCCFX_BANK`, 4473 bytes: its streams must fit
+- **Data**: `tools/msxsccfx.py` (`sccfx.bin` in `SCCFX_BANK`, 4471 bytes: its streams must fit
   the bank, `tools/mkrom.py` checks it; its 49 waveforms copied into `BANK_MUSIC` as `fx_waves`):
   per effect its Amiga channel, an SCC stream (the tonal part: 37 effects) and a PSG stream (the
   noise part: 29), in the title music's formats, one-shot. Each tick of the exact Amiga model is
@@ -966,6 +966,17 @@ which as sprites were striped, cut or left out.
   21 % of the tonal ticks, envelope error 0.6 / 1.0 dB, brightness error 0.44 / 0.81 octave; the
   pure-noise effects stay as they were (the same PSG noise), the dark explosions are still
   0.5-1.6 octaves brighter (the PSG's darkest noise). Previews: `build/music/preview/sfx_all_*.wav`.
+- **The shots quieter** (2026-10-24, the user: "os barulhos dos tiros estão incomodando ...
+  principalmente dos tiros que acertam coisas, esse som é muito barulhento"): `msxsound.py`'s
+  `FX_ATTEN_DB` puts effect 4 (RoboCop's shot) and 11 (the spread shot) 6 dB and effect 2 (a
+  shot's impact: explosion type 1, when a shot hits an enemy, a map object or a wall; 0.58 s
+  of noise, among the Amiga's loudest effects) 9 dB under the Amiga's mix, on the PSG streams
+  and on both parts of the SCC ones, after the common scale (the other 39 effects' streams are
+  byte for byte the same). Measured on the previews: effect 2 -8.8 dB (PSG) / -9.4 (SCC), 4
+  -5.4 / -6.0, 11 -6.1 / -5.7. They are the most frequent effects in play: of 275 starts in 40 s
+  of the coverage drive, 83 shots, 55 impacts, 34 spread shots (`sess_fxlog.tcl` through the
+  MSX-AI MCP + `fxcheck.py`: every tick of the SCC's channels and the PSG voices equal to the
+  new `sccfx.bin` replayed, 0 differences in 1570).
 - **Engine**: `sndplay.asm` `sq_sfx` hands an effect over when an SCC was found (`sound.asm`
   `fx_go` → `fx_start`, `BANK_MUSIC` mapped meanwhile) and ticks the engine with its own 50 Hz
   ticks while one plays (`fx_act`; `fx_tk` → `fx_tick`). The tonal part plays on SCC channel 0-3

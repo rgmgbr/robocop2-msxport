@@ -73,7 +73,9 @@ alternatives measured the same way)
   (the noise parts reach PSG level 14, the loudest tonal ticks SCC volume 15). The phases that give
   the least crest factor for the same harmonics would gain 0.4-8 dB of RMS, 2.4 dB on the scale,
   but change the waveforms' shapes, audible on these low sounds. The volume: the nearest level in
-  dB (mean error 0.3 dB; 3 ticks under -31 dB fall to 0).
+  dB (mean error 0.3 dB; 3 ticks under -31 dB fall to 0). Effects 2, 4 and 11 then go under it
+  by msxsound's FX_ATTEN_DB (the user's choice: the shots and their impacts quieter), both parts
+  alike, after the scale is chosen: the others keep their levels.
 - The noise part: msxsound's Target (levels in dB from PSG level 15) and encoder (choose_volumes,
   lambda 0.25; records): noise on, tone off. The noise period: the one that brings the brightness
   of the whole tick (the SCC part as rendered plus the noise: their band powers add) nearest the
@@ -689,6 +691,7 @@ def scc_states(pl: Plan, waves: Waves, gain: float) -> list[tuple]:
     takes its own)."""
     out = []
     ref_n = ref_w = None
+    gain *= ms.fx_gain(pl.n)
     for t in range(pl.T):
         if pl.amp_t[t] <= 0 or pl.wave[t] < 0:
             out.append((0,))
@@ -729,6 +732,7 @@ def psg_target(pl: Plan, gain: float, scc_sig: np.ndarray) -> ms.Target:
     tg = ms.Target(T)
     nb = ms.noise_brightness()
     kb = noise_band()
+    gain *= ms.fx_gain(pl.n)                # (the SCC part's power was scaled alike: same mix)
     for t in range(T):
         if pl.amp_n[t] <= 0:
             continue

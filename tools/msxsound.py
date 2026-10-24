@@ -37,7 +37,9 @@ How the Amiga sound is mapped (the decisions and why)
 - Loudness: per tick the RMS of the sample bytes played in that tick, times the volume / 64;
   in dB from a reference (the 99.5th percentile of the title's ticks, the 99th of all the
   effects': the loudest ticks reach level 15), on the AY's measured 16-level curve. A one-shot
-  sample's fade and end come out of this by themselves.
+  sample's fade and end come out of this by themselves. Three effects go under the Amiga's mix
+  by the user's choice (FX_ATTEN_DB: RoboCop's shots 6 dB, a shot's impact 9 dB), on the PSG
+  and on the SCC (msxsccfx.py).
 - The encoder (choose_volumes): a trellis over the 16 levels per tick minimising the squared
   level error (in ~3 dB steps, weighted by loudness) + lambda x bytes (a record 2, a period
   word +2, a noise byte +1). Periods, tone/noise on and noise periods are given by the targets
@@ -956,6 +958,17 @@ TONE_AP, MIX_AP = 0.25, 0.45            # YIN aperiodicity: below = tone, below 
 FX_LAMBDA = 2.0                         # the effects' bytes-vs-distortion trade-off
 NOISE_TOL = 0.3                         # octaves of brightness before a new noise period
 QUIET_DB = 12.0                         # a tick this far under its note's peak keeps the period
+# The user's choice (2026-10-24: "os barulhos dos tiros estão incomodando ... principalmente dos
+# tiros que acertam coisas, esse som é muito barulhento"): these effects this many dB under the
+# Amiga's mix, after the reference level (the others keep theirs): 4 RoboCop's shot, 11 the spread
+# shot (weapon 2, and 3's second shot), 2 a shot's impact (explosion type 1: a shot hitting an
+# enemy, a map object or a wall; 0.58 s of noise, among the Amiga's loudest effects).
+FX_ATTEN_DB = {2: 9.0, 4: 6.0, 11: 6.0}
+
+
+def fx_gain(n: int) -> float:
+    """Effect n's attenuation (FX_ATTEN_DB) as an amplitude factor."""
+    return 10 ** (-FX_ATTEN_DB.get(n, 0.0) / 20)
 
 
 class Effects:
@@ -998,7 +1011,8 @@ class Effects:
         for t in range(T):
             j = int(np.argmax([c.amp[t] for c in cs]))
             c = cs[j]
-            lv = 20 * math.log10(c.amp[t] / self.a_ref) if c.amp[t] > 0 else -np.inf
+            lv = (20 * math.log10(c.amp[t] / self.a_ref) - FX_ATTEN_DB.get(n, 0.0)
+                  if c.amp[t] > 0 else -np.inf)
             if lv <= FLOOR_DB:
                 rows.append(None)
                 continue
