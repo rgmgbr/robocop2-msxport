@@ -87,7 +87,8 @@ OPTIONS = {
                      " (hardware whose SCC the detection misses)"),
     "DIAG": (0, "1 = test build: after the sound detection, at its place, a screen of what this machine showed it"
                 " (slots, the mapper, every SCC read, stores and loads by instruction form, the CPU's speed), then SCC"
-                " test tones; no game (music.asm dg_main)"),
+                " test tones; no game (music.asm dg_main); 2 = instead the VDP lab: the cartridge's wait states and"
+                " the VDP's R#19 rewrites measured, on screen (msx/lab.asm)"),
     "SPLITDIAG": (0, "1 = test build: the HUD split's display-on later by 14 T-states a step, steps 0-15 of 256"
                      " frames each (the step in the score's last digits); the timer shows this step's fewest and"
                      " most polls from the display-on to the match of display line 169 (msx/isr.asm isr_split)"),

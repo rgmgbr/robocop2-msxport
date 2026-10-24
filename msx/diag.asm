@@ -25,6 +25,9 @@
 ;      frame (the game's way), the volume stored again each time; then none for 2 s
 
 dg_main:
+        if DIAG = 2
+        jp lab_main                 ; (DIAG 2: the VDP lab instead, lab.asm)
+        endif
         di
         ld hl,dg_txt
         ld de,dg_txt + 1

@@ -274,9 +274,13 @@ vm_dly:     equ 0xE5B9              ; the speech's djnz turns a sample on this m
 vc_p:       equ 0xE5BA              ; 2: vm_cal: the poll loop's iterations in 32 lines,
 vc_r1:      equ 0xE5BC              ; 2:   those left after the samples with one turn,
 vc_den:     equ 0xE5BE              ; 2:   and that less those with seven
-                                    ; (E5C0h-E5FFh: free, the old background upload ring's)
-pq_buf:     equ 0xE600              ; [type, slot / SAT entry, id (2)] ... 0: the published frame's
-                                    ; uploads (sprites.asm Q_...)
+SR_RAM:     equ 0xE5C0              ; E5C0h-E6FFh: the HUD split's timed path and split_cal's
+SR_ROOM:    equ 0x0140              ;   measures (isr.asm sr_rom: SR_LEN bytes, copied there at the
+                                    ;   power-on by cold.asm isr_init; the old background upload
+                                    ;   ring's place and the upload queue's)
+SR_PAL:     equ 0xEA22              ; 30: the HUD's colours 1-15 for the split (hud_palette's copy)
+pq_buf:     equ 0xCA7C              ; [type, slot / SAT entry, id (2)] ... 0: the published frame's
+                                    ; uploads (sprites.asm Q_...: always empty now, its 0 only)
 SLOT_PG:    equ 0xE7                ; page of four 64-byte tables per slot:
 SO_OK:      equ 0x00                ;   1: its pattern is in VRAM (or in the frame's queue),
 SO_Q:       equ 0x40                ;   1: in the background queue,
@@ -672,8 +676,8 @@ ph_w:       equ 0xF164              ; 2: pl_hits: an enemy's width,
 ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
-; (E100h-E7FFh: pat_slot and the sprite queues; E800h-E8FFh: bf_htab; EA22h-EA3Fh,
-; C0ECh-C0EEh, C0F2h-C0F3h, CA7Ch, F1CFh, F1E2h, F271h-F27Fh, E5C0h-E5FFh, E601h-E6FFh,
+; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, F1CFh, F1E2h, F271h-F27Fh,
 ; F16Fh-F190h, F1A0h-F1C2h: free; EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 

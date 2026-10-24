@@ -230,8 +230,8 @@ pl_init:
         ld (jump_pend),a
         ld (j_nojump),a
         ld (j_jumpb),a
-        ld (split_dly),a            ; (0 and 1 until display_on's split_cal: 3.58 MHz values
-        inc a                       ;  are 0 and 0-1; the front end shows no split before a level)
+        ld (split_dly),a            ; (0 and 2 until display_on's split_cal: 3.58 MHz values
+        ld a,2                      ;  are 0 and 0-2; the front end shows no split before a level)
         ld (split_dly2),a
         if SPLITDIAG
         xor a
@@ -273,9 +273,17 @@ pi_hz:  ld (g_step),a
         ld (wf_n),a
         jp pl_view
 
-; (isr.asm) At power-on (vdp.asm vdp_setup): the IM 2 table and jump, the interrupts' shared
-; state.
+; (isr.asm) At power-on (vdp.asm vdp_setup): the IM 2 table and jump, the split's RAM code and
+; colours, the interrupts' shared state.
 isr_init:
+        ld hl,sr_rom
+        ld de,SR_RAM
+        ld bc,SR_LEN
+        ldir                        ; the split's timed path and split_cal's measures (isr.asm)
+        ld hl,hud_palette
+        ld de,SR_PAL
+        ld bc,30
+        ldir                        ; the HUD's colours 1-15 the split writes (rc2.asm)
         ld hl,IM2_TABLE
         ld de,IM2_TABLE+1
         ld bc,256

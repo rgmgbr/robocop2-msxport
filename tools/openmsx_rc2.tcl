@@ -889,6 +889,13 @@ proc rc2_guard {secs split_line nl vis labels} {
 	set ::rg_tc {}
 	set ::rg_split0 [rc2_label $labels isr_split]
 	set ::rg_split1 [rc2_label $labels isr_vblank]
+	set ::rg_ram0 0
+	set ::rg_ram1 0
+	if {![catch {rc2_label $labels sr_end} e]} {   ;# (the split's timed part in RAM: isr.asm sr_rom)
+		set ::rg_ram0 $::rg_split0
+		set ::rg_ram1 $e
+		set ::rg_split0 [rc2_label $labels sp_r19]
+	}
 	set ::rg_wps [list \
 		[debug set_watchpoint write_io 0x99 {} rc2_rg_99] \
 		[debug set_watchpoint read_io 0x99 {} {set ::rg_latch -1}] \
@@ -933,7 +940,7 @@ proc rc2_rg_99 {} {
 	if {$r == 15} { return }
 	if {$r == 17} { set ::rg_r17 [expr {$lo & 0x3F}]; set ::rg_ai [expr {!($lo & 0x80)}]; return }
 	set pc [reg pc]
-	if {$pc >= $::rg_split0 && $pc < $::rg_split1} { return }
+	if {($pc >= $::rg_split0 && $pc < $::rg_split1) || ($pc >= $::rg_ram0 && $pc < $::rg_ram1)} { return }
 	set line [rc2_rg_line]
 	if {$line >= 0 && $line < $::rg_vis} {
 		rc2_rg_bad reg [format "line %d R#%d = %02x pc %04x" $line $r $lo $pc]
@@ -959,7 +966,7 @@ proc rc2_rg_98 {} {
 
 proc rc2_rg_9a {} {
 	set pc [reg pc]
-	if {$pc >= $::rg_split0 && $pc < $::rg_split1} { return }
+	if {($pc >= $::rg_split0 && $pc < $::rg_split1) || ($pc >= $::rg_ram0 && $pc < $::rg_ram1)} { return }
 	set line [rc2_rg_line]
 	if {$line >= 0 && $line < $::rg_vis} { rc2_rg_bad pal [format "line %d pc %04x" $line $pc] }
 }

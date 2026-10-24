@@ -413,8 +413,6 @@ slot_page2:
 palette:
         incbin "level1_grade.pal"   ; (the level's palette through the colour grade: tools/mkrom.py)
         include "robocop_flash.inc" ; RoboCop's palette flashes (tools/msxsprites.py)
-hud_palette:                        ; (the HUD's colours 1-15, as the split writes them: isr.asm
-        incbin "hud_split.pal"      ;  isr_split, tools/mkrom.py)
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
 rowtab:
         include "rowtab.inc"
@@ -468,6 +466,7 @@ input_end:
         org 0x8000
         include "front.asm"
         include "cold.asm"          ; init routines of the fixed code (cold.asm)
+        include "split.asm"         ; the HUD split's code that runs from RAM (isr_init copies it)
         include "text.inc"          ; the text screens' font and the statistics (tools/msxtext.py)
 front_end:
         ds 0xA000 - front_end, 0xFF
@@ -485,6 +484,9 @@ field_end:
         include "music.asm"
         if DIAG
         include "diag.asm"          ; (test builds: what this machine showed the sound detection)
+        endif
+        if DIAG = 2
+        include "lab.asm"           ; (test build: the VDP lab)
         endif
         include "music.inc"         ; the streams' banks, the SCC's waveforms, the OPLL's patch (tools/mkrom.py)
 music_tab:
