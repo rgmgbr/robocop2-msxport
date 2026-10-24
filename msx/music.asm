@@ -1299,18 +1299,22 @@ mum_r:  ld a,(mus_mode)
 ; the nearest combinations of the first table jumped, and those mixes were a hiss). The
 ; interrupts off (a VBLANK would delay samples); every 256 samples fire is read (SPACE or
 ; trigger A): pressed once released (vp_rel), it ends the speech, vm_hit = 1. Then the mixer as
-; it was (the volumes as the last sample left them), the 8000h window act_8000's again.
+; it was (the volumes as the last sample left them), the 8000h window act_8000's again. The
+; delay a sample is vm_dly's djnz turns, worked out on this machine at the power-on (vm_cal).
+; (vm_plh: HL = the first sample's address in the window.) Keeps IX.
 vm_play:
-        ld (vm_bank),a
+        ld hl,0x8000
+vm_plh: ld (vm_bank),a
         ld (BANK_8000),a
         xor a
         ld (mus_speak),a
         ld (vm_hit),a
+        push ix
+        ld ix,vm_dly
         ld a,7
         out (PSG_ADDR),a
         ld a,PSG_MIX
         out (PSG_DATA),a
-        ld hl,0x8000
 vm_lp:  ld a,(hl)                   ; 8 (T-states, with the M1 wait)
         inc hl                      ; 7
         ld c,a                      ; 5
@@ -1339,8 +1343,8 @@ vm_c:   dec de                      ; 7
         ld a,d                      ; 5
         or e                        ; 5
         jr z,vm_end                 ; 8
-        ld b,(VOICE_RATE_T - 238) / 14  ; 8 (the loop's own 238 T-states, M1 waits counted; an equ
-                                    ; of voice.inc's, included later, would be 0)
+        ld b,(ix+0)                 ; 21: vm_dly (the loop's own 251 T-states, M1 waits counted:
+                                    ; 251 + 14 vm_dly, 321 with 5 at 3.58 MHz without waits)
 vm_w:   djnz vm_w                   ; 14 a turn, 9 the last
         jr vm_lp                    ; 13
 vm_bnk: ld h,0x80                   ; (the window's end: the next bank)
@@ -1380,4 +1384,144 @@ vm_end: ld a,7
         out (PSG_DATA),a
         ld a,(act_8000)
         ld (BANK_8000),a
+        pop ix
         ret
+
+; The speech's delay on this machine (vm_dly: vm_play's djnz turns a sample, 5 at 3.58 MHz on a
+; plain Z80), at the power-on (rc2.asm; the interrupts off): vm_play's own loop on VC_K samples
+; of the padding past the speech (voice.bin's last sample: voices at 0, 0 and 2, about silent),
+; timed by the VDP's line matches as split_cal times the HUD split. sc_count's loop gives P, its
+; iterations in 32 lines; then from the match of line VC_L0, the samples with vm_dly 1 and the
+; iterations left until the match of line VC_L0 + 180 (R1), the same with vm_dly 7 (R2). The
+; samples took 180 P / 32 - R iterations less the fixed path around them and plus P's own
+; (VC_OVH net), linear in vm_dly (79 of the 80 samples take the delay: the last one ends
+; first); VOICE_RATE_T, 322 T-states of a 3.58 MHz Z80 a sample, makes VC_K samples VC_K x 322
+; / 228 lines (a VDP line is 228 such T-states, at 50 Hz as at 60 Hz). So vm_dly = 1 + 6 x
+; 79 / 80 x (R1 + VC_OVH - X) / (R1 - R2), X = (180 - 80 x 322 / 228) P / 32 = 2.094 P (2 P +
+; 3 P / 32), rounded, 1 to 255: whatever the CPU, its speed and the cartridge's waits (the MSX
+; Pico+ with its turbo off played the speech a tone low, 2026-10-24). A match missing (no
+; VDP): 5. (C-BIOS_MSX2 at 3.58 MHz: P 173, R1 468, R1 - R2 161, 5.2: 5, 321 T-states a sample.)
+VC_L0:      equ 2
+VC_K:       equ 80
+VC_OVH:     equ 7                   ; (the fixed paths' net, in iterations: their T-states over 41)
+vm_cal:
+        ld a,5
+        ld (vm_dly),a
+        ld c,VDP_CTRL
+        xor a
+        out (c),a
+        ld a,0x97
+        out (c),a                   ; R#23 = 0
+        ld a,1
+        out (c),a
+        ld a,0x8F
+        out (c),a                   ; R#15 = 1: S#1
+        in a,(c)                    ; (an FH pending: acknowledged)
+        ld a,VC_L0
+        call sc_r19
+        call sc_count               ; (the first match)
+        jp nc,vc_x
+        ld a,VC_L0 + 32
+        call sc_r19
+        call sc_count               ; P
+        jp nc,vc_x
+        ld (vc_p),hl
+        ld a,1
+        call vc_run
+        jp nc,vc_x
+        ld (vc_r1),hl
+        ld a,7
+        call vc_run
+        jp nc,vc_x
+        ex de,hl
+        ld hl,(vc_r1)
+        or a
+        sbc hl,de                   ; R1 - R2: VC_K x 6 djnz turns
+        jp c,vc_x
+        jp z,vc_x
+        ld (vc_den),hl
+        ld hl,(vc_p)
+        ld d,h
+        ld e,l
+        add hl,hl
+        add hl,de                   ; 3 P (P below 8192)
+        ld b,5
+vc_sh:  srl h
+        rr l
+        djnz vc_sh                  ; 3 P / 32
+        add hl,de
+        add hl,de                   ; X
+        ex de,hl
+        ld hl,(vc_r1)
+        ld bc,VC_OVH
+        add hl,bc
+        or a
+        sbc hl,de                   ; R1 + VC_OVH - X
+        ld a,1
+        jr c,vc_set
+        jr z,vc_set                 ; (too slow even with one turn: one)
+        ld d,h
+        ld e,l
+        add hl,hl
+        add hl,de
+        add hl,hl                   ; 6 (R1 + VC_OVH - X)
+        ld d,h
+        ld e,l
+        ld b,7
+vc_s7:  srl d
+        rr e
+        djnz vc_s7
+        or a
+        sbc hl,de                   ; - 1/128
+        srl d
+        rr e
+        or a
+        sbc hl,de                   ; - 1/256: x 0.988 (79 / 80)
+        ld de,(vc_den)
+        ld b,d
+        ld c,e
+        srl b
+        rr c
+        add hl,bc                   ; (+ half: rounded)
+        ld a,1
+vc_div: or a
+        sbc hl,de
+        jr c,vc_set
+        inc a
+        jr nz,vc_div
+        dec a                       ; (255 at most)
+vc_set: ld (vm_dly),a
+vc_x:   ld c,VDP_CTRL
+        xor a
+        out (c),a
+        ld a,0x8F
+        out (c),a                   ; R#15 = 0
+        ret
+
+; A = vm_dly: from the match of line VC_L0, vm_play on VC_K samples of the padding, the voices
+; at 0 again, then sc_count until the match of line VC_L0 + 180 -> C and HL = its iterations;
+; NC when a match did not come.
+vc_run:
+        ld (vm_dly),a
+        ld c,VDP_CTRL
+        ld a,VC_L0
+        call sc_r19
+        call sc_count               ; (the frame's first match)
+        ret nc
+        ld a,VC_L0 + 180
+        call sc_r19
+        ld a,VOICE_MIX_BANK - 1     ; (voice.bin's last bank: it ends with the padding)
+        ld hl,0xA000 - VC_K - 1
+        ld de,VC_K
+        call vm_plh
+        ld b,8
+vcr_z:  ld a,b
+        out (PSG_ADDR),a
+        xor a
+        out (PSG_DATA),a
+        inc b
+        ld a,b
+        cp 11
+        jr nz,vcr_z
+        ld c,VDP_CTRL
+        jp sc_count

@@ -843,10 +843,27 @@ which as sprites were striped, cut or left out.
   writes' timing then costs 0.1 dB, SNR against the Amiga 17 dB in the music (16 dB alone),
   quantisation 2.6-3.7 %; measured in openMSX 4-6 kHz −25.9 dB, 10-14 kHz −24.8 (was −9.5; the
   rest above the Amiga is the PCM's own image near 11 kHz, which 322 T a sample put there
-  instead of 6-10 kHz at 448). The loop takes 322 T-states a sample (measured in openMSX:
+  instead of 6-10 kHz at 448). The loop took 322 T-states a sample (measured in openMSX:
   18,602 of 18,675 samples, the others the fire reads, 530, and the bank changes, 603) with the
   interrupts off; every 256 samples it reads fire: pressed once released, it ends the speech.
   Recorded in openMSX: the music up to the key, then the speech, then silence.
+- **The speech's rate on any machine** (2026-10-24: on the user's SX-2 and a real MSX2 with the
+  MSX Pico+, its turbo off, the speech played a tone low: the loop counts T-states, and the
+  cartridge's wait states on its ~60 code bytes and 4 data reads a sample lengthened it, about
+  12 %). The loop's delay is now a RAM byte (`vm_dly`, `ld b,(ix+0)`: the loop 251 + 14 x
+  `vm_dly` T-states) that `vm_cal` works out at the power-on (`rc2.asm`, after `mus_init`):
+  `vm_play`'s own loop on 80 samples of `voice.bin`'s padding (its last sample, PSG volumes 0,
+  0 and 2: about silent), timed by the VDP's line matches with `split_cal`'s helpers (`sc_r19`,
+  `sc_count`): P, the poll loop's iterations in 32 lines; from the match of line 2, the samples
+  with `vm_dly` 1, then 7, and the polls left until the match of line 182 (R1, R2); the time is
+  linear in `vm_dly`, and a VDP line is 228 T-states of a 3.58 MHz Z80 at 50 Hz as at 60 Hz, so
+  322 T a sample is 322 / 228 lines: `vm_dly` = 1 + 6 x 79 / 80 x (R1 + 7 - X) / (R1 - R2), X =
+  2 P + 3 P / 32, rounded, 1 to 255 (5 when a match is missing). Whatever the CPU, its speed and
+  the cartridge's waits. Measured through the MSX-AI MCP: every machine at 3.58 MHz (V9938,
+  V9958, the T9769 engines, 50 and 60 Hz) `vm_dly` 5, 321 T-states a sample, +0.07 %; the Z80
+  at 5.37 MHz `vm_dly` 17, -1.4 % (a step is 9 T-states there), at 10.74 MHz 51, +0.02 % (the
+  fixed delay played it 50 % and 200 % fast there). The speech itself still plays from the
+  cartridge: a wait that comes in some frames only would still change its rate a little.
 - The original's music and sound effects are tunes of the same player (MU1 at `$18000`):
   `tools/rc2music.py` models it exactly; `tools/msxsound.py` turns its output (per Amiga channel
   and tick: period, volume, instrument, key-ons) and the samples into PSG streams

@@ -75,6 +75,8 @@ nm_ok:
         endif
         ld hl,mus_init
         call mus_call               ; an SCC: the title music's chips (music.asm)
+        ld hl,vm_cal
+        call mus_call               ; the speech's rate on this machine (music.asm)
         if DIAG
         ld hl,dg_main
         call mus_call               ; (test build: what this machine showed, then test tones; no game)

@@ -270,7 +270,11 @@ dg_min:     equ 0xE5B6              ;   polls from the display-on to the match o
 dg_max:     equ 0xE5B7              ;   this step (isr.asm isr_split, hud.asm hud_frame)
 fb_w2:      equ 0xE5B8              ; the split's wait for a pair's first part: what is left of it for
                                     ;   the VBLANK (isr.asm ifg_vr, ifg_fin)
-                                    ; (E5B9h-E5FFh: free, the old background upload ring's)
+vm_dly:     equ 0xE5B9              ; the speech's djnz turns a sample on this machine (music.asm vm_cal)
+vc_p:       equ 0xE5BA              ; 2: vm_cal: the poll loop's iterations in 32 lines,
+vc_r1:      equ 0xE5BC              ; 2:   those left after the samples with one turn,
+vc_den:     equ 0xE5BE              ; 2:   and that less those with seven
+                                    ; (E5C0h-E5FFh: free, the old background upload ring's)
 pq_buf:     equ 0xE600              ; [type, slot / SAT entry, id (2)] ... 0: the published frame's
                                     ; uploads (sprites.asm Q_...)
 SLOT_PG:    equ 0xE7                ; page of four 64-byte tables per slot:
@@ -669,7 +673,7 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E7FFh: pat_slot and the sprite queues; E800h-E8FFh: bf_htab; EA22h-EA3Fh,
-; C0ECh-C0EEh, C0F2h-C0F3h, CA7Ch, F1CFh, F1E2h, F271h-F27Fh, E5B9h-E5FFh, E601h-E6FFh,
+; C0ECh-C0EEh, C0F2h-C0F3h, CA7Ch, F1CFh, F1E2h, F271h-F27Fh, E5C0h-E5FFh, E601h-E6FFh,
 ; F16Fh-F190h, F1A0h-F1C2h: free; EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 
