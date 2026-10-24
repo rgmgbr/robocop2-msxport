@@ -466,14 +466,34 @@ isr_fbgo:
         ld a,(fb_c2)                ; the pair's second part (fb_cmd2) right after it, so that
         dec a                       ; both show from the same frame
         ret nz
-        ld b,110                    ; (about 3 ms at most: else fb_wait starts it)
+        ld b,110                    ; (about 90 lines at 3.58 MHz at most: else fb_wait starts it)
 ifg_wt: call ifg_idle
         jr z,ifg_2
+        bit 6,a
+        jr nz,ifg_vr                ; (S#2 VR: the blank began)
         djnz ifg_wt
+        ret
+ifg_vr: ld a,b                      ; (only the split's wait gets there: a pair never starts at
+        ld (fb_w2),a                ;  the VBLANK, fb_vok) the VBLANK interrupt, which comes at
+        ld a,3                      ; once, starts the second part after its list (ifg_fin):
+        ld (fb_c2),a                ; waited for here, the list went late by as much (2026-10-24)
         ret
 ifg_2:  ld hl,fb_cmd2
         call ifg_send
         ld a,2
+        ld (fb_c2),a
+        ret
+
+; The pair's second part the split's wait left to the VBLANK (fb_c2 3), the list being in: the
+; first part's end, within what is left of that wait (fb_w2), then the second part, at the time
+; the split would have started it; else fb_wait does (fb_c2 1). C = VDP_CTRL, AF, B, HL.
+ifg_fin:
+        ld a,(fb_w2)
+        ld b,a
+ifn_wt: call ifg_idle
+        jr z,ifg_2
+        djnz ifn_wt
+        ld a,1
         ld (fb_c2),a
         ret
 
@@ -495,7 +515,8 @@ ifg_rdy:
         ld (fb_rdy),a
         ret
 
-; -> Z when the VDP's command engine is idle (S#2 CE). Keeps BC, HL.
+; -> Z when the VDP's command engine is idle (S#2 CE); A bit 6 = S#2 VR (the vertical blank).
+; Keeps BC, HL.
 ifg_idle:
         ld a,2
         out (c),a
@@ -508,7 +529,8 @@ ifg_idle:
         ld a,0x8F
         out (c),a                   ; R#15 = 0
         pop af
-        and 1
+        and 0x41
+        bit 0,a
         ret
 
 ; HL = 15 bytes -> R#32-R#46 (the command starts). Keeps BC.
@@ -581,6 +603,15 @@ iv_list:
         otir
         ld a,1
         out (c),a
+        ld a,0x8F
+        out (c),a
+        in a,(c)                    ; S#1: FH the list's R#23 raised against the split's R#19
+        xor a                       ; before its own R#19 went in is acknowledged (no match is
+        out (c),a                   ; due in the blank): else the split ran in the blank and the
+        ld a,0x8F                   ; next picture showed page 3 in the HUD palette (2026-10-24:
+        out (c),a                   ; R#23 240 written at line 214, the vehicle's ride); R#15 = 0
+        ld a,1
+        out (c),a
         ld a,0x90
         out (c),a                   ; R#16 = colour 1
         ld hl,pf_pal+2
@@ -590,6 +621,10 @@ iv_list:
         ld (split_armed),a
         pop af
         call nz,iv_sat              ; (sprites.asm: a new list, its sprite set from now on)
+        ld a,(fb_c2)
+        cp 3
+        ld c,VDP_CTRL
+        call z,ifg_fin              ; (a pair's second part the split left: after the list)
 iv_late:
         call spr_late               ; more of the sprites' background uploads
 iv_tick:

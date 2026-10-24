@@ -2644,6 +2644,8 @@ fb_wait:
         jp fb_qstart
 fwt_done:
         ld a,(fb_c2)                ; (the pair's second part the interrupt could not start: now)
+        cp 3
+        ret z                       ; (3: the VBLANK interrupt starts it after its list, isr.asm)
         dec a
         jr nz,fwt_c
         ld (fb_c2),a

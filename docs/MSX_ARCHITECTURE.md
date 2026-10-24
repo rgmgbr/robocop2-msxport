@@ -1157,6 +1157,27 @@ lines after the VBLANK instead of 210. The guard's split check had looked at the
 assertion, when `split_armed` was still 0; it now also times `isr_split` itself
 (`rc2_rg_isr`).
 
+The VBLANK acknowledges FH as well (2026-10-24, the user flying the vehicle up: a flash of the
+whole play area in a bluish garbage, the HUD intact). Every list writes R#23 before R#19, and
+between the two the VDP compares the line against the split's R#19 (`SPLIT_R19`) with the new
+scroll: the camera's rise on the vehicle sweeps every scroll, and with R#23 240 written at line
+214 that pair matched the line the beam was on; FH stayed up past the VBLANK, which had re-armed
+the split, and the split ran in the blank: the next picture showed page 3 in the HUD palette
+(openMSX, a drive of the ride: 6 such splits, in two bursts of 3 pictures). `iv_list` now reads
+S#1 right after the list's registers (no match is due in the blank): none in the same ride,
+where the pair met the line 7 times.
+
+The split's wait for a pair's first part (`isr_fbgo`: a play-field copy in two parts, the
+V9958 ring's x or y 256 crossed, both started by the split so that both show from the same
+frame; `fb_vok` never lets the VBLANK start a pair) ran up to 110 iterations, about 90 lines at
+3.58 MHz (its comment said 3 ms), and the VBLANK's list waited behind it: in the coverage drive
+4 lists in 1800 game frames went in at line 9 of the next picture, its first lines in the HUD's
+page and palette. The wait now ends when the blank begins (S#2 VR) and leaves the second part to
+the VBLANK interrupt that follows at once (`fb_c2` 3): after its list it waits for the first
+part with what is left of the 110 and starts the second (`ifg_fin`), at the time the split would
+have; `fb_pend` counts it as started, `fb_wait` leaves it alone. In the same drive 18 waits
+reached the blank, the VBLANK finished all 18, no list went in late.
+
 ### HUD at run time (`msx/hud.asm`, data `tools/msxhudrt.py`)
 
 The game's panel routines are redone on the HUD (`docs/AMIGA_ANALYSIS.md`), each drawing a
