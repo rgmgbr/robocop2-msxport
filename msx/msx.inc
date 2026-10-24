@@ -49,13 +49,13 @@ R26_PAGE3:  equ 0x20                ; V9958 with SP2: shows page 3 unscrolled
 ; page 3 176-191        sprite patterns (64 x 16x16)
 ; page 3 192-199        sprite set A (colour table, SAT)
 ; page 3 200-207        sprite set B (colour table, SAT)
-; page 3 208-252        HUD (45 lines; the 4 blank lines need no VRAM)
+; page 3 208-252        HUD (45 lines; the 5 blank lines need no VRAM)
 HUD_VRAM_LINE: equ 208
 VRAM_HUD:   equ 0x18000 + HUD_VRAM_LINE*128
 HUD_R23:    equ (HUD_VRAM_LINE - VIEW_LINES - HUD_BLACK) & 255   ; R#23 that shows it at line 167
 SPLIT_R19:  equ (HUD_R23 + SPLIT_LINE) & 255    ; R#19 after the split: its match is behind (isr.asm)
 SPLIT_POLLS: equ 128                ; the split's polls for a line match at most (isr.asm sp_fh:
-                                    ;   its first wait is ~18 at 3.58 MHz, ~47 at 10.74)
+                                    ;   its first wait is ~11 at 3.58 MHz, ~46 at 10.74)
 SPR_PAT:    equ 0x1D800             ; R#6 = 3Bh
 SPR_COL_A:  equ 0x1E000             ; SAT = SPR_COL_A + 200h, R#5 = C7h
 SPR_COL_B:  equ 0x1E400             ; SAT = SPR_COL_B + 200h, R#5 = CFh

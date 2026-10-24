@@ -60,18 +60,20 @@ isr_r15:
 ; user's SX-2 flickered at the play field's end). With R#19 at the play field's R#23 + V - 2
 ; (split_r19) it polls FH for the end of line V-2, waits split_dly, blanks the display and at
 ; once sets R#19 for the end of line V-1 (the sprites-off between them put that write past
-; the match on the T9769 engines). The blank lands ~650 VDP ticks after the match, mid-line
-; V-1: past that line's latch of R#1 (the next line's sync + 144 ticks in openMSX's V9938,
-; the dot before the next line's first pixel in the ESE-VDP's source: 230 and 344 ticks after
-; the match) and before line V's, which the user's SX-2 takes ~1190 ticks after the match
-; (its HUD's first line was black in 20-40 % of the frames with the display-on written
-; 1000-1230 after its match, from the video of 2026-10-23; openMSX takes it 1598 after):
-; display off from line V. At FH of line V-1 (its pixels drawn: nothing visible changes any
-; more) the sprites go off and the page, the scroll and the HUD's colours 1-15 go in during
-; the blank lines V..V+4 (sp_regs: 36-38 port accesses, 4.0 lines on the T9769 engines, whose
-; VDP ports take cycles more, 3.3 on a plain Z80), then split_dly2 and the display on: ~650
-; ticks after the end of line V+3 whatever the CPU and its I/O waits (split_cal times sp_regs
-; itself), so the HUD shows from line V+5. The blank
+; the match on the T9769 engines). The blank lands 600-950 VDP ticks after the match (up to
+; 860 at 3.58 MHz), mid-line V-1: past that line's latch of R#1 (the next line's sync + 144
+; ticks in openMSX's V9938, the dot before the next line's first pixel in the ESE-VDP's
+; source: 230 and 344 ticks after the match) and before line V's, which the user's SX-2 takes
+; ~1060-1100 ticks after the match (its HUD's first line was black in 20-40 % of the frames
+; with the display-on written 910-1140 after its match on the V9958 path, from the video of
+; 2026-10-23; openMSX takes it 1598 after): display off from line V. At FH of line V-1 (its
+; pixels drawn: nothing visible changes any more) the sprites go off and the page, the scroll
+; and the HUD's colours 1-15 go in during the blank lines V..V+4 (sp_regs: 38-40 port
+; accesses, 3.9 lines on the T9769 engines, whose VDP ports take cycles more, 3.4-3.5 on a
+; plain Z80), then split_dly2 and the display on, 330-1100 ticks after the end of line V+3
+; (split_cal times sp_regs itself; the delay's first step costs ~350 ticks at 3.58 MHz, the
+; next ~250, and it is 0 on the T9769 engines: 330-550 on the V9958 with a plain Z80, as the
+; SX-2, 520-750 on the V9938, 850-1100 on the FS-A1FX), so the HUD shows from line V+5. The blank
 ; lines are five (HUD_BLACK): four held the registers and the palette only with the display-on
 ; just before the HUD's first line (0.1.0's split landed a line late on the FS-A1FX), and the
 ; design of that morning wrote 10 colours while the HUD showed. Colour 0 is not written: the
@@ -80,8 +82,8 @@ isr_r15:
 ; goes behind (SPLIT_R19) and S#1 is read: the line interrupt stays enabled, a match the play
 ; field's R#19 makes against the HUD's R#23 is acknowledged and ignored (isr: split_armed 0).
 ; A split serviced past line V-2 (never seen: the main program's longest DI is ~50 T) finds its
-; first match behind (sp_fh: SPLIT_POLLS) and writes everything at once: the HUD a few lines
-; late that frame.
+; first match behind (sp_fh: SPLIT_POLLS, ~22 lines at 3.58 MHz) and writes everything at
+; once: the HUD that much late that frame.
 isr_split:
         ld a,(split_r19)
         ld l,a                      ; (HL is saved by the ISR)
@@ -159,8 +161,8 @@ spf_lp: in a,(c)
         ret
 
 ; A (not 0) iterations of the split's timing loop (sp_wait: a poll of S#1 whose test never
-; passes, bit 7 is the light pen's; split_cal counts the same loop): 40 T-states and a port
-; read each.
+; passes, bit 7 is the light pen's; split_cal counts the same loop): 41 T-states with the M1
+; waits, a port read included, each.
 sp_wait:
         ld b,a
 spw_lp: in a,(c)
@@ -228,18 +230,22 @@ sp_pal: ld a,1
 ; worked out with the display off (display_on, every level start; interrupts off meanwhile,
 ; the VDP's are off: display_on turns them on after; leaves R#15 = 0). R#23 = 0 meanwhile (the
 ; VBLANK's list sets the play field's again). The loop's iterations N between the FH of line
-; CAL_LINE and that of line CAL_LINE + 32 (174 at 3.58 MHz; the loop is a port read and 40
-; T-states: I/O waits count as they do in the split's own polls and writes), then, four times
+; CAL_LINE and that of line CAL_LINE + 32 (174 at 3.58 MHz; the loop is 41 T-states with a
+; port read: I/O waits count as they do in the split's own polls and writes), then, four times
 ; from a match: sp_regs on cal_list (R#16 writes) and the play field's palette, R#23 = 0 and
 ; R#19 for 8 lines on, and the iterations left until that match (M, their mean: a poll's
-; worth of jitter in each). The blank must land ~0.5 line (650 ticks) after its match:
-; split_dly = 0.5 N / 32 - the routine's own time between the match and the write (~80
-; T-states and 2 port accesses, 2 iterations) - the poll's half = N / 64 - 2, 0 below. The
-; display-on lands ~0.5 line after the end of line V+3, 4.5 lines after the match of line
-; V-1 from which the writes run: split_dly2 = 4.5 N / 32 - (8 N / 32 - M - the 4 accesses
-; after sp_regs here) - the sprites-off (an iteration at any speed) and the 2 accesses before
-; the display-on there = M - 27 N / 256 + SPLIT_K, 0 below (SPLIT_K measured: 4 put the
-; display-on 1000-1230 after the match). Any match missing (no VDP): the 3.58 MHz values.
+; worth of jitter in each). The blank must land ~0.5 line (684 ticks) after its match:
+; split_dly = 0.5 N / 32 - the routine's own time between the match and the write (99
+; T-states with its 2 port writes, ~2.4 iterations; 18 more once sp_wait runs) - the poll's
+; half ~= N / 64 - 2, 0 below (it lands 600-950 after). The display-on aims at ~0.5 line after
+; the end of line V+3, 4.5 lines after the match of line V-1 from which the writes run:
+; split_dly2 = 4.5 N / 32 - (8 N / 32 - M - the 4 accesses after sp_regs here) - the
+; sprites-off (an iteration at any speed) and the 2 accesses before the display-on there =
+; M - 28 N / 256 + K; the code keeps 27 N / 256 and SPLIT_K, measured at 3.58 MHz (4 put the
+; display-on 1000-1230 after the match), takes the rest, 0 below. Its steps are coarse (the
+; first costs the call too: ~350 ticks at 3.58 MHz) and the T9769 engines' is 0, so the
+; display-on lands 330-1100 after its match by machine (docs/MSX_ARCHITECTURE.md, the split).
+; Any match missing (no VDP): the 3.58 MHz values of a V9938.
 CAL_LINE:   equ 40
 SPLIT_K:    equ 1                   ; (the accesses' difference and the polls' halves, in iterations: measured)
 split_cal:
@@ -294,7 +300,7 @@ sc_lp:  push de
 sc_none:
         ld hl,hud_palette
         ld (sp_palp),hl
-        pop hl                      ; HL = N (DE = M, 0 when a match was missed)
+        pop hl                      ; HL = N (DE = M; a match missed: the sum so far, 0 on the first)
         push de
         ld d,h
         ld e,l
@@ -336,7 +342,7 @@ sc_db:  ld (split_dly),a            ; split_dly = N / 64 - 2
         srl h
         rr l
         srl h
-        rr l                        ; 27 N / 256 = 0.1055 N (N / 8 - N / 48 = 0.1042 N)
+        rr l                        ; 27 N / 256 = 0.1055 N
         ld b,l
         pop hl                      ; M
         ld a,h
@@ -352,7 +358,7 @@ sc_dp:  ld (split_dly2),a           ; split_dly2 = M + SPLIT_K - 27 N / 256
         jr sc_end
 sc_dflt:
         xor a
-        ld (split_dly),a            ; (a T9769 at 3.58 MHz: N 165, M 13)
+        ld (split_dly),a            ; (a V9938 at 3.58 MHz)
         ld a,1
         ld (split_dly2),a
 sc_end: xor a

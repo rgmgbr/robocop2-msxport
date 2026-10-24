@@ -1015,37 +1015,43 @@ match only (since 2026-10-23, third design of the day, its writes moved that eve
    `split_r19` (the play field's R#23 + V - 2: the VBLANK takes it from the list's first pair,
    which every list makes R#23) and polls S#1 for that match, the end of line V-2 (`sp_fh`,
    ~13 polls at 3.58 MHz; at most `SPLIT_POLLS`), waits the split delay (`split_dly`, below),
-   writes R#1 = blank and at once R#19 for the end of line V-1: the blank ~650 VDP ticks after
-   the match, mid-line V-1, past that line's latch of R#1 (openMSX's V9938: the next line's
-   sync + 144 ticks, 230 after the match; the ESE-VDP's source: the dot before the next line's
-   first pixel, 344 after) and before line V's, which the user's SX-2 takes ~1190 ticks after
-   the match (below): the display is off from line V. R#19 lands 200 ticks or more before its
-   match.
+   writes R#1 = blank and at once R#19 for the end of line V-1: the blank 600-950 VDP ticks
+   after the match (up to 860 at 3.58 MHz), mid-line V-1, past that line's latch of R#1
+   (openMSX's V9938: the next line's sync + 144 ticks, 230 after the match; the ESE-VDP's
+   source: the dot before the next line's first pixel, 344 after) and before line V's, which
+   the user's SX-2 takes ~1060-1100 ticks after the match (below): the display is off from
+   line V. R#19 lands 200 ticks or more before its match.
 2. At FH of line V-1 (its pixels drawn: nothing visible changes from there on) it writes R#8 =
-   sprites off, R#2 = page 3, on the V9938 R#18 = 0 and R#23 = `HUD_R23`, on the V9958 also
-   R#26/R#27 (`split_list`, built by `split_init`), then R#16 = 1 and the 30 palette bytes
+   sprites off, then `split_list` (built by `split_init`): R#2 = page 3, on the V9938 R#18 = 0,
+   R#23 = `HUD_R23`, on the V9958 R#26/R#27, then R#16 = 1 and the 30 palette bytes
    (`hud_palette` = `gen/hud_split.pal`, colours 1-15; colour 0 is the play field's,
-   `tools/mkrom.py` checks) with unrolled OUTIs (`sp_regs`): ~4500 ticks on a plain Z80 at
-   3.58 MHz, ~5500 on the T9769 engines, inside the blank lines V..V+4.
-3. Then the second delay and R#1 = display on, ~650 ticks after the end of line V+3 as the blank
-   after its match: the HUD shows from line V+5 = 167. Then the V9958's R#25 (no border mask in
+   `tools/mkrom.py` checks) with unrolled OUTIs (`sp_regs`, 38 port writes on the V9938, 40 on
+   the V9958): ~4600-4800 ticks on a plain Z80 at 3.58 MHz, ~5300 on the T9769 engines, inside
+   the blank lines V..V+4.
+3. Then the second delay and R#1 = display on, 330-1100 ticks after the end of line V+3 by
+   machine (the table below): the HUD shows from line V+5 = 167. Then the V9958's R#25 (no border mask in
    the HUD), R#19 = `SPLIT_R19` (`(HUD_R23 + SPLIT_LINE) & 255`: a match already behind; one the
    play field's R#19 made against the HUD's R#23 meanwhile is harmless, the ISR ignores FH with
    `split_armed` 0), an S#1 read, R#15 = 0 and `isr_fbgo`.
 
 The delays are the machine's: `split_cal` (`display_on`, every level start, the display off)
-sets R#23 = 0, counts the iterations N of the split's own poll loop (`sp_wait`: a port read and
-40 T-states, so a machine's I/O waits count as they do in the split's polls and writes)
+sets R#23 = 0, counts the iterations N of the split's own poll loop (`sp_wait`: 41 T-states with
+a port read, so a machine's I/O waits count as they do in the split's polls and writes)
 between the FH of line 40 and that of line 72, then four times from a match runs `sp_regs` on
 a list of R#16 writes and the play field's palette (the same timing as the HUD's), sets R#19
 for 8 lines on and counts the iterations M left until that match (their mean). `split_dly` =
-N / 64 - 2 (0 at 3.58 MHz: the routine's own ~80 T-states between the match and the blank
-are the delay) and `split_dly2` = M + 1 - 27 N / 256 (1 at 3.58 MHz on a plain Z80, 0 on the
-T9769 engines and the HB-F1XDJ, 12 at 5.37 MHz, 51 at 10.74), 0 below: the blank and the
-display-on land ~650 VDP ticks after their match whatever the CPU and its I/O waits. A split
-serviced past line V-2 (never seen: the main program's longest DI is ~50 T-states) finds its
-first match behind (`sp_fh` returns NC) and writes everything at once (`sp_late`): the HUD a
-few lines late that frame.
+N / 64 - 2 (0 at 3.58 MHz: the routine's own 99 T-states between the match and the blank, its
+two port writes included, are the delay) and `split_dly2` = M + 1 - 27 N / 256 (at 3.58 MHz 1
+on the V9938 machines and 0 on the V9958 ones, the T9769 engines' clamped there; 12 / 9 at
+5.37 MHz on C-BIOS_MSX2+ / the FS-A1FX, 51 / 48 at 10.74 on C-BIOS_MSX2+ / the FS-A1GT), 0
+below: the writes land mid-line whatever the CPU and its I/O waits. `split_dly2` moves in
+coarse steps (the first costs the call too: ~350 ticks at 3.58 MHz, against ~190 for the
+V9958's two more register writes), so the display-on lands 330-550 ticks after its match on
+the V9958 machines with a plain Z80, 520-750 on the V9938 ones and 850-1100 on the FS-A1FX,
+whose delay is clamped at 0. A split serviced past line V-2 (never seen: the main program's
+longest DI is ~50 T-states) finds its first match behind (`sp_fh` returns NC after
+`SPLIT_POLLS` polls, ~22 lines at 3.58 MHz) and writes everything at once (`sp_late`): the
+HUD that much late that frame.
 
 Why (2026-10-23, the user's SX-2, an OCM-PLD machine). The first design of the day polled S#2
 HR from wherever the interrupt was serviced; the second from the FH edge of line V-2. Both
@@ -1062,19 +1068,25 @@ the view scales to the game's 176 as before) pays for it: four lines held the re
 the palette only with the display-on just before the HUD's first line (0.1.0's split did so
 and landed a line late on the T9769 engines, FS-A1FX/WX/WSX, and jittered on the FS-A1GT), and
 an FH sync of the display-on after the palette did not fit either: on the T9769 the palette
-ends after the end of line V+3 (36 port accesses at ~23 T-states), so the writes run from
+ends after the end of line V+3 (38-40 port accesses at ~23 T-states), so the writes run from
 the match of line V-1 with the delay measured.
 
 The third design as first made wrote R#19 for line V-1 before the delay and the sprites-off
 with the blank, and both R#1 writes ~1000 ticks after their match (the display-on at
 1004-1232, the blank at 902-1130 on C-BIOS_MSX2): the SX-2 still showed the HUD's first line
 black in some frames. The user's video (30 pictures, ~46 camera pixels a line) had the HUD's
-top edge a line lower and a line thinner in 4 of them and dimmer in 7 more: that VDP takes line
-167's display enable ~1190 ticks after the match of line 165 (in the units below, at ~1090-1110
-of line 166), not 344 after as the ESE-VDP's source does, so a write after that showed from
-line 168. Both writes now land ~650 ticks after their match, in the middle of the window all
-three models leave (after 344, before ~1190; VRAM page 3's rows above the HUD hold data, so a
-display-on a line early would show too). R#19 follows the blank at once: written after the
+top edge a line lower and a line thinner in 4 of them and dimmer in 7 more. The SX-2 is an
+MSX2+, so it runs the V9958 path, whose display-on came 914-1142 ticks after the match on the
+machines with a plain Z80 (the HB-F1XDJ row of that table): that VDP takes line 167's display
+enable ~1060-1100 ticks after the match of line 165 (in the units below, at ~975-1015 of line
+166; ~1150-1190 if it ran like the V9938 path), not 344 after as the ESE-VDP's source does, so
+a write after that showed from line 168. On that path the writes now land far from it: the
+blank 596-824 and the display-on 326-554 ticks after their match. VRAM page 3's rows above the
+HUD hold data, so a display-on a line early would show too: with the ESE-VDP source's latch at
+344 and openMSX's FH timing, the display-on would come a line early in about a quarter of the
+frames, but with that latch the old writes could never have been late, which the video shows
+they were; if the SX-2's FH comes later than openMSX's instead, every write moves with it.
+R#19 follows the blank at once: written after the
 sprites-off, it came past its match on the FS-A1FX and the FS-A1GT (their VDP ports take
 cycles more), whose splits then polled 128 times and showed the HUD ~22 lines late in 85 % and
 10 % of the frames of that probe; the sprites go off at FH of line V-1, in the blank.
@@ -1082,27 +1094,27 @@ cycles more), whose splits then polled 128 times and showed the HUD ~22 lines la
 Measured through the MSX-AI MCP on the product ROM, 1500 frames each (VDP line:cycle of the
 writes, line 0 at the frame's first display line, cycle 0 at the line's sync; a write takes
 effect from the next line when its cycle is past 144; the match of line 160 is at 160:1282,
-that of 165 at 165:1282):
+that of 161 (the R#19 column's) at 161:1282, that of 165 at 165:1282):
 
 | machine | display off (R#1 = 22h) | R#19 for line V-1 | display on (R#1 = 62h) | split_dly / dly2 |
 |---|---|---|---|---|
-| C-BIOS_MSX2 (V9938) | 161:540-768 ×1500 | 161:816-1044 | 166:438-666 ×1500 | 0 / 1 |
-| C-BIOS_MSX2_EU (V9938, 50 Hz) | 161:540-768 ×1500 | 161:816-1044 | 166:438-666 ×1500 | 0 / 1 |
-| Gradiente Expert 2.0 (V9938) | 161:540-762 ×1500 | 161:816-1038 | 166:438-666 ×1500 | 0 / 1 |
-| Sony HB-F1XDJ (V9958, S1985) | 161:510-738 ×1500 | 161:786-1014 | 166:240-468 ×1500 | 0 / 0 |
-| Panasonic FS-A1FX (V9958, T9769B) | 161:534-774 ×1500 | 161:834-1074 | 166:768-1008 ×1500 | 0 / 0 |
-| Panasonic FS-A1GT, Z80 (V9958, T9769C) | 161:522-756 ×1500 | 161:810-1044 | 166:504-738 ×1500 | 0 / 0 |
-| C-BIOS_MSX2+ at 5.37 MHz | 161:712-864 ×1500 | 161:896-1048 | 166:348-500 ×1500 | 2 / 12 |
-| C-BIOS_MSX2+ at 10.74 MHz | 161:640-716 ×1500 | 161:732-808 | 166:592-668 ×1500 | 6 / 51 |
-| FS-A1FX at 5.37 MHz | 161:572-732 ×1500 | 161:772-932 | 166:280-440 ×1500 | 1 / 9 |
-| FS-A1GT at 10.74 MHz | 161:656-734 ×1500 | 161:752-830 | 166:530-608 ×1500 | 6 / 48 |
+| C-BIOS_MSX2 (V9938) | 161:540-768 ×1500 | 161:816-1044 ×1500 | 166:438-666 ×1500 | 0 / 1 |
+| C-BIOS_MSX2_EU (V9938, 50 Hz) | 161:540-768 ×1500 | 161:816-1044 ×1500 | 166:438-666 ×1500 | 0 / 1 |
+| Gradiente Expert 2.0 (V9938) | 161:540-762 ×1500 | 161:816-1038 ×1500 | 166:438-666 ×1500 | 0 / 1 |
+| Sony HB-F1XDJ (V9958, S1985) | 161:510-738 ×1500 | 161:786-1014 ×1500 | 166:240-468 ×1500 | 0 / 0 |
+| Panasonic FS-A1FX (V9958, T9769B) | 161:534-774 ×1500 | 161:834-1074 ×1500 | 166:768-1008 ×1500 | 0 / 0 |
+| Panasonic FS-A1GT, Z80 (V9958, T9769C) | 161:522-756 ×1500 | 161:810-1044 ×1500 | 166:504-738 ×1500 | 0 / 0 |
+| C-BIOS_MSX2+ at 5.37 MHz | 161:712-864 ×1500 | 161:896-1048 ×1500 | 166:348-500 ×1500 | 2 / 12 |
+| C-BIOS_MSX2+ at 10.74 MHz | 161:640-716 ×1500 | 161:732-808 ×1500 | 166:592-668 ×1500 | 6 / 51 |
+| FS-A1FX at 5.37 MHz | 161:572-732 ×1500 | 161:772-932 ×1500 | 166:280-440 ×1500 | 1 / 9 |
+| FS-A1GT at 10.74 MHz | 161:656-734 ×1500 | 161:752-830 ×1500 | 166:530-608 ×1500 | 6 / 48 |
 
-(openMSX gives a Z80 at 5.37 and 10.74 MHz 21 and 6 T-states of I/O wait an access; the
-OCM's turbo gives 2 and 6.) The same probe, 300 frames on each of the 14 machines of the MCP's
+(In these probes openMSX adds no wait to C-BIOS_MSX2+'s VDP accesses at 5.37 and 10.74 MHz
+and ~2 T-states to the FS-A1FX's; the OCM's turbo gives 2 and 6 clocks.) The same probe, 300 frames on each of the 14 machines of the MCP's
 openMSX home at 3.58 MHz: the display off in line 161 and on in line 166 in every frame, no
 split lost; the V9958 machines with a plain Z80 (C-BIOS_MSX2+ and the HB-F1XDJ, as the SX-2)
-write the blank at 161:510-738, R#19 at 161:786-1014 and the display-on at 166:240-468, the
-V9938 ones at 161:540-768, 161:816-1044 and 166:438-666. Cost: the split ends by line ~167
+write the blank at 161:510-738, R#19 at 161:786-1014 and the display-on at 166:240-468 (326-554
+ticks after its match), the V9938 ones at 161:540-768, 161:816-1044 and 166:438-666. Cost: the split ends by line ~167
 instead of ~169 (`drive_play` 26.3 pictures/s on C-BIOS_MSX2, 25.6 on the FS-A1FX, the ticks
 at full speed). The logic traces are the Amiga's (4401 and 1400 game frames, 0 differ); 120
 recorded pictures on C-BIOS_MSX2, the FS-A1FX and the HB-F1XDJ match the map and show RoboCop
