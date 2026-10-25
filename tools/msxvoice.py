@@ -34,7 +34,10 @@ With an SCC or an OPLL the speech keeps its place in the music (msx/music.asm vm
 its VOICE_TICKS ticks the chips are muted and the PSG plays voice_mix.bin instead, the Amiga's
 four channels from VOICE_TICK on (the speech with the bass and the drums going on, rendered the
 same way), at MIX_GAIN times its own peak's level (measured in openMSX: the SCC's music around
-it as loud against the PCM as on the Amiga); then the chips go on from the tick after. (A music
+it as loud against the PCM as on the Amiga); then the chips go on from the tick after. The
+speech itself, alone and in the mix, is VOICE_GAIN of that (the user's choice, 2026-10-25: "a
+voz ... alta demais", 20 % lower): in the mix its part alone (the samples render_amiga gives,
+the same as the mix's) is lowered, at the mix's own scale, so the music around it stays. (A music
 tick inside the PCM loop would hold the samples for 0.4-1 ms every 20 ms: measured in openMSX, a
 buzz louder than the PCM's quantisation.) It swings around the table's coarse level (C at 0)
 nearest DC_LEVEL, which voices A and B hold while the music plays (VOICE_DC_A, VOICE_DC_B;
@@ -71,6 +74,7 @@ VOICE_TICK = 2880                       # the speech's first tick in TITM tune 1
 A500_LP_HZ = 4400.0                     # the A500's fixed output low-pass (one pole)
 SILENT = 0.004                         # the end: the last sample louder than this (full scale 1)
 MIX_GAIN = 0.57                         # voice_mix.bin's level: times its own peak's (msx/music.asm)
+VOICE_GAIN = 0.8                        # the speech 20 % lower, alone and in the mix (the user's choice)
 DC_LEVEL = 1.5                          # the level A and B hold under the music: the table's
                                         #   coarse level (C at 0) nearest to it
 DC_FADE = 0.0015                        # the swing faded in and out (seconds)
@@ -236,8 +240,8 @@ def main(argv: list[str]) -> int:
     end = int(loud[-1]) + 1 if len(loud) else len(filt)
     filt = filt[:end]
     x = resample(filt)
-    # around the level A and B hold: full use of 0..3
-    u = x / np.percentile(np.abs(x), 99.9) * 1.45
+    # around the level A and B hold: VOICE_GAIN of the full use of 0..3
+    u = x / np.percentile(np.abs(x), 99.9) * 1.45 * VOICE_GAIN
     levels, triples = smooth_table()
     coarse = np.nonzero(triples[:, 2] == 0)[0]
     dc_idx = int(coarse[np.abs(levels[coarse] - DC_LEVEL).argmin()])      # (A, B and C at 0)
@@ -254,10 +258,13 @@ def main(argv: list[str]) -> int:
     (out_dir / "voice.bin").write_bytes(pcm + bytes(banks * BANK - len(pcm)))
     ticks = math.ceil(len(pcm) / RATE * ms.TICK_HZ)
     # the speech in the music: all four channels for those ticks around the held level, at
-    # MIX_GAIN times its own peak's level
-    mix_amiga = lowpass(render_mix(ticks), A500_LP_HZ, ms.FS)
-    xm = resample(mix_amiga)[:round(ticks * RATE / ms.TICK_HZ)]
-    um = xm / np.percentile(np.abs(xm), 99.9) * 1.45 * MIX_GAIN
+    # MIX_GAIN times the whole mix's own peak's level, the speech's part VOICE_GAIN of it
+    raw = render_mix(ticks)
+    n_m = round(ticks * RATE / ms.TICK_HZ)
+    mix_amiga = lowpass(raw, A500_LP_HZ, ms.FS)
+    scale = 1.45 * MIX_GAIN / np.percentile(np.abs(resample(mix_amiga)[:n_m]), 99.9)
+    mix_target = lowpass(raw - (1 - VOICE_GAIN) * amiga[:len(raw)], A500_LP_HZ, ms.FS)
+    um = resample(mix_target)[:n_m] * scale
     tmix, imix = swing(um, dc, levels, dc_idx)
     mbanks = -(-len(imix) // BANK)
     (out_dir / "voice_mix.bin").write_bytes(bytes(imix) + bytes([imix[-1]]) * (mbanks * BANK - len(imix)))
@@ -291,7 +298,7 @@ def main(argv: list[str]) -> int:
           f"quantisation error {100 * error(levels[idx], target):.1f} % of the signal, against the "
           f"Amiga {snr(playback(idx, triples), filt):.1f} dB; in the music: {len(imix)} samples, "
           f"{mbanks} banks, error {100 * error(levels[imix], tmix):.1f} %, against the Amiga "
-          f"{snr(playback(imix, triples), mix_amiga):.1f} dB, {100 * clip:.2f} % clipped")
+          f"{snr(playback(imix, triples), mix_target):.1f} dB, {100 * clip:.2f} % clipped")
     return 0
 
 

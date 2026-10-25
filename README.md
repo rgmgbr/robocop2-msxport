@@ -1,9 +1,10 @@
-# Robocop 2 — Amiga 500 to MSX2/MSX2+ port
+# Robocop 2 — Amiga 500 to MSX2/MSX2+/turbo R port
 
-Goal: port ROBOCOP 2 (Ocean/Special FX, 1990) from the Amiga 500 to MSX2 and MSX2+,
+Goal: port ROBOCOP 2 (Ocean/Special FX, 1990) from the Amiga 500 to MSX2, MSX2+ and MSX turbo R,
 reusing as much of the original logic and graphics as the target machine allows. The MSX2
 (V9938) is the mandatory baseline; the MSX2+ (V9958) is detected at run time and used when
-present.
+present, and on a turbo R the game runs on the R800 (the title on the Z80; see
+[docs/TURBO_R.md](docs/TURBO_R.md)).
 
 - Amiga reverse engineering: tools in `tools/` + REA (Ghidra).
 - MSX development and testing: headless openMSX through the MSX-AI MCP.

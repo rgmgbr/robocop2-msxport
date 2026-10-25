@@ -1040,7 +1040,10 @@ which as sprites were striped, cut or left out.
   banks from `VOICE_MIX_BANK`): the
   Amiga's four channels for the speech's 84 ticks (the speech with the bass and the drums going
   on, rendered the same way, `MIX_GAIN` 0.57: measured in openMSX, the music around it as loud
-  against the PCM as on the Amiga, within 1 dB in all three modes). Then the voices take the
+  against the PCM as on the Amiga, within 1 dB in all three modes; the speech's own part then
+  `VOICE_GAIN` 0.8 of that, as the speech alone: the user's choice, 2026-10-25, "a voz ... alta
+  demais", 20 % lower, measured in openMSX -1.8 dB alone, -1.3 dB in the mix, the music around
+  it unchanged). Then the voices take the
   state `mkrom.py` computed for tick 2964 (`mus_snap_...`: each stream decoded to that tick,
   every field given; an OPLL note again only when one began meanwhile, the rhythm's keys not
   struck again) and the chips with it, in about 1 ms; the VBLANK the speech held off is
