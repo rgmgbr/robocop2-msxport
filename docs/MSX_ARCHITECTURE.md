@@ -1337,3 +1337,22 @@ messages (15.6 KiB, banks `HUD_BANK`–`HUD_BANK+1`, mapped at 8000h–BFFFh whi
 - Values use the game's layouts (BCD timer, ammo and score; energy 0..100h), so the ported
   game logic can write them directly; `hud_message`, `hud_request` (heads, icon) and
   `en_target` are its other entry points. A demo (`hud_demo`) drives them for now.
+
+## MSX turbo R: the R800 for the game (2026-10-25)
+
+The design, the hardware facts with their sources and the measurements: `docs/TURBO_R.md`. In
+short (the user's decisions): one ROM; at power-on `cpu_detect` finds a turbo R and checks its
+R800 by measurement; the title (music and speech) stays on the Z80; from `tiles_init` (every new
+game) the game runs on the R800 and goes back to the Z80 before the title; no key to stay on the
+Z80. The turbo R's S1990 holds every VDP port access 62 R800 cycles after the last, so the HUD
+split's writes do not fit five blank lines there: on the R800 the play field shows 161 lines and
+six blank lines hold its own split (`split8.asm`, installed at `SR_RAM` by `cpu_set`); nothing is
+written while the HUD is drawn. The fixed area runs from the turbo R's internal RAM (`tr_fixram`).
+Every MSX2/MSX2+ machine runs exactly as before (the Z80 block and its rows unchanged).
+
+| machine | display off (R#1 = 22h) | sprites off (R#8) | display on (R#1 = 62h) | split_dly |
+|---|---|---|---|---|
+| Panasonic FS-A1GT, R800 (V9958, T9769C) | 160:822-906 ×1500 | 161:198-282 ×1500 | 166:1170-1254 ×1500 | 60 |
+
+The busiest windows run at 24.5-24.7 game ticks a second there (13.3-13.9 on its Z80), the logic
+traces are the Amiga's (0 differ), verified in openMSX only (no turbo R here).

@@ -49,14 +49,14 @@ fo_lp:  push hl
         jr z,fo_rel
         dec c
         inc c
-        ret nz                      ; (pressed after a release)
+        jr nz,fov_x                 ; (pressed after a release)
         jr fo_n
 fo_rel: ld c,1
 fo_n:   dec hl
         ld a,h
         or l
         jr nz,fo_lp
-        ret
+fov_x:  jp cpu_title                ; (a turbo R: the Z80 again for the title, cold.asm)
 
 ; ----- the level's statistics -----
 
@@ -128,7 +128,8 @@ fs_lp:  call fs_tick
 fs_end: ld hl,pf_pal
         ld bc,32
         xor a
-        jp fill
+        call fill
+        jp cpu_title                ; (a turbo R: the Z80 again for the title, cold.asm)
 
 ; One element of the script ($116CA): a wait going on, a position (00 x y), a character, a wait
 ; (80-FF 2 n: max(1, 4n) calls, this one the first) or the end (80-FF 7: done).

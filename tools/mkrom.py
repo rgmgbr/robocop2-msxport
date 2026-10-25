@@ -89,6 +89,9 @@ OPTIONS = {
                 " (slots, the mapper, every SCC read, stores and loads by instruction form, the CPU's speed), then SCC"
                 " test tones; no game (music.asm dg_main); 2 = instead the VDP lab: the cartridge's wait states and"
                 " the VDP's R#19 rewrites measured, on screen (msx/lab.asm)"),
+    "R800PING": (0, "1 = test build (turbo R): at each new game 100 round trips Z80 -> R800 -> Z80 through"
+                    " cold.asm cpu_set, page 0's sum before and after them in cpu_png (the harness compares"
+                    " them), then the game on the R800 as usual (docs/TURBO_R.md phase 2)"),
     "SPLITDIAG": (0, "1 = test build: the HUD split's display-on later by 14 T-states a step, steps 0-15 of 256"
                      " frames each (the step in the score's last digits); the timer shows this step's fewest and"
                      " most polls from the display-on to the match of display line 169 (msx/isr.asm isr_split)"),

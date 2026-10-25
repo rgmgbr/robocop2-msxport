@@ -144,6 +144,7 @@ spr_init:
 ; slots 0..TC_SLOTS-1 hold tiles 0..TC_SLOTS-1 (uploaded by vdp_setup), no patch, nothing to
 ; redraw.
 tiles_init:
+        call cpu_game               ; (a turbo R: the game on its R800 from here, docs/TURBO_R.md)
         ld hl,TC_SLOT
         ld de,1
         ld b,TC_SLOTS/2
@@ -282,6 +283,10 @@ isr_init:
         ld de,SR_RAM
         ld bc,SR_LEN
         ldir                        ; the split's timed path and split_cal's measures (split.asm)
+        ld hl,scn_inc
+        ld (scn_at),hl              ; (sc_turns: this block's)
+        xor a
+        ld (sl_off),a               ; (the Z80: the play field's 162 lines)
         ld hl,hud_palette
         ld de,SR_PAL
         ld bc,30
@@ -341,6 +346,7 @@ isr_init:
 ; "PAC2" (FM-PAC, whose I/O ports are then switched on: bit 0 of 7FF6h in its slot).
 ; snd_fm = 1 when found. Uses the BIOS (RDSLT, WRSLT); interrupts end up disabled.
 snd_detect:
+        call cpu_detect             ; (a turbo R's R800 first: in IM 2, checked; the Z80 runs on)
         xor a
         ld (snd_fm),a
         ld c,0                      ; primary slot
@@ -523,6 +529,283 @@ no_ram: xor a
         di
         halt
 
+; MSX turbo R (docs/TURBO_R.md 3.2), at the power-on (rc2.asm init, through front_call): the BIOS
+; in page 0 with its work area intact, the interrupts off. A cartridge started before this one may
+; have left the R800 running: the Z80 again first, whatever follows. Then a round trip to the
+; R800, which goes into IM 2 for good (it booted in IM 1 and CHGCPU carries I but not the mode,
+; while the IM 1 handler's BIOS work area is gone once the game runs) and measures itself against
+; the turbo R's timer (cd_ram, from RAM: SR_RAM is free until vdp_setup's isr_init). cpu_tr = 1
+; when the measures are an R800's: 512 djnz turns in under 120 counts (~63 on an R800 from RAM,
+; 512 on a 3.58 MHz Z80, ~171 at 10.74), and port 98h held by the S1990 (16 reads at least 16
+; counts longer than 16 of port A8h). The Z80 runs on in every case (cpu_cur 0).
+cpu_detect:
+        xor a
+        ld (cpu_tr),a
+        ld (cpu_cur),a
+        if SPLITDIAG + DEMO_HUD
+        ret                         ; (test builds: the Z80 block's units, or no room: the Z80 only)
+        endif
+        ld a,(MSXVER)
+        cp 3
+        ret c                       ; (not a turbo R)
+        ld a,(CHGCPU)
+        cp 0xC3
+        ret nz                      ; (no CPU switch in this BIOS)
+        call GETCPU
+        or a
+        ld a,0x80
+        call nz,CHGCPU              ; (the R800 left on: the Z80 again, the LED off)
+        di
+        ld hl,cd_ram
+        ld de,SR_RAM
+        ld bc,cd_end - cd_ram
+        ldir
+        ld c,VDP_CTRL
+        ld a,(RG1SAV)
+        and 0xDF
+        out (c),a
+        ld a,0x81
+        out (c),a                   ; R#1 without the VBLANK interrupt,
+        ld a,(RG0SAV)
+        and 0xEF
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; R#0 without the line interrupt,
+        ld a,1
+        out (c),a
+        ld a,0x8F
+        out (c),a
+        in a,(c)                    ; (FH dropped)
+        xor a
+        out (c),a
+        ld a,0x8F
+        out (c),a
+        in a,(c)                    ; (F dropped): CHGCPU ends with EI, no interrupt then
+        ld a,1
+        call CHGCPU                 ; to the R800, ROM mode, the LED as it was
+        di
+        ld a,IM2_I
+        ld i,a
+        im 2                        ; (the R800 from here: kept while it is parked)
+        call SR_RAM                 ; its measures
+        xor a
+        call CHGCPU                 ; to the Z80 (the R800 parks under CHGCPU's DI)
+        di
+        im 1                        ; (the BIOS's mode until isr_init: a CHGCPU that came back on
+        ld c,VDP_CTRL               ;  this same CPU, no R800, had left IM 2 here)
+        ld a,(RG1SAV)
+        out (c),a
+        ld a,0x81
+        out (c),a
+        ld a,(RG0SAV)
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; R#1 and R#0 as the BIOS had them
+        ld hl,(cpu_chk)
+        ld de,120
+        or a
+        sbc hl,de
+        ret nc                      ; (512 turns took 120 counts or more: not an R800)
+        ld a,(cpu_chk + 3)
+        add a,16
+        ret c
+        ld b,a
+        ld a,(cpu_chk + 2)
+        cp b
+        ret c                       ; (port 98h not held: not the S1990's R800)
+        ld a,1
+        ld (cpu_tr),a
+        ret
+
+; The game's CPU (docs/TURBO_R.md 3.3): A = 81h the R800 (its LED on) or 80h the Z80 (the LED off);
+; nothing when cpu_tr = 0. With the VDP's interrupt sources off and none pending (CHGCPU ends with
+; EI) and page 0 on the main ROM for the call (slot 0, whose secondary register the game never
+; writes: 0-0). The Z80 would freeze inside CHGCPU on a PAUSE flip-flop left set during R800 play,
+; so a switch to it first waits for the key again (the picture kept, the pause LED lit). The CPU
+; that resumes gets IM 2 (the R800 has it from cpu_detect: a second guard); cpu_cur = the CPU
+; running. Returns with the interrupts off, R#1 = display off without interrupts, IE1 off.
+cpu_set:
+        ld e,a
+        ld a,(cpu_tr)
+        or a
+        ret z
+        bit 0,e
+        jr nz,cs_go                 ; (to the R800)
+cs_pz:  in a,(TR_PAUSE)
+        rrca
+        jr nc,cs_pl
+        ld a,(CASPRV)
+        or 1
+        out (TR_PAUSE),a            ; (paused: its LED on until the key is pressed again)
+        jr cs_pz
+cs_pl:  ld a,(CASPRV)
+        and 0xFE
+        ld (CASPRV),a
+        out (TR_PAUSE),a            ; (its LED off)
+cs_go:  di
+        ld c,VDP_CTRL
+        ld a,0x02
+        out (c),a
+        ld a,0x81
+        out (c),a                   ; R#1: display off, no VBLANK interrupt
+        ld a,R0_IE1_OFF
+        out (c),a
+        ld a,0x80
+        out (c),a                   ; R#0: no line interrupt
+        ld a,1
+        out (c),a
+        ld a,0x8F
+        out (c),a
+        in a,(c)                    ; (S#1: FH dropped)
+        xor a
+        out (c),a
+        ld a,0x8F
+        out (c),a
+        in a,(c)                    ; (S#0: F dropped)
+        in a,(PPI_SLOT)
+        ld d,a                      ; (CHGCPU keeps every register)
+        and 0xFC
+        out (PPI_SLOT),a            ; page 0: the main ROM (slot 0-0)
+        ld a,e
+        call CHGCPU
+cs_back:
+        di                          ; (the other CPU from here: CHGCPU ended with EI, no source on)
+        ld a,IM2_I
+        ld i,a
+        im 2
+        call GETCPU
+        ld e,a
+        ld a,d
+        out (PPI_SLOT),a            ; page 0: the game's RAM again
+        ld a,e
+        or a
+        jr z,cs_c
+        ld a,1
+cs_c:   ld (cpu_cur),a
+        ld (sl_off),a               ; (the R800: the play field a line shorter, docs/TURBO_R.md 4.1)
+        or a
+        ld hl,sr_rom
+        ld bc,SR_LEN
+        ld de,scn_inc
+        jr z,cs_blk
+        in a,(TR_PAUSE)
+        and 1
+        ld (key_tp),a               ; (the PAUSE flip-flop as it is: key_scan follows its changes)
+        xor a
+        ld (sp8_cnt),a              ; (the split's timeouts from 0)
+        ld hl,sr8_rom
+        ld bc,SR8_LEN
+        ld de,scn8_inc
+cs_blk: ld (scn_at),de
+        ld de,SR_RAM
+        ldir                        ; this CPU's timed block (split.asm or split8.asm)
+        ret
+
+; (rc2.asm) The game's CPU: the R800 from ng_go, the Z80 again before the title.
+cpu_game:
+        ld a,0x81
+        jp cpu_set
+cpu_title:
+        ld a,0x80
+        jp cpu_set
+
+        if R800PING
+; (Test build) At each new game: 100 round trips Z80 -> R800 -> Z80, page 0's sum before and after
+; them in cpu_png (rc2.asm ng_go).
+cpu_ping:
+        ld hl,0
+        ld (cpu_png),hl
+        call cpp_sum
+        ld (cpu_png + 2),hl
+        ld b,100
+cpp_lp: push bc
+        ld a,0x81
+        call cpu_set
+        ld a,0x80
+        call cpu_set
+        ld hl,(cpu_png)
+        inc hl
+        ld (cpu_png),hl
+        pop bc
+        djnz cpp_lp
+        call cpp_sum
+        ld (cpu_png + 4),hl
+        ret
+cpp_sum:
+        ld hl,0
+        ld de,0
+        ld bc,0x4000
+cps_lp: ld a,(de)
+        add a,l
+        ld l,a
+        jr nc,cps_nc
+        inc h
+cps_nc: inc de
+        dec bc
+        ld a,b
+        or c
+        jr nz,cps_lp
+        ret
+        endif
+
+; cpu_detect's measures, run by the R800 from SR_RAM (relative jumps only), the interrupts off:
+; cpu_chk = timer counts of 512 djnz turns (2 bytes), of 16 reads of port 98h, of 16 of port A8h.
+cd_ram:
+        xor a
+        out (TR_TIMER),a            ; the timer from 0
+        ld c,2
+        ld b,a
+cdr_t:  djnz cdr_t
+        dec c
+        jr nz,cdr_t
+        in a,(TR_TIMER)
+        ld l,a
+        in a,(TR_TIMER + 1)
+        ld h,a
+        ld (cpu_chk),hl
+        xor a
+        out (TR_TIMER),a
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(VDP_DATA)
+        in a,(TR_TIMER)
+        ld (cpu_chk + 2),a
+        xor a
+        out (TR_TIMER),a
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(0xA8)
+        in a,(TR_TIMER)
+        ld (cpu_chk + 3),a
+        ret
+cd_end:
+
 ; An MSX1, or an MSX2 with less than 128 KiB of VRAM (rc2.asm init, through front_call): the game
 ; cannot run there; a message in SCREEN 0 (the BIOS still serves page 0) and the machine stays
 ; on it.
@@ -592,10 +875,63 @@ rp_prim:
         jr nz,rp_none
         ei
         or a
-        ret
+        jp tr_fixram                ; (a turbo R: the fixed area from its RAM; returns NC)
 rp_none:
         ei
         scf
+        ret
+
+; MSX turbo R (docs/TURBO_R.md 6), at power-on after ram_page0 (rc2.asm init, through front_call):
+; the fixed area (4000h-7FFFh, banks 0-1) copied into the internal RAM's segment 4 and shown in page
+; 1 from then on, so that both CPUs run it from RAM (the R800 fetches the cartridge at ~4-5 cycles a
+; byte, its RAM at ~1). The mapper's registers set as the game uses them (FCh = 3: page 0, the game's
+; RAM; FFh = 0: page 3; FDh = 4: page 1), whatever a loader left. Page 1 takes page 3's slot, the
+; RAM's (slot 3-0 on a turbo R, expanded). Nothing writes 4000h-7FFFh afterwards: the mapper's
+; registers there (5000h, 7000h) never are, banks 0-1 being fixed.
+tr_fixram:
+        ld a,(cpu_tr)
+        or a
+        ret z
+        di
+        ld a,3
+        out (0xFC),a
+        xor a
+        out (0xFF),a
+        ld a,4
+        out (0xFD),a                ; (page 1's segment once its slot is the RAM's)
+        out (0xFC),a                ; page 0 on segment 4 for the copy
+        ld hl,0x4000
+        ld de,0x0000
+        ld bc,0x4000
+        ldir                        ; the cartridge's banks 0-1
+        ld a,3
+        out (0xFC),a                ; page 0: the game's RAM again
+        in a,(0xA8)
+        ld b,a
+        rlca
+        rlca
+        and 3
+        rlca
+        rlca
+        ld c,a                      ; page 3's primary slot, at page 1's bits
+        ld a,(0xFFFF)
+        cpl                         ; (page 3's secondary slot register)
+        ld d,a
+        and 0xF3
+        ld e,a
+        ld a,d
+        rlca
+        rlca
+        rlca
+        rlca
+        and 0x0C                    ; page 3's subslot at page 1's bits
+        or e
+        ld (0xFFFF),a               ; (slot 3's page 1: the RAM's subslot)
+        ld a,b
+        and 0xF3
+        or c
+        out (0xA8),a                ; page 1: the RAM copy from here on
+        ei
         ret
 
 ; (sound.asm) At power-on (rc2.asm init, BANK_FRONT at 8000h).

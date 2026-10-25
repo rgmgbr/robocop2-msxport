@@ -109,8 +109,13 @@ new_game:
         ld a,0x02
         ld b,1
         call wrreg
-ng_go:  ld hl,tiles_init
-        call front_call             ; the tile cache and the map patches (cold.asm)
+ng_go:
+        if R800PING
+        ld hl,cpu_ping
+        call front_call             ; (test build: CPU round trips, cold.asm)
+        endif
+        ld hl,tiles_init
+        call front_call             ; the tile cache and the map patches; a turbo R's R800 (cold.asm)
         call atr_load               ; the map attributes into page-0 RAM (cold.asm: BANK_FRONT at 8000h)
         ld hl,AG + 0x8000           ; the game's globals ($8000-$80FF): level 0, score 0
         ld bc,256
@@ -209,7 +214,7 @@ ml_ev:  ld a,(g_event)
         ld hl,front_over            ; game over: PIC9
         jr z,ml_fe
         ld hl,front_stats           ; the next level: its statistics ($85D8), then (for now) the
-ml_fe:  call front_call             ; title and a new game
+ml_fe:  call front_call             ; title and a new game (a turbo R: the Z80 again, front.asm)
         call title
         jp new_game
 ml_rst: call level_restart
@@ -467,6 +472,7 @@ input_end:
         include "front.asm"
         include "cold.asm"          ; init routines of the fixed code (cold.asm)
         include "split.asm"         ; the HUD split's code that runs from RAM (isr_init copies it)
+        include "split8.asm"        ; the same on a turbo R's R800 (cold.asm cpu_set installs it)
         include "text.inc"          ; the text screens' font and the statistics (tools/msxtext.py)
 front_end:
         ds 0xA000 - front_end, 0xFF

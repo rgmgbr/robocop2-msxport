@@ -557,11 +557,14 @@ proc rc2_rate {rom labels script g1 g2} {
 	set ::rr_t0 -1
 	set ::rr_armed 0
 	set ::rr_result ""
+	set ::rr_isr [rc2_label $labels isr]       ;# (counted only once the game's interrupts are in:
+	                                           ;#  a turbo R's firmware leaves anything in that RAM)
 	set ::rr_bp [debug probe set_bp VDP.IRQvertical {[debug probe read VDP.IRQvertical] == 1} rc2_rate_hit]
 	return "measuring"
 }
 
 proc rc2_rate_hit {} {
+	if {[peek 0xC2C2] != 0xC3 || [rc2_w 0xC2C3] != $::rr_isr} { return }   ;# (IM2_JUMP: jp isr)
 	set seq [peek 0xC006]
 	if {$seq == $::rr_seq} { return }
 	set ::rr_seq $seq
@@ -868,6 +871,12 @@ proc rc2_sprset_col {} {
 proc rc2_guard {secs split_line nl vis labels} {
 	catch {set split_line [expr {[rc2_label $labels SPLIT_LINE]}]}   ;# (the build's own split line and play area)
 	catch {set vis [expr {[rc2_label $labels VIEW_LINES]}]}
+	catch {                                   ;# (a turbo R's R800 running the game: the split's
+		if {[peek [rc2_label $labels sl_off]] == 1} {   ;#  interrupt a line earlier, the play
+			incr split_line -1                       ;#  field a line shorter: docs/TURBO_R.md)
+			incr vis -1
+		}
+	}
 	set ::rg_split $split_line
 	set ::rg_nl $nl
 	set ::rg_vis $vis

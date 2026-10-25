@@ -13,10 +13,19 @@ RSLREG:     equ 0x0138
 INITXT:     equ 0x006C
 CHPUT:      equ 0x00A2
 MSXVER:     equ 0x002D              ; the BIOS's MSX version: 0 MSX1, 1 MSX2, 2 MSX2+, 3 turbo R
+CHGCPU:     equ 0x0180              ; turbo R: A = 0 the Z80, 1 the R800 (ROM mode); bit 7: its LED too
+GETCPU:     equ 0x0183              ; turbo R: -> A = the CPU running (docs/TURBO_R.md)
+TR_TIMER:   equ 0xE6                ; turbo R: a 16-bit timer (E6h low, E7h high), 3.911 us a count
+                                    ;   (14 T-states of a 3.58 MHz Z80); a write to E6h resets it
+TR_PAUSE:   equ 0xA7                ; turbo R: read bit 0 = the PAUSE key's flip-flop; write bit 0 its
+                                    ;   LED, bit 1 = the Z80's hardware pause on, bit 7 the R800's LED
+CASPRV:     equ 0xFCB1              ; the BIOS's copy of TR_PAUSE's last write (CHGCPU updates it)
 MODE:       equ 0xFAFC              ; bits 1-2: the VRAM (0 16 KiB, 1 64 KiB, 2 128 KiB)
 EXPTBL:     equ 0xFCC1
 SLTTBL:     equ 0xFCC5
 RG9SAV:     equ 0xFFE8
+RG0SAV:     equ 0xF3DF              ; the BIOS's copies of R#0 and R#1 (cold.asm cpu_detect, at power-on)
+RG1SAV:     equ 0xF3E0
 BANK_8000:  equ 0x9000              ; selects the bank of the 8000h-9FFFh window
 BANK_A000:  equ 0xB000              ; selects the bank of the A000h-BFFFh window
 
@@ -62,6 +71,12 @@ SP_TURNS:   equ 255                 ; its wait for the match's interrupt at most
 SC_WRAPS:   equ 0                   ; split_cal's and vm_cal's waits for a match: 256 x 256 turns
 SC_GAP:     equ 8                   ; their turns between acknowledging FH and writing R#19
 R1_CAL:     equ 0x02                ; display off, no interrupt: the calibration's blank (split.asm sp_seq)
+SP_GAP8:    equ 32                  ; turbo R, the R800 (split8.asm): SP_GAP's turns, ~15 us with the
+SC_GAP8:    equ 32                  ;   S1990's hold after the read; SC_GAP's
+SC8_K:      equ 80                  ;   split_cal8: the turns of N's fixed path (n32 = N + SC8_K)
+SC8_D:      equ 117                 ;   split_dly = n x SC8_D / 256 (fitted in openMSX's FS-A1GT)
+SPLIT_DLY8: equ 61                  ;   split_dly with no measure (the FS-A1GT's in openMSX)
+SP_TMO8:    equ 306                 ;   sp8_tmo with no measure (2.3 lines of ~133 turns)
 SPR_PAT:    equ 0x1D800             ; R#6 = 3Bh
 SPR_COL_A:  equ 0x1E000             ; SAT = SPR_COL_A + 200h, R#5 = C7h
 SPR_COL_B:  equ 0x1E400             ; SAT = SPR_COL_B + 200h, R#5 = CFh
@@ -75,8 +90,14 @@ IM2_TABLE:  equ 0xC100              ; 257 bytes, all = IM2_VEC (I = IM2_I)
 IM2_I:      equ 0xC1
 IM2_VEC:    equ 0xC2
 IM2_JUMP:   equ 0xC2C2              ; JP isr
+cpu_tr:     equ 0xC2A6              ; 1: a turbo R whose R800 answered at the power-on (cold.asm cpu_detect)
+cpu_cur:    equ 0xC2A7              ; the CPU running: 0 the Z80, 1 the R800
+cpu_chk:    equ 0xC2A8              ; 4: cpu_detect's measures on the R800, in timer counts: 512 turns
+                                    ;   (2), 16 reads of the VDP's port 98h, 16 of port A8h
+cpu_png:    equ 0xC2AC              ; R800PING builds: 2: round trips done, 2: page 0's sum before them,
+                                    ;   2: after them (cold.asm cpu_ping)
 ; the title music and the game's sound effects on the SCC / OPLL (music.asm, sound.asm), in the
-; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2A6h-C2C1h free)
+; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2B2h-C2C1h free)
 mus_mode:   equ 0xC201              ; what plays it (MM_SCC, MM_FM, MM_RHY; 0: the PSG player)
 mus_on:     equ 0xC202              ; 1 while it plays (the VBLANK interrupt ticks it)
 mus_div:    equ 0xC203              ; VBLANKs into the sixth one (60 Hz: skipped)
@@ -339,6 +360,12 @@ split_dly1: equ 0xC67D              ; the split's turns after its blank: past li
 sp_v1:      equ 0xC67E              ; the split's R#1 for its blank (R1_BLANK; split_cal: R1_CAL)
 cal_n:      equ 0xC67F              ; 2: split_cal: the fewest turns of 32 lines, then n32
 cal_m:      equ 0xC681              ; 2:   the fewest left after sp_seq (isr.asm)
+sl_off:     equ 0xC683              ; 1 while the R800 runs the game: the play field a line shorter, the
+                                    ;   split's interrupt and match a line earlier (isr.asm iv_list)
+scn_at:     equ 0xC684              ; 2: the timed RAM block's scn_inc (split.asm or split8.asm: sc_turns)
+sp8_tmo:    equ 0xC686              ; 2: the R800's wait for the split's match at most (split8.asm)
+key_tp:     equ 0xC688              ; the turbo R's PAUSE flip-flop as last seen (player.asm key_scan)
+sp8_cnt:    equ 0xC689              ; the R800 split's waits that timed out (split8.asm; tests: 0)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -689,8 +716,8 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
-; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2A6h-C2C1h, C2C5h-C2FFh,
-; C683h-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B2h-C2C1h, C2C5h-C2FFh,
+; C68Ah-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
 ; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
 

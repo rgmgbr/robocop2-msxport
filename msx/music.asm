@@ -283,7 +283,13 @@ muq_e:  ld (ix+MV_LEFT),a
         xor a
         call scc_on                 ; every channel off,
         call scc_v0                 ;   at volume 0
-muq_f:  ld a,(mus_mode)
+muq_f:
+        if DIAG = 0
+        ld a,(cpu_cur)
+        or a
+        jr nz,muq_p                 ; (the R800: too fast for the OPLL, silent since the title anyway)
+        endif
+        ld a,(mus_mode)
         and MM_FM | MM_RHY
         jr z,muq_p
         ld a,0x0E

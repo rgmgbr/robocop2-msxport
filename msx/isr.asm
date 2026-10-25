@@ -181,6 +181,18 @@ sp_late:
 CAL_LINE:   equ 40                  ; (the first line of split_cal's measures)
 CAL_TRIES:  equ 4
 split_cal:
+        if DEMO_HUD + SPLITDIAG = 0
+        ld a,(cpu_cur)
+        or a
+        jr z,scl_z80
+        ld a,(act_8000)
+        push af
+        ld hl,split_cal8
+        call front_call             ; (the R800: its one delay, split8.asm)
+        pop af
+        jp bank_8000
+        endif
+scl_z80:
         di
         ld hl,(IM2_JUMP)
         push hl                     ; (its jump's first two bytes: the game's, or the lab's)
@@ -355,11 +367,11 @@ sc_turns:
         ld l,a
         jr nc,sct_w
         inc h
-sct_w:  ld a,e
-        cp scn_inc & 0xFF
-        jr nz,sct_c
-        ld a,d
-        cp scn_inc >> 8
+sct_w:  push hl
+        ld hl,(scn_at)              ; (the timed block's scn_inc: split.asm's or split8.asm's)
+        or a
+        sbc hl,de
+        pop hl
         jr nz,sct_c
         inc h                       ; (that wrap's 256 turns: B is 0)
 sct_c:  scf
@@ -537,10 +549,27 @@ iv_list:
         inc hl
         ld b,(hl)
         inc hl
-        ld a,(hl)                   ; (every list starts with R#23, the play field's scroll)
+        if DEMO_HUD + SPLITDIAG = 0
+        ld a,(sl_off)
+        neg
+        add a,(hl)                  ; (every list starts with R#23, the play field's scroll)
+        else
+        ld a,(hl)
+        endif
         add a,VIEW_LINES - 2
-        ld (split_r19),a            ; the split's R#19: a match at the end of line V-2
-        otir
+        ld (split_r19),a            ; the split's R#19: a match at the end of line V-2 (V-3 when
+        otir                        ;  the R800 runs the game: split8.asm; DE is the program's)
+        if DEMO_HUD + SPLITDIAG = 0
+        ld a,(sl_off)
+        or a
+        jr z,ivl_r
+        ld a,(split_r19)
+        sub 3
+        out (c),a
+        ld a,0x93
+        out (c),a                   ; (the R800: the split's interrupt at line V-6, not the list's
+ivl_r:                              ;  V-5; before the read below, which drops a match it raised)
+        endif
         ld a,1
         out (c),a
         ld a,0x8F

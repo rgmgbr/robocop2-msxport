@@ -1,9 +1,10 @@
 # MSX turbo R support (R800): design
 
-Status: design, 2026-10-25. Nothing below is implemented yet; the phases in section 10 say what
-comes first. Written from a research and code-inventory pass (three web research agents, two
-code readers, a design draft and a completeness critic), then revised with the user's decisions.
-Numbers marked *est.* are estimates, each with a way to measure it (section 8).
+Status: implemented and verified in openMSX, 2026-10-25 (section 12: what was built and
+measured; where it differs from the design below). Written from a research and code-inventory
+pass (three web research agents, two code readers, a design draft and a completeness critic),
+then revised with the user's decisions. Numbers marked *est.* were estimates before the
+measurements of section 12.
 
 Notation: `L:t` is display line L at VDP tick t (0-1367) after that line's sync, as in the
 measured table of `docs/MSX_ARCHITECTURE.md`; the FH match of line L is at `L:1282`. One line =
@@ -159,7 +160,7 @@ window for an S1990 spacing of 55-64 cycles (hardware 61.8-62, openMSX 62); if p
 9Ah had separate timers (unmeasured, T1 in 9), the display-on would come up to ≈370 ticks earlier,
 still inside. Fallback when the match never comes (`sp_irq8` timing out after ≈2.3 lines' worth of
 turns, a limit worked out from the calibration; the longest legitimate wait is ≈2 lines): the
-burst at once; timeouts are counted in RAM for the tests.
+burst at once; timeouts are counted in RAM for the tests (`sp8_cnt`, off the normal path).
 
 The lead before the match: the interrupt at line 156 leaves 3 lines (1,368 cycles); the path
 from it to the R#19 write is ≈460-880 cycles from the cartridge (the worst case with a 5-access
@@ -187,7 +188,7 @@ is, byte for byte.
 
 | Item | On the R800 | Handling |
 |---|---|---|
-| `SP_GAP`, `SC_GAP` (8 turns ≈ 31 µs on the Z80) | ≈3.4 µs | R800 values ≈ 9x (≈31 µs again) |
+| `SP_GAP`, `SC_GAP` (8 turns ≈ 31 µs on the Z80) | ≈3.4 µs | `SP_GAP8`/`SC_GAP8` 32 turns ≈ 15 µs: ≈21 µs from the S#1 read to the first R#19 access, ≈29 µs to its register byte through the S1990's hold (the Hotbit's V9938 lost writes closer than that; the turbo R's V9958 never showed it) |
 | `SC_WRAPS` (65,536 turns: 15 frames) | ≈1.9 frames | unchanged (≥ 1 frame) |
 | `sc_cnt`'s 64 wraps, `sc_turns` | N ≈ 4,200 turns: 17 wraps | unchanged; R800 copies use the R800 block's addresses (`scn_inc`) |
 | `split_cal`'s products (x74 fits ≈6.8x; `split_dly2` saturates ≈4.2x) | n32 ≈ 4,270 | the R800 path (4.3) |
@@ -336,3 +337,71 @@ CHGCPU's duration.
 - Grauw's MSX Assembly Page: Z80/R800 instruction timings, I/O port list, BIOS calls
   (map.grauw.nl/resources).
 - The R800 user's manual transcription (d4.princess.ne.jp/msx/datas/R800UM).
+
+## 12. As built (2026-10-25)
+
+What the code does, where it differs from the design above, and what openMSX measured
+(Panasonic FS-A1GT; every other machine of the MCP's home unchanged).
+
+**Code.**
+- `cold.asm` `cpu_detect` (called first by `snd_detect`, at power-on with the BIOS): a turbo R
+  (002Dh = 3, a JP at 0180h) gets the Z80 back first if a cartridge left the R800 on, then a round
+  trip with the VDP's interrupt sources off (R#1/R#0 from RG1SAV/RG0SAV without IE0/IE1, S#1 and
+  S#0 read): the R800 goes into IM 2 and measures itself from RAM (`cd_ram`), the Z80 comes back
+  in IM 1 (the BIOS's mode until `isr_init`, even if CHGCPU came back on one same CPU) with R#0/R#1
+  as the BIOS had them. `cpu_tr` = 1 when 512 turns took under 120 timer counts and port 98h was
+  held (FS-A1GT: 64, 34 against 6-7 counts). SPLITDIAG and DEMO_HUD builds keep the Z80.
+- `cold.asm` `cpu_set` / `cpu_game` / `cpu_title`: `tiles_init` (both ways into a game) switches
+  to the R800; the exits of `front_over` and `front_stats` (front.asm) switch back before the
+  title. The switch installs that CPU's block at SR_RAM (split.asm or split8.asm), sets `sl_off`,
+  `scn_at` (sc_turns' wrap check), `key_tp` and `sp8_cnt` = 0.
+- `cold.asm` `tr_fixram` (from `ram_page0`'s success exit): the fixed area into segment 4, page 1
+  on it (A8h EFh with the game in slot 2: pages 0, 1, 3 the internal RAM).
+- `split8.asm` (191 bytes of the 320): `isr_split8`, `sp_irq8`, the burst, `sc8_*`, `split_cal8`
+  (n32 = N + `SC8_K` 80; `split_dly` = n x 117 / 256; `sp8_tmo` = n x 147 / 64). Assembly-time
+  checks for each timed djnz (a label defined twice when it lands at xxFEh/xxFFh).
+- `isr.asm`: `iv_list` (split_r19 = R#23 + V - 2 - `sl_off`; on the R800 R#19 = split_r19 - 3
+  after the list, before the S#1 read), `split_cal` dispatching to `split_cal8`, `sc_turns`
+  comparing DE with `scn_at`. These, `key_scan`'s R800 branch and the dispatch are left out of
+  DEMO_HUD and SPLITDIAG builds (fixed-area room; those builds keep the Z80).
+- `player.asm` `key_scan`: on the R800 a change of the PAUSE flip-flop is a press of P (fresh:
+  g_keydone 99h first), its release sent once that press was handled and P itself is not held
+  (so that the next P counts); the pause LED follows the flip-flop. PAUSE and P each toggle the
+  game's pause, so mixing them can leave the flip-flop set while the game runs (the LED lit):
+  `cpu_set` then waits at the next switch to the Z80 for PAUSE again, the picture kept and the
+  LED lit, instead of the Z80 freezing in CHGCPU.
+- `music.asm` `muq_f`: no OPLL write on the R800 (silent since the title's `snd_stop` anyway).
+
+**Measured** (openMSX FS-A1GT, headless, through the MCP):
+- The R800 split over 1,500 frames, the same with and without the fixed area in RAM: blank
+  160:822-906, sprites off 161:198-282, display on 166:1170-1254 (window [166:144, 167:100]), R#19
+  for line 159 written in lines 157-158; `split_dly` 60, n32 4,229-4,234, `sp8_tmo` 303; no wait
+  timed out (`sp8_cnt` 0). Every other machine's row and delays of `docs/MSX_ARCHITECTURE.md`
+  unchanged (the FS-A1FX at 5.37 MHz gave `split_dly2` 42 in one run, 43 in another).
+- Speed, pictures/s and game ticks/s (25 = full speed):
+
+| Window | Z80 | R800, code from the cartridge | R800, fixed area in RAM |
+|---|---|---|---|
+| `drive_play` | 26.0 / 25.0 | 47.9 / 25.0 | 58.5 / 25.0 |
+| `c430` | 6.7 / 13.3 | 14.2 / 21.5 | 31.4 / 24.6 |
+| `c860` | 7.0 / 13.9 | 15.6 / 23.2 | 25.4 / 24.5 |
+| `c1490` | 7.3 / 13.8 | 18.2 / 23.3 | 38.8 / 24.7 |
+
+  More pictures than ticks are the view catching up with the camera on frames without a tick
+  (`ml_frame`), which the Z80 also does when it has time; the recordings check each against the
+  map at its view.
+- Logic traces on the R800: 4,401 and 1,400 game frames, 0 differ. Start check: guard 0,
+  patcheck 0 bad, sprlines 0. Recordings: 0 background differences, RoboCop whole. The 14
+  machines: no freeze, vbl 0, RoboCop never off the published camera.
+- 100 round trips: page 0's sum unchanged, IM 2 and I = C1h on both CPUs at every resume, never
+  the BIOS's 0038h after `isr_init`. Game over -> title -> new game x3: the title on the Z80, the
+  game on the R800, no OPLL write on the R800 (386 on the Z80, the title's FM). A cartridge in
+  slot 1 leaving the R800 on (ROM and DRAM modes): our INIT starts on the R800, the title runs on
+  the Z80, the game on the R800. PAUSE during play and on `front_over`: handled; PAUSE then P,
+  then PAUSE, then P: each toggles once. No write to 4000h-7FFFh after the copy.
+- Not verified (no turbo R here): section 8.9.
+
+**Seen on the way, not turbo R's** (also on C-BIOS_MSX2): the first list of a new game after a
+game over shows RoboCop's sprites 12 px right and 4 px down of the camera's (tick 0,
+`rc2_camcheck`); the field engine started a command (R#46, `fqs_go`) at line 57 of game frame 951
+in some V9958 runs (`rc2_guard` reg 1, its destination not shown), as in earlier batches.

@@ -333,6 +333,40 @@ key_scan:
         if INPUT_SCRIPT
         ret
         else
+        if DEMO_HUD + SPLITDIAG = 0
+        ld a,(cpu_cur)
+        or a
+        jr z,ks_p
+        in a,(TR_PAUSE)
+        and 1
+        ld hl,key_tp
+        cp (hl)
+        jr z,ks_rel
+        ld (hl),a                   ; (the R800 on a turbo R: its PAUSE key toggled the flip-flop,
+        ld b,a                      ;  whose hardware pause holds only the Z80: a press of P, the
+        ld a,(CASPRV)               ;  game's own pause, fresh whatever came before; the key's LED
+        and 0xFE                    ;  follows the flip-flop)
+        or b
+        ld (CASPRV),a
+        out (TR_PAUSE),a
+        ld a,0x99
+        ld (g_keydone),a
+        ld a,0x19
+        ld (g_key),a
+        ret
+ks_rel: ld a,(g_key)                ; (that press handled, P itself not held: its release, so that
+        cp 0x19                     ;  the next press of P counts)
+        jr nz,ks_p
+        ld hl,g_keydone
+        cp (hl)
+        jr nz,ks_p
+        ld a,(key_p)
+        or a
+        jr nz,ks_p
+        ld a,0x99
+        ld (g_key),a
+ks_p:
+        endif
         ld a,4
         call kb_row                 ; R Q P O N M L K
         ld a,c
