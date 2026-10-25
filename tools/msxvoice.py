@@ -13,8 +13,11 @@ measured in openMSX; 11.1 kHz, which puts the zero-order hold's first image abov
 band, about 11 kHz: at 8 kHz it sat at 6-10 kHz) and cut where it falls silent. Each sample
 becomes a byte: an index into the PSG table (voice_tab: smooth_table), the three voices'
 volumes (tone and noise off: a voice outputs its volume's level) whose summed level on the AY's
-curve comes nearest to the sample. A short ramp in and out of the middle level keeps the
-speaker's DC step (the MSX's output capacitor) from thumping.
+curve comes nearest to the sample. It swings around the level voices A and B hold under the
+music (DC_LEVEL, as the mix below; its first and last samples exactly that), and msx/music.asm
+vm_alone brings the PSG to that level and back slowly (dc_rise, dc_fall), so neither end
+thumps through the MSX's output capacitor. (Ramps of 20 ms from silence clicked in the quiet
+after the music's fade: -28 dBFS above 400 Hz, measured in openMSX.)
 
 The table (smooth_table): vm_play writes voice C's volume, then B's, then A's, WRITE_GAP_T
 T-states apart, and until the three are written the PSG outputs a mix of the old and the new
@@ -66,12 +69,11 @@ VOICE_INST = ms.SPEECH_INST             # instrument 24 = sample 11
 VOICE_CHANNELS = (2, 0)                 # channel 2 from VOICE_TICK, channel 0 nine ticks later
 VOICE_TICK = 2880                       # the speech's first tick in TITM tune 1
 A500_LP_HZ = 4400.0                     # the A500's fixed output low-pass (one pole)
-RAMP_S = 0.02                           # bias ramp in and out (seconds)
-SILENT = 0.004                          # the end: the last sample louder than this (full scale 1)
+SILENT = 0.004                         # the end: the last sample louder than this (full scale 1)
 MIX_GAIN = 0.57                         # voice_mix.bin's level: times its own peak's (msx/music.asm)
 DC_LEVEL = 1.5                          # the level A and B hold under the music: the table's
                                         #   coarse level (C at 0) nearest to it
-DC_FADE = 0.0015                        # the mix's swing faded in and out (seconds)
+DC_FADE = 0.0015                        # the swing faded in and out (seconds)
 BANK = 0x2000
 
 
@@ -130,12 +132,17 @@ def quantise(target: np.ndarray, levels: np.ndarray) -> np.ndarray:
     return np.where(np.abs(target - left) <= np.abs(levels[idx] - target), idx - 1, idx).astype(np.uint8)
 
 
-def ramps(n: int) -> np.ndarray:
-    r = int(RAMP_S * RATE)
-    ramp = np.ones(n)
-    ramp[:r] = np.linspace(0, 1, r)
-    ramp[-r:] = np.linspace(1, 0, r)
-    return ramp
+def swing(u: np.ndarray, dc: float, levels: np.ndarray, dc_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    """u around the held level dc, faded in and out over DC_FADE -> (the target, its indexes:
+    the first and last exactly dc_idx)."""
+    f = int(DC_FADE * RATE)
+    fade = np.ones(len(u))
+    fade[:f] = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, f))
+    fade[-f:] = fade[:f][::-1]
+    target = np.clip(dc + fade * u, 0, 3)
+    idx = quantise(target, levels)
+    idx[0] = idx[-1] = dc_idx
+    return target, idx
 
 
 def playback(idx: np.ndarray, triples: np.ndarray) -> np.ndarray:
@@ -229,37 +236,29 @@ def main(argv: list[str]) -> int:
     end = int(loud[-1]) + 1 if len(loud) else len(filt)
     filt = filt[:end]
     x = resample(filt)
-    n = len(x)
-    # around the middle of the PSG's range: full use of 0..3 with the bias ramps
-    peak = np.percentile(np.abs(x), 99.9)
-    u = x / peak * 1.45
-    target = np.clip(1.5 * ramps(n) + u, 0, 3)
+    # around the level A and B hold: full use of 0..3
+    u = x / np.percentile(np.abs(x), 99.9) * 1.45
     levels, triples = smooth_table()
     coarse = np.nonzero(triples[:, 2] == 0)[0]
     dc_idx = int(coarse[np.abs(levels[coarse] - DC_LEVEL).argmin()])      # (A, B and C at 0)
     dc_a, dc_b = (int(v) for v in triples[dc_idx, :2])
     dc = levels[dc_idx]
-    idx = quantise(target, levels)
-    # the PCM bytes, padded to whole banks
+    target, idx = swing(u, dc, levels, dc_idx)
+    # the PCM bytes, padded to whole banks with silence (index 0: msx/music.asm vm_cal plays the
+    # last 81 bytes at power-on)
     pcm = bytes(idx)
     banks = -(-len(pcm) // BANK)
-    if banks * BANK - len(pcm) < 81:           # msx/music.asm vm_cal plays the last 81 bytes
+    if banks * BANK - len(pcm) < 81:
         banks += 1
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "voice.bin").write_bytes(pcm + bytes([idx[-1]]) * (banks * BANK - len(pcm)))
+    (out_dir / "voice.bin").write_bytes(pcm + bytes(banks * BANK - len(pcm)))
     ticks = math.ceil(len(pcm) / RATE * ms.TICK_HZ)
-    # the speech in the music: all four channels for those ticks around the held level (its
-    # first and last samples exactly that), at MIX_GAIN times its own peak's level
+    # the speech in the music: all four channels for those ticks around the held level, at
+    # MIX_GAIN times its own peak's level
     mix_amiga = lowpass(render_mix(ticks), A500_LP_HZ, ms.FS)
     xm = resample(mix_amiga)[:round(ticks * RATE / ms.TICK_HZ)]
     um = xm / np.percentile(np.abs(xm), 99.9) * 1.45 * MIX_GAIN
-    f = int(DC_FADE * RATE)
-    fade = np.ones(len(um))
-    fade[:f] = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, f))
-    fade[-f:] = fade[:f][::-1]
-    tmix = np.clip(dc + fade * um, 0, 3)
-    imix = quantise(tmix, levels)
-    imix[0] = imix[-1] = dc_idx
+    tmix, imix = swing(um, dc, levels, dc_idx)
     mbanks = -(-len(imix) // BANK)
     (out_dir / "voice_mix.bin").write_bytes(bytes(imix) + bytes([imix[-1]]) * (mbanks * BANK - len(imix)))
     inc = ["; generated by tools/msxvoice.py: RoboCop's speech (\"YOUR MOVE, CREEP\") as PSG PCM",

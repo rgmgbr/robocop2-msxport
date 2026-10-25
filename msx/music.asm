@@ -22,13 +22,13 @@
 ; state tools/mkrom.py computed for the tick after (mus_snap_...), the chips with them. (A music
 ; tick inside the PCM loop held the samples 0.4-1 ms every 20 ms, measured in openMSX: a buzz.)
 ; While the music plays, PSG voices A and B hold the PCM's middle level (a DC: silent), so the PCM
-; starts and ends without a step. With the PSG alone the speech plays when the player starts
-; (vm_alone: the music stopped, the user's choice for the PSG).
+; starts and ends without a step. Fire pressed on the title (front.asm front_title): the music
+; fades out, then the speech alone (vm_alone; with the PSG alone, its only one).
 ;
 ; The streams (one per voice: three melodic, the drums; read through the 8000h window from their
-; banks on, crossing banks): records of a duration in ticks (1-255; 0: the end, the voice goes on
-; at its stream's start) and a ctl byte, then the fields its bits give (a field not given keeps
-; the voice's value):
+; banks on, crossing banks): records of a duration in ticks (1-255; 0: the end, the tune's, which
+; mus_adv stops at before reading it) and a ctl byte, then the fields its bits give (a field not
+; given keeps the voice's value):
 ;   SCC:          bits 0-3 the volume; 4: the period N (a word); 5: the waveform (a byte, after
 ;                 the word);
 ;   PSG drums:    sndplay.asm's format: bits 0-3 the volume, 4 tone on, 5 noise on; 6: the tone
@@ -37,7 +37,8 @@
 ;                 byte is register 20h's low nibble); 5: the instrument (a byte: bits 4-7, bit 0
 ;                 sustain); 6: key on; 7: the key off and on again first (a new note);
 ;   OPLL rhythm:  bits 0-4 the keys struck (as register 0Eh); 5: the volumes for 36h-38h (3 bytes).
-; Every stream lasts the tune's loop (5184 ticks), so the voices stay in step.
+; Every stream lasts the tune (MUS_TICKS, 5184 ticks: tools/mkrom.py checks it), so the voices
+; stay in step; at its end the music stops (mus_adv).
 
 MV_PTR:     equ 0                   ; 2: the next record (8000h-9FFFh)
 MV_BANK:    equ 2                   ;   its bank
@@ -186,6 +187,9 @@ mst_t:  ld hl,0xFFFF                ; (the first tick makes it 0)
         ld (mus_tick),hl
         xor a
         ld (mus_div),a
+        ld (mus_end),a
+        ld (mus_fade),a
+        ld (mus_att),a
         inc a
         ld (mus_on),a
         ld (mus_dc),a
@@ -261,6 +265,8 @@ mus_quiet:
         xor a
         ld (mus_on),a
         ld (mus_speak),a
+        ld (mus_fade),a
+        ld (mus_att),a              ; (the effects share the chips' outputs: no fade on them)
         ld ix,mus_v
         ld b,4
         ld de,MV_SIZE
@@ -316,11 +322,15 @@ muq_p:  ld a,10
         ld e,a
         ld a,7
         call psg_w
-        jp dc_down
+        ld c,VOICE_DC_IDX
+        jr dc_fall
 
-; The PSG's voices up to (dc_up) or down from (dc_down) the level A and B hold under the music
-; (voice_tab's VOICE_DC_IDX: VOICE_DC_A, VOICE_DC_B, C silent) along voice_tab, in about 20 ms
-; (the interrupts off): a DC that never sounds, ramped so that it does not thump either.
+; The PSG's voices up to the level A and B hold under the music (voice_tab's VOICE_DC_IDX:
+; VOICE_DC_A, VOICE_DC_B, C silent) along voice_tab: in about 20 ms, four indexes a step, at the
+; music's start (dc_up: under its first notes); or an index a step, about 0.2 s, from silence
+; (dc_rise: vm_alone) and down from the index C to silence (dc_fall). The interrupts off: a DC
+; that never sounds, ramped so that it does not thump either (the steps of four indexes clicked
+; in the quiet after the music's fade: -28 dBFS above 400 Hz, measured in openMSX).
 dc_up:  ld c,0
 dcu_lp: call dc_set
         ld a,c
@@ -330,14 +340,29 @@ dcu_lp: call dc_set
         jr c,dcu_lp
         ld c,VOICE_DC_IDX
         jr dc_set
-dc_down:
-        ld c,VOICE_DC_IDX
-dcd_lp: call dc_set
-        ld a,c
-        sub 4
-        ld c,a
-        jr nc,dcd_lp
+        if DIAG = 0                 ; (test builds never show the title)
+dc_rise:
         ld c,0
+dcr_lp: call dc_slow
+        inc c
+        ld a,c
+        cp VOICE_DC_IDX + 1
+        jr c,dcr_lp
+        ret
+        endif
+dc_fall:
+        call dc_slow
+        ld a,c
+        or a
+        ret z
+        dec c
+        jr dc_fall
+; C = a voice_tab index: dc_set, then about 1 ms more.
+dc_slow:
+        call dc_set
+        ld b,0
+dcl_w:  djnz dcl_w
+        ret
 ; C = a voice_tab index: the three voices' volumes (C, B, A: the table's order), then about
 ; 0.6 ms.
 dc_set: ld b,voice_tab / 256
@@ -373,8 +398,12 @@ mus_frame:
         ld (hl),0
         ret
 
-; One tick (mus_frame): the voices' records, then the chips; mus_speak at VOICE_TICK. Uses AF,
-; BC, DE, HL, IX; the 8000h window shows act_8000's bank after.
+; One tick (mus_frame): the voices' records, then the chips; mus_speak at VOICE_TICK. At the
+; tune's end (MUS_TICKS: tools/mkrom.py, every stream's length) no loop: the music stops there
+; (its last ticks are silent) and mus_end starts the game (front.asm front_fire). While the
+; music fades out (mus_fade, sound.asm snd_fade), every FADE_TICKS ticks its attenuation one step
+; more (3 dB, mus_att: fd_scc, fd_add, fd_sub) with every voice's volume written again, and no
+; speech. Uses AF, BC, DE, HL, IX; the 8000h window shows act_8000's bank after.
 mus_adv:
         ld a,(mus_on)
         or a
@@ -382,7 +411,16 @@ mus_adv:
         ld hl,(mus_tick)
         inc hl
         ld (mus_tick),hl
-        ld ix,mus_v
+        ld de,MUS_TICKS
+        or a
+        sbc hl,de
+        jr nz,ma_go
+        xor a
+        ld (mus_on),a
+        inc a
+        ld (mus_end),a
+        ret
+ma_go:  ld ix,mus_v
         ld b,4
 ma_rd:  ld (ix+MV_NEW),0
         ld a,(ix+MV_LEFT)
@@ -396,13 +434,44 @@ ma_rd:  ld (ix+MV_NEW),0
 ma_n:   ld de,MV_SIZE
         add ix,de
         djnz ma_rd
-        ld hl,(mus_tick)            ; (after the records: voice 0 may have begun the loop again)
+        ld hl,(mus_tick)            ; (after the records)
         ld de,VOICE_TICK
         or a
         sbc hl,de
-        jr nz,ma_c
-        ld a,1
+        jr nz,ma_f
+        ld a,(mus_fade)
+        or a
+        jr nz,ma_f                  ; (fading out: no speech here, front_title plays it after)
+        inc a
         ld (mus_speak),a
+ma_f:
+        if DIAG = 0                 ; (test builds never show the title: no fade)
+        ld a,(mus_fade)
+        or a
+        jr z,ma_c
+        dec a
+        jr nz,maf_s
+        ld a,(mus_att)
+        cp 15
+        jr nc,maf_r                 ; (down: held until the music stops)
+        inc a
+        ld (mus_att),a
+        ld ix,mus_v                 ; every voice's volume again: MV_NEW bit 0 alone (no period,
+        ld b,4                      ; waveform or new note); the rhythm's straight to the OPLL
+maf_v:  ld a,(ix+MV_KIND)           ; (mo_rhy would strike its keys again)
+        cp MVK_RHY
+        jr z,maf_y
+        set 0,(ix+MV_NEW)
+        jr maf_n
+maf_y:  push bc
+        call mo_rv
+        pop bc
+maf_n:  ld de,MV_SIZE
+        add ix,de
+        djnz maf_v
+maf_r:  ld a,FADE_TICKS
+maf_s:  ld (mus_fade),a
+        endif
 ma_c:   ld a,(act_8000)             ; (the records' banks)
         ld (BANK_8000),a
         ld a,(mus_mode)
@@ -417,9 +486,9 @@ ma_c:   ld a,(act_8000)             ; (the records' banks)
         jp nz,mo_rhy
         jp mo_psg
 
-; IX = a voice of the music: its next record (at its stream's end the stream's start again:
-; voice 0 then begins the tune's tick count again), MV_NEW for what it gives. Its bank stays at
-; 8000h.
+; IX = a voice of the music: its next record (at its stream's end, never reached since mus_adv
+; stops the tune at MUS_TICKS, the stream's start again, voice 0 beginning the tick count again),
+; MV_NEW for what it gives. Its bank stays at 8000h.
 mv_rec: ld a,(ix+MV_BANK)
         ld (BANK_8000),a
         ld l,(ix+MV_PTR)
@@ -540,6 +609,7 @@ mos_p:  pop bc
         ld d,(ix+MV_PER+1)
         ld a,(ix+MV_CTL)
         and 15
+        call fd_scc
         jp scc_pv
 
 ; IX = a voice, DE = its SCC channel's waveform registers: waveform MV_AUX there, from the title
@@ -615,6 +685,7 @@ mof_f:  bit 4,c
         call opll_w
 mof_i:  ld a,(ix+MV_CTL)
         and 15
+        call fd_add
         ld e,a
         ld a,(ix+MV_AUX)
         and 0xF0
@@ -632,22 +703,13 @@ mof_k:  ld e,a
         add a,b
         jp opll_w
 
-; IX = the drums' voice on the OPLL's rhythm section: the volumes when given, all the keys off,
-; then the ones the record strikes.
+; IX = the drums' voice on the OPLL's rhythm section: the volumes when given (mo_rv), all the
+; keys off, then the ones the record strikes.
 mo_rhy: ld a,(ix+MV_NEW)
         or a
         ret z
         bit 5,a
-        jr z,mor_k
-        ld a,0x36
-        ld e,(ix+MV_RV)
-        call opll_w
-        ld a,0x37
-        ld e,(ix+MV_RV+1)
-        call opll_w
-        ld a,0x38
-        ld e,(ix+MV_RV+2)
-        call opll_w
+        call nz,mo_rv
 mor_k:  ld a,0x0E
         ld e,0x20
         call opll_w
@@ -658,6 +720,122 @@ mor_k:  ld a,0x0E
         ld e,a
         ld a,0x0E
         jp opll_w
+
+; IX = the drums' voice on the OPLL's rhythm section: its volumes (36h-38h: attenuations, 4 bits
+; each, 36h's low nibble alone) with the fade's (fd_add). Keeps B, IX.
+        if DIAG                     ; (test builds never show the title: no fade, the space the
+mo_rv:  ld a,0x36                   ;  VDP lab needs)
+        ld e,(ix+MV_RV)
+        call opll_w
+        ld a,0x37
+        ld e,(ix+MV_RV+1)
+        call opll_w
+        ld a,0x38
+        ld e,(ix+MV_RV+2)
+        jp opll_w
+fd_scc:
+fd_add:
+fd_sub: ret
+        else
+mo_rv:  ld a,(ix+MV_RV)
+        ld c,a
+        and 0x0F
+        call fd_add
+        ld e,a
+        ld a,c
+        and 0xF0
+        or e
+        ld e,a
+        ld a,0x36
+        call opll_w
+        ld a,(ix+MV_RV+1)
+        call fd_nib
+        ld a,0x37
+        call opll_w
+        ld a,(ix+MV_RV+2)
+        call fd_nib
+        ld a,0x38
+        jp opll_w
+; A = two attenuations (nibbles) -> E = both with the fade's. Uses C.
+fd_nib: ld c,a
+        and 0x0F
+        call fd_add
+        ld e,a
+        ld a,c
+        rrca
+        rrca
+        rrca
+        rrca
+        and 0x0F
+        call fd_add
+        rlca
+        rlca
+        rlca
+        rlca
+        or e
+        ld e,a
+        ret
+
+; The title music's fade (mus_att, 3 dB a step; 0 but in the fade, so the effects that share
+; these outputs keep their volumes). A = an SCC volume (linear amplitude, 0-15): fd_scc, from
+; fd_tab; an attenuation (the OPLL's, 0-15): fd_add, up to 15 (-45 dB; the keys go off when the
+; music stops, mus_quiet);
+; a PSG volume (about 3 dB a step): fd_sub, down to 0. Keep BC, DE, HL.
+fd_scc: push hl
+        ld l,a
+        ld a,(mus_att)
+        or a
+        jr z,fds_0
+        cp FD_ROWS
+        ld a,0
+        jr nc,fds_x                 ; (-30 dB and more: silent)
+        ld a,(mus_att)
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        or l                        ; (the attenuation x 16 + the volume)
+        push de
+        ld e,a
+        ld d,0
+        ld hl,fd_tab
+        add hl,de
+        ld a,(hl)
+        pop de
+fds_x:  pop hl
+        ret
+fds_0:  ld a,l
+        pop hl
+        ret
+fd_add: push hl
+        ld hl,mus_att
+        add a,(hl)
+        pop hl
+        cp 16
+        ret c
+        ld a,15
+        ret
+fd_sub: push hl
+        ld hl,mus_att
+        sub (hl)
+        pop hl
+        ret nc
+        xor a
+        ret
+; Per attenuation (a row: -3 dB x the row) the SCC volumes 0-15 scaled (the SCC's volume is a
+; linear amplitude): round(v x 10^(-3 a / 20)); from row FD_ROWS on all 0.
+FD_ROWS:    equ 10
+fd_tab: db 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+        db 0, 1, 1, 2, 3, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 11
+        db 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8
+        db 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5
+        db 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4
+        db 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3
+        db 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2
+        db 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+        db 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1
+        db 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1
+        endif
 
 ; IX = the drums' voice: on PSG voice C (mo_pv).
 mo_psg: ld a,2
@@ -689,6 +867,7 @@ mop_v:  ld a,e
         out (PSG_ADDR),a
         ld a,c
         and 15
+        call fd_sub
         out (PSG_DATA),a
         bit 5,c
         jr z,mop_m
@@ -1198,41 +1377,64 @@ fxr_pe: ld (ix+MV_LEFT),a           ; (the stream's end: volume 0)
 
 ; ----- RoboCop's speech -----
 
-; The speech alone (front_title with the PSG alone: on start, the music stopped; fire held from
-; the start is released first; its PCM ends at level 0).
+; The speech alone (front_title, fire pressed: after the music's fade; fire held from the start
+; is released first, pressed again it ends the speech). The SCC / OPLL music stops here with
+; PSG voices A and B left at the level they hold (mus_dc); else (the PSG player's music, stopped
+; by front_title) the PSG goes up to it first (dc_rise). voice.bin swings around that level,
+; from it and back to it (tools/msxvoice.py); from its last sample (fire may end it anywhere)
+; the PSG goes down to silence (dc_fall). Tone and noise off throughout (snd_mix too: vm_play
+; writes it back).
+        if DIAG                     ; (test builds never show the title: the space the VDP lab needs)
+vm_alone:
+        ret
+        else
 vm_alone:
         di
         xor a
         ld (vp_rel),a
+        ld (vm_keep),a
+        ld hl,mus_dc
+        ld a,(hl)
+        ld (hl),0                   ; (mus_quiet then leaves A and B as they are)
+        push af
+        ld a,(mus_mode)
+        or a
+        call nz,mus_quiet
+        ld a,(snd_mix)
+        or 0x3F
+        and 0xBF
+        ld (snd_mix),a
+        ld e,a
+        ld a,7
+        call psg_w
+        pop af
+        or a
+        call z,dc_rise
         ld a,VOICE_BANK
         ld de,VOICE_LEN
-        call vm_play
-        ld b,8
-vma_z:  ld a,b
-        out (PSG_ADDR),a
-        xor a
-        out (PSG_DATA),a
-        inc b
-        ld a,b
-        cp 11
-        jr nz,vma_z
+        call vm_play                ; (C = its last sample)
+        call dc_fall
         ei
         ret
+        endif
 
 ; The speech in the title music (front_fire at mus_speak: tick VOICE_TICK just played): the chips
 ; muted, voice_mix.bin (the Amiga's four channels for the speech's VOICE_TICKS ticks, from and to
 ; the level A and B hold), then the voices as tools/mkrom.py computed them for the tick after
 ; (mus_snap_...: every field given) and the chips with them. Fire pressed once released meanwhile
-; ends the speech (vm_hit: the title ends too).
+; does not end the speech (vm_keep: the user's choice, the voice plays out) but the title then
+; (vm_hit): the chips stay muted and front_title starts the game, no fade and no voice again.
 vm_music:
         di
         call mus_mute
+        ld a,1
+        ld (vm_keep),a
         ld a,VOICE_MIX_BANK
         ld de,VOICE_MIX_LEN
         call vm_play
         ld a,(vm_hit)
         or a
-        jr nz,vmm_x
+        jr nz,vmm_h
         ld a,(mus_mode)
         ld hl,mus_snap_scc
         rra
@@ -1256,6 +1458,9 @@ vmm_d:  ld bc,MV_SIZE
         ld (mus_div),a              ; the speech ends just after one, the tick after is due 17 ms on)
 vmm_x:  ei
         ret
+vmm_h:  xor a                       ; (the title ends: no tick more, the VBLANK the speech held
+        ld (mus_on),a               ;  off would run one at ei and sound a muted voice's next
+        jr vmm_x                    ;  record, an OPLL note at 50 Hz)
 
 ; The chips quiet for the speech (the interrupts off): the SCC's volumes 0; the OPLL's melodic
 ; volumes 15, the keys as they are (the notes go on under the speech, as on the Amiga); its
@@ -1303,8 +1508,9 @@ mum_r:  ld a,(mus_mode)
 ; first, then B's, then A's: until the third write the PSG mixes old and new volumes, and the
 ; table's B and A only grow with the level, C giving the fine steps (msxvoice.py smooth_table:
 ; the nearest combinations of the first table jumped, and those mixes were a hiss). The
-; interrupts off (a VBLANK would delay samples); every 256 samples fire is read (SPACE or
-; trigger A): pressed once released (vp_rel), it ends the speech, vm_hit = 1. Then the mixer as
+; interrupts off (a VBLANK would delay samples); every 256 samples fire is read (front.asm
+; ff_bits' keys: trigger A, SPACE, DEL, RETURN, BS, TAB, ESC): pressed once released (vp_rel),
+; vm_hit = 1, and it ends the speech unless vm_keep (vm_music: it plays out). Then the mixer as
 ; it was (the volumes as the last sample left them), the 8000h window act_8000's again. The
 ; delay a sample is vm_dly's djnz turns, worked out on this machine at the power-on (vm_cal).
 ; (vm_plh: HL = the first sample's address in the window.) Keeps IY.
@@ -1376,8 +1582,17 @@ vm_fire:
         or 8
         out (0xAA),a
         in a,(0xA9)
-        and 1
-        jr z,vmf_dn                 ; (SPACE down)
+        and 0x09
+        cp 0x09
+        jr nz,vmf_dn                ; (SPACE or DEL down)
+        in a,(0xAA)
+        and 0xF0
+        or 7
+        out (0xAA),a
+        in a,(0xA9)
+        and 0xAC
+        cp 0xAC
+        jr nz,vmf_dn                ; (RETURN, BS, TAB or ESC down)
         ld a,1
         ld (vp_rel),a
         jr vm_c
@@ -1385,6 +1600,9 @@ vmf_dn: ld a,(vp_rel)
         or a
         jr z,vm_c
         ld (vm_hit),a
+        ld a,(vm_keep)
+        or a
+        jr nz,vm_c                  ; (the speech in the music plays out)
 vm_end: ld a,7
         out (PSG_ADDR),a
         ld a,(snd_mix)
@@ -1396,7 +1614,7 @@ vm_end: ld a,7
 
 ; The speech's delay on this machine (vm_dly: vm_play's djnz turns a sample, 7 at 3.58 MHz on a
 ; plain Z80), at the power-on (rc2.asm): vm_play's own loop on VC_K samples of the padding past
-; the speech (voice.bin's last sample: voices at 0, 0 and 2, about silent), timed by the VDP's
+; the speech (voice.bin's padding: index 0, the voices silent), timed by the VDP's
 ; line matches as split_cal times the HUD split, with the interrupts off (their state kept) but
 ; in split.asm's waits, which take each match by its interrupt (IE1 on): a poll of S#1 missed
 ; matches on the user's MSX2 Hotbit, a real V9938 (the VDP lab, 2026-10-24; with IE1 off FH is
@@ -1546,6 +1764,8 @@ vc_run:
         ret nc
         ld a,VC_L0 + 180
         call sc_ack                 ; R#19 for 180 lines on
+        xor a
+        ld (vm_keep),a
         ld a,VOICE_MIX_BANK - 1     ; (voice.bin's last bank: it ends with the padding)
         ld hl,0xA000 - VC_K - 1
         ld de,VC_K

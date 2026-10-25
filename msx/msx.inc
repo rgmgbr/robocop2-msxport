@@ -97,14 +97,23 @@ cpu_chk:    equ 0xC2A8              ; 4: cpu_detect's measures on the R800, in t
 cpu_png:    equ 0xC2AC              ; R800PING builds: 2: round trips done, 2: page 0's sum before them,
                                     ;   2: after them (cold.asm cpu_ping)
 ; the title music and the game's sound effects on the SCC / OPLL (music.asm, sound.asm), in the
-; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2B2h-C2C1h free)
+; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2B6h-C2C1h free)
+mus_end:    equ 0xC2B2              ; 1: the title music played to its end (music.asm mus_adv, sndplay.asm
+                                    ;   sq_rec; front.asm front_fire: the game starts)
+mus_fade:   equ 0xC2B3              ; the title music fading out (sound.asm snd_fade): ticks to its next step
+                                    ;   (0: no fade)
+mus_att:    equ 0xC2B4              ; the fade's attenuation, 0-15 (3 dB a step; music.asm, sndplay.asm): 0
+                                    ;   but in the title's fade
+vm_keep:    equ 0xC2B5              ; 1: fire does not end vm_play's PCM (the speech in the music plays out)
+FADE_TICKS: equ 4                   ; music ticks (50 a second) a fade step lasts: 15 steps, 1.2 s
 mus_mode:   equ 0xC201              ; what plays it (MM_SCC, MM_FM, MM_RHY; 0: the PSG player)
 mus_on:     equ 0xC202              ; 1 while it plays (the VBLANK interrupt ticks it)
 mus_div:    equ 0xC203              ; VBLANKs into the sixth one (60 Hz: skipped)
 mus_speak:  equ 0xC204              ; 1: the tick of RoboCop's speech came (front_fire plays it)
-mus_tick:   equ 0xC205              ; 2: the tune's tick (0 at its loop's start)
+mus_tick:   equ 0xC205              ; 2: the tune's tick (0 at its start)
 vm_bank:    equ 0xC207              ; vm_play: the bank of the speech's samples at 8000h
-vm_hit:     equ 0xC208              ; vm_play: 1 when fire ended the speech
+vm_hit:     equ 0xC208              ; not 0: fire pressed once released in the speech (vm_play: it
+                                    ;   ended it, but vm_keep's; front.asm front_fire: its end)
 mus_dc:     equ 0xC209              ; 1: PSG voices A and B hold the speech PCM's middle level (music.asm)
 scc_pg2:    equ 0xC20A              ; the SCC's slot in A8h's bits 4-5 when another cartridge has it (0: ours; sound.asm)
 scc_a8:     equ 0xC20B              ; A8h while page 2 shows that SCC (sound.asm scc_open)
@@ -716,7 +725,7 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
-; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B2h-C2C1h, C2C5h-C2FFh,
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B6h-C2C1h, C2C5h-C2FFh,
 ; C68Ah-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
 ; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;

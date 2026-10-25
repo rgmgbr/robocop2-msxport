@@ -424,6 +424,22 @@ snd_music:
         ld hl,mus_start
         jr mus_call
 
+; The title music fades out (front.asm front_title, fire pressed; the port's: the original cuts
+; it): 3 dB more every FADE_TICKS ticks (music.asm mus_adv, sndplay.asm sq_frame: mus_att) down
+; to silence, 1.2 s, or until the tune's end; front_title then stops it (snd_stop, or vm_alone
+; for the SCC / OPLL). The interrupts on.
+snd_fade:
+        ld a,FADE_TICKS
+        ld (mus_fade),a
+sfd_lp: halt
+        ld a,(mus_end)
+        or a
+        ret nz
+        ld a,(mus_att)
+        cp 15
+        jr c,sfd_lp
+        ret
+
 ; Everything silent ($18004): the SCC / OPLL and the PSG at once, the PSG player's voices at the
 ; next VBLANK. (At power-on rc2.asm calls sq_init through snd_bank: the interrupts stay off.)
 snd_stop:

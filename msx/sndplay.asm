@@ -2,7 +2,8 @@
 ; play the streams of tools/msxsound.py (sound.inc): records of a duration in ticks (0: the end)
 ; and the voice's state for it (volume, tone and noise on, the tone period, the noise period),
 ; 50 ticks a second as the Amiga's player (at 60 Hz every sixth VBLANK is skipped). The title's
-; three streams loop. An effect plays on the voice of its Amiga channel (0-2: A-C; 3: an idle
+; three streams end together, the tune played out (mus_end: the game starts; the Amiga loops it
+; until fire). An effect plays on the voice of its Amiga channel (0-2: A-C; 3: an idle
 ; voice, C first, else the one nearest its record's end) and ends silent; while the Amiga's
 ; channel 3 plays an effect, a lower effect than the last one started is not played ($1822C).
 ; The main program only queues requests (sq_put): the VBLANK interrupt starts them (sq_frame),
@@ -18,7 +19,8 @@ SV_LEFT:    equ 2                   ; ticks left of the record in effect (0: idl
 SV_CTL:     equ 3                   ; volume (bits 0-3), tone on (bit 4), noise on (bit 5)
 SV_PER:     equ 4                   ; 2: the tone period
 SV_NOISE:   equ 6                   ; the noise period
-SV_LOOP:    equ 7                   ; 2: where the stream goes on after its end (0: silent)
+SV_LOOP:    equ 7                   ; 2: not 0: a title stream (its loop point, unused: its
+                                    ;   end is the tune's, mus_end); 0: an effect's
 SV_CH:      equ 9                   ; the Amiga channel of the effect played (FFh: none)
 SV_SIZE:    equ 10
 
@@ -115,6 +117,34 @@ sqf_n:  ld de,SV_SIZE
         ld a,b
         cp 3
         jr nz,sqf_v
+        if INPUT_SCRIPT = 0         ; (builds with a script never show the title: its room)
+        ld a,(mus_mode)             ; the title fading out (sound.asm snd_fade) on this player
+        or a                        ; (music.asm fades the SCC's and the OPLL's): every FADE_TICKS
+        jr nz,sqf_x                 ; ticks 3 dB more (mus_att, sq_out), the voices' volumes again
+        ld a,(mus_fade)
+        or a
+        jr z,sqf_x
+        dec a
+        jr nz,sqf_s
+        ld a,(mus_att)
+        cp 15
+        jr nc,sqf_r
+        inc a
+        ld (mus_att),a
+        ld ix,snd_v
+        ld b,0
+sqf_o:  ld a,(ix+SV_LEFT)
+        or a
+        call nz,sq_out
+        ld de,SV_SIZE
+        add ix,de
+        inc b
+        ld a,b
+        cp 3
+        jr nz,sqf_o
+sqf_r:  ld a,FADE_TICKS
+sqf_s:  ld (mus_fade),a
+        endif
 sqf_x:  ld a,(fx_act)               ; (effects playing on the SCC: they tick with these ticks)
         or a
         ret z
@@ -223,7 +253,8 @@ sqt_lp: call sq_vix
         jr nz,sqt_lp
         ret
 
-; Everything silent.
+; Everything silent, the title's fade over (its attenuation off once the voices are: the
+; effects share sq_out).
 sq_stop:
         ld b,0
 sqx_lp: call sq_vix
@@ -233,6 +264,9 @@ sqx_lp: call sq_vix
         ld a,b
         cp 3
         jr nz,sqx_lp
+        xor a
+        ld (mus_fade),a
+        ld (mus_att),a
         ret
 
 ; B = a voice -> IX = its record. Keeps BC, DE, HL.
@@ -248,21 +282,20 @@ sqv_lp: jr z,sqv_x
 sqv_x:  pop de
         ret
 
-; IX = voice B: its next record (at the end the loop, else silence), then its registers. Keeps
-; B, IX.
+; IX = voice B: its next record (at the end silence: the title's voices, SV_LOOP not 0, end
+; together, the tune played out: mus_end, front.asm front_fire starts the game), then its
+; registers. Keeps B, IX.
 sq_rec: ld l,(ix+SV_PTR)
         ld h,(ix+SV_PTR+1)
 sqr_rd: ld a,(hl)
         inc hl
         or a
         jr nz,sqr_go
-        ld e,(ix+SV_LOOP)
-        ld d,(ix+SV_LOOP+1)
-        ld a,d
-        or e
+        ld a,(ix+SV_LOOP)
+        or (ix+SV_LOOP+1)
         jr z,sq_off
-        ex de,hl
-        jr sqr_rd
+        ld (mus_end),a              ; (not 0)
+        jr sq_off
 sqr_go: ld (ix+SV_LEFT),a
         ld a,(hl)
         inc hl
@@ -304,10 +337,20 @@ sq_out: ld a,b
         ld a,b
         add a,8
         out (PSG_ADDR),a
-        ld a,(ix+SV_CTL)
+        if INPUT_SCRIPT = 0
+        ld a,(mus_att)              ; (the title's fade: 0 but then)
         ld c,a
+        ld a,(ix+SV_CTL)
         and 15
-        out (PSG_DATA),a
+        sub c
+        jr nc,sqo_v
+        xor a
+        else
+        ld a,(ix+SV_CTL)
+        and 15
+        endif
+sqo_v:  out (PSG_DATA),a
+        ld c,(ix+SV_CTL)
         bit 5,c
         jr z,sqo_m
         ld a,6

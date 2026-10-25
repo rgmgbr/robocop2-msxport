@@ -158,6 +158,39 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertIn("29h", mapcells.code_problems(full, [0x30, 0x29])[0])
         self.assertEqual(mapcells.code_problems(full, [0x30, 0x3F]), [])
 
+    def test_stream_ticks_reads_each_format(self):
+        # [duration, ctl, its fields...]: SCC / OPLL ctl bit 4 a word, bit 5 a byte; the PSG's
+        # bits 6 and 7; the rhythm's bit 5 three volume bytes; a duration of 0 ends the stream
+        scc = bytes([3, 0x3F, 1, 2, 9, 4, 0x0F, 0])
+        self.assertEqual(mkrom.stream_ticks(scc, 0, mkrom.MVK_SCC), 7)
+        psg = bytes([2, 0xCF, 1, 2, 9, 5, 0x30, 0])
+        self.assertEqual(mkrom.stream_ticks(psg, 0, mkrom.MVK_PSG), 7)
+        rhy = bytes([6, 0x31, 1, 2, 3, 1, 0x01, 0])
+        self.assertEqual(mkrom.stream_ticks(rhy, 0, mkrom.MVK_RHY), 7)
+
+    @unittest.skipUnless((ROOT / "build" / "msx" / "fm.bin").exists(), "music data not built (make msx)")
+    def test_title_streams_last_one_tune(self):
+        # music.asm mus_adv ends the title at MUS_TICKS: the eight streams must end together
+        scc = (ROOT / "build" / "msx" / "scc.bin").read_bytes()
+        fm = (ROOT / "build" / "msx" / "fm.bin").read_bytes()
+        kinds = ((scc, (mkrom.MVK_SCC,) * 3 + (mkrom.MVK_PSG,)), (fm, (mkrom.MVK_FM,) * 3 + (mkrom.MVK_RHY,)))
+        ticks = [mkrom.stream_ticks(b, mkrom.offsets(b, 4)[i], k) for b, ks in kinds for i, k in enumerate(ks)]
+        self.assertEqual(ticks, [5184] * 8)
+
+    @unittest.skipUnless((ROOT / "build" / "msx" / "voice.inc").exists(), "speech not built (make msx)")
+    def test_speech_starts_and_ends_on_the_held_level(self):
+        # tools/msxvoice.py: both PCMs from and back to VOICE_DC_IDX (music.asm vm_alone, vm_music:
+        # no step); voice.bin's padding silent and long enough for vm_cal's 81 bytes
+        import re
+        inc = (ROOT / "build" / "msx" / "voice.inc").read_text()
+        eq = {k: int(v) for k, v in re.findall(r"^(VOICE_\w+): equ (\d+)", inc, re.M)}
+        voice = (ROOT / "build" / "msx" / "voice.bin").read_bytes()
+        mix = (ROOT / "build" / "msx" / "voice_mix.bin").read_bytes()
+        n, m, dc = eq["VOICE_LEN"], eq["VOICE_MIX_LEN"], eq["VOICE_DC_IDX"]
+        self.assertEqual((voice[0], voice[n - 1], mix[0], mix[m - 1]), (dc, dc, dc, dc))
+        self.assertEqual(set(voice[n:]), {0})
+        self.assertGreaterEqual(len(voice) - n, 81)
+
     def test_msx_trace_rows_are_signed_where_the_amiga_is(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

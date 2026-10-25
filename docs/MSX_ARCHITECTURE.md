@@ -766,7 +766,9 @@ which as sprites were striped, cut or left out.
   GAME BY", "OCEAN SOFTWARE LTD"; 32 characters a line at most), and GAME OVER at twice the
   size in 16 lines below PIC9 (192 lines: the 6 banks PIC9 took). The user's choice,
   2026-10-22: the original has neither.
-- Flow: power-on → title (fire) → level 1; game over → PIC9 for 30 seconds or until fire is
+- Flow: power-on → title (fire: the music fades out, then RoboCop's speech; or the tune played
+  to its end, 103.68 s: the user's choices, 2026-10-25, the original loops it until fire and
+  cuts it) → level 1; game over → PIC9 for 30 seconds or until fire is
   pressed once released (the original: 128 frames; the user's choice) → title; the level's
   end → the level's statistics → title (the bonus stages and level 2 come later). Test builds
   with a script skip the title.
@@ -876,10 +878,22 @@ which as sprites were striped, cut or left out.
   11, "TOM" in its 8SVX header, on Amiga channel 2 and again on channel 0 nine ticks later; the
   user identified it): tones cannot say it, so every stream leaves its notes silent and the PSG
   plays it as PCM (`music.asm` `vm_play`; `tools/msxvoice.py`: the channels rendered as Paula
-  plays them, the A500's filter, 11,117 samples a second, 1.68 s in 3 banks). With the PSG alone
-  (the user's choice for the PSG) it plays when the player starts: the title music stops, then
-  `vm_alone` plays the speech (`VOICE_BANK`). With an SCC or an OPLL it keeps its place in the
-  music (the user's choice: "manter a originalidade"; below). Each sample byte indexes
+  plays them, the A500's filter, 11,117 samples a second, 1.68 s in 3 banks). With an SCC or an
+  OPLL it keeps its place in the music (the user's choice: "manter a originalidade"; below).
+  Fire pressed on the title (the user's choice, 2026-10-25): the music fades out (`snd_fade`,
+  below), then `vm_alone` plays the speech alone (`VOICE_BANK`), then the level; fire pressed
+  while the speech plays in the music lets it play out, then the level (no fade, no second
+  speech: `vm_keep`, `vm_hit`). With the PSG alone the music has no speech: this is its only
+  one. The speech alone swings around the level PSG voices A and B hold under the SCC / OPLL
+  music, as the speech in the music does (below; `msxvoice.py` `swing`: its first and last
+  samples that level, 1.5 ms of fade of the swing): `vm_alone` stops that music with A and B
+  left there, or (the PSG player's music) brings them up to it (`dc_rise`), and from the last
+  sample played (fire may end the speech anywhere) takes them down to silence (`dc_fall`), an
+  index of `voice_tab` a step, ~1.5 ms a step: the old speech ramped up from silence and back in
+  20 ms, and with the steps of four indexes of the music's own ramp (`dc_down`) those ramps
+  clicked in the quiet after the fade, −28 dBFS above 400 Hz (openMSX recording, 2026-10-25);
+  now below −84 dBFS, and against the Amiga 19.2 dB instead of 11.0 (the ramps bent the
+  speech's first and last 20 ms). Each sample byte indexes
   `voice_tab`: the three voices' volumes (tone and noise off, a voice outputs its level), whose
   summed level on the AY's curve comes nearest to the sample. The loop writes C's volume, then
   B's, then A's, 45 T-states apart, and until the third write the PSG mixes old and new volumes:
@@ -896,8 +910,11 @@ which as sprites were striped, cut or left out.
   rest above the Amiga is the PCM's own image near 11 kHz, which 322 T a sample put there
   instead of 6-10 kHz at 448). The loop took 322 T-states a sample (measured in openMSX:
   18,602 of 18,675 samples, the others the fire reads, 530, and the bank changes, 603) with the
-  interrupts off; every 256 samples it reads fire: pressed once released, it ends the speech.
-  Recorded in openMSX: the music up to the key, then the speech, then silence.
+  interrupts off; every 256 samples it reads fire (`ff_bits`' keys: trigger A, SPACE, DEL,
+  RETURN, BS, TAB, ESC; a key down as the speech in the music ends, released before, counts as
+  pressed in it: its last 243 samples are not read): pressed once released, it ends the speech
+  alone (the speech in the music plays out). Recorded in openMSX: the music up to the key, its
+  fade, then the speech, then silence.
 - **The speech's rate on any machine** (2026-10-24: on the user's SX-2 and a real MSX2 Hotbit
   with the MSX Pico+, its turbo off, the speech played a tone low: the loop counts T-states, and
   the cartridge's wait states on its code and data reads lengthened it, about 12 %). The loop's
@@ -907,7 +924,7 @@ which as sprites were striped, cut or left out.
   T-states with 46 ROM reads (a `nop` makes 7 turns exactly 322 at 3.58 MHz); one turn leaves
   room for ~1.75 wait states a read. `vm_cal` works the delay out at the power-on (`rc2.asm`,
   after `mus_init`; the interrupts off, their state kept): `vm_play`'s own loop on 80 samples of
-  `voice.bin`'s padding (its last sample, PSG volumes 0, 0 and 2: about silent), timed by the
+  `voice.bin`'s padding (index 0: the voices silent), timed by the
   VDP's line matches, each taken by its interrupt with `split.asm`'s waits in RAM (`sc_sync`,
   `sc_ack`, `sc_cnt`: the HUD split's below): P, the waits' 14 T-state turns from the match of
   line 2 to that of line 34; from the match of line 2, the samples with `vm_dly` 1, then 7, and
@@ -933,11 +950,12 @@ which as sprites were striped, cut or left out.
   `tools/rc2music.py` models it exactly; `tools/msxsound.py` turns its output (per Amiga channel
   and tick: period, volume, instrument, key-ons) and the samples into PSG streams
   (`build/msx/sound.inc`, 7543 bytes with `--budget 7680`): the title's music (TITM tune 1,
-  three voices that loop together after 5184 ticks) and the 42 in-game effects (MU1, one voice
-  each). Its docstring gives the mapping and why: each instrument's pitch measured from its
-  sample (the 8SVX headers' samples per cycle are a default 32), the tunings snapped to one
-  grid (square waves expose detuning), the loudness from the RMS of the sample bytes played in
-  each tick (one-shot fades come out by themselves), the Amiga's drum channel riding the three
+  three voices that end together after 5184 ticks: the game starts) and the 42 in-game effects
+  (MU1, one voice each). Its docstring gives the mapping and why: each instrument's pitch
+  measured from its sample (the 8SVX headers' samples per cycle are a default 32), the tunings
+  snapped to one grid (square waves expose detuning), the loudness from the RMS of the sample
+  bytes played in each tick (one-shot fades come out by themselves), the Amiga's drum channel
+  riding the three
   voices (a kick lifts the bass note's level, snares and toms are tone + noise for 3 ticks on
   the quietest voice), effects as tone, tone + noise or noise per tick from the bytes played;
   a trellis trades level detail for bytes to fit the budget. It writes preview WAVs of the
@@ -955,11 +973,12 @@ which as sprites were striped, cut or left out.
   cycles, and the HUD's split came 10 lines late once in a 40 s start check (2026-10-22). A
   stop also silences the PSG at once (the VBLANK interrupt is off while a level starts). Three
   voices of 10 bytes (`snd_v`): a stream is records of a duration
-  in ticks (0: the end: the title's voices go on at their loop point, an effect's voice goes
-  silent) and the voice's state (volume, tone and noise on, the 12-bit tone period, the noise
-  period: only what changes). 50 ticks a second as the Amiga's player (at 60 Hz every sixth
-  VBLANK is skipped). An effect plays on the voice of its Amiga channel (0-2: A-C; 3: an idle
-  voice, C first since A plays the shots, else the one nearest its record's end); while the
+  in ticks (0: the end: an effect's voice goes silent; the title's voices too, all in the same
+  tick, the tune played out: `mus_end`, the game starts) and the voice's state (volume, tone and
+  noise on, the 12-bit tone period, the noise period: only what changes). 50 ticks a second as
+  the Amiga's player (at 60 Hz every sixth VBLANK is skipped). An effect plays on the voice of
+  its Amiga channel (0-2: A-C; 3: an idle voice, C first since A plays the shots, else the one
+  nearest its record's end); while the
   Amiga's channel 3 plays an effect,
   an effect numbered lower than the last one started is not played (`$1822C`). The mixer
   (R7) keeps port A as input and port B as output. Checked headless: the PSG's registers read
@@ -999,10 +1018,22 @@ which as sprites were striped, cut or left out.
   start again) and a ctl byte giving the volume and which fields follow (the SCC: the period N
   and the waveform; the OPLL: the F-number and block, the instrument and sustain, key on, a new
   note: the key off and on again; the rhythm: the keys struck and the three volume registers).
-  Every stream lasts the tune's loop (5184 ticks), so the voices stay in step. 50 ticks a
-  second from the VBLANK interrupt (`snd_frame` → `mus_frame`; at 60 Hz every sixth VBLANK is
-  skipped); `snd_music` starts it at once (`mus_start`: the custom instrument, the rhythm's
-  pitches, the SCC's channels on), `snd_stop` silences it at once (`mus_stop`).
+  Every stream lasts the tune (5184 ticks, `MUS_TICKS`: `tools/mkrom.py` checks that the eight
+  streams, the SCC's three and its PSG drums, the OPLL's three and its rhythm, are as long), so
+  the voices stay in step;
+  at its end the music stops (its last 1.1 s are silent) and `mus_end` starts the game (no
+  loop: the user's choice, 2026-10-25). 50 ticks a second from the VBLANK interrupt
+  (`snd_frame` → `mus_frame`; at 60 Hz every sixth VBLANK is skipped); `snd_music` starts it at
+  once (`mus_start`: the custom instrument, the rhythm's pitches, the SCC's channels on),
+  `snd_stop` silences it at once (`mus_stop`).
+- **The fade** (fire on the title: `sound.asm` `snd_fade`, the port's; the original cuts the
+  music): every `FADE_TICKS` = 4 ticks the attenuation `mus_att` one step more, 3 dB, 15 steps
+  (1.2 s; ended early by the tune's end), every voice's volume written again at each step: the
+  SCC's linear volumes through `fd_tab` (round(v × 10^(−3a/20)), silent from −30 dB), the
+  OPLL's attenuations + `mus_att` (up to 15), the rhythm's three registers' nibbles likewise,
+  the PSG drums' and the PSG player's volumes − `mus_att` (down to 0). The in-game effects
+  share these outputs: `mus_att` is 0 but in the fade (`mst_t`, `mus_quiet`, `sq_stop`). No
+  speech in the music while it fades (`vm_alone` plays it after).
 - **The speech in the music** (tick `VOICE_TICK`, 2880): the tick raises `mus_speak`; `front.asm`
   `front_fire` then calls `vm_music`, which mutes the chips (the SCC's volumes 0, the OPLL's
   melodic volumes 15 with the keys as they are, its rhythm off) and plays `voice_mix.bin` (3
@@ -1016,11 +1047,13 @@ which as sprites were striped, cut or left out.
   dropped and the 60 Hz divider reset, so the next tick comes at its time (+2 ms at 60 Hz, +0
   at 50 Hz, measured). While the music plays, PSG voices A and B hold the PCM's middle level
   (`VOICE_DC_A`, `VOICE_DC_B`: 14 and 13, the table's coarse level nearest 1.5 with C at 0; a
-  DC, silent; ramped along `voice_tab` over 20 ms at the music's start and end; read in openMSX:
-  R8 14, R9 13, their tone and noise off, C playing the drums),
+  DC, silent; ramped along `voice_tab` over 20 ms at the music's start, `dc_up`, under its first
+  notes, and an index a step over ~0.19 s at its end, `dc_fall`; read in openMSX: R8 14, R9 13,
+  their tone and noise off, C playing the drums),
   so the PCM starts and ends on it without a fade. (First tried: ticking the music from inside
   the PCM loop every 160 samples; each tick held the samples for 0.4-1 ms, measured, a buzz
-  louder than the quantisation. Fire pressed once released during the speech ends the title.)
+  louder than the quantisation. Fire pressed once released during the speech lets it play out,
+  `vm_keep`, then the game starts, `vm_hit`.)
 - **Checked headless in openMSX** (2026-10-22, scratchpad `sess_sccregs.tcl`, `sess_fmregs.tcl`,
   `sess_fmwrites.tcl`, `scccheck.py`, `fmcheck.py`): at every tick of a whole loop and past it
   (5,564 ticks) the SCC's registers (period, volume, waveform of each channel, the enable) and

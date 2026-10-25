@@ -11,20 +11,30 @@ PIC_TOP:    equ 106                 ; (the picture's centre line on the 212-line
 
 ; ----- the title -----
 
-; TPIC until fire is pressed (after it was released); then the music stops. With the PSG alone
-; RoboCop's speech plays then (the title's end on the Amiga, on start here: the user's choice for
-; the PSG); on the SCC / OPLL it has its place in the music (front_fire).
+; TPIC while the music plays (the user's choices, 2026-10-25; the Amiga loops it until fire):
+; - played to its end, the game starts (no loop);
+; - fire pressed (after it was released): the music fades out (snd_fade), then RoboCop's speech
+;   (YOUR MOVE, CREEP: tools/msxvoice.py's PCM on the PSG), then the game;
+; - fire pressed while the speech plays in the music (the SCC / OPLL: its place at tick
+;   VOICE_TICK, front_fire): the speech plays out, then the game.
 front_title:
         ld a,PIC_TITLE_BANK
         ld b,PIC_TITLE_LINES
         call pic_show
+        xor a
+        ld (mus_end),a
+        ld (vm_hit),a               ; (the last title's speech may have left it set)
         call snd_music              ; (TITM tune 1: $10884)
         call front_fire
-        call snd_stop
+        jp z,snd_stop               ; (the tune's end)
+        ld a,(vm_hit)
+        or a
+        jp nz,snd_stop              ; (the speech in the music played out)
+        call snd_fade
         ld a,(mus_mode)
         or a
-        ret nz
-        ld hl,vm_alone              ; (music.asm: tools/msxvoice.py's PCM on the PSG)
+        call z,snd_stop             ; (the PSG player's music; vm_alone stops the SCC's / OPLL's)
+        ld hl,vm_alone              ; (music.asm)
         jp mus_call
 
 ; ----- the game over -----
@@ -416,13 +426,17 @@ ps_hmmv:
         db 0, 0, 0xC0               ; colour 0, ARG, HMMV
 
 ; Fire (joystick trigger A or a fire key: player.asm key_bits) pressed, after it was released.
-; Until fire is pressed once released (vp_rel). Meanwhile, when the music on the SCC / OPLL
-; reaches RoboCop's speech (mus_speak), the speech plays with the music going on (music.asm
-; vm_music: the interrupts off; fire pressed meanwhile ends both).
+; Until fire is pressed once released (vp_rel: NZ) or the music has played to its end
+; (mus_end: Z). Meanwhile, when the music on the SCC / OPLL reaches RoboCop's speech
+; (mus_speak), the speech plays with the music going on (music.asm vm_music: the interrupts
+; off; fire pressed meanwhile: vm_hit, NZ once the speech has played out).
 front_fire:
         xor a
         ld (vp_rel),a
 ff_lp:  halt
+        ld a,(mus_end)
+        or a
+        jr nz,ff_end
         ld a,(mus_speak)
         or a
         jr z,ff_k
@@ -431,6 +445,13 @@ ff_lp:  halt
         ld a,(vm_hit)
         or a
         ret nz
+        ld a,(vp_rel)               ; fire down as the speech ends, released before it: pressed in
+        or a                        ; its last 256 samples, which vm_play does not read: as in the
+        jr z,ff_k                   ; speech
+        call ff_bits
+        jr z,ff_k
+        ld (vm_hit),a
+        ret
 ff_k:   call ff_bits
         ld hl,vp_rel
         jr z,ff_up
@@ -440,6 +461,8 @@ ff_k:   call ff_bits
         ret
 ff_up:  ld (hl),1
         jr ff_lp
+ff_end: xor a
+        ret
 
 ff_bits:
         call stick_bits
