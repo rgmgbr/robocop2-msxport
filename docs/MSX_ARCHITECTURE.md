@@ -812,6 +812,9 @@ which as sprites were striped, cut or left out.
   - Its turbo setting (the user, 2026-10-24): on the SX-2 off, the HUD's top line flickers in
     some frames (0.1.0 too); normal, the HUD is steady; risky, the game is unstable (later: a
     line flickers). On the user's MSX2 Hotbit the HUD was wrong in all three (the split, above).
+    With 0.1.2-test6 (the split by interrupt) the HUD is right everywhere, the Hotbit never
+    crashes, and the SX-2 crashes at random points with turbo normal and risky only: on the SX-2
+    use turbo disabled.
   - What the setting does (firmware v2.12 decompiled with REA/Ghidra the same day; image A at
     `10008000h`, its bus code copied to SRAM at `20077D10h`; the setting is the byte at
     `2007F0CCh`, 0 disabled, 1 normal, 2 risky). From the code (the pins' roles deduced from
@@ -1230,7 +1233,13 @@ The 14 machines of the MCP's openMSX home (all but the CocoaMSX Gradiente, whose
 runs) through the keyboard plan for 40 s from the title: no freeze, RoboCop never off the
 published camera, guard vbl/cpu/pal/reg 0 (its timing of `isr_split` itself, `rc2_rg_isr`, keyed
 on the routine's new first bytes: it had keyed on the old `ld a,(split_r19)` and was off until
-the review found it; it fires on every split), the changed-cell tears 1-6.
+the review found it; it fires on every split), the changed-cell tears 1-6. On the user's
+hardware (0.1.2-test6, that night): the Hotbit showed the HUD right and never crashed in all
+three Pico+ modes; the SX-2 showed the HUD right in all three, but with the Pico+'s turbo normal
+and risky the game crashed at random points (turbo disabled: never). The user finds that SX-2
+with the Pico+ quite unstable; the fast modes' known limit (a late answer read wrong: the Pico+
+bullet above) is the likeliest cause, risky was already unstable with 0.1.1, and nothing in the
+change reads the cartridge differently. On the SX-2 with the Pico+: turbo disabled.
 
 Measured through the MSX-AI MCP on the product ROM, 1500 frames each (VDP line:cycle of the
 writes, line 0 at the frame's first display line, cycle 0 at the line's sync; a write takes
