@@ -13,7 +13,7 @@ words: tile offset & ~$7F, attributes in the low 7 bits) -> SCREEN 5 format:
   <out>.atr2  attributes of the 2 rows of words after the map (graphics data the spawn-marker
               scan can read)
   <out>.atrp  the map's attributes packed: 4-bit codes, 80 bytes per row (even column in the
-              high nibble), then the 16 attribute values of the codes
+              high nibble), then the 16 attribute values of the codes (FFh: free)
   <out>.vram  128 KiB: the tile sheet in pages 2-3 (tile i: page 2+i//256, x=(i%16)*16,
               y=((i//16)%16)*16), pages 0-1 empty
   <out>.png   map preview already in the 9-bit palette
@@ -104,7 +104,9 @@ def cmd_level(a) -> int:
                                                  for row in words for w in row))
     out.with_suffix(".atr").write_bytes(bytes(w & 0x7F for row in words for w in row))
     # the same packed for page-0 RAM (msx/tiles.asm atr_rc): 4-bit codes, two cells per byte
-    # (even column in the high nibble), and the 16-entry table of the attribute values
+    # (even column in the high nibble), and the 16-entry table of the attribute values, FFh for
+    # a free code (msx/tiles.asm atr_put gives one to a value the game writes that the map has
+    # not: tools/mapcells.py checks that they fit)
     vals = sorted({w & 0x7F for row in words for w in row})
     if len(vals) > 16:
         raise SystemExit(f"{len(vals)} distinct map attributes: more than the 16 of the packed map")
@@ -113,7 +115,7 @@ def cmd_level(a) -> int:
     for row in words:
         for c in range(0, COLS, 2):
             packed.append(code[row[c] & 0x7F] << 4 | code[row[c + 1] & 0x7F])
-    out.with_suffix(".atrp").write_bytes(bytes(packed) + bytes(vals) + bytes(16 - len(vals)))
+    out.with_suffix(".atrp").write_bytes(bytes(packed) + bytes(vals) + b"\xff" * (16 - len(vals)))
     # the attribute bits of the two rows after the map (the level's graphics follow it in
     # memory: the spawn-marker scan of update_objects reaches row 51 with the camera at its
     # lowest, and the bits it finds there move its table on)

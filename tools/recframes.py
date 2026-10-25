@@ -4,8 +4,9 @@
 Each record (jJJJ_fFFFF.bin) holds the state the VDP drew the play area with (taken at the HUD
 split): R#0-R#63, the palette, the page shown (with the V9958 engine's SP2: its pair of pages,
 the 512 px ring), VRAM 1D800h-1FFFFh (sprite tables, HUD), RAM
-C000h-CFFFh (the register list applied and its camera: msx/isr.asm list_tail) and page-0 RAM
-0A00h-0FFFh (the map patches: msx/tiles.asm get_tile). The play area is rendered with
+C000h-CFFFh (the register list applied and its camera: msx/isr.asm list_tail), page-0 RAM
+0A00h-0FFFh and RAM F500h-F8FFh (the map patches: msx/tiles.asm get_tile, the rows' first
+patches and the even rows' pool, then the odd rows' pool). The play area is rendered with
 tools/msxscreen.py's model of openMSX's renderer and every pixel no sprite covers is compared
 with the map at the recorded camera (patched cells as the game changed them): a bad page, a
 row of the ring not drawn yet, a wrong scroll or palette shows as background pixels that
@@ -41,8 +42,11 @@ COLS = 160                                      # map columns
 RAM_BASE = 0xC000
 APP_SEQ = 0xC006
 LISTS = (0xC080, 0xC0A0)                        # msx/msx.inc vbl_list_a, vbl_list_b
-MP_ROW, MP_COL, MP_TILEL, MP_TILEH, MP_NEXT = 0x0A00, 0x0B00, 0x0C00, 0x0D00, 0x0F00
-REC = 64 + 32 + 0x8000 + 0x2800 + 0x1000 + 0x600
+MP_POOL = (0x0100, 0x0600)                      # the even and the odd rows' pool in the record's
+                                                # patches (msx/msx.inc MP_A 0B00h after MP_ROW
+                                                # 0A00h, MP_B F500h after 0A00h-0FFFh)
+MPF_COL, MPF_NEXT, MPF_TILEL, MPF_TILEH = 0x000, 0x100, 0x200, 0x300
+REC = 64 + 32 + 0x8000 + 0x2800 + 0x1000 + 0x600 + 0x400
 
 
 def camera(ram: bytes) -> tuple[int, int]:
@@ -57,11 +61,12 @@ def camera(ram: bytes) -> tuple[int, int]:
 
 
 def tile_at(mp: bytes, patches: bytes, row: int, col: int) -> int:
-    p = patches[MP_ROW - MP_ROW + row]
+    p = patches[row]                            # (MP_ROW)
+    pool = MP_POOL[row & 1]
     while p != 0xFF:
-        if patches[MP_COL - MP_ROW + p] == col:
-            return patches[MP_TILEL - MP_ROW + p] | patches[MP_TILEH - MP_ROW + p] << 8
-        p = patches[MP_NEXT - MP_ROW + p]
+        if patches[pool + MPF_COL + p] == col:
+            return patches[pool + MPF_TILEL + p] | patches[pool + MPF_TILEH + p] << 8
+        p = patches[pool + MPF_NEXT + p]
     return mp[2 * (row * COLS + col)] | mp[2 * (row * COLS + col) + 1] << 8
 
 
@@ -155,7 +160,7 @@ def check(path: Path, mp: bytes, til: bytes, prev: bytes | None = None) -> tuple
     pos += 0x2800
     ram = d[pos:pos + 0x1000]
     pos += 0x1000
-    patches = d[pos:pos + 0x600]
+    patches = d[pos:pos + 0xA00]
     cam_x, cam_y = camera(ram)
     _, _, rows = render(bytes(vram), regs, pal)
     rgb = [((pal[2 * i] >> 4) * 255 // 7, (pal[2 * i + 1] & 7) * 255 // 7, (pal[2 * i] & 7) * 255 // 7)

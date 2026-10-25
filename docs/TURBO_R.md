@@ -57,9 +57,15 @@ ahead.
 | H20 | openMSX's limits: cartridge timing errs fast; refresh deterministic; IRQ/HALT/OTIR costs marked TODO; OPLL overrun not emulated; the S1990 rule a flat 62 cycles shared by all four ports | several sources |
 
 Facts from this repository:
-- P1. No BIOS call after `ram_page0`; `so_x`/`so_n` overwrite F380h-F43Bh at each level start,
-  so CALSLT, RDSLT and the BIOS ISR cannot run any more. FFFDh-FFFEh and FCB1h are outside the
-  game's map; C2A6h-C2C1h are free.
+- P1. No BIOS call after `ram_page0` (before this port: as built, a turbo R's `cpu_set` calls
+  `CHGCPU` and `GETCPU` at each game start and on the way back to the title, page 0 switched
+  to the main ROM around them); `so_x`/`so_n` overwrite F380h-F43Bh at each level start, so
+  CALSLT, RDSLT and the BIOS ISR cannot run any more. FFFDh-FFFEh and FCB1h are outside the
+  game's map; C2A6h-C2C1h were free (as built: `cpu_tr`, `cpu_cur`, `cpu_chk`, `cpu_png` take
+  C2A6h-C2B1h). Since 2026-10-25 the map patches' odd rows' pool takes F500h-F9FFh: on the
+  FS-A1GT `CHGCPU` (046Ah-04D1h) writes only the caller's stack, FFFDh-FFFEh and FCB1h,
+  `GETCPU` no memory, and an openMSX write watchpoint saw nothing else write F43Ch-FFFEh from
+  the game's start through a 1,100 s session.
 - P2. Page 0 is slot 3's RAM (mapper segment 3), page 3 segment 0; FCh-FFh are never written.
 - P3. The only OPLL writes during the game are `mus_quiet`'s (through `snd_stop` from `pl_init`,
   `front_over`, `front_stats`).

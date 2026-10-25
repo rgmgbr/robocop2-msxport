@@ -2,10 +2,11 @@
 ; cache (VRAM pages 2-3).
 ;
 ; Map patches: the Amiga game writes map words while it runs (map objects copy their look into
-; the map every frame, docs/AMIGA_ANALYSIS.md). map_write keeps such cells in page-0 RAM: per
-; row a chain of patches (column, tile, attributes); get_tile and atr_rc read them before the
-; ROM map. A patch that changes a cell's tile queues the cell for the scroll engines, which
-; redraw it where it is shown (rd_q).
+; the map every frame, docs/AMIGA_ANALYSIS.md). map_write puts a word's attributes into the
+; packed map in page-0 RAM (atr_put; atr_rc reads only that) and keeps a tile that is not the
+; ROM map's as a patch: per row a chain of patches (column, tile) in the row's pool (MP_A for the
+; even rows, MP_B for the odd ones); get_tile reads them before the ROM map. A patch that changes
+; a cell's tile queues the cell for the scroll engines, which redraw it where it is shown (rd_q).
 ;
 ; Tile cache: the level's tile sheet (up to 512 tiles, most used first, tools/msxconv.py) is
 ; in the ROM; the TC_SLOTS VRAM slots start with tiles 0..TC_SLOTS-1 (vdp_setup) and a tile that is not in
@@ -24,21 +25,28 @@ get_tile:
         ld l,a
         ld h,MP_ROW/256
         ld a,(hl)                   ; the row's first patch (FFh: none)
-gt_pl:  cp 0xFF
+        cp 0xFF
         jr z,gt_rom
-        ld l,a
-        ld h,MP_COL/256
-        ld a,(hl)
+        ld h,MP_A/256               ; (its pool: MP_A for an even row, MP_B for an odd one)
+        bit 0,d
+        jr z,gt_pl
+        ld h,MP_B/256
+gt_pl:  ld l,a
+        ld a,(hl)                   ; its column
         cp e
         jr z,gt_hit
-        ld h,MP_NEXT/256
+        inc h
+        ld a,(hl)                   ; the row's next patch
+        dec h
+        cp 0xFF
+        jr nz,gt_pl
+        jr gt_rom
+gt_hit: inc h
+        inc h
         ld a,(hl)
-        jr gt_pl
-gt_hit: ld h,MP_TILEL/256
-        ld a,(hl)
-        ld h,MP_TILEH/256
+        inc h
         ld h,(hl)
-        ld l,a
+        ld l,a                      ; its tile
         pop de
         ret
 gt_rom: ld a,d
@@ -86,13 +94,7 @@ atr_rc: ld a,e
         cp MAP_ROWS
         jr nc,ar_after0
         push hl
-        ld l,a
-        ld h,MP_ROW/256
-        ld a,(hl)
-        inc a
-        jr nz,ar_pl0                ; (the row has patches)
-ar_rom: ld a,d                      ; the packed map in page-0 RAM (atr_load): 4-bit codes
-        add a,a
+        add a,a                     ; the packed map in page-0 RAM (atr_load, atr_put): 4-bit codes
         add a,atr_rows & 0xFF
         ld l,a
         ld a,0
@@ -122,22 +124,7 @@ ar_odd: and 15
         ld a,(hl)                   ; its attributes
         pop hl
         ret
-ar_pl0: dec a
-ar_pl:  ld l,a
-        ld h,MP_COL/256
-        ld a,(hl)
-        cp e
-        jr z,ar_hit
-        ld h,MP_NEXT/256
-        ld a,(hl)
-        cp 0xFF
-        jr nz,ar_pl
-        jr ar_rom
-ar_hit: ld h,MP_ATR/256
-        ld a,(hl)
-        pop hl
-        ret
-ar_wrap:                            ; 160: the next row's first cell; -1 (FFh): the previous
+ar_wrap:                           ; 160: the next row's first cell; -1 (FFh): the previous
         push de                     ; row's last one
         inc d
         ld e,0
@@ -184,8 +171,10 @@ ar_none:
         ret
 
 ; D = row, E = column, HL = an Amiga map word (DATAL tile offset | attributes): the cell becomes
-; that (tile through the level's offset table, attributes in the low 7 bits). A changed tile is
-; queued for redrawing. Keeps DE.
+; that: its attributes (the low 7 bits) in the packed map (atr_put; a patched cell keeps those it
+; was given last, MPF_ATR, so the beams and belts that write their cells every tick do not read
+; the packed map), its tile (through the level's offset table) a patch of the row's pool unless
+; it is the ROM map's. A changed tile is queued for redrawing. Keeps DE.
 map_write:
         push de
         ld a,l
@@ -216,24 +205,38 @@ map_write:
         push de
         ld l,d
         ld h,MP_ROW/256
-        ld a,(hl)
-mw_pl:  cp 0xFF
+        ld a,(hl)                   ; the row's first patch
+        cp 0xFF
         jr z,mw_new
-        ld l,a
-        ld h,MP_COL/256
-        ld a,(hl)
+        ld h,MP_A/256               ; (its pool)
+        bit 0,d
+        jr z,mw_pl
+        ld h,MP_B/256
+mw_pl:  ld l,a
+        ld a,(hl)                   ; its column
         cp e
         jr z,mw_upd
-        ld h,MP_NEXT/256
-        ld a,(hl)
-        jr mw_pl
-mw_upd: ld h,MP_ATR/256             ; the cell has a patch: updated
+        inc h
+        ld a,(hl)                   ; the row's next patch
+        dec h
+        cp 0xFF
+        jr nz,mw_pl
+        jr mw_new
+mw_upd: push hl                     ; the cell has a patch: its attributes when they are not those
+        ld a,h                      ; written last through it,
+        add a,MPF_ATR/256
+        ld h,a
         ld a,(mw_atr)
+        cp (hl)
+        jr z,mw_ua
         ld (hl),a
-        ld h,MP_TILEL/256
+        call atr_put
+mw_ua:  pop hl
+        inc h                       ; its tile
+        inc h
         ld a,(hl)
         ld (hl),c
-        ld h,MP_TILEH/256
+        inc h
         cp c
         ld a,(hl)
         ld (hl),b
@@ -244,55 +247,74 @@ mw_redraw:
         pop de
         call fb_invf
         jp rd_queue
-mw_new: push bc                     ; no patch: nothing to do when the ROM map has the same
-        ld a,d                      ; tile and attributes
-        call get_tile
+mw_new: ld a,(mw_atr)               ; no patch: its attributes,
+        call atr_put
+        push bc                     ; nothing more when the ROM map has the same tile
+        ld a,d
+        call get_tile               ; (the ROM's)
         pop bc
         or a
         sbc hl,bc
-        jr nz,mw_new1
-        call atr_rc
-        ld hl,mw_atr
-        cp (hl)
         jr z,mw_done
-mw_new1:
-        ld a,(mp_free)              ; a new patch, first in the row's chain
+        ld h,(MP_A + MPF_NEXT)/256  ; a new patch from the row's pool, first in the row's chain
+        bit 0,d
+        jr z,mw_p
+        ld h,(MP_B + MPF_NEXT)/256
+mw_p:   ld l,0xFF
+        ld a,(hl)                   ; the pool's first free patch (its entry FFh)
         cp 0xFF
         jr z,mw_full
-        ld (mw_idx),a
         ld l,a
-        ld h,MP_NEXT/256
-        ld a,(hl)
-        ld (mp_free),a
-        ld l,d
-        ld h,MP_ROW/256
-        ld a,(hl)                   ; the row's old first patch
-        push af
-        ld a,(mw_idx)
-        ld (hl),a
-        ld l,a
-        ld h,MP_NEXT/256
-        pop af
-        ld (hl),a
-        ld h,MP_COL/256
-        ld (hl),e
-        ld h,MP_ATR/256
-        ld a,(mw_atr)
-        ld (hl),a
-        ld h,MP_TILEL/256
+        inc h
         ld (hl),c
-        ld h,MP_TILEH/256
-        ld (hl),b
-        ld hl,mp_used
-        inc (hl)
+        inc h
+        ld (hl),b                   ; its tile,
+        inc h
+        ld a,(mw_atr)
+        ld (hl),a                   ; its attributes,
+        ld a,h
+        sub (MPF_ATR - MPF_COL)/256
+        ld h,a
+        ld (hl),e                   ; its column
+        inc h
+        ld e,d
+        ld d,MP_ROW/256             ; (DE: the row's first patch)
+        ld c,(hl)                   ; (the free one after it)
+        ld a,(de)
+        ld (hl),a                   ; the row's old first after it,
+        ld a,l
+        ld (de),a                   ; it first
+        ld l,0xFF
+        ld (hl),c                   ; (the free one after it first now)
+        dec h
+        inc (hl)                    ; (the pool's patches in use: its entry FFh)
         pop de
         call fb_invf
         jp rd_queue
 mw_full:
-        ld hl,mp_lost               ; (more patches than the table holds: counted)
+        ld hl,mp_lost               ; (the pool full: counted; tools/mapcells.py rules it out)
         inc (hl)
 mw_done:
         pop de
+        ret
+        if (MPF_COL != 0) | (MPF_NEXT != 0x100) | (MPF_TILEL != 0x200) | (MPF_TILEH != 0x300) | (MPF_ATR != 0x400) | ((MP_A | MP_B) & 0xFF)
+mp_pages:                           ; (an error: get_tile and map_write step through a pool's pages
+mp_pages:                           ;  with inc h / dec h)
+        endif
+
+; A = attributes (7 bits), D = row, E = column 0..159: the cell's attributes become those
+; (field.asm atr_new, when they are not already). Keeps BC, DE, HL.
+atr_put:
+        push bc
+        ld c,a
+        call atr_rc
+        cp c
+        jr z,ap_x
+        push hl
+        ld hl,atr_new
+        call field_call
+        pop hl
+ap_x:   pop bc
         ret
 
 ; D = row, E = column: the cell is redrawn where the scroll engine shows it, when it is near

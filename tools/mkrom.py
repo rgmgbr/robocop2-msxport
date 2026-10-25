@@ -31,7 +31,9 @@ headers, the SCC's waveforms, the OPLL's patch, the voices' state after the spee
 original's tables the logic banks include (tools/amitab.py
 with analysis/amiga_tables.tsv, from the level's RAM image build/ram/level1_full.bin) and the
 camera-cell masks of the level's spawn list and hazards (tools/cellmasks.py: cells_l1.inc, the
-game logic's shortcuts), copies the level palette and the HUD's
+game logic's shortcuts), checks that every map cell and attribute value the level's writers can
+change fits the map patches and the packed map's codes (tools/mapcells.py: the build fails
+otherwise), copies the level palette and the HUD's
 (both through the colour grade: level1_grade.pal, hud_grade.pal; the HUD's also from colour 4 on,
 hud_split.pal, the order the HUD split loads it: msx/isr.asm isr_split), the HUD (tools/msxhud.py) and RoboCop's
 logic tables (tools/player.py --inc) into build/msx/gen, assembles with z80asm and writes
@@ -333,6 +335,14 @@ def main(argv: list[str]) -> int:
     r = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "cellmasks.py"),
                         str(ROOT / "build" / "ram" / "level1_full.bin"), str(ROOT / "analysis" / "amiga_tables.tsv"),
                         str(gen), str(COLS), str(rows)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(r.stdout + r.stderr, file=sys.stderr)
+        return 1
+    # every map cell the level's writers can change must fit the map patches' pools and every
+    # attribute value they write the packed map's codes (msx/tiles.asm map_write, atr_put)
+    r = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "mapcells.py"),
+                        str(ROOT / "build" / "ram" / "level1_full.bin"), str(ROOT / "analysis" / "amiga_tables.tsv"),
+                        str(level.with_suffix(".atrp")), str(COLS), str(rows)], capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stdout + r.stderr, file=sys.stderr)
         return 1

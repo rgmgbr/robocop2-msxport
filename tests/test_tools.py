@@ -5,8 +5,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import amitab  # noqa: E402
 import cellmasks  # noqa: E402
 import hudmodel  # noqa: E402
+import mapcells  # noqa: E402
 import mkrom  # noqa: E402
 import msxconv  # noqa: E402
 import msxhud  # noqa: E402
@@ -21,6 +23,7 @@ DISK1 = ROOT / "amiga" / "Robocop 2 (1991)(Ocean)[cr Melnok](Disk 1 of 2).adf"
 DISK2 = ROOT / "amiga" / "Robocop 2 (1991)(Ocean)[cr Melnok](Disk 2 of 2).adf"
 HAVE_DISKS = DISK1.exists() and DISK2.exists()
 MAIN = ROOT / "build" / "extracted" / "boot" / "main_8000.bin"
+LEVEL1_RAM = ROOT / "build" / "ram" / "level1_full.bin"     # tools/ramimage.py (make ram)
 
 
 class PP20Tests(unittest.TestCase):
@@ -116,6 +119,44 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertIn("SW_N:       equ 1 ", inc)
         self.assertIn("sw_all:  db 0x01,0x00,0x00,0x00", inc)
         self.assertIn("hz_all:  db 0x01,0x00", inc)
+
+    def test_map_cells_as_the_writers_address_them(self):
+        # $EF8E: column (x >> 4) - 8 as a byte, row y >> 4, 0 above or below the map's rows
+        self.assertEqual(mapcells.map_cell(0x2B0, 0x60, 51), (6, 35))
+        self.assertEqual(mapcells.map_cell(0x40, 0x60, 51), (6, 0xFC))
+        self.assertEqual(mapcells.map_cell(0x2B0, -16 & 0xFFFF, 51), (0, 35))
+        self.assertEqual(mapcells.map_cell(0x2B0, 51 * 16, 51), (0, 35))
+        self.assertEqual(mapcells.map_cell(0x2B0, 0x60, 51, dx=7), (6, 36))
+        # map_write_lin: columns -8..-1 the row above's end, 160..167 the next row's start
+        self.assertEqual(mapcells.lin(6, 0xFC, 160), (5, 156))
+        self.assertEqual(mapcells.lin(6, 161, 160), (7, 1))
+        self.assertEqual(mapcells.lin(6, 159, 160), (6, 159))
+        self.assertEqual(mapcells.lin(6, 0xFF + 1, 160), (6, 0))     # (inc e after FFh: 0)
+        self.assertEqual(mapcells.map_cell(0x2B0, 0x1000, 51), (0, 35))      # (4096: row 0)
+        self.assertEqual(mapcells.map_cell(0x2B0, 0x1050, 51, whole=True), (0, 35))
+        self.assertEqual(mapcells.map_cell(0x2B0, 0x1050, 51), (5, 35))      # (map_cell: low byte)
+
+    @unittest.skipUnless(LEVEL1_RAM.exists(), "level 1's RAM image not built (make ram)")
+    def test_level1_map_changes_fit_the_patch_pools(self):
+        tabs = {r["label"]: r for r in amitab.parse(ROOT / "analysis" / "amiga_tables.tsv")}
+        cells, words = mapcells.writers(LEVEL1_RAM.read_bytes(), tabs, "l1", 160, 51)
+        every = set().union(*cells.values())
+        pools = [sum(1 for r, _ in every if r % 2 == p) for p in (0, 1)]
+        self.assertEqual((len(every), pools), (438, [213, 225]))
+        self.assertTrue(all(n <= mapcells.MP_N for n in pools))
+        self.assertEqual(sum(len(c) for k, c in cells.items() if k.startswith("beam")), 80)
+        self.assertEqual(len(cells["type 32"]), 35)            # (36 words, two in one cell)
+        self.assertEqual(sorted({w & 0x7F for ws in words.values() for w in ws}), [0, 1, 2, 3, 0x29])
+
+    def test_attribute_codes_need_ffh_free_entries(self):
+        values = [0, 1, 2, 3, 0x29]
+        new = bytes([0, 1, 2, 3, 9, 10, 11, 13, 0x20]) + b"\xff" * 7
+        self.assertEqual(mapcells.code_problems(new, values), [])
+        old = bytes([0, 1, 2, 3, 9, 10, 11, 13, 0x20]) + bytes(7)     # (zero padding: no free code)
+        self.assertIn("same value", mapcells.code_problems(old, values)[0])
+        full = bytes(range(0x30, 0x40))
+        self.assertIn("29h", mapcells.code_problems(full, [0x30, 0x29])[0])
+        self.assertEqual(mapcells.code_problems(full, [0x30, 0x3F]), [])
 
     def test_msx_trace_rows_are_signed_where_the_amiga_is(self):
         import tempfile

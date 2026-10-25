@@ -2,8 +2,9 @@
 # Headless openMSX runs unthrottled: schedule pauses with 'after time', then call these
 # while paused, and resume with 'set pause off' from the top level.
 
-# Saves what tools/msxframe.py needs: VRAM, RAM C000h-CFFFh, page 0 RAM (0000h-3FFFh: the tile
-# cache and the map patches) and the 48 VDP registers.
+# Saves what tools/msxframe.py needs: VRAM, RAM C000h-CFFFh and the 48 VDP registers; also page-0
+# RAM (0000h-3FFFh: the tile cache, the packed map attributes, the map patches' rows and the even
+# rows' pool) and RAM F000h-FFFFh (the odd rows' pool): the map's state for tools/mapcmp.py.
 proc rc2_snap {dir} {
 	file mkdir $dir
 	save_debuggable VRAM [file join $dir vram.bin]
@@ -14,6 +15,10 @@ proc rc2_snap {dir} {
 	set f [open [file join $dir ram0.bin] wb]
 	fconfigure $f -translation binary
 	puts -nonewline $f [debug read_block memory 0x0000 0x4000]
+	close $f
+	set f [open [file join $dir ramf.bin] wb]
+	fconfigure $f -translation binary
+	puts -nonewline $f [debug read_block memory 0xF000 0x1000]
 	close $f
 	set regs {}
 	for {set i 0} {$i < 48} {incr i} { lappend regs [debug read "VDP regs" $i] }
@@ -1309,7 +1314,8 @@ proc rc2_rcc_hit {} {
 # 'n' pictures are recorded at their HUD split (the play area's registers and VRAM as the beam
 # drew it) into dir/jJJJ_fFFFF.bin: R#0-R#63, the palette (32 bytes), the page shown (R#2) as
 # 32 KiB (with the V9958's SP2 its pair of pages, 64 KiB), VRAM 1D800h-1FFFFh (sprite tables,
-# HUD), RAM C000h-CFFFh, page-0 RAM 0A00h-0FFFh (the map patches); at most 'jumps' jumps.
+# HUD), RAM C000h-CFFFh, page-0 RAM 0A00h-0FFFh and RAM F500h-F8FFh (the map patches: the rows'
+# first patches, the even rows' pool, the odd rows' pool); at most 'jumps' jumps.
 # tools/recframes.py renders and checks them.
 proc rc2_jumprec {dir n jumps} {
 	file mkdir $dir
@@ -1350,6 +1356,7 @@ proc rc2_rj_hit {} {
 	puts -nonewline $f [debug read_block VRAM 0x1D800 0x2800]
 	puts -nonewline $f [debug read_block memory 0xC000 0x1000]
 	puts -nonewline $f [debug read_block memory 0x0A00 0x600]
+	puts -nonewline $f [debug read_block memory 0xF500 0x400]
 	close $f
 	incr ::rj_f
 	incr ::rj_left -1

@@ -31,6 +31,7 @@ usage:
                   [--watch 0x3e810-0x40000] [--screenshot build/emu/frame.png]
   amigaemu.py game --ram build/ram/level1_full.bin --gframes 200 [--joy 10:40:r --joy 60:5:rf ...]
                    [--trace OUT.jsonl] [--bobs OUT.jsonl] [--screenshot build/emu/game.png]
+                   [--dump OUT.bin] (chip RAM after the last game frame: the map at $38000 ...)
      (--bobs: per game frame, every draw_bob $AB08 call: A2, D4, D0, D1, minterm, drawn)
      (--joy GAMEFRAME:COUNT:KEYS, keys among u d l r f, game frames counted from the first)
 """
@@ -670,6 +671,8 @@ def main() -> int:
         print(f"VBL frames {bench.frame}, game frames {len(rows)}, level {bench.read_word(0x8050)}")
         if a.screenshot:
             bench.screenshot(a.screenshot)
+        if a.dump:
+            bench.dump(a.dump)
         return 0
     emu = AmigaEmu(a.extracted, verbose=a.verbose)
     emu.fire_script = [tuple(int(x) for x in f.split(":")) for f in a.fire]

@@ -3396,6 +3396,69 @@ fiv_nx: pop hl
 fiv_nc: djnz fiv_lp
         ret
 
+; (tiles.asm atr_put: map_write) D = row, E = column 0..159, C = attributes (7 bits) that are not
+; the cell's: the packed map's cell (page-0 RAM, cold.asm atr_load) gets their code, a value
+; without one taking a free code (atr_lut's FFh); none left: counted in atr_lost, the cell as it
+; was (tools/mapcells.py rules it out). Rows past the map: nothing. Keeps DE.
+atr_new:
+        ld a,d
+        cp MAP_ROWS
+        ret nc
+        add a,a
+        add a,atr_rows & 0xFF
+        ld l,a
+        ld a,0
+        adc a,atr_rows / 256
+        ld h,a
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a                      ; the row's 80 bytes
+        ld a,e
+        srl a
+        add a,l
+        ld l,a
+        jr nc,an_nb
+        inc h
+an_nb:  push hl                     ; (the cell's byte)
+        ld hl,atr_lut               ; (atr_lut does not cross a 256-byte boundary)
+        ld b,16
+an_f:   ld a,(hl)
+        cp c
+        jr z,an_code                ; (their code)
+        inc l
+        djnz an_f
+        ld l,atr_lut & 0xFF
+        ld b,16
+an_e:   ld a,(hl)
+        inc a
+        jr z,an_new                 ; (a free code)
+        inc l
+        djnz an_e
+        pop hl
+        ld hl,atr_lost
+        inc (hl)
+        ret
+an_new: ld (hl),c                   ; (theirs now)
+an_code:
+        ld a,l
+        sub atr_lut & 0xFF
+        ld b,a                      ; the code
+        pop hl
+        ld a,(hl)
+        bit 0,e
+        jr nz,an_odd
+        and 0x0F                    ; (an even column: the high nibble)
+        rlc b
+        rlc b
+        rlc b
+        rlc b
+        jr an_w
+an_odd: and 0xF0
+an_w:   or b
+        ld (hl),a
+        ret
+
         if EXTJOY
 ; (isr.asm through field_call, test builds) A list goes on screen: the play-field BOBs its page
 ; holds (fb_vis: how many, then frame, x, y of each), what tools check the pictures against.

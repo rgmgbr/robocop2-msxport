@@ -719,25 +719,35 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B2h-C2C1h, C2C5h-C2FFh,
 ; C68Ah-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
 ; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
-; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there)
+; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
+; the BIOS's area: F380h-F43Bh so_x, so_n, F500h-F9FFh the map patches' MP_B)
 
 ; --- page 0 RAM (0000h-3FFFh: the main RAM once the BIOS is no longer needed, tiles.asm ram_page0)
 TC_SLOT:    equ 0x0000              ; 512 x 2: slot + 1 holding each tile (0: not in VRAM)
 TC_TILE:    equ 0x0400              ; 432 x 2: tile in each slot (FFFFh: none)
 TC_REF:     equ 0x0760              ; 432: slot used since the clock hand last passed
-MP_ROW:     equ 0x0A00              ; 256: first patch of each map row (FFh: none)
-MP_COL:     equ 0x0B00              ; 256: per patch its column,
-MP_TILEL:   equ 0x0C00              ;   tile (low byte,
-MP_TILEH:   equ 0x0D00              ;   high byte),
-MP_ATR:     equ 0x0E00              ;   attributes,
-MP_NEXT:    equ 0x0F00              ;   next patch of the row (FFh: none)
+MP_ROW:     equ 0x0A00              ; 256: first patch of each map row, in its pool (FFh: none)
+; The map patches (tiles.asm map_write: the tiles the game writes): two pools of MP_N, the even
+; rows' and the odd rows', each five 256-byte pages from its base (the page offsets MPF_...); a
+; pool's entry FFh, which no patch has, keeps its first free patch (the MPF_NEXT page) and its
+; patches in use (MPF_COL). tools/mapcells.py checks at each build that every cell the level's
+; writers can change fits (level 1: 438 cells, 213 in even rows, 225 in odd ones).
+MP_A:       equ 0x0B00              ; the even rows' pool (0B00h-0FFFh)
+MP_B:       equ 0xF500              ; the odd rows' pool (F500h-F9FFh, page 3's BIOS area: nothing
+                                    ;   writes there once the game runs, CHGCPU included: openMSX,
+                                    ;   the FS-A1GT, 2026-10-25)
+MPF_COL:    equ 0x0000              ; per patch its column,
+MPF_NEXT:   equ 0x0100              ;   the next patch of the row (FFh: none),
+MPF_TILEL:  equ 0x0200              ;   its tile (low byte,
+MPF_TILEH:  equ 0x0300              ;   high byte),
+MPF_ATR:    equ 0x0400              ;   the attributes last written through it (the packed map's)
+MP_N:       equ 255                 ; patches in a pool
 RD_Q:       equ 0x1000              ; RD_Q_SIZE x (row, column): cells to redraw
 RD_Q_SIZE:  equ 64
 RD_BURST:   equ 6                   ; changed cells drawn in a row between the HUD split and the VBLANK
 tc_hand:    equ 0x1080              ; 2: the tile cache's clock hand
-mp_free:    equ 0x1082              ; first free patch (FFh: none)
-mp_used:    equ 0x1083              ; patches in use
-mp_lost:    equ 0x1084              ; map writes lost (table full)
+atr_lost:   equ 0x1082              ; attribute values lost (atr_lut had no free code; 1083h free)
+mp_lost:    equ 0x1084              ; tiles lost (their pool full)
 rd_head:    equ 0x1085              ; redraw queue: oldest request,
 rd_tail:    equ 0x1086              ;   next free entry,
 rd_phase:   equ 0x1087              ;   1: the oldest was drawn on the displayed page (V9938),
@@ -745,7 +755,8 @@ rd_lost:    equ 0x1088              ;   requests lost (queue full)
 tc_loads:   equ 0x1089              ; tiles copied into VRAM on demand (statistics)
 ATR_RAM0:   equ 0x108C              ; the packed map attributes (tiles.asm atr_load): rows 0-47,
 ATR_RAM1:   equ 0x0910              ;   rows 48-50 (after TC_REF)
-atr_lut:    equ 0x1F8C              ; 16: the attribute value of each code of the packed map
+atr_lut:    equ 0x1F8C              ; 16: the attribute value of each code of the packed map (FFh:
+                                    ;   a free code, tiles.asm atr_put)
 FB_MAX:     equ 8                   ; play-field BOBs of a tick (field.asm)
 FB_ENT:     equ 7                   ; an entry: frame, x (2), y (2), owner (2)
 ; (field.asm's state: what TC_TILE and TC_REF leave free with TC_SLOTS 304 at most, 0660h-075Fh
@@ -822,5 +833,4 @@ fb_cq:      equ 0xE0FD              ; 1, 3 (its last part): fb_cmd holds a copy 
 fb_n:       equ 0x1F9C              ; the tick's play-field BOBs (bob.asm fb_add): how many,
 fb_new:     equ 0x1F9D              ;   FB_MAX x [frame, x (2), y (2), owner (2)] as their records
 rd_bits:    equ 0x1FD5              ; 40: the cells waiting in RD_Q (tiles.asm rd_bit)
-mw_atr:     equ 0x108A              ; map_write's attributes
-mw_idx:     equ 0x108B              ; map_write's new patch
+mw_atr:     equ 0x108A              ; map_write's attributes (108Bh free)

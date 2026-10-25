@@ -186,27 +186,37 @@ ti_t:   ld (hl),e                   ; slot s: tile s
         ld bc,256
         ld a,0xFF
         call fill                   ; no patch in any row
-        ld hl,MP_NEXT               ; every patch free, chained
-        xor a
-mi_f:   inc a
-        ld (hl),a
-        inc l
-        jr nz,mi_f
-        dec l
-        ld (hl),0xFF
+        ld h,(MP_A + MPF_NEXT)/256
+        call mp_init
+        ld h,(MP_B + MPF_NEXT)/256
+        call mp_init
         ld hl,rd_bits
         ld bc,40
         xor a
         call fill                   ; (nothing waits to be redrawn)
         xor a
-        ld (mp_free),a
-        ld (mp_used),a
+        ld (atr_lost),a
         ld (mp_lost),a
         ld (rd_head),a
         ld (rd_tail),a
         ld (rd_phase),a
         ld (rd_lost),a
         ld (tc_loads),a
+        ret
+
+; H = a map patch pool's MPF_NEXT page: its patches all free, chained 0, 1 .. MP_N - 1 (entry n
+; n + 1: entry MP_N - 1 FFh, none after it; entry FFh 0, the first free), none in use (the
+; MPF_COL page's entry FFh).
+mp_init:
+        ld l,0
+mpi_f:  ld a,l
+        inc a
+        ld (hl),a
+        inc l
+        jr nz,mpi_f
+        dec h
+        dec l
+        ld (hl),0
         ret
 
 ; (player.asm)

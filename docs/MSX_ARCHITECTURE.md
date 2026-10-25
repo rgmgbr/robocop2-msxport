@@ -597,8 +597,32 @@ which as sprites were striped, cut or left out.
   `analysis/amiga_tables.tsv`). `pl_init` clears what `clear_game_vars` clears (`$B00-$16EB`,
   the keyboard and joystick bytes, the input lock, the joystick mask) and the port's own
   per-life variables (`G_VARS`); what lives across lives (`lvl_bank`, `tick_n`) is kept apart.
-- **Map attributes**: 4-bit codes per cell packed in page-0 RAM (`atr_load`) with a list of
-  patched cells per row (`MP_ROW`...); `atr_rc` reads them without bank switching.
+- **Map attributes**: 4-bit codes per cell packed in page-0 RAM (`atr_load`), the only copy the
+  game reads (`atr_rc`, no bank switching) and writes: a map word's attributes go there
+  (`tiles.asm` `atr_put`, `field.asm` `atr_new`), a value the map has not taking one of
+  `atr_lut`'s free codes (`FFh`; level 1: 9 values in the map, the end sequence's `29h` the
+  tenth).
+- **Map patches (fixed 2026-10-25)**: a tile the game writes that is not the ROM map's is a
+  patch (column, tile, the attributes written last through it) in a chain per row, the even
+  rows' in `MP_A` (`0B00h-0FFFh`), the odd rows' in `MP_B` (`F500h-F9FFh`, the BIOS's work area:
+  an openMSX write watchpoint saw nothing there from the game's start through a 1,100 s session
+  on the FS-A1GT, `CHGCPU` included), 255 each; a patch is never given back. The writers
+  (map objects' looks, conveyors, electric barriers and beams, the end sequence) can change
+  438 cells of level 1, 213 in even rows and 225 in odd ones: `tools/mapcells.py` works them
+  out from the level's data the way the ported writers do and fails the build when a pool or
+  the 16 codes would not hold them. Before, one pool of 255 held tiles and attributes: in a
+  long game it filled and later writes were lost, a trapdoor that opened in the logic but kept
+  its floor (RoboCop could not reach the cracked wall) and crates and bins destroyed in the
+  logic but still drawn, so shots went through them (the user, FS-A1GT, 2026-10-25: 255 in
+  use, 19 lost). The coverage scenario `drive_cov0` (20,540 game frames) now ends with 310
+  patches (167 + 143), none lost, and the map equal to the original's cell by cell, tiles and
+  attributes, on the Z80 and the R800 (`tools/mapcmp.py`: the bench's `tools/amigaemu.py game
+  --dump` against an `rc2_snap` of the port at the same game frame); the old code ended it with
+  255 and 95 writes lost, 25 cells wrong. The logic is the same as before and as the
+  original's (`tools/tracecmp.py --ram` with the ROM's own `--labels`: none of the 948 fields
+  differs in any frame of `drive_cov0`, `drive_cov1`, `drive_die`, `drive_over`, `drive_end`,
+  the Z80 and the R800), and `atr_rc` no longer walks a row's patches (the beams' corridor:
+  22.15 ticks a second on a 3.58 MHz V9938 against 21.93).
 - **Palette on screen**: `pf_pal` (RAM) is the play field's palette the VBLANK loads (the HUD
   keeps its own, loaded at the split). It changes as the original's copper colours do: the
   fade (`pal_fade`: every 3-bit component at most the fade level / 4, the original's eight
