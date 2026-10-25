@@ -920,8 +920,23 @@ mop_w:  ld (snd_mix),a
 
 ; A = an effect (1..SND_SFX_N), in the VBLANK interrupt: its parts from their first records.
 ; While the Amiga's channel 3 plays an effect, a lower one there than the last one started is
-; not played ($1822C, as sndplay.asm does).
+; not played ($1822C, as sndplay.asm does). GUN_FX (sndplay.asm sq_gun: the gun's opening,
+; tools/msxgun.py): it and the two after it, on channels 0-2, at once; then the last effect
+; started is 3, the original's (for that rule, as after its effect 3).
 fx_start:
+        if DIAG = 0                 ; (test builds never play the game: no gun, tools/mkrom.py)
+        cp GUN_FX
+        jr nz,fxs_one
+        call fxs_one
+        ld a,GUN_FX + 1
+        call fxs_one
+        ld a,GUN_FX + 2
+        call fxs_one
+        ld a,3
+        ld (snd_last),a
+        ret
+        endif
+fxs_one:
         ld c,a
         ld a,(mus_on)
         or a

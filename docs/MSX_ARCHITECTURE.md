@@ -1122,6 +1122,50 @@ which as sprites were striped, cut or left out.
   The title music stays register-exact on every chip set (SCC in the cartridge or another slot,
   OPLL, SCC + OPLL) after the routines it shares changed.
 
+### The gun's opening at the level's start (`tools/msxgun.py`, 2026-10-25)
+
+- **Why** (the user: "não estou feliz com ela ... eu tenho uma versão bem mais legal do som"):
+  the original's effect 3 (a 240 ms sample, `player_move` asking for 303h at `$B2E` on six
+  steps of the start, game frames 1Ch-40h) gives way to a recording the user supplied: a motor
+  starting (a 377 Hz hum sweeping to a 705-721 Hz whine at the clunk, a grind, a latch click
+  ringing at 1.2 kHz, small clicks), 1.06 s. As PCM it would stop the game and the HUD split
+  for that long (no timer: a busy loop with the interrupts off), so it plays as tick-rate effect
+  streams, 53 ticks of 20 ms, designed per event and fitted to the recording's per-tick levels
+  and third-octave spectra on the project's chip models. A synthesis panel made three designs;
+  the user rejected by ear the one with the best spectral score (per-tick waveforms at a wandering
+  low pitch: "totalmente distorcido") and chose the one that follows the motor's pitch.
+- **What plays**: with an SCC, three effects started together on the effect engine (`GUN_FX`
+  = 43-45, Amiga channels 0-2): SCC 0 the motor (the hum's waveform, then the sine on the
+  whine's pitch), SCC 1 the gear (a comb at the whine / 11), SCC 2 the clunk's body, the thud
+  and the pings; PSG voice A the clunk, the grind's rattle and the clicks; four waveform loads
+  in all. Without an SCC (the PSG player, `sndplay.asm` `sq_gun`): voice A the motor and the
+  pings, B every noise, C the clunk's body alone, its stream ending at tick 8 so that an effect
+  on channel 3 (the enemy's bullet, about 0.6 s on) finds it idle. The body at a PSG level 11
+  voice's loudness (the old effect 3's loudest tick), the clunk about 13.
+- **Where**: `tools/msxgun.py` holds the design as records and writes `gun_scc.bin` (the
+  `sccfx.bin` layout for three effects) and `gun_psg.bin` (the three PSG streams);
+  `tools/mkrom.py` appends the first to `sccfx.bin` (one header for 45 effects, the streams'
+  offsets moved, the three waveforms after the 49, the gun's waveform numbers moved past them)
+  and puts `gun_tab` (the PSG streams' addresses, then three zero loop words) and the PSG
+  streams after it in `SCCFX_BANK`, which `sound.asm` `snd_frame` maps at 8000h while the PSG
+  player runs (`BANK_INPUT` has no room for them). Test builds that never play the game (DIAG)
+  leave the gun out.
+- **When**: `plmove.asm` keeps the original's 303h writes (the game's RAM as the Amiga's, for
+  the traces) and asks for `SQ_GUN` once, at the step after the first one, the frame the
+  original plays it (`frame_keys` plays a frame's requests on the next frame); `frame_keys`
+  drops every 303h. One request starts all the parts in one VBLANK (`sq_frame`: `fx_start`'s
+  three effects, then the last effect started 3 as after the original's, for the `$1822C`
+  rule; or `sq_three` on `gun_tab`). It comes again at every start of the level, after a death
+  too, as the original's.
+- **Checked headless** (2026-10-25): the bytes `msxgun.py` writes read back as its records and
+  equal the design the user approved; in the ROM the 45 effects decode as `sccfx.bin`'s 42 plus
+  the gun's three, `fx_waves` holds the joined table; in openMSX the gun starts 1.08 s into the
+  level on SCC, SCC + OPLL, OPLL-only and PSG-only machines (no effect 3 any more), its motor on
+  the recording's pitch (377 → 463 → 700-721 Hz) and the PSG voices' volumes as the streams give
+  them; the level 1 logic traces stay identical (coverage drive, 1400 frames, EXTJOY and
+  LOCKSTEP builds, SCC and PSG), and the other effects' writes too, but for the VBLANK they fall
+  in.
+
 ## HUD
 
 The Amiga status panel (320×46, line 0 black) is rebuilt by `tools/msxhud.py` with every

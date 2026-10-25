@@ -469,6 +469,13 @@ pm_cys: ld (gcam_y),hl
         ld hl,0x0303
         ld (AM + 0x0B2E),hl         ; (move.w #$303,$B2E)
 pm_s1:  ld a,c
+        dec a
+        jr nz,pm_s2
+        push bc                     ; the step after the first 303h, when the original plays it
+        ld a,SQ_GUN                 ; (player.asm frame_keys, a frame on): the port's sound in its
+        call snd_play               ; place, once (tools/msxgun.py; frame_keys drops every 303h)
+        pop bc
+pm_s2:  ld a,c
         srl a
         add a,8
         ld l,a

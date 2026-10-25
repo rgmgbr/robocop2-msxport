@@ -363,7 +363,7 @@ dg_rec: push hl
 ; ----- the players (sndplay.asm in BANK_INPUT, music.asm in BANK_MUSIC) -----
 
 ; From the VBLANK interrupt: the title music on the SCC / OPLL while it plays (music.asm), then
-; the PSG player's requests queued since, its music and effects.
+; the PSG player's requests queued since, its music and effects (SCCFX_BANK at 8000h meanwhile).
 snd_frame:
         ld a,(mus_on)
         or a
@@ -371,7 +371,13 @@ snd_frame:
         ld a,BANK_MUSIC
         ld hl,mus_frame
         call snd_bk
-sf_psg: ld hl,sq_frame
+sf_psg: ld a,SCCFX_BANK             ; (at 8000h meanwhile: the gun's PSG voices, sndplay.asm
+        ld (BANK_8000),a            ;  sq_gun; act_8000's bank back after)
+        ld hl,sq_frame
+        call snd_bank
+        ld a,(act_8000)
+        ld (BANK_8000),a
+        ret
 ; HL = a routine of the PSG player: called with BANK_INPUT at A000h (the window's bank back
 ; after; act_a000 kept: the interrupts disabled, or the VBLANK interrupt itself). Keeps DE, IX,
 ; IY.
@@ -423,22 +429,6 @@ snd_music:
         jr z,snd_play
         ld hl,mus_start
         jr mus_call
-
-; The title music fades out (front.asm front_title, fire pressed; the port's: the original cuts
-; it): 3 dB more every FADE_TICKS ticks (music.asm mus_adv, sndplay.asm sq_frame: mus_att) down
-; to silence, 1.2 s, or until the tune's end; front_title then stops it (snd_stop, or vm_alone
-; for the SCC / OPLL). The interrupts on.
-snd_fade:
-        ld a,FADE_TICKS
-        ld (mus_fade),a
-sfd_lp: halt
-        ld a,(mus_end)
-        or a
-        ret nz
-        ld a,(mus_att)
-        cp 15
-        jr c,sfd_lp
-        ret
 
 ; Everything silent ($18004): the SCC / OPLL and the PSG at once, the PSG player's voices at the
 ; next VBLANK. (At power-on rc2.asm calls sq_init through snd_bank: the interrupts stay off.)

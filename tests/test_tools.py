@@ -11,6 +11,7 @@ import hudmodel  # noqa: E402
 import mapcells  # noqa: E402
 import mkrom  # noqa: E402
 import msxconv  # noqa: E402
+import msxgun  # noqa: E402
 import msxhud  # noqa: E402
 import msxhudrt  # noqa: E402
 import planar  # noqa: E402
@@ -190,6 +191,43 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertEqual((voice[0], voice[n - 1], mix[0], mix[m - 1]), (dc, dc, dc, dc))
         self.assertEqual(set(voice[n:]), {0})
         self.assertGreaterEqual(len(voice) - n, 81)
+
+    def test_gun_streams_read_back_as_their_records(self):
+        # tools/msxgun.py: both blobs check their streams against the records while built
+        scc, psg = msxgun.scc_blob(), msxgun.psg_blob()
+        self.assertEqual(scc[3], len(msxgun.WAVES))
+        self.assertEqual([e[0] for e in mkrom.fx_entries(scc)], [0, 1, 2])     # channels 0-2
+        self.assertEqual(psg[0] | psg[1] << 8, 6)
+        self.assertEqual(len(psg), 6 + sum(len(msxgun.psg_stream(v)) for v in msxgun.PSG_VOICES))
+        self.assertEqual(msxgun.ticks(msxgun.PSG_VOICES[2]), 8)      # (C idle for a bullet after)
+        self.assertEqual(msxgun.psg_stream([(2, 0, 1, 0, None, None)]), bytes([2, 0, 0]))
+        self.assertEqual(msxgun.scc_stream([(1, 5, 0x123, 2)]), bytes([1, 0x35, 0x23, 0x01, 2, 0]))
+
+    def test_fx_append_moves_offsets_and_waveforms(self):
+        def blob(fx: list[tuple[int, bytes, bytes]], waves: int) -> bytes:
+            head, body, entries = 4 + 7 * len(fx), b"", b""
+            for ch, scc, psg in fx:
+                so = head + len(body) if scc else 0
+                body += scc
+                po = head + len(body) if psg else 0
+                body += psg
+                entries += bytes([ch]) + so.to_bytes(3, "little") + po.to_bytes(3, "little")
+            tab = head + len(body)
+            return tab.to_bytes(3, "little") + bytes([waves]) + entries + body + bytes(range(32 * waves))
+        base = blob([(2, bytes([3, 0x35, 0x10, 0x00, 1, 0]), bytes([2, 0x05, 0])),
+                     (3, b"", bytes([1, 0x25, 0]))], 2)
+        more = blob([(0, bytes([1, 0x31, 0x20, 0x00, 0, 2, 0x24, 1, 0]), b"")], 1)
+        m = mkrom.fx_append(base, more)
+        fx = mkrom.fx_entries(m)
+        self.assertEqual(len(fx), 3)
+        self.assertEqual(m[3], 3)
+        self.assertEqual([e[0] for e in fx], [2, 3, 0])
+        self.assertEqual(m[fx[0][1]:fx[0][1] + 6], bytes([3, 0x35, 0x10, 0x00, 1, 0]))     # (kept)
+        self.assertEqual(m[fx[1][2]:fx[1][2] + 3], bytes([1, 0x25, 0]))
+        self.assertEqual(fx[1][1], 0)
+        self.assertEqual(m[fx[2][1]:fx[2][1] + 9], bytes([1, 0x31, 0x20, 0x00, 2, 2, 0x24, 3, 0]))
+        tab = mkrom.offsets(m, 1)[0]
+        self.assertEqual(m[tab:], bytes(range(64)) + bytes(range(32)))
 
     def test_msx_trace_rows_are_signed_where_the_amiga_is(self):
         import tempfile

@@ -10,7 +10,8 @@
 ; so the voices change in one place and the interrupts are never held off for long (the HUD's
 ; split).
 
-SQ_MUSIC:   equ 0xFE                ; queued requests besides the effects (sound.asm): the title's
+SQ_GUN:     equ 0xFD                ; queued requests besides the effects (sound.asm): the gun's
+SQ_MUSIC:   equ 0xFE                ;   opening at the level's start (plmove.asm), the title's
 SQ_STOP:    equ 0xFF                ;   music, everything silent
 SQ_N:       equ 8                   ; the queue's entries (snd_q)
 
@@ -86,8 +87,12 @@ sq_frame:
         call sq_stop
         jr sq_frame
 sqq_m:  cp SQ_MUSIC
-        jr nz,sqq_e
+        jr nz,sqq_g
         call sq_title
+        jr sq_frame
+sqq_g:  cp SQ_GUN
+        jr nz,sqq_e
+        call sq_gun
         jr sq_frame
 sqq_e:  call sq_sfx
         jr sq_frame
@@ -223,9 +228,22 @@ sqs_set:
         ld (ix+SV_PTR+1),d
         jr sq_rec
 
-; The title's music from its start.
+; The gun's opening at the level's start (plmove.asm; the port's sound for the original's effect
+; 3, tools/msxgun.py): with an SCC its three effects on music.asm's engine (fx_start: GUN_FX),
+; else its three voices' streams from gun_tab (tools/mkrom.py: in SCCFX_BANK, at 8000h while
+; this player runs, sound.asm snd_frame), one-shot.
+sq_gun: ld a,(mus_mode)
+        rra
+        ld a,GUN_FX
+        jp c,fx_go
+        ld hl,GUN_TAB
+        jr sq_three
+
+; The title's music from its start; sq_three: HL = a table of three streams (the voices A, B, C:
+; their addresses, then where each goes on after its end, 0: silent), the same.
 sq_title:
         ld hl,snd_title
+sq_three:
         ld b,0
 sqt_lp: call sq_vix
         ld e,(hl)

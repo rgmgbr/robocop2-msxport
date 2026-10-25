@@ -173,6 +173,54 @@ def offsets(blob: bytes, n: int) -> list[int]:
     return [blob[3 * i] | blob[3 * i + 1] << 8 | blob[3 * i + 2] << 16 for i in range(n)]
 
 
+def fx_entries(blob: bytes) -> list[tuple[int, int, int]]:
+    """An sccfx.bin layout's effects (tools/msxsccfx.py): (channel, SCC stream's offset, PSG
+    stream's, 0 = none), up to the first stream (the header's end)."""
+    out, first = [], offsets(blob, 1)[0]
+    while 4 + 7 * len(out) < first:
+        e = 4 + 7 * len(out)
+        so = blob[e + 1] | blob[e + 2] << 8 | blob[e + 3] << 16
+        po = blob[e + 4] | blob[e + 5] << 8 | blob[e + 6] << 16
+        out.append((blob[e], so, po))
+        first = min([first] + [o for o in (so, po) if o])
+    if 4 + 7 * len(out) != first:
+        raise SystemExit("error: an sccfx blob's header does not end at its first stream")
+    return out
+
+
+def fx_append(base: bytes, more: bytes) -> bytes:
+    """sccfx.bin with the effects of another blob in its layout (tools/msxgun.py gun_scc.bin)
+    after its own: one header for all (every stream's offset moved past the entries added), the
+    streams of both, the waveform tables joined (the added SCC streams' waveform numbers moved
+    past the base's)."""
+    b_fx, m_fx = fx_entries(base), fx_entries(more)
+    (b_tab,), (m_tab,) = offsets(base, 1), offsets(more, 1)
+    head = 4 + 7 * (len(b_fx) + len(m_fx))
+    b_streams = base[4 + 7 * len(b_fx):b_tab]
+    m_streams = bytearray(more[4 + 7 * len(m_fx):m_tab])
+    m0 = 4 + 7 * len(m_fx)
+    for _, so, _ in m_fx:                   # (the waveform bytes: ctl bit 5, after the period word)
+        p = so - m0 if so else None
+        while p is not None and m_streams[p]:
+            ctl = m_streams[p + 1]
+            p += 2 + (2 if ctl & 0x10 else 0)
+            if ctl & 0x20:
+                m_streams[p] += base[3]
+                p += 1
+    def u24(v: int) -> bytes:
+        return bytes([v & 0xFF, v >> 8 & 0xFF, v >> 16])
+    def entry(ch: int, so: int, po: int, shift: int) -> bytes:
+        return bytes([ch]) + u24(so + shift if so else 0) + u24(po + shift if po else 0)
+    tab = head + len(b_streams) + len(m_streams)
+    w = base[3] + more[3]
+    if w > 255:
+        raise SystemExit("error: more than 255 effect waveforms")
+    return (u24(tab) + bytes([w])
+            + b"".join(entry(*e, head - (4 + 7 * len(b_fx))) for e in b_fx)
+            + b"".join(entry(*e, head + len(b_streams) - m0) for e in m_fx)
+            + b_streams + bytes(m_streams) + base[b_tab:b_tab + 32 * base[3]] + more[m_tab:m_tab + 32 * more[3]])
+
+
 MVK_SCC, MVK_PSG, MVK_FM, MVK_RHY = range(4)     # msx/music.asm's stream kinds
 
 
@@ -393,6 +441,23 @@ def main(argv: list[str]) -> int:
     scc = (level.parent / "scc.bin").read_bytes()       # the title music on the SCC (tools/msxscc.py)
     fm = (level.parent / "fm.bin").read_bytes()         #   and on the OPLL (tools/msxfm.py)
     sccfx = (level.parent / "sccfx.bin").read_bytes()   # the sound effects on the SCC (tools/msxsccfx.py)
+    # the gun's opening (tools/msxgun.py): with an SCC its three effects after sccfx.bin's (GUN_FX
+    # on, music.asm fx_start), else its PSG voices from gun_tab (sndplay.asm sq_gun: three stream
+    # addresses, then three loop words, 0); both in SCCFX_BANK, at 8000h while the PSG player runs
+    # (sound.asm snd_frame). Test builds that never play the game (DIAG) leave it out.
+    gun_fx, gun_tab = len(fx_entries(sccfx)) + 1, 0x8000
+    if not opts["DIAG"]:
+        if not (level.parent / "gun_scc.bin").exists():
+            print("error: no gun_scc.bin (tools/msxgun.py)", file=sys.stderr)
+            return 1
+        sccfx = fx_append(sccfx, (level.parent / "gun_scc.bin").read_bytes())
+        gp = (level.parent / "gun_psg.bin").read_bytes()
+        gun_tab = 0x8000 + len(sccfx)
+        at = [gun_tab + 12 + (gp[2 * i] | gp[2 * i + 1] << 8) - 6 for i in range(3)]
+        sccfx += b"".join(bytes([a & 0xFF, a >> 8]) for a in at) + bytes(6) + gp[6:]
+        if len(sccfx) > BANK:
+            print("error: the gun's PSG voices are past SCCFX_BANK's first 8 KiB", file=sys.stderr)
+            return 1
     if offsets(sccfx, 1)[0] > BANK:                     # (msx/music.asm fx_tick maps SCCFX_BANK alone)
         print("error: the sound effects' streams take more than a bank", file=sys.stderr)
         return 1
@@ -425,6 +490,7 @@ def main(argv: list[str]) -> int:
                   for i, (n, f) in enumerate(PICTURES)) +
         f"VOICE_BANK: equ {bank_voice}\nVOICE_MIX_BANK: equ {bank_mix}\nSCC_BANK: equ {bank_scc}\nFM_BANK: equ {bank_fm}\n"
         f"SCCFX_BANK: equ {bank_sccfx}\n"
+        f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
         f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
     vq = equates(level.parent / "voice.inc")

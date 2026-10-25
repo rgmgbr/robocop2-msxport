@@ -261,6 +261,8 @@ fk_lp:  ld a,b
         or a
         jr z,fk_n
         ld (hl),0
+        cp 3                        ; (the gun's opening at the level's start, 303h: plmove.asm asks
+        jr z,fk_n                   ;  for the port's sound instead, SQ_GUN)
         push bc
         dec b
         ld c,b                      ; channel (5..0), A = sound

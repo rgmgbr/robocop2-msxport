@@ -37,6 +37,22 @@ front_title:
         ld hl,vm_alone              ; (music.asm)
         jp mus_call
 
+; The title music fades out (front_title, fire pressed; the port's: the original cuts
+; it): 3 dB more every FADE_TICKS ticks (music.asm mus_adv, sndplay.asm sq_frame: mus_att) down
+; to silence, 1.2 s, or until the tune's end; front_title then stops it (snd_stop, or vm_alone
+; for the SCC / OPLL). The interrupts on.
+snd_fade:
+        ld a,FADE_TICKS
+        ld (mus_fade),a
+sfd_lp: halt
+        ld a,(mus_end)
+        or a
+        ret nz
+        ld a,(mus_att)
+        cp 15
+        jr c,sfd_lp
+        ret
+
 ; ----- the game over -----
 
 ; PIC9 with GAME OVER below it (tools/msxtext.py) for 30 seconds, or until fire is pressed once
