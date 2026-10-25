@@ -433,6 +433,16 @@ over (PIC9)**, called from `main_loop` when the lives counter `$8034` goes negat
   head icons (`$88DE`) and the fade out; lives `$8034` − 1 → `level_init` again, or game over.
 - Level end (`$16D0`, set by type 32): score + 100h a frame (sound 26h every 4th), `$16C4`
   counts down, fade out, `$8050` + 1, the next level loads.
+- Neither the CIA-B interrupt nor main_loop's time-out test (`$816E`-`$8184`) looks at
+  `$16D0`: the timer keeps running through type 32's sequence and a time out during it sets
+  `$16CC`. main_loop then runs both branches each frame (the level end's at `$8188` first,
+  the death's at `$822A`), and the first fade out to finish decides: the death's starts once
+  `$16BC` reaches 100h (64 frames after `$16CC`), the level end's once `$16C4` is below 0 (40h
+  frames after `$16D0`), so a time out before or early in the count ends the life instead of
+  the level **[verified: code, REA]**. Seen in the port (2026-10-25, openMSX FS-A1GT, test8):
+  the ten henchmen down, the explosions under way, the timer at 0:00 (replay: 10,963.7 s),
+  `$16CC`, a life less and the level from its start; the port's frame.asm matches main_loop
+  here, and test builds with a script never see it (their timer stands still).
 - **Type 32, the level's end** (`obj32_update` `$DF6E`; level 1: spawn list entry 13 at
   `$96DC`, x 2432, y 736, once, when the camera is at x 2001-2272, y 568-640) **[verified:
   code; bench and MSX traces]**: the camera offsets become 80h / −30h and RoboCop's y at least
