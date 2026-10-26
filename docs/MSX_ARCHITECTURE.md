@@ -79,8 +79,10 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
    cartridge, with no change to the game. A memory-mapper edition needs the engine reorganised
    for one 16 KiB window: bank switching does not go through a single routine
    (`docs/DISK_VS_ROM.md`, 2026-10-26). For the whole game the user chose a **2 MiB Konami SCC
-   ROM** (2026-10-26). It is gated on the bank test (`tools/msxbanktest.py`) passing on the MSX
-   Pico+ and the SX-2. A 2 MiB ROM drops 1 MiB MegaRAMs and flash cartridges (decision 2).
+   ROM** (2026-10-26). The bank test (`tools/msxbanktest.py`) passed the same day through the MSX
+   Pico+ on the SX-2 and on the Hotbit (`docs/ROM_BUDGET.md` 6.1). A 2 MiB ROM drops 1 MiB
+   MegaRAMs and flash cartridges (decision 2). The Pico+ caches fewer than 64 pages of 8 KiB:
+   the banks read within a short stretch must stay well under 32.
 7. **Game logic at 25 Hz** (final, 2026-10-20 evening): the original's routines are ported
    with their variables, tables and order, and run 25 times per second, the PAL design speed
    (the dumped Data East release is NTSC: `main_loop` waits for 2 VBLs of 60 Hz, 30 Hz; the

@@ -577,6 +577,34 @@ been tested on hardware.
 
   In openMSX it passes on the MSX2, MSX2+, turbo R and 50 Hz machines, with the cartridge in a
   primary slot and in subslot 1-0. A 1 MiB image fails with `80>00`; a changed byte shows as `D`.
+- **Result on the user's hardware (2026-10-26, `ROBOCOP2_banktest-1.ROM`, ID BT2M-1): PASS on
+  both machines**, each with the MSX Pico+ in slot 1, at 60 Hz:
+  - the SX-2 (MSX2+), every Pico+ option disabled;
+  - the Hotbit (MSX2); its Pico+ settings were not stated.
+
+  On both, 256 of 256 bank numbers are right in each window and every byte of banks 1-255 is
+  right. The SCC answers at 9800h for 3Fh only (4 of 4), not for 7Fh, BFh or FFh.
+
+  Bank switches and reads at A000h a frame, with N banks in turn (M):
+
+  | N | SX-2 | Hotbit | openMSX |
+  |---:|---:|---:|---:|
+  | 1 | 807 | 817 | 829 |
+  | 2 | 805 | 816 | 829 |
+  | 4 | 804 | 814 | 829 |
+  | 8 | 802 | 813 | 829 |
+  | 16 | 796 | 807 | 829 |
+  | 32 | 784 | 795 | 829 |
+  | 64 | 68 | 69 | 829 |
+  | 128 | 65 | 65 | 829 |
+  | 256 | 64 | 64 | 829 |
+
+  - **The Pico+'s page cache** holds at least 32 and fewer than 64 pages of 8 KiB for banks taken
+    in turn. Beyond that, nearly every switch reloads a page.
+  - **What a miss costs.** A hit costs about 73-74 T. A reload costs about 860 T: about 240 µs at
+    3.58 MHz, or 1.4 % of a 60 Hz frame.
+  - **The rule for the layout.** The banks the game reads within a short stretch must stay well
+    under 32.
 - Run it on the Pico+ and on the SX-2's internal ESE-MegaSCC+.
 - Find out which OCM-PLD version the SX-2 runs, and which loader accepts a 2 MiB Konami SCC
   image.
