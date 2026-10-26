@@ -26,6 +26,10 @@
 ## Target
 - MSX2 (V9938) is the mandatory baseline; detect a V9958 at runtime and use MSX2+ features
   when present. Never MSX2+-only.
+- Medium: a Konami SCC MegaROM. The complete game requires a device that runs a **2 MiB**
+  Konami SCC image (the user's decision, 2026-10-26); the 0.1.x releases (level 1) are 1 MiB.
+  Keep this minimum in `README.md` (Requirements) and in every release's notes. Images over
+  1 MiB carry the boot guard (`msx/cold.asm` `rom_guard`).
 
 ## Conventions
 - `tools/` in Python (stdlib whenever possible), `Makefile`, `docs/`, `tests/`; `build/` is ignored.

@@ -61,6 +61,15 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
 2. **MegaROM, with MegaRAM as the minimum requirement**: 8 KiB bank switching by writes
    inside the page itself (Konami/SCC style: `5000h`, `7000h`, `9000h`, `B000h`), which
    works on MegaRAM and on Konami SCC cartridges. 128 KiB of VRAM remain required.
+   **The minimum device grew with the ROM:**
+   - 512 KiB at first;
+   - 1 MiB from 2026-10-22, for the speech;
+   - **2 MiB for the complete game** (the user's choice, 2026-10-26; decision 6 and "2 MiB"
+     below): a 2 MiB MegaRAM, flash or multi-ROM cartridge (the MSX Pico+, tested), or an
+     FPGA MSX.
+
+   The 0.1.x releases (level 1) stay 1 MiB. The requirement is kept in `README.md`
+   (Requirements), and every release's notes must state it.
 3. **Sound**: PSG mandatory + **FM-PAC/MSX-MUSIC** when detected (built into several MSX2+,
    common as a cartridge on MSX2; 9 channels plus drums). SCC only as an option if found in
    a slot — the MegaRAM has no SCC. (2026-10-22, the user's request, "muito melhor e mais

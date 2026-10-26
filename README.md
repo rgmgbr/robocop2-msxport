@@ -12,6 +12,36 @@ present, and on a turbo R the game runs on the R800 (the title on the Z80; see
 The ADFs live in `amiga/` and **must not be committed or distributed**, and neither must
 anything generated in `build/`.
 
+## Requirements
+
+- An MSX2, MSX2+ or MSX turbo R with 128 KiB of VRAM and 64 KiB of RAM.
+- A cartridge device that runs a **Konami SCC MegaROM** (the Konami5 mapper) of the game's size:
+  - releases 0.1.x, with level 1 only: **1 MiB**;
+  - the complete game, from the release that adds level 2 on: **2 MiB**. This is the minimum
+    from then on (the user's decision, 2026-10-26:
+    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). On a device that holds less, the game
+    shows "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM." and stops.
+
+  No original cartridge is that large, so the game needs one of these: a flash or multi-ROM
+  cartridge, a MegaRAM, an FPGA MSX, or an emulator.
+
+| Device | 2 MiB Konami SCC ROM |
+|---|---|
+| MSX Pico+ (firmware v2.12) | works: tested on an SX-2 (MSX2+) and an MSX2 Hotbit, 2026-10-26 |
+| openMSX (`-romtype KonamiSCC`) | works |
+| OCM-PLD machines (SX-2 and others) | internal ESE-MegaSCC+ of 2048 KB, loaded by a ROM loader; not tested |
+| MegaFlashROM SCC+ SD, Yamanooto, Popolon Flash-ROM SCC, Konami Ultimate Collection | 2 MB supported, by their documentation and users; not tested |
+| 2 MiB MegaRAM (CIEL 2 MB and similar) | supported, loaded from disk; not tested |
+| Carnivore2 | one forum report of a 2 MB Konami SCC game running; not tested |
+| MSX PicoVerse | has the Konami SCC mapper, with a reported 2 MB limit; not tested |
+| 1 MiB devices (1 MiB MegaRAM, the original MegaFlashROM SCC+) | releases 0.1.x only |
+
+- Sound: always the PSG. An SCC or SCC+ (in the game's cartridge or in another slot) and
+  MSX-MUSIC / FM-PAC are used when present.
+
+Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank test) and
+[docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md) (decision 2, "2 MiB").
+
 ## Quick start
 
 ```sh
