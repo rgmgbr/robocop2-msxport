@@ -543,7 +543,8 @@ been tested on hardware.
 | MegaFlashROM SCC+ SD | 2 MiB Konami5 games ship for it (Dim X, Pampas & Selene). |
 | Popolon Flash-ROM SCC, Yamanooto, Konami Ultimate Collection, Repro V1 | 2 MiB supported. |
 | 2 MiB MegaRAMs | CIEL 2 MB, the 2014 anniversary MegaRAM. |
-| Carnivore2 | Its Konami5 descriptor allows it; no report found. |
+| Carnivore2 | One forum report (2023-12-28): a 2 MB Konami SCC game (Pampas & Selene, dumped from its cartridge) ran, written with c2man; the digital release, on another mapper, did not (msx.org node 66692). Not tried by the project. |
+| MSX PicoVerse (RP2040, RP2350) | Its loadrom firmware has the Konami SCC mapper; the RP2350's MultiROM firmware emulates the SCC. A report gives loadrom's limit as 2 MB (msx.org node 68221). No report of a 2 MB Konami SCC ROM found. |
 
 **What is lost.**
 - 1 MiB MegaRAMs and the original MegaFlashROM SCC+ (1 MiB, mask 7Fh). The 512 KiB devices are

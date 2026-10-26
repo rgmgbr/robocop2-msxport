@@ -296,7 +296,10 @@ The risk is medium, and it falls on the frame rate.
 - the SX-2 or another OCM-PLD machine (ESE-MegaSCC+ 2048 KB);
 - the MegaFlashROM SCC+ SD, Popolon, Yamanooto, Konami Ultimate Collection or Repro V1;
 - a 2 MiB MegaRAM: the CIEL 2 MB, the 2014 anniversary MegaRAM;
-- probably the Carnivore2: its Konami5 descriptor allows it, but no report was found.
+- probably the Carnivore2: one forum report (2023-12-28) has a 2 MB Konami SCC game running on it
+  (Pampas & Selene, dumped from its cartridge; msx.org node 66692);
+- probably the MSX PicoVerse: its loadrom firmware has the Konami SCC mapper and a 2 MB limit
+  (msx.org node 68221).
 
 1 MiB MegaRAMs and the original MegaFlashROM SCC+ (1 MiB) can no longer run the game. Decision 2
 ("MegaRAM is the minimum") becomes "a 2 MiB MegaRAM or flash cartridge".
@@ -550,13 +553,13 @@ existing one is used (E). The risk to the game is low.
 |---|---|---|---|---|
 | MSX Pico+ | up to 432 KiB with Nextor, less with SCC+ or FM-PAC on | SCC+, in subslot 0 when the mapper is on | expected (firmware v2.12) | 125 EUR |
 | SX-2 (OCM-PLD) | 2,048 or 4,096 KB internal | ESE-SCC slots (SCC+) | yes (ESE-MegaSCC+ 2048 KB) | 170-250 EUR |
-| Carnivore2 | 1,024 KB, plus 720 KB used like a MegaRAM | SCC/SCC+, in a subslot by default | allowed by its descriptor, no report | 70-115 EUR |
+| Carnivore2 | 1,024 KB, plus 720 KB used like a MegaRAM | SCC/SCC+, in a subslot by default | one forum report of a 2 MB game running | 70-115 EUR |
 | MegaFlashROM SCC+ SD | 512 KB, optional | SCC/SCC-I | yes | about 90-120 EUR |
 | GR8NET | 1,024 KB (or 512 KB) | SCC/SCC+ emulation | not checked | — |
 | 8bits4ever SD-512 | 512 KB, as a mapper or a MegaRAM | none | no | about 60 EUR |
 
 - Of these devices, the SX-2 and the MegaFlashROM SCC+ SD also run a 2 MiB Konami SCC ROM, and
-  the Carnivore2 probably does (I).
+  the Carnivore2 probably does (one forum report).
 - A disk version would add the players who have a large mapper and no such device:
   - a turbo R FS-A1GT;
   - an SD-512;
