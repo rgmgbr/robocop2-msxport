@@ -1,3 +1,4 @@
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -11,6 +12,7 @@ import hudmodel  # noqa: E402
 import mapcells  # noqa: E402
 import mkrom  # noqa: E402
 import msxconv  # noqa: E402
+import msxbanktest  # noqa: E402
 import msxgun  # noqa: E402
 import msxhud  # noqa: E402
 import msxhudrt  # noqa: E402
@@ -228,6 +230,22 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertEqual(m[fx[2][1]:fx[2][1] + 9], bytes([1, 0x31, 0x20, 0x00, 2, 2, 0x24, 3, 0]))
         tab = mkrom.offsets(m, 1)[0]
         self.assertEqual(m[tab:], bytes(range(64)) + bytes(range(32)))
+
+    def test_bank_test_tags_name_every_bank(self):
+        # tools/msxbanktest.py: the byte at 0020h names its bank, the one at 1720h is 9Bh more
+        for b in range(msxbanktest.BANKS):
+            t = msxbanktest.fill(b, msxbanktest.TAG)
+            self.assertEqual(msxbanktest.shown(t), b)
+            self.assertEqual(msxbanktest.fill(b, msxbanktest.TAG2), (t + 0x9B) & 0xFF)
+
+    @unittest.skipUnless(shutil.which("z80asm"), "z80asm not installed")
+    def test_bank_test_image(self):
+        rom = msxbanktest.image(*msxbanktest.assemble("T1"))
+        bank = msxbanktest.BANK
+        self.assertEqual(len(rom), 256 * bank)
+        self.assertEqual(rom[0x10:0x18], b"ROM_KON5")
+        self.assertEqual((rom[0x20], rom[0x1720]), (0x20, 0xBB))       # bank 0's tags, in the code's room
+        self.assertEqual(rom[0xC5 * bank:0xC6 * bank], msxbanktest.bank_data(0xC5))
 
     def test_msx_trace_rows_are_signed_where_the_amiga_is(self):
         import tempfile

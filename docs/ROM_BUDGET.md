@@ -563,8 +563,20 @@ been tested on hardware.
 - The bank numbers in `msx/*.asm` are already 8-bit and need no change.
 
 **Test first.**
-- Build a 256-bank DIAG-style image, each bank tagged with its own number, with `dg_bnks`
-  extended with 80h, BFh, C0h and FFh.
+- The user chose the 2 MiB ROM on 2026-10-26 (`docs/DISK_VS_ROM.md`), on the condition that the
+  bank test below passes on their devices.
+- The bank test: `tools/msxbanktest.py` (`make banktest`) builds a 2 MiB cartridge from
+  `msx/banktest.asm`, with no game. Bank b holds b × 3Bh + (o >> 8) × 1Dh + (o & FFh) at its offset
+  o (low 8 bits), so one byte names the bank a window shows. The screen shows:
+  - for each bank number, written at 9000h and at B000h, whether the window showed that bank
+    (a grid of 256 cells and the first wrong ones, such as `80>00` when a device wraps at 1 MiB);
+  - every byte of banks 1-255, checked through A000h;
+  - how many of 4 values stored at 9800h come back with 3Fh, 7Fh, BFh and FFh at 9000h;
+  - the bank switches and reads at A000h a frame allows with 1, 2, 4 ... 256 banks taken in
+    turn. The timed loops run from RAM. The Pico+'s page cache shows as a drop.
+
+  In openMSX it passes on the MSX2, MSX2+, turbo R and 50 Hz machines, with the cartridge in a
+  primary slot and in subslot 1-0. A 1 MiB image fails with `80>00`; a changed byte shows as `D`.
 - Run it on the Pico+ and on the SX-2's internal ESE-MegaSCC+.
 - Find out which OCM-PLD version the SX-2 runs, and which loader accepts a 2 MiB Konami SCC
   image.
