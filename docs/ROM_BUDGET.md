@@ -559,8 +559,8 @@ been tested on hardware.
 - Done: a boot guard in FRONT, only in images over 1 MiB: `cold.asm` `rom_guard` (37 B of code,
   an 8 B tag, a 57 B message) and 6 B in `rc2.asm` init. A 1 MiB device wraps, masks or ignores banks 128 and up without any error:
   the guard reads a tag in the last bank and stops with a message when it is missing.
-- Keep BANK_MUSIC's SCC-time data below B800h: the Pico+ decodes the SCC at
-  (address & D800h) = 9800h.
+- Done: `tools/mkrom.py` keeps BANK_MUSIC's SCC-time data below B800h (`scc_time_end`; B3EEh
+  today), since the Pico+ decodes the SCC at (address & D800h) = 9800h.
 - Never write BFFEh/BFFFh or 7FFEh/7FFFh, which switch SCC+ and ESE modes.
 - The bank numbers in `msx/*.asm` are already 8-bit and need no change.
 

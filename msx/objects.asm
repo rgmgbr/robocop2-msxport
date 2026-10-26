@@ -1376,7 +1376,7 @@ gk_r:   ld (eb_x),hl
         ld a,(ix+OS_FACE)
         or a
         jr z,gk_s
-        ld de,-0x9000
+        ld de,0x7000                ; (-9000h: BC = -1 holds the high word)
         ld bc,-1
 gk_s:   ld (hl),c
         inc hl

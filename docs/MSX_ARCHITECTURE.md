@@ -803,20 +803,48 @@ which as sprites were striped, cut or left out.
   last 13 of them), then the speech (`VOICE_BANK`; in the music: `VOICE_MIX_BANK`), the title
   music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), 74 banks in all; the rest is free.
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
-  Konami SCC cartridges they select the SCC's registers at `9800h` (`tools/mkrom.py` checks
-  every bank that window maps: the pictures, read at `A000h`, take bank 63). `BANK_INPUT` holds
-  the test builds' joystick script and the PSG player with its streams, `BANK_MUSIC` the SCC /
-  OPLL player and the speech's tables.
-- **2 MiB** (2026-10-26, decision 6): the complete game goes up to 256 banks. `tools/mkrom.py`
-  pads the image to a power of two and writes `ROM_BANKS` into `banks.inc`; the release stays
-  1 MiB while the game fits (the 1 MiB build is the same byte for byte). Over 1 MiB, the last
-  bank carries a tag at `1FF0h` (`RC2BANK` and the bank's number). `cold.asm` `rom_guard`, called
-  by `rc2.asm` init before anything else, reads it at `A000h`. A device that holds less wraps,
-  masks or ignores the higher bank numbers, so the tag is missing: the game then shows "ROBOCOP 2
-  needs a 2 MB Konami SCC cartridge or MegaRAM." in SCREEN 0 and stops. `ROM_2M=1` builds a 2 MiB
-  image of today's game to test this. In openMSX the 2 MiB image starts like the 1 MiB one (MSX2,
-  MSX2+, turbo R), its coverage drive matches the Amiga in all 1,400 game frames, and the image
-  cut to 1 MiB stops on the message.
+  Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
+  every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
+  which takes bank 63. The check fails closed, so a block added later is checked too.
+  `BANK_INPUT` holds the test builds' joystick script and the PSG player with its streams,
+  `BANK_MUSIC` the SCC / OPLL player and the speech's tables.
+- **Build checks** (2026-10-26, the 2 MiB audit). `tools/mkrom.py` stops when:
+  - z80asm truncates a value. It only warns: level 1's type-25 object lost its body in 8 of
+    every 64 frames this way, its frame `$402A0` written as `$302A0` (fixed in `level1.asm`
+    t25).
+  - `music.inc`'s `scc_time_end` passes `B800h`. The tables `music.asm` may read with 3Fh at
+    `9000h` must stay below it, because the MSX Pico+ also shows the SCC at `B800h-BFFFh`. The
+    code that runs with the SCC mapped sits before them.
+- **2 MiB** (2026-10-26, decision 6): the complete game goes up to 256 banks.
+  - `tools/mkrom.py` pads the image to a power of two and writes `ROM_BANKS` into `banks.inc`.
+    The release stays 1 MiB while the game fits.
+  - Over 1 MiB, the last bank carries a tag at `1FF0h` (`RC2BANK` and the bank's number).
+  - `cold.asm` `rom_guard` reads the tag at `A000h`. `rc2.asm` init calls it right after the MSX2
+    check, so an MSX1 or a machine with 64 KiB of VRAM shows the MSX2 message instead. It runs
+    with the interrupts off, before any bank but `BANK_FRONT` is mapped.
+  - A device that holds less wraps, masks or ignores the higher bank numbers, so the tag is
+    missing. The game then shows "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM. If
+    yours is one, reset the MSX." in SCREEN 0 and stops.
+  - The last line is for an SCC+ cartridge whose SCC+ mode an earlier program left on (its
+    registers at `B800h-BFFFh`): the guard stops there too, and a reset clears the mode.
+  - `ROM_2M=1` builds a 2 MiB image of today's game to test this. In openMSX the 2 MiB image
+    starts like the 1 MiB one (MSX2, MSX2+, turbo R, and with a DDX 3.0 in slot 1). Its coverage
+    drive matches the Amiga in all 1,400 game frames, and the image cut to 1 MiB stops on the
+    message.
+- **A disk interface started before the game** (found by the 2 MiB audit, 2026-10-26: v0.1.2 hung
+  at power-on with a DDX 3.0 in slot 1 and the game in slot 2, in openMSX). Its ROM's start does
+  two things the game must undo, which `rc2.asm` init does first, with the interrupts off:
+  - **The interrupt hook.** It hooks H.TIMI to a routine at `F365h`, under the game's stack
+    (`F380h` down). Until `isr_init`'s IM 2, the BIOS's interrupts, which the sub-ROM's CHGMOD
+    and INITXT switch on, would push over that routine and then run it. Init sets H.TIMI and
+    H.KEYI to RET, since the game never goes back to BASIC.
+  - **The 6000h bank.** It looks for RAM by writing `711Ch` of every slot's page 1. On this
+    mapper that write selects bank 127 at `6000h`, and the fixed code there is gone. Init writes
+    1 at `7000h`, and 2 and 3 at `9000h` and `B000h` after `slot_page2`, as Konami's own
+    cartridges do.
+
+  With both fixes the game starts in openMSX with the DDX 3.0 in slot 1, on the Gradiente
+  Expert 2.0, plain and as CocoaMSX's.
 
 ## Sound (`msx/sound.asm`)
 
@@ -831,8 +859,11 @@ which as sprites were striped, cut or left out.
   cartridge's own slot (`sound.asm` `scc_pat`; the MSX Pico+ on the user's SX-2 reads back 00
   one time in four to two in four; on a MegaRAM or a Konami mapper a write there selects the
   `8000h` bank, without the chip bank 3Fh shows there, and `tools/mkrom.py` checks that no such
-  byte of this image at `1800h` is a test value; in openMSX found with 90 % of the reads made
-  to fail), three different ones in another slot (an unknown cartridge), else
+  byte of this image at `1800h` is a test value. That check covers a device as large as the
+  image. A 1 MiB image on a 2 MiB MegaRAM selects banks BFh and 89h, outside the image, whose
+  RAM holds anything: a false SCC is then possible, about 1 % of power-ups, and the title music
+  stays silent. 2 MiB images are not affected. In openMSX the SCC is found with 90 % of the
+  reads made to fail), three different ones in another slot (an unknown cartridge), else
   (`sound.asm` `scc_scan`) in the other primary slots that are not expanded (an SCC or SCC+
   cartridge beside a MegaRAM: page 2 switched to it through port `A8h`), skipping any whose
   `8000h` is RAM, after 3Fh written to its `9000h` (an SCC+ starts in SCC mode). Every SCC

@@ -24,6 +24,8 @@ MODE:       equ 0xFAFC              ; bits 1-2: the VRAM (0 16 KiB, 1 64 KiB, 2 
 EXPTBL:     equ 0xFCC1
 SLTTBL:     equ 0xFCC5
 RG9SAV:     equ 0xFFE8
+H_KEYI:     equ 0xFD9A              ; the BIOS's interrupt hooks (rc2.asm init sets both to RET)
+H_TIMI:     equ 0xFD9F
 RG0SAV:     equ 0xF3DF              ; the BIOS's copies of R#0 and R#1 (cold.asm cpu_detect, at power-on)
 RG1SAV:     equ 0xF3E0
 BANK_8000:  equ 0x9000              ; selects the bank of the 8000h-9FFFh window

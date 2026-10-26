@@ -1038,11 +1038,12 @@ t25_dr: ld l,(ix+OS_L40)
         ld a,(g_frame)
         and 0x32
         ld (t_save),a               ; D4
-        ld hl,0xFEE0
-        jr nz,t25_a
-        ld hl,0xFEE0 + 0x3C0
-t25_a:  ld (bob_a2),hl
+        ld hl,0xFEE0                ; A2 $3FEE0, or $3FEE0 + $3C0 = $402A0 when D4 is 0
         ld a,0x03
+        jr nz,t25_a
+        ld hl,0x02A0
+        inc a
+t25_a:  ld (bob_a2),hl
         ld (bob_a2+2),a
         ld hl,0xC03
         ld (bob_d4),hl

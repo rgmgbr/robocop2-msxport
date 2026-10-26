@@ -338,6 +338,9 @@ def music_inc(scc: bytes, scc_bank: int, waves_n: int, fm: bytes, fm_bank: int, 
     lines += voice_inc("mus_snap_psg", scc, scc_bank, [(3, MVK_PSG)], tick, since)
     lines += voice_inc("mus_snap_fm", fm, fm_bank, [(0, MVK_FM), (1, MVK_FM), (2, MVK_FM)], tick, since)
     lines += voice_inc("mus_snap_rhy", fm, fm_bank, [(3, MVK_RHY)], tick, since)
+    lines.append("scc_time_end:                       ; (the end of the tables music.asm may read with 3Fh at 9000h,"
+                 " the code that does is before them: with 3Fh the MSX Pico+ also shows the SCC at B800h-BFFFh;"
+                 " tools/mkrom.py main checks it)")
     return "\n".join(lines) + "\n"
 
 
@@ -491,13 +494,13 @@ def main(argv: list[str]) -> int:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
     nbanks = rom_banks(banks_used, MAX_BANKS if opts["ROM_2M"] else 0)
-    # the banks the 8000h window maps (a Konami SCC mapper: a bank number with (b & 3Fh) = 3Fh
-    # selects the SCC's registers at 9800h instead on most cartridges; the MSX Pico+ for 3Fh only)
-    at_8000 = list(range(2, 2 + len(LOGIC))) + list(range(2 + len(LOGIC), bank_atr + 4 + dyn_banks)) \
-        + list(range(bank_voice, bank_sccfx + len(sccfx) // BANK))
-    bad = [b for b in at_8000 if b & 0x3F == 0x3F]
+    # every bank but those read only at A000h may be mapped at 8000h (a Konami SCC mapper: a bank
+    # number with (b & 3Fh) = 3Fh selects the SCC's registers at 9800h instead on most cartridges;
+    # the MSX Pico+ for 3Fh only): only the pictures (front.asm, through bank_a000) may take one
+    a000_only = set(range(pic_first[0], bank_voice))
+    bad = [b for b in range(2, banks_used) if b & 0x3F == 0x3F and b not in a000_only]
     if bad:
-        print(f"error: bank(s) {bad} would be mapped at 8000h (the SCC's registers)", file=sys.stderr)
+        print(f"error: bank(s) {bad} could be mapped at 8000h (the SCC's registers)", file=sys.stderr)
         return 1
     pl = equates(level.parent / "player.inc")
     kx = -(-0x10000 * (COLS * 16 - 256 - pl["CAM_XMAX"]) // pl["CAM_XMAX"])
@@ -544,6 +547,17 @@ def main(argv: list[str]) -> int:
         print(r.stderr, file=sys.stderr)
         return 1
     out.with_suffix(".labels").write_text(labels)       # (rc2.rom: rc2.labels, rc2_ext.rom: rc2_ext.labels)
+    # (z80asm only warns when a value does not fit its byte or word: a lost high byte, such as
+    # an Amiga address's or a bank number's, would go unseen)
+    lost = [w for w in labels.splitlines() if "truncated" in w]
+    if lost:
+        print("error: z80asm truncated a value:\n" + "\n".join(lost), file=sys.stderr)
+        return 1
+    m = re.search(r"^scc_time_end:\s+equ \$([0-9a-f]+)$", labels, re.M)
+    if not opts["DIAG"] and (not m or int(m[1], 16) > 0xB800):
+        print(f"error: music.asm's SCC-time data end at {m[1] if m else '?'}h, past B800h (the MSX Pico+ "
+              f"shows the SCC there with 3Fh at 9000h)", file=sys.stderr)
+        return 1
     cb = code.read_bytes()
     if len(cb) != (2 + len(LOGIC)) * BANK:
         print(f"error: code is {len(cb)} bytes (expected {(2 + len(LOGIC)) * BANK})", file=sys.stderr)

@@ -19,6 +19,12 @@
 
 init:   di
         ld sp,0xF380
+        ld a,0xC9                   ; the BIOS's interrupt hooks: RET (a disk ROM started before
+        ld (H_TIMI),a               ;  the game hooks H.TIMI to code at F365h, under this stack:
+        ld (H_KEYI),a               ;  the BIOS's interrupts until IM 2 ran the stack's bytes)
+        ld a,1                      ; bank 1 at 6000h again: a disk ROM started before the game
+        ld (0x7000),a               ;  looks for RAM by writing 711Ch of every slot, which on
+                                    ;  this mapper selects another bank there (the DDX 3.0: 127)
         if DIAG
         in a,(PPI_SLOT)
         ld (dg_a8b),a               ; (test build: A8h as the BIOS left it; the SCC probed
@@ -28,6 +34,10 @@ init:   di
         ld hl,2 + 3 * 256           ; the mapper's banks at power-on in the 8000h and A000h windows
         ld (act_8000),hl            ; (act_8000, act_a000: the interrupts put act_a000 back)
         call slot_page2             ; cartridge also in page 2 (8000h-BFFFh)
+        ld a,2                      ; (and selected there, whatever wrote in the windows before)
+        ld (BANK_8000),a
+        inc a
+        ld (BANK_A000),a
         ld a,(MSXVER)
         if DIAG
         ld (dg_msxv),a

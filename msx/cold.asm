@@ -840,7 +840,8 @@ no2_msg:
 ; A ROM over 1 MiB (rc2.asm init, through front_call; the interrupts off): the tag mkrom.py
 ; writes at the last bank's 1FF0h, read at A000h. A device that holds less wraps, masks or
 ; ignores the higher bank numbers and shows another bank there: a message, and the machine stays
-; on it (the BIOS still serves page 0).
+; on it (the BIOS still serves page 0). So does an SCC+ cartridge whose SCC+ mode an earlier
+; program left on (its registers at B800h-BFFFh): a reset clears it, hence the message's last line.
 rom_guard:
         ld a,ROM_BANKS - 1
         ld (BANK_A000),a
@@ -864,6 +865,8 @@ rg_tag: db "RC2BANK", ROM_BANKS - 1  ; (tools/mkrom.py guard_tag)
 rg_msg: db "ROBOCOP 2 needs a 2 MB Konami"
         db 13, 10
         db "SCC cartridge or MegaRAM."
+        db 13, 10
+        db "If yours is one, reset the MSX."
         db 0
         endif
 
