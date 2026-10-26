@@ -247,6 +247,15 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertEqual((rom[0x20], rom[0x1720]), (0x20, 0xBB))       # bank 0's tags, in the code's room
         self.assertEqual(rom[0xC5 * bank:0xC6 * bank], msxbanktest.bank_data(0xC5))
 
+    def test_rom_banks_and_the_2m_guard_tag(self):
+        # tools/mkrom.py: a power of two of banks; over 1 MiB the last bank holds msx/cold.asm
+        # rom_guard's tag, the same bytes as its rg_tag
+        self.assertEqual([mkrom.rom_banks(78), mkrom.rom_banks(129), mkrom.rom_banks(78, 256)], [128, 256, 256])
+        self.assertEqual(mkrom.guard_tag(256), b"RC2BANK\xff")
+        asm = (ROOT / "msx" / "cold.asm").read_text()
+        self.assertRegex(asm, r'rg_tag: db "RC2BANK", ROM_BANKS - 1')
+        self.assertIn(f"0xA000 + 0x{mkrom.GUARD_AT:04X}", asm)
+
     def test_msx_trace_rows_are_signed_where_the_amiga_is(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

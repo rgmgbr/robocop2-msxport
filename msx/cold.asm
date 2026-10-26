@@ -836,6 +836,37 @@ no2_msg:
         db "with 128 KB of VRAM."
         db 0
 
+        if ROM_BANKS > 128
+; A ROM over 1 MiB (rc2.asm init, through front_call; the interrupts off): the tag mkrom.py
+; writes at the last bank's 1FF0h, read at A000h. A device that holds less wraps, masks or
+; ignores the higher bank numbers and shows another bank there: a message, and the machine stays
+; on it (the BIOS still serves page 0).
+rom_guard:
+        ld a,ROM_BANKS - 1
+        ld (BANK_A000),a
+        ld hl,0xA000 + 0x1FF0
+        ld de,rg_tag
+        ld b,8
+rg_lp:  ld a,(de)
+        cp (hl)
+        jr nz,rg_bad
+        inc de
+        inc hl
+        djnz rg_lp
+        ld a,(act_a000)
+        ld (BANK_A000),a
+        ret
+rg_bad: ei
+        call INITXT
+        ld hl,rg_msg
+        jr nm_lp
+rg_tag: db "RC2BANK", ROM_BANKS - 1  ; (tools/mkrom.py guard_tag)
+rg_msg: db "ROBOCOP 2 needs a 2 MB Konami"
+        db 13, 10
+        db "SCC cartridge or MegaRAM."
+        db 0
+        endif
+
 ; (tiles.asm) At power-on (rc2.asm init, through front_call).
 ; Page 0 (0000h-3FFFh) switched to the main RAM (the slot of page 3) once the BIOS is not
 ; needed any more: the game never calls it after its start and IM 2 does not use page 0.

@@ -793,11 +793,21 @@ which as sprites were striped, cut or left out.
   levels: a 1 MiB MegaRAM or flash cartridge): the first 65 hold the game (the pictures take the
   last 13 of them), then the speech (`VOICE_BANK`; in the music: `VOICE_MIX_BANK`), the title
   music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), 74 banks in all; the rest is free.
-  The 8000h window must never map bank 63 or 127: on a KonamiSCC cartridge they select the
-  SCC's registers at `9800h` (`tools/mkrom.py` checks every bank that window maps: the pictures,
-  read at `A000h`, take bank 63). `BANK_INPUT` holds the test builds' joystick script and the
-  PSG player with its streams, `BANK_MUSIC` the SCC / OPLL player and the speech's tables. The
-  complete game with levels 2 and 3 may need 2 MiB.
+  The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
+  Konami SCC cartridges they select the SCC's registers at `9800h` (`tools/mkrom.py` checks
+  every bank that window maps: the pictures, read at `A000h`, take bank 63). `BANK_INPUT` holds
+  the test builds' joystick script and the PSG player with its streams, `BANK_MUSIC` the SCC /
+  OPLL player and the speech's tables.
+- **2 MiB** (2026-10-26, decision 6): the complete game goes up to 256 banks. `tools/mkrom.py`
+  pads the image to a power of two and writes `ROM_BANKS` into `banks.inc`; the release stays
+  1 MiB while the game fits (the 1 MiB build is the same byte for byte). Over 1 MiB, the last
+  bank carries a tag at `1FF0h` (`RC2BANK` and the bank's number). `cold.asm` `rom_guard`, called
+  by `rc2.asm` init before anything else, reads it at `A000h`. A device that holds less wraps,
+  masks or ignores the higher bank numbers, so the tag is missing: the game then shows "ROBOCOP 2
+  needs a 2 MB Konami SCC cartridge or MegaRAM." in SCREEN 0 and stops. `ROM_2M=1` builds a 2 MiB
+  image of today's game to test this. In openMSX the 2 MiB image starts like the 1 MiB one (MSX2,
+  MSX2+, turbo R), its coverage drive matches the Amiga in all 1,400 game frames, and the image
+  cut to 1 MiB stops on the message.
 
 ## Sound (`msx/sound.asm`)
 

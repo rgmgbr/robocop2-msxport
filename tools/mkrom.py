@@ -20,10 +20,12 @@
         speech in the music (voice_mix.bin) from VOICE_MIX_BANK, the title music for the SCC
         (tools/msxscc.py scc.bin) from bank SCC_BANK and for the OPLL (tools/msxfm.py fm.bin) from
         bank FM_BANK, the sound effects for the SCC (tools/msxsccfx.py sccfx.bin) from bank
-        SCCFX_BANK (msx/music.asm reads them through the 8000h window); up to 128 banks in all
-        (1 MiB, the user's choice for the speech and the next levels: a 1 MiB MegaRAM or flash
-        cartridge), the ROM padded to a power of two; the banks the 8000h window maps must not be
-        63 or 127 (those select the SCC's registers at 9800h, KonamiSCC: checked here)
+        SCCFX_BANK (msx/music.asm reads them through the 8000h window); up to 256 banks in all
+        (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
+        cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
+        window maps must not have (b & 3Fh) = 3Fh (those select the SCC's registers at 9800h on
+        most Konami SCC cartridges: checked here). Over 1 MiB the last bank carries msx/cold.asm
+        rom_guard's tag at GUARD_AT: the game stops on a device that holds less.
 Generates build/msx/gen/banks.inc, rowtab.inc, options.inc (build options, see OPTIONS),
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
 headers, the SCC's waveforms, the OPLL's patch, the voices' state after the speech), grade.inc
@@ -68,6 +70,8 @@ PICTURES = (("title", "title_credit"), ("gameover", "gameover_text"))   # the SC
                                     # (tools/msxtext.py), PIC9 with GAME OVER below it
 ROWS_PER_BANK = 25
 FIELD_ID0 = 0xC8                    # the play-field BOB frames' BOBHASH ids (tools/msxsprites.py)
+MAX_BANKS = 256                     # the bank registers' 8 bits: 2 MiB
+GUARD_AT = 0x1FF0                   # rom_guard's tag in the last bank (images over 1 MiB)
 COLS = 160
 VIEW_LINES = 162                    # msx/msx.inc
 OPTIONS = {
@@ -100,8 +104,23 @@ OPTIONS = {
     "DAMAGE_X": (3, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them): 3 = the user's choice"
                     " for the fewer enemies (ENEMY_CAP), 1 = the original, for trace tests; the missile (enemy bullet"
                     " types 1 and 2, damage 40h) at most 2, the user's choice (msx/hits.asm)"),
+    "ROM_2M": (0, "1 = a 2 MiB image while the game still fits 1 MiB (test: the start of a 2 MiB ROM, msx/cold.asm"
+                  " rom_guard)"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
+
+
+def rom_banks(used: int, at_least: int = 0) -> int:
+    """The image's banks: the next power of two (a device masks bank numbers to its size)."""
+    n = 1
+    while n < used or n < at_least:
+        n *= 2
+    return n
+
+
+def guard_tag(banks: int) -> bytes:
+    """msx/cold.asm rom_guard's tag (rg_tag), at the last bank's GUARD_AT."""
+    return b"RC2BANK" + bytes([banks - 1])
 
 
 def input_inc(script: str, tele: str = "") -> str:
@@ -467,10 +486,16 @@ def main(argv: list[str]) -> int:
     bank_scc = bank_voice + len(voice) // BANK
     bank_fm = bank_scc + len(scc) // BANK
     bank_sccfx = bank_fm + len(fm) // BANK
-    # the banks the 8000h window maps (KonamiSCC: 63 and 127 select the SCC's registers instead)
+    banks_used = bank_sccfx + len(sccfx) // BANK
+    if banks_used > MAX_BANKS:
+        print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
+        return 1
+    nbanks = rom_banks(banks_used, MAX_BANKS if opts["ROM_2M"] else 0)
+    # the banks the 8000h window maps (a Konami SCC mapper: a bank number with (b & 3Fh) = 3Fh
+    # selects the SCC's registers at 9800h instead on most cartridges; the MSX Pico+ for 3Fh only)
     at_8000 = list(range(2, 2 + len(LOGIC))) + list(range(2 + len(LOGIC), bank_atr + 4 + dyn_banks)) \
         + list(range(bank_voice, bank_sccfx + len(sccfx) // BANK))
-    bad = sorted(set(at_8000) & {63, 127})
+    bad = [b for b in at_8000 if b & 0x3F == 0x3F]
     if bad:
         print(f"error: bank(s) {bad} would be mapped at 8000h (the SCC's registers)", file=sys.stderr)
         return 1
@@ -483,7 +508,7 @@ def main(argv: list[str]) -> int:
         f"MAP_ROWS: equ {rows}\nMAP_COLS: equ {COLS}\nSPR_BASE_BANK: equ {bank_spr}\n"
         f"HUD_BANK: equ {bank_hud}\nATR_BANK: equ {bank_atr}\nATR_PACKED: equ {len(atr) - 16}\n"
         f"HUD_IMG_BANK: equ {bank_atr + 1}\nLEVEL_BANK: equ {bank_atr + 2}\nFIELD_IMG_BANK: equ {bank_atr + 3}\n"
-        f"FIELD_DYN_BANK: equ {bank_atr + 4}\n"
+        f"FIELD_DYN_BANK: equ {bank_atr + 4}\nROM_BANKS: equ {nbanks}\n"
         f"OTILE: equ 0x8000\nATR2: equ 0x8400\n"
         f"BOBHASH: equ 0x8600\n"
         + "".join(f"PIC_{n.upper()}_BANK: equ {pic_first[i]}\nPIC_{n.upper()}_LINES: equ {len(pics[i]) // 256}\n"
@@ -530,13 +555,16 @@ def main(argv: list[str]) -> int:
            + field_dyn + b"\xff" * (dyn_banks * BANK - len(field_dyn))
            + b"".join(p + b"\xff" * (-len(p) % BANK) for p in pics)
            + voice + scc + fm + sccfx)
-    if len(rom) > 0x100000:
-        print(f"error: the ROM takes {len(rom) // BANK} banks (1 MiB: 128)", file=sys.stderr)
+    if len(rom) != banks_used * BANK:
+        print(f"error: the image holds {len(rom)} bytes, the layout {banks_used} banks", file=sys.stderr)
         return 1
-    size = 1
-    while size < len(rom):
-        size *= 2
-    rom += b"\xff" * (size - len(rom))
+    rom += b"\xff" * ((nbanks - banks_used) * BANK)
+    if nbanks > 128:                # (msx/cold.asm rom_guard: a device that holds less shows another bank there)
+        at = (nbanks - 1) * BANK + GUARD_AT
+        if rom[at:at + 8] != b"\xff" * 8:
+            print(f"error: data at the last bank's {GUARD_AT:04X}h: no room for rom_guard's tag", file=sys.stderr)
+            return 1
+        rom = rom[:at] + guard_tag(nbanks) + rom[at + 8:]
     # (msx/sound.asm scc_pat takes one value read back from 9800h of the cartridge's own slot
     # for an SCC: on a MegaRAM or a Konami mapper holding this image each value written there
     # selects that bank at 8000h, the byte read back being the bank's at 1800h; on a Konami SCC

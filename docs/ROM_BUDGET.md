@@ -550,13 +550,14 @@ been tested on hardware.
   already excluded by today's 1 MiB ROM.
 - Decision 2 ("MegaRAM is the minimum") becomes "a 2 MiB MegaRAM or flash cartridge".
 
-**Changes needed.**
-- `tools/mkrom.py`: raise the 1 MiB limit (line 533).
-- `tools/mkrom.py`: the 8000h check (line 473) knows only banks 63 and 127. Every bank with
-  (b & 3Fh) = 3Fh (63, 127, 191, 255) selects the SCC at 9800h-9FFFh when written at 9000h, so
-  those banks may only hold data read at A000h: level logic, maps, pictures.
-- A boot guard of about 50 B in FRONT. A 1 MiB device wraps, masks or ignores banks 128 and up
-  without any error.
+**Changes needed** (the first three done on 2026-10-26: `docs/MSX_ARCHITECTURE.md`, "2 MiB").
+- Done: `tools/mkrom.py` takes up to 256 banks and writes `ROM_BANKS`.
+- Done: the 8000h check now covers every bank with (b & 3Fh) = 3Fh (63, 127, 191, 255).
+  Written at 9000h, such a bank selects the SCC at 9800h-9FFFh, so those banks may only hold data
+  read at A000h: level logic, maps, pictures.
+- Done: a boot guard in FRONT, only in images over 1 MiB: `cold.asm` `rom_guard` (37 B of code,
+  an 8 B tag, a 57 B message) and 6 B in `rc2.asm` init. A 1 MiB device wraps, masks or ignores banks 128 and up without any error:
+  the guard reads a tag in the last bank and stops with a message when it is missing.
 - Keep BANK_MUSIC's SCC-time data below B800h: the Pico+ decodes the SCC at
   (address & D800h) = 9800h.
 - Never write BFFEh/BFFFh or 7FFEh/7FFFh, which switch SCC+ and ESE modes.

@@ -41,6 +41,10 @@ init:   di
 nm_go:  ld hl,no_msx2               ;  sprite tables need pages 2-3: cold.asm, a message, and
         jp front_call               ;  the machine stays on it)
 nm_ok:
+        if ROM_BANKS > 128
+        ld hl,rom_guard
+        call front_call             ; over 1 MiB: stops on a device that holds less (cold.asm)
+        endif
         if DIAG
         di
         ld b,'1'
