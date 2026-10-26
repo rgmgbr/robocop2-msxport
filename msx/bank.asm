@@ -1,6 +1,7 @@
-; Bank switching - the ONLY place that knows the medium.
-; Today: Konami SCC style MegaROM / MegaRAM (write inside the page itself).
-; A floppy + memory mapper version only needs to replace these routines (OUT to ports FCh-FFh).
+; Bank switching for the Konami SCC style MegaROM / MegaRAM (write inside the page itself).
+; Not the only code that knows the medium: music.asm, sound.asm and sprites.asm write 9000h/B000h
+; themselves, and five places read both 8 KiB windows at once, so a memory-mapper version (one
+; 16 KiB page) needs more than new routines here (docs/DISK_VS_ROM.md).
 ; The mapper's registers cannot be read: act_8000 / act_a000 keep the bank each window shows, so
 ; code that maps a window for a moment can put back what it found (the game's logic runs from
 ; the 8000h and A000h windows, logic_map).

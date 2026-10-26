@@ -75,8 +75,10 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
    on the TV), fixed 3-3-2 palette with Floyd–Steinberg (`tools/msxpic.py`). The other
    photos are dropped and the between-level scenes become text/briefing screens; MegaROM
    estimated at ~300–450 KiB compressed (fits in 512 KiB; the ROM grew to 1 MiB later for the speech).
-6. **MegaROM** kept; bank switching goes through a single routine, so a floppy + memory
-   mapper version stays possible in the future.
+6. **MegaROM** kept. A disk edition would load the ROM image into a 2 MiB MegaRAM or flash
+   cartridge, with no change to the game. A memory-mapper edition needs the engine reorganised
+   for one 16 KiB window: bank switching does not go through a single routine
+   (`docs/DISK_VS_ROM.md`, 2026-10-26).
 7. **Game logic at 25 Hz** (final, 2026-10-20 evening): the original's routines are ported
    with their variables, tables and order, and run 25 times per second, the PAL design speed
    (the dumped Data East release is NTSC: `main_loop` waits for 2 VBLs of 60 Hz, 30 Hz; the
