@@ -12,8 +12,14 @@
 #         2000, 3000 and 1000 pictures recorded from pass 90;
 #       - prod_m2 and prod_f1: the product's whole flow (hz6_prod_setup).
 #       The night of 2026-10-27 ran: c8_chain CAND ROBOCOP2_v0.1.3-test2 FRESH cand_test2
+#   c8_jobs CDIR BASE FDIR FTAG ?MOVES?
+#       c8_chain's seven jobs, not started (run8f.tcl c8f_chain adds one)
 
 proc c8_chain {cdir base fdir ftag {moves {100 d 110 r 120 d 130 l 140 d}}} {
+	return [hz_chain [c8_jobs $cdir $base $fdir $ftag $moves]]
+}
+
+proc c8_jobs {cdir base fdir ftag {moves {100 d 110 r 120 d 130 l 140 d}}} {
 	set C $cdir
 	set P {60 90}
 	for {set i 150} {$i <= 400} {incr i 5} { lappend P $i }
@@ -40,5 +46,5 @@ proc c8_chain {cdir base fdir ftag {moves {100 d 110 r 120 d 130 l 140 d}}} {
 	lappend jobs [c8_job bonus2m_m2 Gradiente_Expert20_64K "$C/run" "$b2.ROM" "$b2.labels" $mv $P 1000 90]
 	lappend jobs [list prod_m2 Gradiente_Expert20_64K [list hz6_prod_setup "$C/run" prod_m2 "$p1.ROM" "$p1.labels"] {$::hz_done} 900]
 	lappend jobs [list prod_f1 Sony_HB-F1XDJ_128K_Lite [list hz6_prod_setup "$C/run" prod_f1 "$p1.ROM" "$p1.labels"] {$::hz_done} 900]
-	return [hz_chain $jobs]
+	return $jobs
 }

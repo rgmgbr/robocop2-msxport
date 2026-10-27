@@ -6,6 +6,11 @@ clears, and live here so that the next milestones (the stage's sound, the second
 same checks. Every check below ran that night; section 9 lists what was verified again when the
 scripts moved, without an emulator.
 
+The final checks' scripts (`np.tcl`, `ft.tcl`, `run8f.tcl`, `titlecmp.py`, `titlecmp2.py`,
+`partialcheck.py`; `docs/BRAINSTORM.md` 4.6) ran later that morning, before the test candidates
+went out, and followed the others here: their checks are 5.17, and section 10 says what changed
+and what was verified when they moved.
+
 The harness has two sides:
 
 - **The emulator side** is Tcl, sourced into the MSX-AI MCP's openMSX with `msx_local_cmd`. It
@@ -48,7 +53,10 @@ The harness has two sides:
 | `hz7.tcl` | Tcl | `hz7_snap`, `hz7_arm` (snapshots at passes, a record at every VBLANK), `hz7_job`, `hz7_guard_arm`, `hz7_after_setup` / `hz7_fresh_setup` (the restore) |
 | `fixchk.tcl` | Tcl | `hzp_setup` (the turbo R's PAUSE), `hzb_setup` (the turbo R's HUD blank), `hzg_job` (the display guard), `hzf_job` (VRAM access speed) |
 | `suite.tcl` | Tcl | `suite_drives R O` (25 jobs), `suite_flows R O FDIR FTAG` (13 jobs): the acceptance suite |
-| `c8.tcl`, `run8.tcl` | Tcl | `c8_job` (a PZ_TEST ROM from power-on, cursor keys from the keyboard), `c8_chain` (the test candidates) |
+| `c8.tcl`, `run8.tcl` | Tcl | `c8_job` (a PZ_TEST ROM from power-on, cursor keys from the keyboard), `c8_chain` (the test candidates; `c8_jobs`: its job list) |
+| `np.tcl` | Tcl | the final checks' flows (5.17): `np_job`, `np_keys_arm` (a drive's moves from the keyboard), `np_solved_setup`, `np_title_setup` / `np_title0_setup` (the title's exact record), `np_fire_setup`, `np_two_setup` / `np_two_title_setup`, `np_wp_job` |
+| `ft.tcl` | Tcl | VRAM writes lost at another Z80 clock (5.17 g): `ft_job`, `ft_flow_job`, `ft_boot_job`, `ft_l1_job` |
+| `run8f.tcl` | Tcl | `c8f_chain`: `c8_chain`'s jobs and the solved ending from the keyboard (5.17 h) |
 | `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` |
 | `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5) |
 | `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9) |
@@ -60,6 +68,9 @@ The harness has two sides:
 | `romdiff.py A B` | python | the 8 KiB banks that differ |
 | `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words (5.15) |
 | `variants.sh OUT` | shell | the night review's 41 option sets, built (5.15) |
+| `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
+| `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
+| `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -67,7 +78,9 @@ The Tcl reads these labels from a ROM's label file:
 - the bonus texts and the interrupts: `txt_bs_*`, `isr_split`, `isr_vblank`, `INPUT_SCRIPT`;
 - the title's music: `BANK_MUSIC`, `mus_adv`;
 - the game tick: `tick_start`, `game_tick`;
-- the CPU switch: `cs_go`, `display_on`, `front_bonus`.
+- the CPU switch: `cs_go`, `display_on`, `front_bonus`;
+- the final checks: `new_game` (`np_two_setup`), `init` (`ft_boot_job`: its first byte must be DI,
+  F3h).
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -83,6 +96,7 @@ It also uses RAM addresses of `msx/msx.inc` directly:
 | EE20h | `rd_st0` | EE90h | `rd_st1` |
 | 1084h | `mp_lost` | 1082h | `atr_lost` |
 | 1088h | `rd_lost` | 069Ch | `fb_lost` |
+| C2A6h | `cpu_tr` | C623h | `msg_wr` |
 
 The Amiga mirror is read at D000h (`$B00` + n) and DC00h (`$8000` + n). The BIOS's RG9SAV (FFE8h)
 and CASPRV (FCB1h) are read too. If `msx.inc` moves one of these, update the scripts.
@@ -95,13 +109,14 @@ None of these is committed (`build/` is git-ignored; data from the game is never
 |---|---|---|
 | `build/msx/*` (conversions: `level1.*`, `hud*`, `text_bs_*.sc5`, `puzl*`) | every build; `bonuscheck.py` (`text_bs_*.sc5`); `restorecheck.py` (`level1.vram`) | `make msx` |
 | `build/ram/level1_full.bin`, `build/extracted/files/PUZL_25.bin` | `bonuscheck.py`, `stepcheck.py`, `shots.py` (`stepcheck`'s renders) | `make ram`, `make extract` |
-| `build/emu/drive_cov1.txt`, `drive_cov0.txt` and `trace_cov1_ram.jsonl` (4,401 rows), `trace_cov0_ram.jsonl` (20,541 rows) | the level-1 regression (5.2) | made in earlier sessions. The drives are `tools/drivejoy.py` files, their bench arguments in their `.args` files (`drivejoy.py --scenario level1` makes such drives from `tools/amigacov.py`'s coverage scenario). A trace is `$PY -I tools/amigaemu.py game --gframes N --drive build/emu/drive_covK.txt --trace build/emu/trace_covK_ram.jsonl --trace-ram` (N + 1 rows); `--gframes 600` reproduced the first 601 rows of `trace_cov1_ram.jsonl` byte for byte when the harness moved. Keep them: the regression compares against them as they are |
-| `build/emu/drive_end.txt` | `hz_bonus ... end`, `hz6_arm`, `hz6_prod`, `hzb_setup` | four lines: no joystick, the teleport `100:0x900:0x2d0`, no god mode, the poke `150:5826:80:2` (`tools/drivejoy.py`'s format). Level 1 ends by game frame 517 |
-| `build/emu/pz_<name>.drive` and `pz_<name>_ram.jsonl` for `solve1`, `solve2`, `fail`, `timeout`, `fuzz1`, `fuzz2`, `quirk2`, `quirk1` | the drives (5.4), stills and records (5.5) | `docs/BRAINSTORM.md` 4.5 (`tools/puzlsolve.py`, `tools/drivejoy.py`, then `$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_<name>.drive --trace build/emu/pz_<name>_ram.jsonl --trace-ram`; `--pframes 3000` for the fuzz drives, `--level 2 --ram build/ram/level2_full.bin` for visit 2) |
+| `build/emu/drive_cov1.txt`, `drive_cov0.txt` and `trace_cov1_ram.jsonl` (4,401 rows), `trace_cov0_ram.jsonl` (20,541 rows) | the level-1 regression (5.2); `drive_cov1.txt`: `ft_l1_job` (5.17 g) | made in earlier sessions. The drives are `tools/drivejoy.py` files, their bench arguments in their `.args` files (`drivejoy.py --scenario level1` makes such drives from `tools/amigacov.py`'s coverage scenario). A trace is `$PY -I tools/amigaemu.py game --gframes N --drive build/emu/drive_covK.txt --trace build/emu/trace_covK_ram.jsonl --trace-ram` (N + 1 rows); `--gframes 600` reproduced the first 601 rows of `trace_cov1_ram.jsonl` byte for byte when the harness moved. Keep them: the regression compares against them as they are |
+| `build/emu/drive_end.txt` | `hz_bonus ... end`, `hz6_arm`, `hz6_prod`, `hzb_setup`, `np.tcl`'s flows (5.17) | four lines: no joystick, the teleport `100:0x900:0x2d0`, no god mode, the poke `150:5826:80:2` (`tools/drivejoy.py`'s format). Level 1 ends by game frame 517 |
+| `build/emu/pz_<name>.drive` and `pz_<name>_ram.jsonl` for `solve1`, `solve2`, `fail`, `timeout`, `fuzz1`, `fuzz2`, `quirk2`, `quirk1` | the drives (5.4), stills and records (5.5); `pz_solve1.drive` and `pz_fail.drive`: the final checks' runs and keyboard moves (5.17) | `docs/BRAINSTORM.md` 4.5 (`tools/puzlsolve.py`, `tools/drivejoy.py`, then `$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_<name>.drive --trace build/emu/pz_<name>_ram.jsonl --trace-ram`; `--pframes 3000` for the fuzz drives, `--level 2 --ram build/ram/level2_full.bin` for visit 2) |
 | `build/emu/pz_opp.drive`, `pz_opp_ram.jsonl` | the `opp` drive | written by hand in `tools/drivejoy.py`'s four-line format: lines 1-2 empty (no joystick, no teleport), line 3 `0` (no god mode), line 4 the 19 pokes `40:32814:2:1 44:32814:12:1 48:32814:3:1 52:32814:15:1 56:32814:140:1 60:32814:2:1 64:32814:12:1 68:32814:8:1 72:32814:12:1 76:32814:8:1 80:32814:3:1 84:32814:12:1 88:32814:3:1 92:32814:15:1 96:32814:5:1 100:32814:10:1 104:32814:6:1 108:32814:9:1 160:32844:255:1`; then `$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_opp.drive --trace build/emu/pz_opp_ram.jsonl --trace-ram` (203 passes, result 1) |
 | `build/emu/pz_kbd.drive`, `pz_kbd_ram.jsonl` | the candidates' keyboard moves (5.14) | `python3 -I tools/drivejoy.py --joy 100:5:d,110:5:r,120:5:d,130:5:l,140:5:d build/emu/pz_kbd.drive`, then `$PY -I tools/amigaemu.py puzl --pframes 1000 --drive build/emu/pz_kbd.drive --trace build/emu/pz_kbd_ram.jsonl --trace-ram` (1,001 rows, still playing; both equal the night's `cand/bench/kbd*` byte for byte) |
 | **The title reference**: `FDIR/BASE_*` | the title check (5.3) | `hz_fresh` on the product ROM of the commit before the change (5.3) |
 | A reference build's snapshots | the HUD check (5.6) | the same `hz7_job` on the commit before the change |
+| **The approved title flow**: `W/O/np/t0x_<m>_*` | the title after Brainstorm (5.17 b) | `np_title0_setup` (a base without Brainstorm) or `np_title_setup` (a base with it) with EXACT 1 on the product of the commit before the change (5.3's base build), on each machine |
 
 The night's own records (`impl/step0/fresh`, `impl/cand/suite_out`, ...) were in the scratch
 folder and are gone or going. A new milestone makes its own references from its base commit.
@@ -129,7 +144,8 @@ The machines are those of the MCP's openMSX home:
 
 - C-BIOS_MSX2 (V9938, 60 Hz) and C-BIOS_MSX2_EU (50 Hz);
 - Panasonic_FS-A1FX (MSX2+, V9958) and Panasonic_FS-A1GT (turbo R; the stage runs on its Z80);
-- Gradiente_Expert20_64K (the user's Hotbit's twin) and Sony_HB-F1XDJ_128K_Lite (V9958).
+- Gradiente_Expert20_64K (the user's Hotbit's twin) and Sony_HB-F1XDJ_128K_Lite (V9958);
+- C-BIOS_MSX2+ (V9958; the speed jobs at 5.37 MHz, 5.17 g).
 
 Never download others.
 
@@ -366,18 +382,29 @@ Expected:
 
 ### 5.8 VRAM access speed
 
-`hzf_job` (in `suite_drives`, `W/O/flow/fast_{m2,tr}.txt`) counts with `rc2_count_too_fast`.
-It covers `solve1` with the entry's uploads and the exit's restore, on C-BIOS_MSX2 and the
-FS-A1GT. Expected: "too fast VRAM accesses: 0 ...; result 0, passes 732".
+`hzf_job` (in `suite_drives`, `W/O/flow/fast_{m2,tr}.txt`) counts with `rc2_count_too_fast`
+(`tools/openmsx_rc2.tcl`, `too_fast_vram_access real`). It covers `solve1` with the entry's
+uploads and the exit's restore, on C-BIOS_MSX2 and the FS-A1GT at 3.58 MHz. Expected: "too fast
+VRAM accesses: 0 ...; result 0, passes 732".
 
-**Check the counter before trusting a 0.**
+**The counter counts since `b59a338`.**
 
-- openMSX's callback settings name a proc. openMSX's own `share/scripts/callbackprocs.tcl` does
-  `set VDP.too_fast_vram_access_callback warn_too_fast_vram_access`.
-- The night's runs set an inline script there (`tools/openmsx_rc2.tcl` at `16507dd`). At this
-  writing, a change to a proc (`rc2_too_fast_cb`) was pending in the working tree.
-- So the night's zeros are not evidence until the counter has been seen to move once: on a
-  build or a CPU speed known to write too fast.
+- openMSX runs a callback setting's value as a command, with the event's arguments appended: it
+  must name a proc. openMSX's own `share/scripts/callbackprocs.tcl` does `set
+  VDP.too_fast_vram_access_callback warn_too_fast_vram_access`.
+- Before `b59a338`, `rc2_count_too_fast` set an inline script there, which failed silently: it
+  never counted, and the zeros of the night's runs before `b59a338` were not measurements. Since
+  `b59a338` it names a proc, `rc2_too_fast_cb`.
+- It has been seen to move. With it, `solve1` from the power-on to `pz_done` (`ft_job`, 5.17 g):
+  - at 5.37 MHz with the code before `rs_one`'s fix (`14bc5ef`'s): 5 lost writes on the Panasonic
+    FS-A1FX and 43 on C-BIOS_MSX2+, all at `rs_one`'s two 17 T writes (C-BIOS_MSX2+ adds 1 in
+    its own boot code, before the cartridge starts);
+  - at 5.37 MHz with the fix (`b59a338`): 0 in the cartridge on both;
+  - at 3.58 MHz: 0 measured, before and after the fix (C-BIOS_MSX2, the FS-A1FX, the FS-A1GT).
+- **Another clock.** `hz_cfg` sets `z80_freq` to 3,579,545 Hz and `z80_freq_locked on` on every
+  new machine, and openMSX ignores `z80_freq` while it is locked. For another clock, set
+  `z80_freq_locked off` after `hz_cfg`, then `z80_freq`: in the job's setup, as `ft.tcl`'s jobs do
+  (`ft_clock`). `hz_cfg` locks it again for the next job.
 
 ### 5.9 The flows: the product and PZ_TEST
 
@@ -599,7 +626,296 @@ perl -e 'alarm 1500; exec @ARGV' make test
 ```
 
 The night ended with the 4 known failures only (`test_tools`: the sprite data and the joystick
-script). `tests/test_bstest.py` checks this harness without an emulator (section 9).
+script). `tests/test_bstest.py` checks this harness without an emulator (sections 9 and 10).
+
+### 5.17 The final checks (`np.tcl`, `ft.tcl`, `run8f.tcl`)
+
+The final checks of 2026-10-27 (`docs/BRAINSTORM.md` 4.6) ran the paths no earlier check had run,
+and measured the VRAM speed at 5.37 MHz with the counter that counts (5.8). They run in the
+session of section 4: `load.tcl` sources `np.tcl`, `ft.tcl` and `run8f.tcl` too. Start a chain only
+after the one before reads `done`. The builds:
+
+- `W/R` (5.1): `pz1` (`EXTJOY=1 PZ_TEST=1`, a script build), `prod` (the product) and `trace`;
+- the candidates `CDIR/BASE*.ROM` (5.14), built in `W/cb/{prod,bonus,prod2m,bonus2m}`.
+  `BASE-bonus.ROM` (`PZ_TEST=1 TAG=N`) has no script: its stage takes the keyboard;
+- for b, the product of the commit before the change (5.3's base build, `W/base/rc2.rom`).
+
+Output goes to `W/O/np` and `W/O/fast`. The numbers below are the night's, at `b59a338` with
+`TAG=2` candidates: the expected results (with another tag, `--tag N` and "TEST N").
+
+**Jobs.** `np_job NAME MACHINE SETUP DIR ROM LABELS [ARG ...]` makes an `hz_chain` job of a setup:
+`SETUP DIR NAME ROM LABELS ARG ...` on a new machine until `::hz_done`, 900 s at most. NAME is
+also the records' tag. `np_wp_job` and `ft.tcl`'s jobs have done conditions of their own.
+
+**The keyboard as a drive.** A build without `EXTJOY` ignores a drive's script, so `np_keys_arm
+LABELS DRIVE` presses the drive's joystick bytes on the keyboard (row 8). At each `pz_tick` the
+byte of PUZL frame `$B00` becomes keys: up 1 UP (20h), down 2 DOWN (40h), left 4 LEFT (10h), right
+8 RIGHT (80h), fire 10h SPACE (01h). Every key is let go past the drive's end and at `pz_done`.
+The keyboard sets bit 7 of the joystick byte (`$802E`, `$B1E`), and a build without a script
+counts real seconds: such traces compare with `--skip joy,last_joy,timer_min,timer_sec` (395
+fields).
+
+#### a. The solved ending
+
+```
+msx_local_cmd: hz_chain [list [np_job solved_m2 C-BIOS_MSX2 np_solved_setup {W/O/np} {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels}] [np_job solved_tr Panasonic_FS-A1GT np_solved_setup {W/O/np} {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels}] [np_job solved_cand_ex Gradiente_Expert20_64K np_solved_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels} 1]]
+```
+
+The last argument, 1, also presses `solve1`'s moves on the keyboard, for the build without a
+script; a script build reads them from `ext_joy`, which `rc2_pz_drive` feeds in both cases. Poll
+until done (section 4), then:
+
+```sh
+python3 -I tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl W/O/np/solved_m2_pz.txt
+python3 -I tools/bstest/bonuscheck.py W/O/np solved_m2 --result ok --gen W/R/pz1/gen
+python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec build/emu/pz_solve1_ram.jsonl W/O/np/solved_cand_ex_pz.txt
+python3 -I tools/bstest/bonuscheck.py W/O/np solved_cand_ex --tag N --result ok --gen W/cb/bonus/gen
+```
+
+and the first two lines for `solved_tr`. Expected:
+
+- "732 PUZL frames compared (732 Amiga, 732 MSX), 399 fields: 0 differ" (`solved_cand_ex`: 395
+  fields) and "result: Amiga 0, MSX 0";
+- "bonus check: PASS". WELL DONE MEMORY RESTORED. / GAME CREDIT AWARDED equals its render; the
+  result line reads `805Eh 1` (the game credit); 1,237 VBLANKs and 1,238 HUD splits between the
+  records (`solved_cand_ex`: 1,238 and 1,238); then the new game. A script build has no title, so
+  its new game follows the result; `solved_cand_ex` shows the title and takes fire first.
+
+#### b. The title after Brainstorm, against the approved title
+
+The title that follows a flow is recorded as `hz_fresh` records a fresh machine's (5.3), but in a
+form that compares two runs whose titles start at different emulated times (EXACT = 1):
+
+- `TAG_title_vram.bin`, `TAG_title_regs.bin` and `TAG_title_pal.bin`, once the title shows plus
+  1 s;
+- `TAG_music2.txt`: a line per music tick, keyed by `mus_tick`: the SCC's registers, the PSG's,
+  and the count and hash of the PSG writes since the tick before;
+- `TAG_game2_vram.bin`, `TAG_game2_ram.bin` (D000h-DFFFh) and `TAG_game2.txt`: the game the title
+  starts by itself, at exactly its tick 300 (a breakpoint at `tick_start`).
+
+`np_title_setup` runs the product's flow (`hz6_prod_setup`: the title, fire, level 1 ended by
+`drive_end`, the statistics, Brainstorm left to its time out, OUT OF TIME.) and records the title
+that follows the result. `np_title0_setup` records the title that follows level 1's statistics in
+a build without Brainstorm: the approved flow. The night's reference was the product of the
+commit before Brainstorm (the night's step 0: `msx/` as at `90ca7b3`). A later milestone, whose
+base has Brainstorm, records its base build with `np_title_setup` instead.
+
+```
+msx_local_cmd: hz_chain [list [np_job t0x_ex Gradiente_Expert20_64K np_title0_setup {W/O/np} {W/base/rc2.rom} {W/base/rc2.labels} 1] [np_job tx_ex Gradiente_Expert20_64K np_title_setup {W/O/np} {W/R/prod/rc2.rom} {W/R/prod/rc2.labels} 1]]
+```
+
+Add the same two jobs on `Sony_HB-F1XDJ_128K_Lite` (`t0x_f1`, `tx_f1`) and `Panasonic_FS-A1GT`
+(`t0x_tr`, `tx_tr`); all six may go in one chain. Then, for each machine:
+
+```sh
+python3 -I tools/bstest/titlecmp.py W/O/np t0x_ex tx_ex
+python3 -I tools/bstest/titlecmp2.py W/O/np t0x_ex tx_ex --unheard
+```
+
+Expected, after Brainstorm against without it:
+
+- `titlecmp.py`: "the title's picture (G7, 256 x 212): identical", "palette: identical" and
+  "registers: identical", except `['R#5 C7/CF', 'R#19 9C/9D']` on the FS-A1GT (the title has its
+  sprites and its line interrupt off). "VRAM not shown by the title" differs (the stage's pages
+  and tables). The exact records have no `music.txt`, `psg.txt` or `game_*`: it says so for each.
+- `titlecmp2.py`:
+  - the Expert: "5044 common ticks compared (150851 PSG writes in them): differ {'SCC': 0, 'PSG
+    regs': 0, 'PSG writes': 0}";
+  - the HB-F1XDJ: the same ticks and writes. The SCC differs at every tick in A6h, A7h and their
+    mirror B6h, B7h (`freq3`): channel 3's frequency, with the channel off at every tick ("heard
+    at 0");
+  - the FS-A1GT: 5,045 ticks and 130,432 writes. The same SCC registers differ, and the PSG's R6
+    (the noise period) with the noise off on all three channels;
+  - "titlecmp2: PASS" on all three with `--unheard`. Without it, it exits 1 on the HB-F1XDJ and
+    the FS-A1GT, as the night's copy did: "titlecmp2: FAIL (only registers neither run can hear
+    differ: --unheard passes them)";
+  - the game at tick 300 is reported, not judged. Its RAM differs in D032h-D033h (the random word
+    `$B32`, seeded from R) and, on the Expert, in DC4Ah, the level timer's seconds:
+    `'DC4A 44/45'`, the BCD word DC4Ah-DC4Bh reading 9:44 without Brainstorm and 9:45 after it.
+    Its VRAM differs in 9,615 bytes on the Expert, 29 of them in the HUD (its rows 5-18, x
+    240-251); 23,963 on the HB-F1XDJ and 26,795 on the FS-A1GT, none in the HUD.
+- The night's reading of these, that nothing that differs is seen or heard, is in
+  `docs/BRAINSTORM.md` 4.6 b.
+
+The night first recorded with EXACT = 0 (`hz_fresh`'s files: `titlecmp.py` reads their music by
+line and their PSG count). Those windows start at 0.1 s polls: on the Expert they read 151,212
+against 151,182 PSG writes, and on the other two their music lines were a tick or two apart. Use
+EXACT = 1.
+
+#### c. The 2 MiB product's level end into Brainstorm
+
+```
+msx_local_cmd: hz_chain [list [np_job prod2m_ex Gradiente_Expert20_64K hz6_prod_setup {W/O/np} {CDIR/BASE-2M.ROM} {CDIR/BASE-2M.labels}]]
+```
+
+```sh
+python3 -I tools/bstest/bonuscheck.py W/O/np prod2m_ex --tag N --result time --gen W/cb/prod2m/gen
+```
+
+Expected: "bonus check: PASS", 4,075 VBLANKs and 4,075 HUD splits, then the title, fire and a new
+game.
+
+#### d. Text screens ended by fire
+
+`np_fire_setup` runs the bonus candidate from the power-on. SPACE is held 0.15 s once the intro's
+`fs_n` reaches 60; the stage is stuck by the `fail` drive's moves from the keyboard; SPACE again
+once the result's `fs_n` reaches 60; then the title and fire. `TAG_intro60.bin` and
+`TAG_result60.bin` are snapshots taken just before each press.
+
+```
+msx_local_cmd: hz_chain [list [np_job fire_ex Gradiente_Expert20_64K np_fire_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels}] [np_job fire_tr Panasonic_FS-A1GT np_fire_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels}]]
+```
+
+```sh
+cat W/O/np/fire_ex_fire.txt
+python3 -I tools/bstest/partialcheck.py W/O/np/fire_ex_intro60.bin txt_bs_intro --tag N
+python3 -I tools/bstest/partialcheck.py W/O/np/fire_ex_result60.bin txt_bs_fail --tag N
+python3 -I tools/bstest/stepcheck.py still W/O/np/st_fire_ex/p*.bin
+```
+
+and the same for `fire_tr`. Expected:
+
+- `fire.txt`: the intro ended at `fs_n` 61 and the stage's first pass came 0.724 s after the press
+  (the FS-A1GT: 0.749 s); the result screen (fail) after 182 passes; its SPACE at `fs_n` 61 (the
+  FS-A1GT: 60), the screen ended at the next call, and the title came 0.020 s after the press;
+  fire on the title; the new game, "lost: mp 0 atr 0 rd 0 fb 0". The title ignores the SPACE still
+  held: the new game comes from the later fire.
+- `partialcheck.py`: "fire_ex_intro60.bin: fs_n 60: page 0 = the render of txt_bs_intro after 60
+  fs_step calls (56 of its 95 characters, TEST 2 first), pixel for pixel"; the result "after 61
+  fs_step calls (38 of its 38 characters, TEST 2 first)" (the FS-A1GT: 60 calls). Exit 0.
+- `stepcheck.py still`: "7 snapshot(s), 0 with differences".
+
+#### e. Two Brainstorms in one session
+
+`np_two_setup` takes a script build through the first stage (the `fail` drive), its result and
+the new game; then level 1, ended by `drive_end`, the statistics and the intro; then the second
+stage, armed by `rc2_pz_arm` with `solve1`, its screens' records, and the new game.
+`rc2_drive_hit` counts a drive's frames by `tick_n`, the ticks since the power-on, so the second
+level 1 takes a copy of `drive_end.txt` moved by the new game's `tick_n` (`W/O/np/TAG_drive_end.txt`).
+
+```
+msx_local_cmd: hz_chain [list [np_job two_m2 C-BIOS_MSX2 np_two_setup {W/O/np} {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels}] [np_job two_tr Panasonic_FS-A1GT np_two_setup {W/O/np} {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels}]]
+```
+
+```sh
+python3 -I tools/puzlcmp.py build/emu/pz_fail_ram.jsonl W/O/np/two_m2_pz1.txt
+python3 -I tools/puzlcmp.py --skip score build/emu/pz_solve1_ram.jsonl W/O/np/two_m2_pz2.txt
+python3 -I tools/bstest/bonuscheck.py W/O/np two_m2 --result ok --gen W/R/pz1/gen
+```
+
+Expected: 182 frames, 399 fields, 0 differ, result 1; 732 frames, 398 fields (the score carries
+level 1's), 0 differ, result 0; "bonus check: PASS" with `805Eh 1`. The night's `two_tr` printed
+FAIL on one item: its intro record read R#1 22h, with R#2 7Fh and R#23 29h, the HUD split's state
+between its interrupt and the HUD (`docs/BRAINSTORM.md` 8.17). A sampling artefact: its text and
+its splits (1,237 in 1,238 VBLANKs) pass.
+
+`np_two_title_setup` does the same with the candidates' options: the moves from the keyboard and
+the title, then fire, before each new game.
+
+```
+msx_local_cmd: hz_chain [list [np_job two_title_ex Gradiente_Expert20_64K np_two_title_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels}] [np_job two_title_f1 Sony_HB-F1XDJ_128K_Lite np_two_title_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels}] [np_job two_title_tr Panasonic_FS-A1GT np_two_title_setup {W/O/np} {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels}]]
+```
+
+```sh
+python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec build/emu/pz_fail_ram.jsonl W/O/np/two_title_ex_pz1.txt
+python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec,score build/emu/pz_solve1_ram.jsonl W/O/np/two_title_ex_pz2.txt
+python3 -I tools/bstest/bonuscheck.py W/O/np two_title_ex --tag N --result ok --gen W/cb/bonus/gen
+```
+
+Expected on all three machines: 182 frames, 395 fields, 0 differ, result 1; 732 frames, 394
+fields, 0 differ, result 0; "bonus check: PASS".
+
+#### f. Turbo R: no write to 4000h-7FFFh
+
+On a turbo R the fixed area runs from a RAM copy in page 1, and nothing may write 4000h-7FFFh
+after the copy (`docs/TURBO_R.md` 6). `np_wp_job` runs the product's flow with a write watchpoint
+on 4000h-7FFFh from `front_bonus`' entry (its breakpoint needs `act_8000` = 7) to the new game's
+tick 100.
+
+```
+msx_local_cmd: hz_chain [list [np_wp_job wp_tr Panasonic_FS-A1GT {W/O/np} {W/R/prod/rc2.rom} {W/R/prod/rc2.labels}]]
+```
+
+```sh
+cat W/O/np/wp_tr_wp.txt
+python3 -I tools/bstest/bonuscheck.py W/O/np wp_tr --result time --gen W/R/prod/gen
+```
+
+Expected: "watch from 43.208 s (front_bonus) to 124.708 s (the new game's tick 100, g_frame 100,
+cpu_tr 1): 0 writes" (`cpu_tr` 1: the game found the R800, so it made the copy) and "bonus check:
+PASS". Without that line the job did not reach the new game.
+
+#### g. VRAM writes lost at another clock
+
+Each `ft.tcl` job unlocks the Z80's clock after `hz_cfg` and sets FREQ (5.8), then
+`too_fast_vram_access real` and the counter. `ft_job`, `ft_flow_job` and `ft_l1_job` place each hit
+by its PC: the BIOS's code below 4000h, the cartridge's above, the first 8 of each with their
+emulated times. FREQ is 5369318 (the Panasonic MSX2+ turbo) or 3579545.
+
+- `ft_job NAME MACHINE ROM LABELS OUT FREQ [DRIVE]`: `build/emu/pz_DRIVE.drive` (`solve1`) on a
+  script build, from the power-on to `pz_done`. `OUT/flow/NAME.txt`, and the trace
+  `OUT/tr/NAME.txt`.
+- `ft_flow_job NAME MACHINE ROM LABELS OUT FREQ`: a build without a script, the stage solved from
+  the keyboard, to the title's start (a watchpoint on `front_mode`).
+- `ft_boot_job NAME MACHINE ROM LABELS OUT FREQ`: the first 6 emulated seconds. Each BIOS hit with
+  SP and the four words on the stack, and the time the cartridge's `init` starts.
+- `ft_l1_job NAME MACHINE ROM LABELS OUT FREQ N`: level 1 by `drive_cov1` for N ticks on the trace
+  build.
+
+```
+msx_local_cmd: hz_chain [list [ft_job fx537 Panasonic_FS-A1FX {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels} {W/O/fast} 5369318] [ft_job cb537 C-BIOS_MSX2+ {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels} {W/O/fast} 5369318] [ft_job m2358 C-BIOS_MSX2 {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels} {W/O/fast} 3579545] [ft_job fx358 Panasonic_FS-A1FX {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels} {W/O/fast} 3579545] [ft_job tr358 Panasonic_FS-A1GT {W/R/pz1/rc2_pz1.rom} {W/R/pz1/rc2_pz1.labels} {W/O/fast} 3579545]]
+msx_local_cmd: hz_chain [list [ft_flow_job flow537_fx Panasonic_FS-A1FX {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels} {W/O/fast} 5369318] [ft_flow_job flow537_cb C-BIOS_MSX2+ {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels} {W/O/fast} 5369318] [ft_boot_job boot537_cb C-BIOS_MSX2+ {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels} {W/O/fast} 5369318] [ft_boot_job boot358_cb C-BIOS_MSX2+ {CDIR/BASE-bonus.ROM} {CDIR/BASE-bonus.labels} {W/O/fast} 3579545]]
+msx_local_cmd: hz_chain [list [ft_l1_job l1_537_fx Panasonic_FS-A1FX {W/R/trace/rc2_ext5.rom} {W/R/trace/rc2_ext5.labels} {W/O/fast} 5369318 1400] [ft_l1_job l1_358_fx Panasonic_FS-A1FX {W/R/trace/rc2_ext5.rom} {W/R/trace/rc2_ext5.labels} {W/O/fast} 3579545 1400]]
+```
+
+Each line is a chain: poll it until done before the next. Then:
+
+```sh
+cat W/O/fast/flow/*.txt
+python3 -I tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl W/O/fast/tr/fx537.txt     # and cb537, m2358, fx358, tr358
+python3 -I tools/tracecmp.py --ram build/emu/trace_cov1_ram.jsonl W/O/fast/tr/l1_537_fx.txt --labels W/R/trace/rc2_ext5.labels
+```
+
+Expected at `b59a338`:
+
+- `ft_job`: "too fast VRAM accesses 0: cartridge 0 {}, BIOS 0 {}" on every machine but C-BIOS_MSX2+
+  at 5.37 MHz, "too fast VRAM accesses 1: cartridge 0 {}, BIOS 1 {05b3@3.491}". Every trace: 732
+  frames, 0 differ, result 0. The code before `rs_one`'s fix lost 5 (the FS-A1FX) and 43
+  (C-BIOS_MSX2+) in the cartridge, all at A8A5h and A8ADh (5.8).
+- `ft_flow_job`, the power-on to the title's start with WELL DONE on the way: the FS-A1FX "too fast
+  VRAM accesses 0: cartridge 0 {}, BIOS 0 {}"; C-BIOS_MSX2+ "too fast VRAM accesses 2: cartridge 0
+  {}, BIOS 2 {05b0@3.491 05b3@3.491}"; both "AG 805Eh 1, passes 732". Step 8's candidate, before
+  the fix, lost 8 and 55 in the cartridge.
+- `ft_boot_job`: at 5.37 MHz "too fast VRAM accesses 2; the cartridge's init at 3.5286 s; BIOS
+  hits: {pc 05b0 at 3.4907 s, sp f2e2: 065a f392 f040 247a} {pc 05b3 at 3.4909 s, ...}". C-BIOS's
+  own code makes them, with C-BIOS's return address 065Ah on the stack, 0.04 s before the
+  cartridge's init. At 3.58 MHz: 0 (the init at 3.7596 s). The FS-A1FX's own BIOS loses none at
+  5.37 MHz.
+- `ft_l1_job`: level 1 at 5.37 MHz loses 790 writes, all in the cartridge; the first 8 at
+  6AA6h-6AD4h are `outi32`/`outi16`, the sprite engine's 18 T OUTIs. At 3.58 MHz: 0. Both traces:
+  "1400 game frames compared ..., 948 fields: 0 differ". Level 1's code, which Brainstorm did not
+  change: the user's call (`docs/BRAINSTORM.md` 8.16).
+
+#### h. The candidates with the solved ending
+
+`c8f_chain` is `c8_chain` (5.14) plus `solved_m2`: the bonus candidate on the Expert, solved by
+`solve1`'s moves from the keyboard, with snapshots at passes 100, 300, 450, 600, 650 and 700, and
+the intro's and the result's for screenshots.
+
+```
+msx_local_cmd: c8f_chain {CDIR} BASE {W/fresh} cand      (8 jobs; poll until done)
+```
+
+5.14's checks, then:
+
+```sh
+python3 -I tools/bstest/bonuscheck.py CDIR/run solved_m2 --tag N --result ok --gen W/cb/bonus/gen
+python3 -I tools/bstest/stepcheck.py still CDIR/run/st_solved_m2/p*.bin
+python3 -I tools/bstest/shots.py CDIR/shots CDIR/run/solved_m2_result.bin
+```
+
+Expected: "bonus check: PASS" (WELL DONE with TEST N, then the title, fire and the new game) and "6
+snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 
 ## 6. The whole suite in order
 
@@ -612,12 +928,16 @@ script). `tests/test_bstest.py` checks this harness without an emulator (section
    commands and `fixblank.py`.
 5. The checks the suite does not run: `hz6_arm` (5.4), `hz6_time` (5.11), `hzp_setup` (5.12)
    and `hudcheck.py` against the base (5.6).
-6. `msx_local_shutdown`; the matrix (5.13); `make test`.
+6. The final checks (5.17 a-g), and `c8f_chain` instead of `c8_chain` for test candidates (5.17 h).
+7. `msx_local_shutdown`; the matrix (5.13); `make test`.
 
 ## 7. For the next milestones
 
 - **Sound (milestone 2).**
   - The title's music must stay register-exact: 5.3's `music.txt` and `psg.txt` cover it.
+  - So must the title that follows the stage: 5.17 b against the base build, where the stage's
+    sound may leave values only in registers nobody hears (`titlecmp2.py --unheard`), and every
+    PSG write must stay identical.
   - The stage's sound must not move its logic: the drives (5.4) still give 0 differ.
   - The PZM register logs per tick and the effect checks of `docs/BRAINSTORM.md` 4.3 are not in
     this harness yet.
@@ -692,8 +1012,77 @@ scripts; their outputs were compared.
     and `hzf_done`.
 
 **Not tested without an emulator.** The Tcl procs against a real openMSX: machine switches,
-breakpoints in banked code, `rc2_guard`, `rc2_count_too_fast` (5.8), `turborpause` (`hzp_*`),
+breakpoints in banked code, `rc2_guard`, `rc2_count_too_fast` (5.8: it did not count then; it
+counts since `b59a338`, and the final checks saw it move), `turborpause` (`hzp_*`),
 the timings `hzb_*` measures, `hz6_*`, `hz7_after_setup` / `hz7_fresh_setup`, `c8_step`'s
 snapshots, and `suite_drives`, `suite_flows` and `c8_chain` end to end. These are the night's
 procs with the changes of section 8 only; their first real run is the next milestone's suite.
 `variants.sh` ran only against the stub; `build.sh` ran with the real `mkrom.py`.
+
+## 10. When the final checks' scripts moved
+
+The final checks' scripts (5.17) were in the night's scratch folder (`impl/final`: `np.tcl`,
+`ft.tcl`, `cand/run8f.tcl`, `titlecmp.py`, `titlecmp2.py`, `partialcheck.py`). They moved to
+`tools/bstest/` with their checks kept. These are the only changes:
+
+- **Paths.** None from the scratch folder remains.
+  - The Tcl reads the repository's drives through `::hz_root`, and `partialcheck.py` finds the
+    repository from its own place.
+  - `run8f.tcl`'s `c8f_chain` takes the candidates' folder, their base name, the title
+    references' folder and a tag, as `c8_chain` does. It builds on `c8_jobs`: `c8_chain`'s job
+    list, split out of `c8_chain`, which runs it as before.
+- **New.**
+  - `np_job`. `np_title_setup` and `np_title0_setup` take EXACT as an argument (the night set
+    `::np_exact 1`); `np_solved_setup`'s KEYS defaults to 0.
+  - `titlecmp2.py` names every register that differs, with the ticks it differs at and those where
+    it can be heard; it prints the game's VRAM count and the HUD's share, ends with a verdict line,
+    and has `--unheard`. Without `--unheard` its verdict is the night's: exit 0 only when the music
+    is identical at every compared tick.
+  - `titlecmp.py` leaves out the parts whose files a record lacks (the night's copy stopped at an
+    exact record's missing `music.txt`) and reads a music log without an SCC column.
+  - `partialcheck.py` exits 2 on an unknown label.
+  - The setups of `ft.tcl`'s jobs (`ft_setup`, `ft_flow_setup`, `ft_boot_setup`, `ft_l1_setup`)
+    and `c8f_solved_setup` are procs instead of scripts in strings, so a path needs no quoting.
+    Their commands and their order are the night's; `ft_clock` sets the clock.
+- **Safety.**
+  - Every note and record writer closes its file when a write fails. `np_keys_arm` and
+    `np_shift_drive` close the files they read on every path.
+  - `np_keys_arm` lets go of a key an earlier arm left held and removes that arm's breakpoints
+    (`np_keys_disarm`).
+  - `np_job`, `np_wp_job`, `np_title_setup` and `np_title0_setup` create the output folder.
+- `load.tcl` sources `np.tcl`, `ft.tcl` and `run8f.tcl` after the others.
+
+**Checked without an emulator.** No openMSX was run.
+
+- On the night's records, before the scratch folder was cleared:
+  - `titlecmp.py` printed its night copy's output line for line on the three machines' first
+    records (`t0_*` against `title_*`);
+  - `partialcheck.py` printed the night's lines on the four fire snapshots (exit 0);
+  - `titlecmp2.py` printed the night's music line and game lines on the three exact pairs, with
+    the night's exit status: 0 on the Expert, 1 on the HB-F1XDJ and the FS-A1GT. It named A6h,
+    A7h, B6h and B7h (and R6 on the FS-A1GT) "heard at 0", and with `--unheard` all three pass;
+  - the harness's other tools gave 5.17's numbers: `puzlcmp.py` on 20 of the traces (a's three,
+    e's ten, g's five after the fix and two before it), `bonuscheck.py` on the flows of a, c, e, f
+    and h (PASS, but `two_tr`'s one item), `stepcheck.py still` on the fire and solved snapshots
+    (7 and 6, 0 with differences), `tracecmp.py` on g's two level-1 traces (0 differ).
+- `tests/test_bstest.py`, 33 tests (10 new):
+  - every Python tool compiles and imports;
+  - `titlecmp2.py`'s verdicts on made-up records: identical records; the window's edges left out;
+    a silent SCC channel's registers, and the PSG's tone, noise and envelope registers, passed by
+    `--unheard` only where nobody hears them; the mixer, the enable bits and the PSG writes always
+    counted; the game reported, not judged; a missing file;
+  - `titlecmp.py`'s parts on made-up records; `partialcheck.py`'s offsets against
+    `msxtext.fs_run`, and its command line on a made-up snapshot (with
+    `build/ram/level1_full.bin`);
+  - every Tcl file complete, with no `exit`, `vwait`, `max` or `min`;
+  - in tclsh with openMSX mocked and `::hz_root` on a folder of made-up drives: the keyboard
+    drive's keys, the shifted drive, `np_job`, each flow of 5.17 a, b, d, e and f driven through
+    its states, both exact title records read back by `titlecmp.py` and `titlecmp2.py`, the four
+    speed jobs' setups (the clock unlocked) and files, `c8f_chain`'s eight jobs and its refusal of
+    a missing file, and no channel left open;
+  - three mutations each failed a test: `np_keys_end` not letting go, `ft_clock` not unlocking,
+    `--unheard` passing R6 with the noise on.
+- `make test`: 119 tests, the 4 known failures only (5.16).
+
+**Not tested without an emulator.** The moved Tcl against a real openMSX. The night's copies ran
+(`docs/BRAINSTORM.md` 4.6); the moved procs differ from them only as listed above.
