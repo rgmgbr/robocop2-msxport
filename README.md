@@ -123,4 +123,5 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [MSX2/MSX2+ feasibility measurements](docs/MSX_FEASIBILITY.md)
 - [ROM budget for the whole game](docs/ROM_BUDGET.md)
 - [Disk or ROM for the whole game](docs/DISK_VS_ROM.md)
+- [The MSX Pico+ page cache and the 2 MiB ROM](docs/PICO_CACHE.md)
 - [MSX port architecture and decisions](docs/MSX_ARCHITECTURE.md)

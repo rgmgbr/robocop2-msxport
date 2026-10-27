@@ -601,17 +601,20 @@ been tested on hardware.
   | 128 | 65 | 65 | 829 |
   | 256 | 64 | 64 | 829 |
 
-  - **The Pico+'s page cache** holds at least 32 and fewer than 64 pages of 8 KiB for banks taken
-    in turn. Beyond that, nearly every switch reloads a page.
-  - **What a miss costs.** A hit costs about 73-74 T. A reload costs about 860 T: about 240 µs at
-    3.58 MHz, or 1.4 % of a 60 Hz frame.
-  - **The rule for the layout.** The banks the game reads within a short stretch must stay well
-    under 32.
+  - **The Pico+'s page cache.** For banks taken in turn it holds at least 32 and fewer than 64
+    pages of 8 KiB; beyond that, nearly every switch reloads a page. The firmware, decompiled
+    afterwards, makes this 55 slots on the user's Pico+ (`docs/PICO_CACHE.md`): banks 0 and 1 hold
+    2 of them, and 53 remain for the banks at 8000h and A000h.
+  - **What a miss costs.** A hit costs about 73-74 T. A reload holds the Z80 for 877-885 T: about
+    246 µs, or 1.5 % of a 60 Hz frame. The page is copied when its bank number is written, even if
+    the window is never read.
+  - **The rule for the layout:** at most 53 banks selected per level, counting 3Fh and the sound
+    banks (`docs/PICO_CACHE.md` 6). Level 1 selects 47 in play.
 - Run it on the Pico+ and on the SX-2's internal ESE-MegaSCC+.
 - Find out which OCM-PLD version the SX-2 runs, and which loader accepts a 2 MiB Konami SCC
   image.
-- The Pico+ SRAM page cache refills freeze the Z80. Check that later levels do not touch more
-  banks per frame than it holds.
+- The Pico+ SRAM page cache refills freeze the Z80. Check that each later level selects no more
+  banks than it holds: 53 (`docs/PICO_CACHE.md`).
 
 ### 6.2 Other mappers and media (not recommended)
 

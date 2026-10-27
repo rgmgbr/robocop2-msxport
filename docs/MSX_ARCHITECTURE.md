@@ -90,8 +90,9 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
    (`docs/DISK_VS_ROM.md`, 2026-10-26). For the whole game the user chose a **2 MiB Konami SCC
    ROM** (2026-10-26). The bank test (`tools/msxbanktest.py`) passed the same day through the MSX
    Pico+ on the SX-2 and on the Hotbit (`docs/ROM_BUDGET.md` 6.1). A 2 MiB ROM drops 1 MiB
-   MegaRAMs and flash cartridges (decision 2). The Pico+ caches fewer than 64 pages of 8 KiB:
-   the banks read within a short stretch must stay well under 32.
+   MegaRAMs and flash cartridges (decision 2). The Pico+ runs the ROM through a cache of 55
+   pages of 8 KiB, 53 of them for the banks at 8000h and A000h (firmware v2.12, the user's
+   setting). So each level selects at most 53 banks (`docs/PICO_CACHE.md`).
 7. **Game logic at 25 Hz** (final, 2026-10-20 evening): the original's routines are ported
    with their variables, tables and order, and run 25 times per second, the PAL design speed
    (the dumped Data East release is NTSC: `main_loop` waits for 2 VBLs of 60 Hz, 30 Hz; the
