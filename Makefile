@@ -79,9 +79,14 @@ rom: msx
 	$(PYTHON) -I tools/mkrom.py $(BUILD)/msx/level1 $(BUILD)/msx/rc2.rom $(ROMOPTS)
 
 # the ROM on the generic set-ups, headless (tools/msxmatrix.py; OMHOME: an openMSX home that has
-# the machines, such as the MSX-AI MCP's; default $OPENMSX_HOME, else ~/.openMSX)
+# the machines, such as the MSX-AI MCP's; default $OPENMSX_HOME, else ~/.openMSX). A PZ_TEST=1
+# build has no title: run tools/msxmatrix.py with --no-title instead (README.md).
+# The recipe quotes the home (its path may hold spaces), which stops the shell's tilde expansion,
+# and zsh passes OMHOME=~/... to make as typed: om_home expands a leading ~/ here. A path without
+# one is passed as typed (make's word functions, which the expansion needs, squeeze runs of spaces).
+om_home = $(if $(filter ~/%,$(firstword $(OMHOME))),$(strip $(patsubst ~/%,$(HOME)/%,$(firstword $(OMHOME))) $(wordlist 2,$(words $(OMHOME)),$(OMHOME))),$(OMHOME))
 matrix:
-	$(PYTHON) -I tools/msxmatrix.py $(BUILD)/msx/rc2.rom --labels $(BUILD)/msx/rc2.labels $(if $(OMHOME),--home "$(OMHOME)")
+	$(PYTHON) -I tools/msxmatrix.py $(BUILD)/msx/rc2.rom --labels $(BUILD)/msx/rc2.labels $(if $(OMHOME),--home "$(om_home)")
 
 # a 2 MiB Konami SCC bank test cartridge, not the game (docs/ROM_BUDGET.md 6.1)
 banktest:

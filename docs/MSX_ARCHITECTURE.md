@@ -881,8 +881,8 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   the original's call count kept.
 - **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
   places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
-  `BANK_PUZL` = 78 (3,580 B used at `14bc5ef`, 3,582 at `b59a338`, and 20 B more for the sound's
-  two entries), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from
+  `BANK_PUZL` = 78 (3,582 B used at `b59a338`, 3,580 at `14bc5ef`; 3,602 with the sound's two
+  entries, `puzl_end` AE12h), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from
   `PUZL_GFX_BANK` = 79 to 85, the music and effects (`pzm.bin`, 12,734 B) in 86-87. While the
   stage runs FRONT stays at 8000h; it maps the graphics banks only at 8000h, at its entry, and
   never runs an OTIR past 9FFFh. `hud_keep` (fixed) is `hud_frame` for banked callers: it puts

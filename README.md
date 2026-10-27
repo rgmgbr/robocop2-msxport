@@ -192,3 +192,4 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [MSX port architecture and decisions](docs/MSX_ARCHITECTURE.md)
 - [MSX turbo R support (R800)](docs/TURBO_R.md)
 - [Brainstorm, the bonus stage after level 1](docs/BRAINSTORM.md)
+- [Brainstorm's acceptance harness (`tools/bstest/`)](docs/HARNESS.md)

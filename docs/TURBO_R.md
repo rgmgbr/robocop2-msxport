@@ -84,6 +84,7 @@ Facts from this repository:
 | Title: pictures, SCC/OPLL/PSG music, speech, `front_done`, `tiles_upload` | Z80 (`vm_play` is calibrated for it; `opll_w`'s waits, `dc_set`, `scc_pat`) |
 | From `ng_go`: level set-up, `display_on`/`split_cal`, the main loop, `level_restart` | R800 |
 | `front_over`, `front_stats` | R800 (VBLANK waits, the split, `snd_stop` without its OPLL part) |
+| `front_bonus` (2026-10-27): Brainstorm's intro, the stage, its result (`docs/BRAINSTORM.md`) | Z80, after `front_stats`' switch back, with its hardware pause off; `display_on` measures the Z80's split there (the stage's music will need the OPLL: milestone 2) |
 
 ### 3.2 Detection and the power-on round trip (`cpu_detect`, `BANK_FRONT`)
 
@@ -122,6 +123,15 @@ E4h/E5h, F4h or A5h itself.
 On the R800 `key_scan` reads A7h bit 0: each change becomes the game's own pause key (its P
 code), and the pause LED (A7h bit 0 write, CASPRV kept in step) follows. `cpu_set`'s wait (3.3
 step 2) covers a press on the screens that do not scan keys (`front_over`, `front_stats`).
+
+The Brainstorm screens (`front_bonus`, 2026-10-27) run on the Z80 between `front_stats` and the
+title, and CHGCPU(80h) at `front_stats`' end has turned the Z80's hardware pause on (H11, H18): a
+press there would hold the Z80, and with it the HUD split and the VBLANK list, at any line. So
+`front_bonus` first writes `CASPRV` & FDh to A7h (the hardware pause off), before `display_on`, so
+that a hold cannot cut a `split_cal` measure short. PAUSE then has no effect during the bonus (the
+original stage has no pause). At the end `front_bonus` jumps to `cpu_title`: `cpu_set`'s wait (step
+2) holds the game, the picture kept and the LED lit, while a press is pending, and CHGCPU(80h) turns
+the hardware pause on again, so the title starts as it did after `front_stats`.
 
 ## 4. The HUD split on the R800
 
@@ -406,6 +416,25 @@ What the code does, where it differs from the design above, and what openMSX mea
   the Z80, the game on the R800. PAUSE during play and on `front_over`: handled; PAUSE then P,
   then PAUSE, then P: each toggles once. No write to 4000h-7FFFh after the copy.
 - Not verified (no turbo R here): section 8.9.
+
+**Brainstorm (2026-10-27)** (openMSX FS-A1GT, headless; `docs/BRAINSTORM.md`):
+- The stage and its text screens run on the Z80 at 3.58 MHz; its traces equal the Amiga's (0
+  differ in all nine drives) and `cpu_cur` is 0, `sl_off` 0 during both screens: no hang in
+  `fs_vbl` after `display_on`.
+- PAUSE before the fix (`2eefba4`): CHGCPU(80h) had written A7h = 02h and nothing else wrote A7h
+  during the bonus. PAUSE at pass 323 held the Z80 for 8.98 emulated seconds: passes, HUD splits
+  and VBLANKs +0, the VDP left with the split's registers (R#2 7Fh, R#23 29h, R#8 0Ah), so every
+  frame showed page 3 from line 41 (the atlas, the sprite tables) in the HUD's palette over the whole
+  screen.
+- After the fix (`14bc5ef`): A7h ← 00h at `front_bonus`; PAUSE at pass 324 for 5.05 s: the stage
+  ran on (splits = VBLANKs, +303); PAUSE pressed again at pass 3036 and left on: the time out and
+  the result ran, then the game waited with A7h ← 01h (the LED) and the HUD split running (+161
+  splits = VBLANKs in 2 s), no title; PAUSE off: A7h ← 00h, then CHGCPU's 02h, and the title 5.3 s
+  later; PAUSE during the title holds the CPU as before.
+- Between the statistics and the intro the screen, HUD included, is black for 6 frames (116.9 ms
+  from the last HUD split before `cpu_set`'s display-off to the first after `display_on`). Every
+  other machine keeps the HUD there. The ways out (the stage on the R800, or a CPU switch that keeps
+  the display on) cost content or touch `cpu_set`: the user's call (`docs/BRAINSTORM.md` 7).
 
 **Seen on the way, not turbo R's** (also on C-BIOS_MSX2): the first list of a new game after a
 game over shows RoboCop's sprites 12 px right and 4 px down of the camera's (tick 0,

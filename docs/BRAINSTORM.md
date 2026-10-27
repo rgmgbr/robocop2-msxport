@@ -391,8 +391,9 @@ Free afterwards [V: the label files of the product build at `b59a338`]: the fixe
 before; 160 in `PZ_TEST` builds), FRONT 2,733 B (3,202 before), `BANK_PUZL` 4,610 B,
 `HUD_BANK` + 1 447 B (493 before). With milestone 2 [V: the product of `bs-sound-int` at
 `3f2330d`, whose stage is `cae5193`'s]: the fixed area the same 190 B (its `fx_tk` reads `ld
-hl,fx_tkd`, the same instruction), `BANK_PUZL` 20 B fewer (4,592 B there, 4,590 with `b59a338`'s
-stage), `BANK_MUSIC` 1,480 B (`music_end` BA38h; none left below B800h: 3.6).
+hl,fx_tkd`, the same instruction), `BANK_PUZL` 20 B fewer (4,592 B there; 4,590 with `b59a338`'s
+stage, as built after the merge of main `a90e77a`: `puzl_end` AE12h), `BANK_MUSIC` 1,480 B
+(`music_end` BA38h; none left below B800h: 3.6).
 
 The hook (`rc2.asm` `ml_ev`; `FE_OVER`, `FE_RESTART` and `front_stats` unchanged):
 

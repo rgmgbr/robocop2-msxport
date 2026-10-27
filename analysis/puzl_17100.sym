@@ -1,0 +1,124 @@
+# Symbols of PUZL, Brainstorm (the bonus stage after levels 1 and 2), loaded at $17100.
+# Format: ADDRESS NAME [comment], with +entry and +data lines, as analysis/main_8000.sym.
+#
+# For the RAM image with PUZL at $17100 only: build/ram/puzl_full.bin, made by
+#   python3 -I tools/ramimage.py build/extracted build/ram/puzl RB1 MU1 DATAL1 SPERMA PERMA PUZL_25
+# (level1_full.bin with disk 2's plain PUZL over $17100-$32CDF; in level1_full.bin those addresses
+# hold MU1's and DATAL1's bytes, so these names must never seed a level image). Its REA/Ghidra seeds
+# are analysis/ghidra_seeds_puzl.tsv, the main code's plus these:
+#   python3 -I tools/ghidra_seeds.py build/extracted/boot/main_8000.bin analysis/main_8000.sym \
+#       analysis/ghidra_seeds_puzl.tsv analysis/puzl_17100.sym
+# PUZL's variables below take the place of the main code's names at the same addresses ($B00,
+# $B04, $B06, $B16, $B1E: the game's camera and buffers, which PUZL reuses).
+#
+# Names: the logic report of 2026-10-26 (REA, Ghidra provider: the listings of PUZL's 14 routines;
+# bench traces of the original), the PZM entries the sound report's. Checked with REA on 2026-10-27
+# (read_bytes, xrefs, the instructions of $8382 and $17100): $17AEE is the fade's rts and
+# $17D04-$17D19 an RTE handler nothing references, both inside the +data ranges the logic report
+# proposed, which are corrected here. docs/AMIGA_ANALYSIS.md "Brainstorm" and docs/BRAINSTORM.md 2
+# hold the facts.
+#
+# PUZL's routines: reached from $8382's jsr $17100 and from PUZL itself (the copper interrupt through
+# vector $6C, which puzl_init_hw writes)
++entry 17100
++entry 17298
++entry 1737a
++entry 173d2
++entry 17760
++entry 178a4
++entry 178e8
++entry 1790e
++entry 17944
++entry 1797c
++entry 179fc
++entry 17af0
++entry 17b5a
++entry 17d1a
+# an RTE handler nothing references (REA: no xref, and its address is in no byte of the image)
++entry 17d04
+# PZM, PUZL's copy of the music player (MU1's code, docs/AMIGA_ANALYSIS.md "Music"): its 7 BRA.W entries
++entry 18000
++entry 18004
++entry 18008
++entry 1800c
++entry 18010
++entry 18014
++entry 18018
++data 17194 171b4      cursor frame offsets (16 words)
++data 17282 17298      music divider word, face masks (5 words), static shifts (5 words)
++data 17448 17760      8 boards of $5E bytes, the 3 messages, a pad byte
++data 17972 1797c      LED thresholds by board (5 words)
++data 179b6 179fc      LED positions and digits (16 words), then 38 bytes nothing references
++data 17ade 17aee      light and bar row offsets (8 words); $17AEE is code (the fade's rts)
++data 17bea 17d04      18 zero bytes, then the copper list $17BFC-$17D03
++data 17d6a 18000      palettes ($17D6A, $17DAA), cursor frames $17DE8, the hidden frame's 24 zero bytes
+17100 puzl_main            $8382's jsr: init, the board loop, the pass loop, the end checks; D0 = 0 solved, 1 failed (stuck), 2 out of time
+17184 puzl_next_board      D0 = $B0A + 2: 9 or more -> D0 = 0 and return (solved), else board_setup(D0 / 2)
+17194 puzl_cursor_offsets  16 words x $40 by $B00 & $1E: 0 1 2 3 4 5 6 7 6 5 4 3 2 1 0 0 (the cursor frame from $17DE8)
+171ba puzl_wait            the pass loop: waits for $802C (irq_l1's count of the SOFT request at line $CE: once a frame)
+171c2 puzl_pass            one pass: COLOR00 = 0, cursor frame, fade, TV, LED, timer, step, counters, music tick (5 passes of 6), decor, ticker, joystick, panel digits
+17230 puzl_end_checks      $B1A not 0 and below 99 (signed): loop; done or failed: puzl_board_end; time out: puzl_out_of_time
+17254 puzl_out_of_time     $804C set: $B20 = 0 (fade out); once $B19 = 0, D0 = 2
+17264 puzl_board_end       done or failed: $B04 = 6 (effect 6 every pass), $B20 = 0; once $B19 = 0 the next board ($B17) or D0 = 1
+17282 puzl_music_div       word: the music ticks on 5 passes of 6 (0 in the file)
+17284 puzl_face_masks      5 words by $B0A: 7 3 1 0 0 (the face when ($B00 & mask) = 0)
+1728e puzl_static_shifts   5 words by $B0A: 1 1 1 2 0 (static frame ($B00 >> shift) & 3; 0: none)
+17298 puzl_draw_face       the TV at (224, 16): the face (immediate $1729A: $244E0 or $25160) or black, then the static cookie-cut
+1737a puzl_draw_chip       D0 col, D1 row, D2 chip 0-31: 16 x 16, 4 planes from $234E0 + 128 D2 at $2A5A2 + 2 col + $280 row
+173d2 puzl_board_setup     D0 board: header -> cursor, reds, timer, tune; 88 cells & $0F drawn; fade in; stop all; the tune (immediates $173D4 boards, $17441 tune)
+17448 puzl_boards          8 records of $5E: col, row, reds, timer MM SS (BCD), tune, 88 cells; records 0-3 visit 1 ($8050 < 2)
+175c0 puzl_boards_v2       records 4-7: the boards after level 2 ($8050 >= 2)
+17738 puzl_msg_timeout     "TIMEOUTe" $FF ('e' = the font's '.')
+17741 puzl_msg_malfunction "MALFUNCTIONe" $FF
+1774e puzl_msg_restored    "MEMORY RESTOREDe" $FF; $1775F a pad byte ($08)
+17760 puzl_step            the game: time out, end count, the effect asked for, the cursor's cell (red chip, burn), the 4th board's end, a move on a joystick change, the stuck test
+178a4 puzl_stuck           D0/D1: D4 = -1 (stuck) when no neighbour inside the board is free
+178e8 puzl_cell            D0/D1 -> A4 = $B06 + 11 D1 + D0 (no bounds check), D4 = -1 blocked (cell >= $10 or 1), 0 free
+1790e puzl_draw_glyph8     D0 byte column, D1 line, D2 digit: 8 x 16, 4 planes from $29C60 + 64 D2 (CPU copy)
+17944 puzl_draw_led        one LED digit at line 152: position T[$B00 & 15] when at least the board's threshold, digit T[($B02 & $1E) / 2]
+17972 puzl_led_thresholds  5 words by $B0A: 0 3 6 8 10
+1797c puzl_draw_timer      the timer M:SS at line 144, x 280, 296, 304: $804A & 15, $804B >> 4, $804B & 15
+179b6 puzl_led_values      16 words: 0 1 8 6 4 5 4 7 2 4 8 5 3 0 2 6 (LED positions and digits)
+179fc puzl_draw_decor      button (0, 148), scanning light (216, 104 + 8 row), board bar (224, 104 + 8 board)
+17ade puzl_row_offsets     8 words: rows 0 1 2 3 3 2 1 0 x 320 (the light by ($B00 >> 3) & 7, the bar by $B0A)
+17aee puzl_fade_rts        the rts the fade branches to at either end of its range ($17AFE, $17B0A)
+17af0 puzl_fade            $B19 towards $1F ($B20 set) or 0 (at 0 the palette immediate $17B20 back to $17D6A); COLOR01-31 limited to ($B19 >> 1) & $1E
+17b5a puzl_irq_copper      level 3 (COPER at line $18): BPL1-5PT = $2A320 + n $1B80; SPR0PT = $B12, over cell ($B0C, $B0E)
+17bfc puzl_copper          copper list: COPER at $18, sprites 1-7 off, COLOR01-31, DDF $34-$CC, BPLCON0 $5200 at $1E, COPJMP2 ($10356: the panel)
+17d04 puzl_irq_unused      writes INTREQ $2000 (EXTER acknowledged) between pushes and pops of A0, D1, D0, then RTE; nothing references it
+17d1a puzl_init_hw         $FE14 ($8028), $B00-$B21 = 0, vector $6C = $17B5A, copper $17BFC, INTENA $E01C, $B19 = 0, $B20 = $FF
+17d6a puzl_palette_v1      31 words COLOR01-31 ($8050 < 2)
+17daa puzl_palette_v2      31 words ($8050 >= 2)
+17de8 puzl_cursor_frames   8 x 64 bytes (16 lines of DATA, DATB); $17FE8 = the "hidden" frame (24 zero bytes, then PZM's entries)
+18000 pzm_entry_init       PZM: bra.w $18180 (init)
+18004 pzm_entry_stop_all   bra.w $18194
+18008 pzm_entry_stop_tune_a bra.w $181E8 (stop the channels of tune D0)
+1800c pzm_entry_stop_tune_b bra.w $181E8
+18010 pzm_entry_music      bra.w $1824E (tune D0 as music)
+18014 pzm_entry_effect     bra.w $1822C (tune D0 as an effect)
+18018 pzm_entry_tick       bra.w $18316 (one tick)
+234e0 puzl_chips           32 chip tiles, 16 x 16 x 4 planes (128 bytes each, planes in sequence)
+244e0 puzl_face_murphy     80 x 80 x 4 planes (visit 1)
+25160 puzl_face_ellen      80 x 80 x 4 planes (visit 2)
+25de0 puzl_static          4 static frames of $FA0 bytes: a mask plane (800 bytes), then 4 planes
+29c60 puzl_digits          10 digits, 8 x 16 x 4 planes (64 bytes each)
+29ee0 puzl_lights          2 lights, 8 x 8 (32 bytes each)
+29f20 puzl_bars            2 bars, 24 x 8 (128 bytes each, a 4-byte source stride)
+2a020 puzl_buttons         2 buttons, 32 x 24 (384 bytes each)
+2a320 puzl_screen          the screen: 5 planes of $1B80 (320 x 176, 40 bytes a line); plane 5 ($31120) set over the TV only
+# PUZL's variables: its use of $B00-$B21 (cleared by $FE14 and again by puzl_init_hw)
+b00   puzl_frame           word: passes so far (+ 1 a pass, after the step)
+b02   puzl_frame3          word: + 3 a pass (the LED digit, the bar's blink)
+b04   puzl_sfx             byte: the effect the next pass's step starts (3 red chip, 4 move, 5 next board, 6 a fade out)
+b06   puzl_cells           long: the board's 88 cells (11 a row)
+b0a   puzl_board2          word: 2 x board (-2 at first; 8 once the 4th is done)
+b0c   puzl_col             word: cursor column 0-10 (header byte 0 into $B0D)
+b0e   puzl_row             word: cursor row 0-7 (header byte 1 into $B0F)
+b10   puzl_reds            word: red chips left (header byte 2 into $B11)
+b12   puzl_cursor_img      long: SPR0's image ($17DE8 + the frame's offset; $17FE8 in the end sequences)
+b16   puzl_failed          byte: $FF stuck with red chips left
+b17   puzl_done            byte: $FF no red chip left
+b19   puzl_fade_level      byte: 0-$1F
+b1a   puzl_end_count       word: 0 in play; counts the end sequence (it ends from 99 on)
+b1e   puzl_prev_joy        byte: $802E at the last change
+b20   puzl_fade_in         byte: $FF fade in, 0 fade out

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Builds images of the Amiga RAM during a level, to open in REA/Ghidra.
 
-Each file goes to its destination from the loader name table. Outputs:
+Each file goes to its destination from the loader name table, in the order given (a later file
+overwrites an earlier one where they overlap). A name takes the file's first entry (PUZL: disk 1's
+copy, crunched, at $17080); a file can also be named by its extracted file's stem (PUZL_25: disk 2's
+plain copy, at $17100). Outputs:
   <out>_full.bin : RAM from $0 to $7FFFF; $0 holds JMP $8000 (REA entry = 0x0)
   <out>_8000.bin : RAM from $8000 to $7FFFF (REA entry = 0x8000)
 
 usage: ramimage.py build/extracted build/ram/level1 MU1 DATAL1 SPERMA PERMA RB1
+       ramimage.py build/extracted build/ram/puzl RB1 MU1 DATAL1 SPERMA PERMA PUZL_25
+       (the level-1 image with Brainstorm's PUZL at $17100-$32CDF: docs/AMIGA_ANALYSIS.md, Brainstorm)
 """
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ def main(argv: list[str]) -> int:
     files = {}
     for f in json.loads((x / "manifest.json").read_text())["files"]:
         files.setdefault(f["name"], f)  # first entry (PUZL of disk 1)
+        files.setdefault(Path(f["file"]).stem, f)  # by its file (PUZL_25: disk 2's)
     ram = bytearray(CHIP)
     ram[0:6] = bytes.fromhex("4ef900008000")  # JMP $8000
     for path, addr in (("boot/loader_100.bin", 0x100), ("boot/loader_300.bin", 0x300), ("boot/main_8000.bin", 0x8000)):

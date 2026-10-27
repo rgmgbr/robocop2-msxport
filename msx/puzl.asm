@@ -1410,15 +1410,17 @@ rs_a:   ld e,RD_SAT_A >> 16
 rs_end: ld a,216
         out (VDP_DATA),a
         jp vram_done
-rs_one: ld a,d                      ; Y, X, 4 x the pattern, 0
-        out (VDP_DATA),a
-        ld a,e
+rs_one: ld a,d                      ; Y, X, 4 x the pattern, 0 (each nop keeps 18 T or more
+        out (VDP_DATA),a            ;  between two VRAM writes, as sprites.asm's OUTIs: 17 T is
+        ld a,e                      ;  too fast for the VDP with a 5.37 MHz Z80, the turbo of
+        nop                         ;  some MSX2+ and FPGA machines)
         out (VDP_DATA),a
         ld a,b
         add a,a
         add a,a
         out (VDP_DATA),a
         xor a
+        nop
         out (VDP_DATA),a
         ret
 
