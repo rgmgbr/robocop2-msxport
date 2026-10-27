@@ -392,6 +392,23 @@ key_tp:     equ 0xC688              ; the turbo R's PAUSE flip-flop as last seen
 sp8_cnt:    equ 0xC689              ; the R800 split's waits that timed out (split8.asm; tests: 0)
 pz_first:   equ 0xC6FF              ; PZ_TEST builds: 1 from the power-on until Brainstorm ran once
                                     ;   (rc2.asm pz_test; C68Ah-C6FEh: the stage's own, docs/BRAINSTORM.md 3.2)
+; Brainstorm (msx/puzl.asm) while it runs: its own variables (C68Ah-C6FEh; C691h on: the renderer's)
+pz_last:    equ 0xC68A              ; the tick of the last pass, or of the timer's set-up (bs_wait: wf_n)
+pz_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immediate at $17B20)
+pz_tv:      equ 0xC68D              ; 2: the visit's TV pictures in puzl_gfx.bin (the immediate at $1729A)
+pz_tune:    equ 0xC68F              ; the board's tune (header byte 5: the immediate at $17441)
+pz_sfx:     equ 0xC690              ; the effect the pass's step started ($18014's D0; 0: none)
+; its renderer (msx/puzl.asm bs_feed: display pages 0 and 1, sprite sets A and B)
+rd_state:   equ 0xC691              ; 0 idle, 1 building the page not shown, 2 its list published
+rd_shown:   equ 0xC692              ; the page on screen (0, 1)
+rd_page:    equ 0xC693              ; the page being built (the other one)
+rd_elem:    equ 0xC694              ; the next element the build compares (0 to PZ_ST_LEN)
+rd_tvw:     equ 0xC695              ; the TV picture of the build (the duty rule; FFh: none yet)
+rd_acc:     equ 0xC696              ; the duty rule's accumulator (signed, 1/256)
+rd_face:    equ 0xC697              ; 1: the last build's TV shows the face
+rd_fr:      equ 0xC698              ; 2: $B00 when the last build started (a build only after a pass)
+rd_bank:    equ 0xC69A              ; the entry's uploads: the bank at 8000h
+rd_cmd:     equ 0xC69B              ; 15: the HMMM being sent (R#32-R#46)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -448,6 +465,26 @@ snd_b2e:    equ AM + (0x0B2E ^ 1)
 snd_b2f:    equ AM + (0x0B2F ^ 1)
 snd_b30:    equ AM + (0x0B30 ^ 1)
 snd_b31:    equ AM + (0x0B31 ^ 1)
+; Brainstorm (msx/puzl.asm): PUZL's variables $B00-$B21 at their own place (cleared at the stage's
+; entry with AM_START..AM_END, as $FE14 does; tools/openmsx_rc2.tcl rc2_pz_drive traces them)
+pzv_frame:  equ AM + 0x0B00         ; 2: the passes so far
+pzv_frame3: equ AM + 0x0B02         ; 2: + 3 a pass (the LED digit, the bar's blink)
+pzv_sfx:    equ AM + (0x0B04 ^ 1)   ; the effect the next pass's step starts (3 a red chip, 4 a move,
+                                    ;   5 the next board, 6 a fade out)
+pzv_cells:  equ AM + 0x0B06         ; 4: the board's 88 cells: high word 0, low word (+ 2)
+                                    ;   pz_boards + 6 + 94 x the board
+pzv_board2: equ AM + 0x0B0A         ; 2: 2 x the board: -2 at first, 8 once the fourth is done
+pzv_col:    equ AM + 0x0B0C         ; 2: the cursor's column,
+pzv_row:    equ AM + 0x0B0E         ; 2:   its row
+pzv_reds:   equ AM + 0x0B10         ; 2: red chips left
+pzv_curimg: equ AM + 0x0B12         ; 4: the cursor's image: high word 0, low word (+ 2) its offset
+                                    ;   from $17DE8 (0, 40h ... 1C0h; 200h: $17FE8, no cursor)
+pzv_failed: equ AM + (0x0B16 ^ 1)   ; FFh: stuck with red chips left
+pzv_done:   equ AM + (0x0B17 ^ 1)   ; FFh: no red chip left
+pzv_fade:   equ AM + (0x0B19 ^ 1)   ; the palette's fade, 0-31
+pzv_endc:   equ AM + 0x0B1A         ; 2: the end sequence's passes (0 in play; it ends from 99 on)
+pzv_prevjoy: equ AM + (0x0B1E ^ 1)  ; the joystick byte of the last change
+pzv_fadein: equ AM + (0x0B20 ^ 1)   ; FFh: fading in, 0: fading out
 
 ; game logic: the port's own variables
 G_VARS:     equ 0xCE00
@@ -665,6 +702,26 @@ AC_VARS_END: equ 0xDD80
 spawn_ram:  equ 0xDD80              ; DD80h-DFFFh: the level's spawn list ($B0E; 14-byte records,
                                     ; words little-endian), copied from the level bank at its start
 objl_ram:   equ 0xEE00              ; EE00h-F0FFh: the level's object list ($9C18; 12-byte records)
+; Brainstorm (msx/puzl.asm) while it runs, in objl_ram (EE00h-EF4Fh: the renderer's): the wanted
+; state, what the original has drawn as of the last pass (pz_frame), for the renderer. Its
+; first bytes follow the shown state's layout (puzl.inc PZ_ST_TV ... PZ_ST_BAR, PZ_ST_NONE: not
+; drawn yet); the cells are the board itself (pzv_cells: the cursor's cell burnt as it is drawn)
+pz_want:    equ 0xEE00              ; the TV picture of the last pass: PZ_TV_FACE + the static
+                                    ;   frame (the face shown), PZ_TV_BLACK + the static frame,
+                                    ;   or PZ_TV_CLEAN (the face alone, the memory restored)
+pw_led:     equ 0xEE01              ; 9: per LED position the digit last drawn there
+pw_timer:   equ 0xEE0A              ; 3: the timer's digits: minutes, tens of seconds, seconds
+pw_button:  equ 0xEE0D              ; the button's image (0-1)
+pw_light:   equ 0xEE0E              ; 4: per row the scanning light's image last drawn there
+pw_bar:     equ 0xEE12              ; 4: per row the board bar's image last drawn there
+pw_tvk:     equ 0xEE16              ; the passes since the renderer last took the TV (FFh at most;
+pw_tvf:     equ 0xEE17              ;   the renderer clears both), those of them with the face
+pw_ccol:    equ 0xEE18              ; the cursor at the pass's end: its column ($B0C),
+pw_crow:    equ 0xEE19              ;   row ($B0E),
+pw_cimg:    equ 0xEE1A              ;   image 0-7 ($B12's offset / 40h; 8: $17FE8, no cursor)
+PW_LEN:     equ 27
+rd_st0:     equ 0xEE20              ; PZ_ST_LEN: what display page 0 shows (puzl.inc PZ_ST_...; FFh:
+rd_st1:     equ 0xEE90              ;   the screen's own pixels), page 1's (each in one 256-byte page)
 SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32)
 dg_msxv:    equ 0xE900              ; DIAG test builds (tools/mkrom.py, music.asm dg_main; before any level):
 dg_a8b:     equ 0xE901              ;   the BIOS's MSX version and A8h at the start (rc2.asm init),
@@ -763,6 +820,9 @@ MP_A:       equ 0x0B00              ; the even rows' pool (0B00h-0FFFh)
 MP_B:       equ 0xF500              ; the odd rows' pool (F500h-F9FFh, page 3's BIOS area: nothing
                                     ;   writes there once the game runs, CHGCPU included: openMSX,
                                     ;   the FS-A1GT, 2026-10-25)
+pz_boards:  equ 0xF500              ; Brainstorm while it runs (MP_B: tiles_init rebuilds it): the
+                                    ;   visit's 4 boards (PZ_TAB, Amiga order, a cell + 10h once
+                                    ;   burnt) and what follows them in PUZL up to $1775F (msx/puzl.asm)
 MPF_COL:    equ 0x0000              ; per patch its column,
 MPF_NEXT:   equ 0x0100              ;   the next patch of the row (FFh: none),
 MPF_TILEL:  equ 0x0200              ;   its tile (low byte,

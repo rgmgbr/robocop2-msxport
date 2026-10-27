@@ -364,11 +364,24 @@ fs_clear:
 ; when it is solved ($805E), its result. The shooting range ($8420) and level 2 come later. From
 ; the state front_stats leaves: the play area black, the HUD below it; a turbo R on the Z80 with
 ; the display and the interrupts off (cpu_title), the HUD split measured for the R800 only.
+; A turbo R's Z80 runs these screens without its hardware pause: CHGCPU(80h) turned it on
+; (docs/TURBO_R.md H11, H18), and a PAUSE press would hold the Z80, the HUD split and the VBLANK
+; list with it, at any line: the picture garbled while held. The key is not read here (the
+; original stage has no pause; front_stats on the R800 ignores it too): cpu_title at the end waits
+; for a press left pending, the picture kept (cs_pz), and turns the hardware pause on again, so
+; that the title starts as it did after front_stats.
 front_bonus:
-        ld a,(cpu_tr)               ; a turbo R: the split measured on the Z80 (split_cal), the line
-        or a                        ;  and VBLANK interrupts and the display on again (other
-        call nz,display_on          ;  machines keep theirs: split_cal blanks the HUD a while)
-        xor a
+        ld a,(cpu_tr)
+        or a
+        jr z,fbo_go
+        ld a,(CASPRV)               ; a turbo R: the Z80's hardware pause off (A7h bit 1), first
+        and 0xFD                    ;  (a hold inside split_cal would cut a measure short)
+        ld (CASPRV),a
+        out (TR_PAUSE),a
+        call display_on             ; the split measured on the Z80 (split_cal), the line and
+                                    ;  VBLANK interrupts and the display on again (other machines
+                                    ;  keep theirs: split_cal blanks the HUD a while)
+fbo_go: xor a
         ld (g_tick),a               ; (hud_energy keeps the can: PUZL never calls $89BE)
         ld hl,txt_bs_intro
         call fe_text                ; ($8384: $114AA through $10762)
@@ -393,7 +406,8 @@ fb_res: add a,a
         inc hl
         ld h,(hl)
         ld l,a
-        jp fe_text                  ; ($8400: the result through $10762)
+        call fe_text                ; ($8400: the result through $10762)
+        jp cpu_title                ; (a turbo R: the hardware pause on again, the display off)
 fb_texts:
         dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)
 
