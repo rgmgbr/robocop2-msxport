@@ -60,7 +60,8 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/sprites/catalog.json $(B
 	$(PYTHON) -I tools/msxconv.py level $(X)/files/DATAL1_10.bin --pal-file $(X)/boot/main_8000.bin \
 		--pal-addr 0xfff6 --rows 51 --joint $(BUILD)/msx/robocop -o $(BUILD)/msx/level1
 	$(PYTHON) -I tools/msxhud.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(BUILD)/msx/hud --black 4
-	$(PYTHON) -I tools/msxhudrt.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(X)/files/PUZL_25.bin $(BUILD)/msx/hud_rt
+	$(PYTHON) -I tools/msxhudrt.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(X)/files/PUZL_25.bin $(BUILD)/msx/hud_rt \
+		$(X)/files/FRNG_15.bin
 	$(PYTHON) -I tools/player.py --inc $(BUILD)/msx/player.inc
 	$(VPYTHON) -I tools/msxpic.py $(BUILD)/png/TPIC.png $(BUILD)/msx/title
 	$(VPYTHON) -I tools/msxpic.py $(BUILD)/png/PIC9_11.png $(BUILD)/msx/gameover

@@ -25,6 +25,17 @@ high scores").
   script's finished play area, page 0's lines 0-161 as fs_char leaves them (text_bs_*.sc5: 128
   bytes a line, SCREEN 5, next to OUT.inc), with its preview in the graded palette (.png), is
   the reference for the port's screens.
+- The shooting range's texts ($8420 after Brainstorm, each through $10762; msx/front.asm
+  front_range runs them with fe_text), appended after Brainstorm's with the same checks: the
+  intro ($1142D, txt_rg_intro: its long line does not fit 256 pixels either, so the port's copy
+  splits it, RG_INTRO_LINES), the result ($113A5, txt_rg_res: its three 8-character fields
+  blank, at TXT_RG_F1-3; front_range copies its TXT_RG_LEN bytes to fs_buf, at most FS_BUF, puts
+  the correct and the dummy counts in with fs_num, $11DC6's format, and the rating's name) and
+  the ratings' names ($1140D, txt_rg_rate: POOR to SHARP, 8 characters each). The time out is
+  Brainstorm's txt_bs_time ($11698: the original shares it). Their play areas are the references
+  for the range's screens: text_rg_intro.sc5, text_rg_time.sc5 and text_rg_res_cC_dD_mM.sc5 for
+  the counts of RG_RESULTS (every rating), each with its preview (.png); render-result writes
+  the result's for any counts.
 - The port's credit on the title picture (with TITLE.sc8 and OUT.sc8: the SCREEN 8 picture of
   tools/msxpic.py): CREDIT's lines in the same font (capitals only), centred over the dark band
   below RoboCop's chin, the strokes in the logo's light grey-blue and their shadow in dark blue
@@ -37,9 +48,14 @@ high scores").
 
 usage: msxtext.py [RAM_IMAGE] [OUT.inc] [TITLE.sc8 OUT.sc8 [OVER.sc8 OUT2.sc8]]
        (defaults: build/ram/level1_full.bin, build/msx/text.inc)
+       msxtext.py render-result CORRECT DUMMY MINUTES [-o OUT.sc5] [--rating R] [--tag N] [--ram RAM_IMAGE]
+       (the range's result screen for the counts, $B04 and $B06, and the timer's minutes at the
+       end, $804A: its play area, its preview and the rating; --rating shows that rating's name
+       instead, --tag the TEST n line of a TAG build)
 """
 from __future__ import annotations
 
+import argparse
 import struct
 import sys
 from pathlib import Path
@@ -73,6 +89,30 @@ INTRO_ELEMENTS = 100
 INTRO_LINES = ((13, 0, "BRAINSTORM."), (8, 3, "DESTROY ALL RED CHIPS"), (13, 4, "ON THE BOARD"),
                (5, 6, "COMPLETE 4 TO REGAIN MEMORY."), (7, 8, "AND EARN A GAME CREDIT."))
 INTRO_SPLIT = 21                    # the long line's character there (a space) becomes the position
+# The shooting range's scripts ($8420 after Brainstorm: the intro, then the result; a time out
+# shows Brainstorm's txt_bs_time, the original's shared $11698): label, address, the calls up to
+# the end
+RANGE = (("txt_rg_intro", 0x1142D, 304), ("txt_rg_res", 0x113A5, 347))
+RG_INTRO_ELEMENTS = 112
+# The intro's third line, "YOUR GUN CALIBRATION WILL BE TESTED", is 35 characters at column 1
+# (x -8 to 271). The port's copy splits it after "CALIBRATION" over rows 5 and 6 (that space
+# becomes a position: 5 positions and 107 characters, the original's 112 elements, so the
+# screen lasts as long) and moves the last line from row 7 to row 8, a blank row still before
+# it; only the spacing moves (Brainstorm's rule). (column, row, text) of its lines:
+RG_INTRO_LINES = ((11, 0, "SHOOTING RANGE."), (5, 3, "YOU MUST SHOOT ARMED TARGETS"),
+                  (9, 5, "YOUR GUN CALIBRATION"), (12, 6, "WILL BE TESTED"),
+                  (4, 8, "WARNING ACCURACY IS ESSENTIAL."))
+RG_INTRO_LONG = 2                   # the long line,
+RG_INTRO_SPLIT = 20                 #   its character there (a space) becomes the position
+# The result's 8-character fields, blank in the script ($8420 fills a copy): the correct count
+# ($B04, with $11DC6), the dummy count ($B06), the rating's name (8 bytes of $1140D)
+RG_FIELDS = (0x113CA, 0x113E4, 0x11400)
+RG_NAMES = 0x1140D                  # the ratings' names by rating, 8 characters each
+RG_NAME_TEXT = ("POOR.   ", "FAIR.   ", "GOOD.   ", "SHARP.  ")
+FS_BUF = 120                        # msx/msx.inc: fs_ptr - fs_buf, the room of a script with numbers
+# The result's references written with text.inc: (correct, dummy, the timer's minutes) for
+# SHARP, GOOD, FAIR, SHARP with the minutes at 0, and POOR
+RG_RESULTS = ((16, 0, 1), (15, 0, 1), (13, 2, 1), (25, 0, 0), (0, 0, 2))
 
 
 def glyph_sc5(ram: bytes, g: int) -> bytes:
@@ -237,6 +277,100 @@ def bonus_inc(scripts: list[tuple[str, int, bytes]]) -> str:
     return text
 
 
+def rg_intro_port(script: bytes) -> bytes:
+    """The port's copy of the range's intro: the original's characters on RG_INTRO_LINES."""
+    lines, tail = script_lines(script)
+    k, n = RG_INTRO_LONG, RG_INTRO_SPLIT
+    assert len(lines) == 4 and lines[k][2][n] == 0x20, "the range's intro is not the expected one"
+    texts = [chars for _, _, chars in lines]
+    texts[k:k + 1] = [texts[k][:n], texts[k][n + 1:]]
+    assert [decode(t) for t in texts] == [t for _, _, t in RG_INTRO_LINES], "the range's intro is not the expected one"
+    return b"".join(bytes((0, col, row)) + t for (col, row, _), t in zip(RG_INTRO_LINES, texts)) + tail
+
+
+def range_scripts(ram: bytes) -> list[tuple[str, int, bytes]]:
+    """The range's scripts as the port holds them (label, address, bytes), checked: the intro
+    split, the result's fields blank (fs_num writes only the digits) and its bytes within
+    fs_buf."""
+    out = []
+    for label, start, calls in RANGE:
+        script = bonus_script(ram, start)
+        if label == "txt_rg_intro":
+            assert fs_run(script)[:2] == (RG_INTRO_ELEMENTS, calls), "the range's intro: elements"
+            script = rg_intro_port(script)
+            assert fs_run(script)[0] == RG_INTRO_ELEMENTS, "the port's range intro: elements"
+        else:
+            assert all(script[f - start:f - start + 8] == b" " * 8 for f in RG_FIELDS), f"{label}: a field not blank"
+            assert len(script) <= FS_BUF, f"{label}: {len(script)} bytes, more than fs_buf's {FS_BUF}"
+        check_bonus(label, script, calls)
+        out.append((label, start, script))
+    return out
+
+
+def rg_names(ram: bytes) -> bytes:
+    """$1140D: the ratings' names, POOR (0) to SHARP (3), 8 characters each, checked."""
+    names = ram[RG_NAMES:RG_NAMES + 32]
+    assert [decode(names[i:i + 8]) for i in range(0, 32, 8)] == list(RG_NAME_TEXT), "the ratings' names"
+    return names
+
+
+def num_field(n: int) -> bytes:
+    """A blank 8-character field after front.asm fs_num (n 0-65535): the digits ('[' + digit) from
+    the field's end back, the spaces before them kept ($11DC6: leading zeros as spaces, 0 as one
+    digit)."""
+    if not 0 <= n <= 0xFFFF:
+        raise ValueError(f"{n}: not a 16-bit count")
+    s = str(n)
+    return b" " * (8 - len(s)) + bytes(0x5B + int(ch) for ch in s)
+
+
+def rg_rating(correct: int, dummy: int, minutes: int) -> int:
+    """$84C0-$84EE (ported by msx/front.asm front_range): 6 correct - dummy - 50, 12 less when the
+    timer's minutes ($804A) are 0, in 16-bit words; negative POOR (0), else its div 14, at most
+    SHARP (3)."""
+    s = (6 * correct - dummy - 50 - (12 if minutes == 0 else 0)) & 0xFFFF
+    return 0 if s & 0x8000 else min(3, s // 14)
+
+
+def rg_fill(script: bytes, names: bytes, correct: int, dummy: int, rating: int) -> bytes:
+    """txt_rg_res as front_range leaves it in fs_buf for fe_text: the correct and the dummy counts
+    in their fields (fs_num) and the rating's name, checked."""
+    if rating not in range(4):
+        raise ValueError(f"rating {rating}: not 0-3")
+    label, start, calls = RANGE[1]
+    s = bytearray(script)
+    for f, v in zip(RG_FIELDS, (num_field(correct), num_field(dummy), names[8 * rating:8 * rating + 8])):
+        s[f - start:f - start + 8] = v
+    check_bonus(label, bytes(s), calls)
+    return bytes(s)
+
+
+def tag_line(tag: int) -> bytes:
+    """front.asm fe_text's TEST n line of a TAG build (row 10, drawn before the script) as script
+    bytes (a position and its characters); none for TAG 0."""
+    if not 0 <= tag <= 99:
+        raise ValueError(f"TAG {tag}: not 0-99")
+    return bytes((0, 14 if tag > 9 else 15, 10)) + b"TEST " + str(tag).encode() if tag else b""
+
+
+def range_inc(scripts: list[tuple[str, int, bytes]], names: bytes) -> str:
+    """text.inc's part for the range: the result's equates, the scripts and the names."""
+    _, start, res = scripts[1]
+    equ = [("TXT_RG_LEN", len(res), "txt_rg_res' bytes: front_range fills a copy in fs_buf"),
+           ("TXT_RG_F1", RG_FIELDS[0] - start, "the correct count's field ($113CA: $11DC6, 8 characters)"),
+           ("TXT_RG_F2", RG_FIELDS[1] - start, "the dummy count's field ($113E4)"),
+           ("TXT_RG_F3", RG_FIELDS[2] - start, "the rating's name ($11400: 8 bytes of txt_rg_rate)")]
+    text = ("; The shooting range's texts ($8420 after Brainstorm: the intro, then the result; a time out\n"
+            "; shows txt_bs_time) for front.asm front_range and fe_text\n"
+            + "".join(f"{f'{k}: equ {v}':<36}; {what}\n" for k, v, what in equ))
+    for label, start, script in scripts:
+        elements, calls, _ = fs_run(script)
+        note = f"${start:05X}" + (", the long line split" if label == "txt_rg_intro" else ", its fields blank")
+        text += f"{label}:{' ' * (35 - len(label))}; {note}: {elements} elements, {calls} calls\n" + db_lines(script)
+    return (text + f"txt_rg_rate:{' ' * 24}; ${RG_NAMES:05X}: the ratings' names, 8 bytes each: "
+            + ", ".join(t.rstrip(". ") for t in RG_NAME_TEXT) + "\n" + db_lines(names))
+
+
 def fs_render(glyphs: list[bytes], script: bytes) -> bytes:
     """The play area once the script has run (VIEW_LINES lines of 128 bytes, SCREEN 5): page 0
     cleared (front.asm fs_clear), then each character's glyph (8 lines of 4 bytes) written at
@@ -322,11 +456,53 @@ def level_inc(ram: bytes) -> str:
                       for g in range(rc2front.BITMAP_GLYPHS)))
 
 
+def render_result(argv: list[str]) -> int:
+    """msxtext.py render-result (the module's usage): the range's result screen for given counts."""
+    ap = argparse.ArgumentParser(
+        prog="msxtext.py render-result",
+        description="The shooting range's result screen as front.asm front_range shows it (txt_rg_res filled "
+                    "in fs_buf, through fe_text): its play area (page 0's lines 0-161, SCREEN 5) and its "
+                    "preview (.png); prints the rating and ac_diff's offset into diff_tab.")
+    ap.add_argument("correct", type=int, help="the correct targets ($B04)")
+    ap.add_argument("dummy", type=int, help="the dummy targets ($B06)")
+    ap.add_argument("minutes", type=int, help="the timer's minutes at the end ($804A): 0 costs 12")
+    ap.add_argument("-o", "--out", type=Path,
+                    help="the .sc5 to write (default: build/msx/text_rg_res_cC_dD_mM[_rR][_tN].sc5)")
+    ap.add_argument("--rating", type=int, choices=range(4),
+                    help="show this rating's name (0 POOR to 3 SHARP) instead of the counts' rating")
+    ap.add_argument("--tag", type=int, default=0, help="the build's TAG: TEST n at row 10 (0-99)")
+    ap.add_argument("--ram", type=Path, default=ROOT / "build/ram/level1_full.bin",
+                    help="the RAM image (default: build/ram/level1_full.bin)")
+    a = ap.parse_args(argv)
+    for v, what, top in ((a.correct, "correct", 0xFFFF), (a.dummy, "dummy", 0xFFFF), (a.minutes, "minutes", 255),
+                         (a.tag, "--tag", 99)):
+        if not 0 <= v <= top:
+            ap.error(f"{what} {v}: not 0-{top}")
+    ram = a.ram.read_bytes()
+    rating = rg_rating(a.correct, a.dummy, a.minutes)
+    shown = rating if a.rating is None else a.rating
+    script = tag_line(a.tag) + rg_fill(range_scripts(ram)[1][2], rg_names(ram), a.correct, a.dummy, shown)
+    out = a.out or ROOT / "build" / "msx" / (f"text_rg_res_c{a.correct}_d{a.dummy}_m{a.minutes}"
+                                             + (f"_r{shown}" if a.rating is not None else "")
+                                             + (f"_t{a.tag}" if a.tag else "") + ".sc5")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    glyphs = [glyph_sc5(ram, g) for g in range(rc2front.BITMAP_GLYPHS)]
+    write_sc5(out, fs_render(glyphs, script), grade_pal(msx_palette(ram)))
+    print(f"{out}: correct {a.correct}, dummy {a.dummy}, minutes {a.minutes}: rating {rating} "
+          f"({RG_NAME_TEXT[rating].rstrip('. ')}), ac_diff = diff_tab + {24 - 8 * rating}"
+          + (f"; the name shown: rating {shown} ({RG_NAME_TEXT[shown].rstrip('. ')})" if shown != rating else "")
+          + (f"; TEST {a.tag} at row 10" if a.tag else ""))
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "render-result":
+        return render_result(argv[2:])
     ram = Path(argv[1] if len(argv) > 1 else ROOT / "build/ram/level1_full.bin").read_bytes()
     out = Path(argv[2] if len(argv) > 2 else ROOT / "build/msx/text.inc")
     bonus = bonus_scripts(ram)
-    out.write_text(level_inc(ram) + bonus_inc(bonus))
+    rg, names = range_scripts(ram), rg_names(ram)
+    out.write_text(level_inc(ram) + bonus_inc(bonus) + range_inc(rg, names))
     print(f"{out}: {rc2front.BITMAP_GLYPHS} glyphs, statistics script {len(stats_script(ram))} bytes")
     glyphs = [glyph_sc5(ram, g) for g in range(rc2front.BITMAP_GLYPHS)]
     pal = grade_pal(msx_palette(ram))
@@ -335,6 +511,17 @@ def main(argv: list[str]) -> int:
     print(f"{out}: Brainstorm's texts, " + ", ".join(f"{label} {len(s)} bytes ({fs_run(s)[1]} calls)"
                                                   for label, _, s in bonus)
           + f"; their play areas in {out.parent / 'text_bs_*.sc5'} (.png)")
+    scripts = {label: s for label, _, s in bonus + rg}
+    write_sc5(out.parent / "text_rg_intro.sc5", fs_render(glyphs, scripts["txt_rg_intro"]), pal)
+    write_sc5(out.parent / "text_rg_time.sc5", fs_render(glyphs, scripts["txt_bs_time"]), pal)
+    for c, d, m in RG_RESULTS:
+        res = rg_fill(scripts["txt_rg_res"], names, c, d, rg_rating(c, d, m))
+        write_sc5(out.parent / f"text_rg_res_c{c}_d{d}_m{m}.sc5", fs_render(glyphs, res), pal)
+    print(f"{out}: the range's texts, " + ", ".join(f"{label} {len(s)} bytes ({fs_run(s)[1]} calls)"
+                                                 for label, _, s in rg)
+          + f", txt_rg_rate {len(names)} bytes, the time out txt_bs_time; their play areas in "
+          + f"{out.parent / 'text_rg_*.sc5'} (.png): the intro, the time out, the result for "
+          + ", ".join(f"{c}/{d}/{m} ({RG_NAME_TEXT[rg_rating(c, d, m)].rstrip('. ')})" for c, d, m in RG_RESULTS))
     if len(argv) > 4:
         write_sc8(Path(argv[4]), credit_sc8(ram, Path(argv[3]).read_bytes()))
         print(f"{argv[4]}: the title with the credit ({len(CREDIT)} lines)")

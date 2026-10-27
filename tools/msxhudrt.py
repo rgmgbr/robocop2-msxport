@@ -27,14 +27,18 @@ consecutive banks mapped at 8000h-BFFFh; VRAM addresses are the low 16 bits, bit
   messages: 21 x dw pointer, then the game's messages ($FF-terminated, its character codes)
   weapons:  4 x (dw ammo in BCD as the game stores it, db icon, db 0), from set_weapon's
             tables $FD52 / $FD5A
-  bonus:    PUZL's messages (Brainstorm): a pad byte ($FF) when needed for an even distance
-            from the messages' table, 3 x dw pointer, then the messages. game_msg's address,
-            HUD_MSGS + 2 x number, reaches them with the numbers distance / 2 on, so everything
-            before them keeps its bytes and its address (and HUD_NMSGS stays level 1's count).
+  bonus:    the bonus stages' messages, PUZL's (Brainstorm) then FRNG's (the shooting range): a
+            pad byte ($FF) when needed for an even distance from the messages' table, 5 x dw
+            pointer (3 without FRNG), then the messages. game_msg's address, HUD_MSGS + 2 x
+            number, reaches them with the numbers distance / 2 on (PUZL's 174-176, FRNG's 177
+            and 178), so everything before them keeps its bytes and its address (and HUD_NMSGS
+            stays level 1's count); FRNG's moved PUZL's strings 4 bytes on, their numbers kept.
 hud_rt.inc gives the addresses of the tables and the HUD positions.
 
-usage: msxhudrt.py PERMA.bin MAIN_8000.bin PUZL.bin OUT   (writes OUT.bin and OUT.inc)
-       (PUZL.bin: Brainstorm's code and data as loaded at $17100, PUZL_25.bin)
+usage: msxhudrt.py PERMA.bin MAIN_8000.bin PUZL.bin OUT [FRNG.bin]   (writes OUT.bin and OUT.inc)
+       (PUZL.bin: Brainstorm's code and data as loaded at $17100, PUZL_25.bin; FRNG.bin: the
+       shooting range's file as on the disk, FRNG_15.bin, decrunched here with
+       tools/bytekiller.py to its bytes at $1EA00; without it, the data before the range)
 """
 from __future__ import annotations
 
@@ -44,6 +48,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bytekiller  # noqa: E402
 import hudmodel  # noqa: E402
 import msxhud  # noqa: E402
 from rc2front import GLYPH_NAMES  # noqa: E402
@@ -62,6 +67,10 @@ MESSAGES = [0xC222, 0xDC76, 0xC238, 0xC24B, 0xD46C, 0xED11, 0x865A, 0xF837, 0xF8
 # $8008 entry, message_queue $FD76): the time out, the board stuck, the memory restored
 PUZL_LOAD = 0x17100
 PUZL_MESSAGES = [(0x17738, "TIMEOUT."), (0x17741, "MALFUNCTION."), (0x1774E, "MEMORY RESTORED.")]
+# The shooting range's messages (FRNG decrunched at $1EA00; the stage queues them through the
+# game's message_queue $FD76): the ammunition spent, the time out
+FRNG_LOAD = 0x1EA00
+FRNG_MESSAGES = [(0x1EB32, "NO AMMO."), (0x1EB3B, "TIME OUT.")]
 
 
 def message(data: bytes, o: int) -> bytes:
@@ -82,9 +91,10 @@ def block(hud: list[list[int]], y0: int, lines: int, b0: int, n: int) -> bytes:
     return b"".join(pack(hud[y0 + y][2 * b0:2 * (b0 + n)]) for y in range(lines))
 
 
-def build(perma: bytes, mainb: bytes, puzl: bytes | None) -> tuple[bytes, str, str]:
+def build(perma: bytes, mainb: bytes, puzl: bytes | None, frng: bytes | None = None) -> tuple[bytes, str, str]:
     """hud_rt's data (unpadded), its .inc text and a summary; without puzl, level 1's data
-    alone (the layout before the bonus stages)."""
+    alone (the layout before the bonus stages); without frng (FRNG decrunched, its bytes from
+    $1EA00), the data before the shooting range."""
     base = hudmodel.Panel(perma, mainb)
     _, dyn = msxhud.compose(base.px)
     cells = dyn["timer_cells"] + dyn["ammo_cells"] + dyn["score_cells"]
@@ -144,12 +154,18 @@ def build(perma: bytes, mainb: bytes, puzl: bytes | None) -> tuple[bytes, str, s
         icons += block(p.hud(), iy, 16, ix // 2, 8)
     msgs = [message(mainb, a - 0x8000) for a in MESSAGES]
     pz_msgs = [message(puzl, a - PUZL_LOAD) for a, _ in PUZL_MESSAGES] if puzl is not None else []
-    for m in msgs + pz_msgs:
+    fr_msgs = [message(frng, a - FRNG_LOAD) for a, _ in FRNG_MESSAGES] if frng is not None else []
+    if fr_msgs and not pz_msgs:
+        raise SystemExit("FRNG's messages follow PUZL's in the bonus table: PUZL.bin is needed")
+    for m in msgs + pz_msgs + fr_msgs:
         if not all(0 <= hudmodel.font_index(c) < len(base.font) for c in m[:-1]):
             raise SystemExit(f"message {m!r}: a character outside the HUD font")
     for m, (a, text) in zip(pz_msgs, PUZL_MESSAGES):
         if "".join(GLYPH_NAMES[hudmodel.font_index(c)] for c in m[:-1]) != text:
             raise SystemExit(f"${a:05X}: {m!r} is not {text!r} (PUZL.bin is not PUZL_25.bin?)")
+    for m, (a, text) in zip(fr_msgs, FRNG_MESSAGES):
+        if "".join(GLYPH_NAMES[hudmodel.font_index(c)] for c in m[:-1]) != text:
+            raise SystemExit(f"${a:05X}: {m!r} is not {text!r} (FRNG.bin is not FRNG_15.bin?)")
 
     # random check: HUD states built from the patches against the model
     rng = random.Random(1)
@@ -229,19 +245,23 @@ def build(perma: bytes, mainb: bytes, puzl: bytes | None) -> tuple[bytes, str, s
                                     for w in range(4)))
     pz = []
     if pz_msgs:
+        bonus = pz_msgs + fr_msgs
         if (BASE + len(blob) - sections["HUD_MSGS"]) % 2:
             blob.append(0xFF)
         pz_tab = BASE + len(blob)
         first = (pz_tab - sections["HUD_MSGS"]) // 2
-        if first + len(pz_msgs) > 256:
-            raise SystemExit("PUZL's message numbers do not fit a byte (game_msg: A)")
-        pos = pz_tab + 2 * len(pz_msgs)
-        for m in pz_msgs:
+        if first + len(bonus) > 256:
+            raise SystemExit("the bonus stages' message numbers do not fit a byte (game_msg: A)")
+        pos = pz_tab + 2 * len(bonus)
+        for m in bonus:
             blob.extend(struct.pack("<H", pos))
             pos += len(m)
-        blob.extend(b"".join(pz_msgs))
+        blob.extend(b"".join(bonus))
         pz = [f"HUD_PZ_MSGS: equ 0x{pz_tab:04X}   ; PUZL's messages: game_msg reaches them through HUD_MSGS"]
         pz += [f"HUD_MSG_{a:05X}: equ {first + i}" for i, (a, _) in enumerate(PUZL_MESSAGES)]
+        if fr_msgs:
+            pz += ["; FRNG's messages (the shooting range): the same table, after PUZL's"]
+            pz += [f"HUD_MSG_{a:05X}: equ {first + len(pz_msgs) + i}" for i, (a, _) in enumerate(FRNG_MESSAGES)]
     if len(blob) > 0x4000:
         raise SystemExit(f"HUD data is {len(blob)} bytes: more than the two banks of the 8000h-BFFFh window")
     inc = ["; generated by tools/msxhudrt.py (HUD data mapped at 8000h-BFFFh)"]
@@ -258,15 +278,22 @@ def build(perma: bytes, mainb: bytes, puzl: bytes | None) -> tuple[bytes, str, s
     assert tx % 2 == 0, "text x must be even"
     summary = (f"{len(blob)} bytes ({len(patches)} digit patches, font, can, {6 * 2} heads, 8 icons, "
                f"{len(msgs)} messages" + (f" + {len(pz_msgs)} of PUZL" if pz_msgs else "")
+               + (f" + {len(fr_msgs)} of FRNG" if fr_msgs else "")
                + "); random check of the patches against the model passed")
     return bytes(blob), "\n".join(inc + pz) + "\n", summary
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 5:
+    if len(argv) not in (5, 6):
         print(__doc__, file=sys.stderr)
         return 2
-    blob, inc, summary = build(*(Path(a).read_bytes() for a in argv[1:4]))
+    frng = None
+    if len(argv) == 6:
+        try:
+            frng = bytekiller.decrunch(Path(argv[5]).read_bytes())
+        except bytekiller.CrunchError as e:
+            raise SystemExit(f"{argv[5]}: {e}")
+    blob, inc, summary = build(*(Path(a).read_bytes() for a in argv[1:4]), frng)
     out = Path(argv[4])
     out.parent.mkdir(parents=True, exist_ok=True)
     out.with_suffix(".bin").write_bytes(blob + b"\xff" * (-len(blob) % 0x2000))
