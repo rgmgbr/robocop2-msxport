@@ -55,7 +55,8 @@ selects: 53 on the user's Pico+.**
   - 55 is the only slot count that reproduces all nine bank-test counts exactly, on the SX-2 and
     on the Hotbit (section 2.4).
   - In the firmware, 55 slots means image B, the build with FM-PAC emulation. The user reported
-    every option disabled, so this is still open (section 8).
+    every option disabled, so this was open; the user then said their Pico+ has no option to
+    switch the FM-PAC off, which fits image B (section 8).
   - The budget of 53 holds only if the Pico+ menu shows FM-PAC enabled (check 7.1). If it shows
     FM-PAC disabled, the decompile missed an allocation of 31-39 KiB. If image B makes it too,
     FM-PAC on leaves 50-51 slots, 48-49 for the banks at 8000h and A000h (I).
@@ -596,7 +597,7 @@ answers it, so that test is not needed.
 
 | # | Question | Why it matters | Next step |
 |---:|---|---|---|
-| 1 | The user reported every option disabled, but only image B (FM-PAC on) gives 55 slots. Is FM-PAC on, or did the firmware report miss an allocation? The Hotbit's run, whose settings were not stated, fits 55 slots too | If FM-PAC is on: 53 free slots (57 with it off) and the budget stays at 53. If it is off, the decompile missed 31-39 KiB; if image B makes the same allocation, FM-PAC on leaves 48-49 free slots and the budget must drop to that | The menu check (7.1) first; if it shows FM-PAC disabled, BT2M-2 with FM-PAC on |
+| 1 | The user reported every option disabled, but only image B (FM-PAC on) gives 55 slots. Later the same day the user said their Pico+ has no option to switch the FM-PAC off: it then runs with FM-PAC, which agrees with 55 slots, and 53 is the worst case. Still unread: the firmware version and the \<HOME\> line (441kB = image B). Is FM-PAC on, or did the firmware report miss an allocation? The Hotbit's run, whose settings were not stated, fits 55 slots too | If FM-PAC is on: 53 free slots (57 with it off) and the budget stays at 53. If it is off, the decompile missed 31-39 KiB; if image B makes the same allocation, FM-PAC on leaves 48-49 free slots and the budget must drop to that | The menu check (7.1) first; if it shows FM-PAC disabled, BT2M-2 with FM-PAC on |
 | 2 | Do the user or the players run WaveGame or music at the ROM start? | 46 free slots instead of 53. Level 1 then reloads a few pages; level 3's plan layout would not fit | Ask the user. R1 could also report the 46 margin |
 | 3 | Does a hold freeze a Z80 that runs only from RAM, on the SX-2's FPGA? | Only the HUD-late estimate and R7 depend on it | Check 7.3 |
 | 4 | Are the 1-2 holds inside the speech's PCM loop audible? | R4 removes them anyway | Apply R4, or listen to the first title after power-on |
