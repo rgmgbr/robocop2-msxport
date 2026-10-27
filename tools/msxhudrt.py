@@ -24,12 +24,17 @@ consecutive banks mapped at 8000h-BFFFh; VRAM addresses are the low 16 bits, bit
             tops, 8 x 14 bytes each
   heads:    6 graphics x (slot 0: 32 lines x 16 bytes, slot 1: 32 lines x 15 bytes)
   icons:    8 icons x 16 lines x 8 bytes
-  messages: 9 x dw pointer, then the game's messages ($FF-terminated, its character codes)
+  messages: 21 x dw pointer, then the game's messages ($FF-terminated, its character codes)
   weapons:  4 x (dw ammo in BCD as the game stores it, db icon, db 0), from set_weapon's
             tables $FD52 / $FD5A
+  bonus:    PUZL's messages (Brainstorm): a pad byte ($FF) when needed for an even distance
+            from the messages' table, 3 x dw pointer, then the messages. game_msg's address,
+            HUD_MSGS + 2 x number, reaches them with the numbers distance / 2 on, so everything
+            before them keeps its bytes and its address (and HUD_NMSGS stays level 1's count).
 hud_rt.inc gives the addresses of the tables and the HUD positions.
 
-usage: msxhudrt.py PERMA.bin MAIN_8000.bin OUT   (writes OUT.bin and OUT.inc)
+usage: msxhudrt.py PERMA.bin MAIN_8000.bin PUZL.bin OUT   (writes OUT.bin and OUT.inc)
+       (PUZL.bin: Brainstorm's code and data as loaded at $17100, PUZL_25.bin)
 """
 from __future__ import annotations
 
@@ -41,6 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hudmodel  # noqa: E402
 import msxhud  # noqa: E402
+from rc2front import GLYPH_NAMES  # noqa: E402
 
 BASE = 0x8000
 VRAM_HUD = 0x18000 + 208 * 128
@@ -52,6 +58,15 @@ HEAD_LINES = msxhud.PANEL_LINES - 14                    # panel lines 14..45 are
 MESSAGES = [0xC222, 0xDC76, 0xC238, 0xC24B, 0xD46C, 0xED11, 0x865A, 0xF837, 0xF82C,
             0xDC8A, 0xED04, 0xFC3E, 0xFC4B, 0xFC57, 0xFC62, 0xFC6D, 0xFC7E, 0xFC86, 0xFC8E, 0xFC9D,
             0xFCAD]
+# Brainstorm's messages (PUZL at $17100; puzl_step $17760 queues them through the game's
+# $8008 entry, message_queue $FD76): the time out, the board stuck, the memory restored
+PUZL_LOAD = 0x17100
+PUZL_MESSAGES = [(0x17738, "TIMEOUT."), (0x17741, "MALFUNCTION."), (0x1774E, "MEMORY RESTORED.")]
+
+
+def message(data: bytes, o: int) -> bytes:
+    """The message at offset o of data, its $FF included."""
+    return data[o:data.index(b"\xff", o) + 1]
 
 
 def pack(px: list[int]) -> bytes:
@@ -67,12 +82,9 @@ def block(hud: list[list[int]], y0: int, lines: int, b0: int, n: int) -> bytes:
     return b"".join(pack(hud[y0 + y][2 * b0:2 * (b0 + n)]) for y in range(lines))
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 4:
-        print(__doc__, file=sys.stderr)
-        return 2
-    perma, mainb = Path(argv[1]).read_bytes(), Path(argv[2]).read_bytes()
-    out = Path(argv[3])
+def build(perma: bytes, mainb: bytes, puzl: bytes | None) -> tuple[bytes, str, str]:
+    """hud_rt's data (unpadded), its .inc text and a summary; without puzl, level 1's data
+    alone (the layout before the bonus stages)."""
     base = hudmodel.Panel(perma, mainb)
     _, dyn = msxhud.compose(base.px)
     cells = dyn["timer_cells"] + dyn["ammo_cells"] + dyn["score_cells"]
@@ -130,16 +142,14 @@ def main(argv: list[str]) -> int:
         p = base.copy()
         p.icon(i)
         icons += block(p.hud(), iy, 16, ix // 2, 8)
-    msgs = []
-    for a in MESSAGES:
-        o = a - 0x8000
-        s = bytearray()
-        while True:
-            s.append(mainb[o])
-            o += 1
-            if s[-1] == 0xFF:
-                break
-        msgs.append(bytes(s))
+    msgs = [message(mainb, a - 0x8000) for a in MESSAGES]
+    pz_msgs = [message(puzl, a - PUZL_LOAD) for a, _ in PUZL_MESSAGES] if puzl is not None else []
+    for m in msgs + pz_msgs:
+        if not all(0 <= hudmodel.font_index(c) < len(base.font) for c in m[:-1]):
+            raise SystemExit(f"message {m!r}: a character outside the HUD font")
+    for m, (a, text) in zip(pz_msgs, PUZL_MESSAGES):
+        if "".join(GLYPH_NAMES[hudmodel.font_index(c)] for c in m[:-1]) != text:
+            raise SystemExit(f"${a:05X}: {m!r} is not {text!r} (PUZL.bin is not PUZL_25.bin?)")
 
     # random check: HUD states built from the patches against the model
     rng = random.Random(1)
@@ -217,10 +227,23 @@ def main(argv: list[str]) -> int:
     section("HUD_MSGS", mtab + b"".join(msgs))
     section("HUD_WEAPONS", b"".join(struct.pack(">H", base.weapon_ammo(w)) + bytes([base.weapon_icon(w), 0])
                                     for w in range(4)))
+    pz = []
+    if pz_msgs:
+        if (BASE + len(blob) - sections["HUD_MSGS"]) % 2:
+            blob.append(0xFF)
+        pz_tab = BASE + len(blob)
+        first = (pz_tab - sections["HUD_MSGS"]) // 2
+        if first + len(pz_msgs) > 256:
+            raise SystemExit("PUZL's message numbers do not fit a byte (game_msg: A)")
+        pos = pz_tab + 2 * len(pz_msgs)
+        for m in pz_msgs:
+            blob.extend(struct.pack("<H", pos))
+            pos += len(m)
+        blob.extend(b"".join(pz_msgs))
+        pz = [f"HUD_PZ_MSGS: equ 0x{pz_tab:04X}   ; PUZL's messages: game_msg reaches them through HUD_MSGS"]
+        pz += [f"HUD_MSG_{a:05X}: equ {first + i}" for i, (a, _) in enumerate(PUZL_MESSAGES)]
     if len(blob) > 0x4000:
         raise SystemExit(f"HUD data is {len(blob)} bytes: more than the two banks of the 8000h-BFFFh window")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.with_suffix(".bin").write_bytes(bytes(blob) + b"\xff" * (-len(blob) % 0x2000))
     inc = ["; generated by tools/msxhudrt.py (HUD data mapped at 8000h-BFFFh)"]
     inc += [f"{k}:{' ' * max(1, 12 - len(k))}equ 0x{v:04X}" for k, v in sections.items()]
     inc += [f"HUD_MSG_{a:04X}: equ {i}" for i, a in enumerate(MESSAGES)]
@@ -232,10 +255,23 @@ def main(argv: list[str]) -> int:
             f"HUD_HEAD1_V: equ 0x{(VRAM_HUD + hy * 128 + hx[1] // 2) & 0xFFFF:04X}",
             f"HUD_HEAD_LINES: equ {HEAD_LINES}",
             f"HUD_ICON_V:  equ 0x{(VRAM_HUD + iy * 128 + ix // 2) & 0xFFFF:04X}"]
-    out.with_suffix(".inc").write_text("\n".join(inc) + "\n")
     assert tx % 2 == 0, "text x must be even"
-    print(f"{out.with_suffix('.bin')}: {len(blob)} bytes ({len(patches)} digit patches, font, can, "
-          f"{6 * 2} heads, 8 icons, {len(msgs)} messages); random check of the patches against the model passed")
+    summary = (f"{len(blob)} bytes ({len(patches)} digit patches, font, can, {6 * 2} heads, 8 icons, "
+               f"{len(msgs)} messages" + (f" + {len(pz_msgs)} of PUZL" if pz_msgs else "")
+               + "); random check of the patches against the model passed")
+    return bytes(blob), "\n".join(inc + pz) + "\n", summary
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 5:
+        print(__doc__, file=sys.stderr)
+        return 2
+    blob, inc, summary = build(*(Path(a).read_bytes() for a in argv[1:4]))
+    out = Path(argv[4])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.with_suffix(".bin").write_bytes(blob + b"\xff" * (-len(blob) % 0x2000))
+    out.with_suffix(".inc").write_text(inc)
+    print(f"{out.with_suffix('.bin')}: {summary}")
     return 0
 
 
