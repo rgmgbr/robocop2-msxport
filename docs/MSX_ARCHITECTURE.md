@@ -1228,6 +1228,55 @@ which as sprites were striped, cut or left out.
   LOCKSTEP builds, SCC and PSG), and the other effects' writes too, but for the VBLANK they fall
   in.
 
+### Brainstorm's music and effects (`msx/tune.asm`, `tools/msxtune.py`, 2026-10-27)
+
+- **What the original plays** (the sound report, `SOUND.md`: REA on the RAM image with PUZL at
+  `$17100`, the model): PUZL carries its own copy of the player at `$18000` (PZM). Every board
+  starts with stop all and tune 1 (3,000 ticks, 60 s, no loop); effects 3-6 come through the
+  request byte `$B04` on Amiga channel 3, which the music leaves free: 4 a cursor move, 3 a red
+  chip (refused in practice by `$1822C`'s rule: 4 still plays), 5 the start of boards 1-3, 6 on
+  every pass of the fade-out after boards 0-2, restarted each pass, which makes a 50 Hz buzz.
+- **Data** (`tools/msxtune.py` → `build/msx/pzm.bin`, 12,734 B, banks 86-87): the routing step
+  splits any tune into three melodic voices and drum-only channels, so `msxsound`, `msxscc` and
+  `msxfm` convert it unchanged; through it TITM tune 1 gives today's `scc.bin`, `fm.bin` and PSG
+  title byte for byte (`tests/test_msxtune.py`). Tune 1: the SCC version (three voices, the PSG
+  drums) 6,884 B, the OPLL's 3,580 B, the PSG's 1,878 B (the title's lambda); effects 3-5 through
+  the effect converters at the tune's reference (the Amiga's balance); effect 6 designed as the
+  buzz the restarts make (SCC: a 24 % pulse at 50.00 Hz, volume 8; PSG: a 50.00 Hz square at
+  level 13), because converted from its data it would be silent when restarted every pass.
+- **Player** (`msx/tune.asm`, `BANK_MUSIC` after `voice.inc`: the title's code and tables keep
+  their places and bytes): `tn_start` takes a descriptor (`tune.inc`, from `tools/mkrom.py`: per
+  chip set the streams, the length, the OPLL's patch, the effects' table, the SCC waveforms) and
+  plays it on `music.asm`'s voices, readers and outputs with `mus_on` 0 (the SCC's channels 0-3
+  on). An SCC: the melody on its channels 0-2, the drums on PSG voice C or the OPLL's rhythm; the
+  OPLL alone: its channels and rhythm; neither: the PSG version on A-C; a turbo R's R800: no
+  OPLL. The SCC waveforms go from the data banks through `scc_wb` (`sound.asm` `scc_wv`), so
+  nothing of it runs or is read with 3Fh at 9000h.
+- **The effect voice**: SCC channel 3 with an SCC, else PSG voice C, where the PSG version's
+  voice 2 is muted only while an effect sounds and then written back whole. `$1822C`'s rule: a
+  lower request than the last effect is refused while that one lasts (its whole length); the
+  tune's start clears the rule's memory, as stop all clears `$18023`.
+- **Ticks**: `sndplay.asm` `sq_frame`'s 50 Hz ticks while `fx_act` is set, the owner told by a
+  mark in voice A's `SV_CH` (`TN_MARK`): `fx_act` is `fx_tick`'s OR of its voices' ticks left,
+  any value. `sound.asm` `fx_tk`'s first instruction jumps to `sndtune.asm` `fx_tkd` (the same
+  size: no label moves), which runs `fx_tick` exactly as before for the in-game effects. The
+  tick keeps running while the tune or an effect plays (an effect after the tune's end still
+  sounds); after 3,000 ticks the voices fall silent, as the Amiga's channels stop. `snd_stop`
+  ends it: `mus_quiet` with an SCC or an OPLL, the PSG player's stop (the mark gone) with the
+  PSG alone.
+- **Entries** (fixed area, last before `code_end`): `snd_tune` (a board's set-up: stop all and
+  tune 1; it waits for a VBLANK, so that its ~2 ms with the interrupts off come far from the HUD
+  split and a stop still queued cannot silence the new tune) and `snd_bfx` (the request byte,
+  once a pass; the higher of two requests between ticks stays, the one the Amiga lets sound).
+- **Checked offline** (no emulator: 2026-10-27, `bs-sound`): banks 0-77 of every build option's
+  image equal `d6239ec`'s but bank 1 (`fx_tk`'s three bytes, the new code in its padding) and
+  bank 9 (from `B700h`, its padding); in a scratch Z80 interpreter on the images, the title's
+  chip writes (four chip sets, 50 and 60 Hz) and level 1's 42 effects, the gun and a burst (SCC
+  and PSG) are identical to `d6239ec`'s write for write, and Brainstorm's registers equal the
+  streams decoded apart on every tick of the tune and its end, with effects, a board's restart,
+  `snd_stop`, a stop queued before the start, 60 Hz, the R800, the interrupt rule and the SCC
+  store rule. The emulator checks still to run are listed with the branch.
+
 ## HUD
 
 The Amiga status panel (320×46, line 0 black) is rebuilt by `tools/msxhud.py` with every
