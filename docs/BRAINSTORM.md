@@ -50,7 +50,17 @@ Tags:
   boards with visit 1's face and palette (milestone 3). The shooting range and level 2 come later.
 - **Test builds (section 6).** `PZ_TEST=1` starts in Brainstorm at power-on, for the user's quick
   test and for the trace harness; `TAG=n` marks a test candidate. The product's flow does not
-  depend on them.
+  depend on them. The morning's four candidates (step 8) are the product and the `PZ_TEST=1` ROM,
+  each as a 1 MiB image and as a 2 MiB one (`ROM_2M=1`), all with `TAG=2`.
+- **Defaults for the user to review (section 7).** Section 7 lists the 16 choices made while the
+  user slept, each with its alternative. By number:
+  - still the user's call: 2 (on a turbo R the screen, HUD included, goes black for about 0.1 s
+    between the statistics and the intro) and 14 (visit 2's palette reset, milestone 3);
+  - built, and visible in play: 1 (50 passes a second on 60 Hz machines too), 3 (the intro's long
+    line split over two rows), 4 (the HUD's messages tick on during the bonus texts), 5 (the
+    stage graded like game play), 7 (the end sequence's junk cursor hidden) and 8 (the TV face's
+    duty rule at about 30 pictures a second);
+  - inside the port, or for the later milestones: 6, 9-13, 15 and 16.
 
 ## 2. The original
 
@@ -753,8 +763,9 @@ FF 02 30 FF 07
 
 - It stays shown and updated as in the game: timer (the board's 1:00), score (+100 a red chip),
   the message line. The ammo, the lives and the can stay as level 1 left them; the can never moves
-  (`g_tick` = 0). Measured: across a whole solve only the score's box changes in the HUD's VRAM,
-  and its colours stay `SR_PAL`'s (4.2 check 4).
+  (`g_tick` = 0). Measured (4.2 check 4) on `solve1` in an `EXTJOY=1` build, where the timer
+  stands still: the HUD equals step 6's at the same 12 passes, and its first and last snapshots
+  differ only in the score's box.
 - **Messages.** `tools/msxhudrt.py` takes PUZL's three strings from `PUZL_25.bin` (offsets `$638`,
   `$641`, `$64E`: `$17738`, `$17741`, `$1774E`) and appends them as a second table after
   `HUD_WEAPONS`, at `HUD_PZ_MSGS` (BE14h: one FFh pad byte for an even distance from `HUD_MSGS`,
@@ -942,13 +953,22 @@ open files once.
    coherence), and the SAT is valid, holds the bench's cursor of the pass the list was published
    after, and is empty in the end sequences (0 cursor errors). On the MSX2 and the turbo R, and
    `solve1` also on the MSX2+ and at 50 Hz.
-4. **The HUD.** At each of the 12 `solve1` snapshots the HUD's VRAM (1E800h-1FE7Fh) and its colours
-   (`SR_PAL`) equal those of step 6's ROM (whose stage drew nothing) at the same pass; across the
-   stage only the score's box changes. A HUD split at every VBLANK: the display guard
-   (`rc2_guard`, passes 10-633 of `solve1`) counts reg 0, pal 0, cpu 0 and vbl 0 on the MSX2, the
-   MSX2+ and the turbo R. Its only other entries (cmd 166 / 158 / 165, tear 28) are `bs_board`'s
-   copies into the page on screen at the three set-ups, with the palette black: the design (8.1),
-   invisible.
+4. **The HUD.** Measured on the `solve1` drive in an `EXTJOY=1 PZ_TEST=1` build, where the timer
+   stands still at 1:00 (`sec_tick` is a `ret` in script builds: 3.4):
+   - at each of its 12 snapshots (passes 5 to 700) the HUD's VRAM (1E800h-1FE7Fh) and its colours
+     (`SR_PAL`) equal those of step 6's build (whose stage drew nothing) at the same pass of the
+     same drive. Step 7 compared C-BIOS_MSX2's snapshots; for this document the FS-A1FX's and the
+     FS-A1GT's (12 passes each) and C-BIOS_MSX2_EU's (its 5) were compared from their files too:
+     all equal;
+   - the first and the last snapshot (passes 5 and 700) differ only in the score's box (x 200-231,
+     y 24-47 of the HUD).
+
+   This check does not cover the HUD's timer while it counts: that was seen, not compared (the
+   bonus candidate's still at pass 155, with the real timer, shows 0:59 in the stage's timer and in
+   the HUD's). A HUD split at every VBLANK: the display guard (`rc2_guard`, passes 10-633 of
+   `solve1`) counts reg 0, pal 0, cpu 0 and vbl 0 on the MSX2, the MSX2+ and the turbo R. Its only
+   other entries (cmd 166 / 158 / 165, tear 28) are `bs_board`'s copies into the page on screen at
+   the three set-ups, with the palette black: the design (8.1), invisible.
 5. **The restore and the next game.** After the stage (`fail`, then the result and a new game, on
    C-BIOS_MSX2 and the FS-A1GT): VRAM 10000h-17FFFh equals `build/msx/level1.vram`, page 3 lines
    0-87 are the intro's, both SATs start with Y = 216. At the new game's frame 50, against a fresh
@@ -995,7 +1015,12 @@ uploads and the exit's restore, on C-BIOS_MSX2 and the FS-A1GT.
 A `PZ_TEST` ROM shows no title, which `make matrix` would report as FAIL: `tools/msxmatrix.py
 --no-title` (`cae5193`, step 8) checks it instead, without the title wait: `tick_n` must advance
 between samples at 20 s and 27 s from the power-on (the stage's passes), with the display on and
-no DI; HALT.
+no DI; HALT. `make matrix` has no option for it: run the tool (`--home DIR` where `make matrix`
+takes `OMHOME=DIR`):
+
+```sh
+python3 -I tools/msxmatrix.py build/msx/rc2.rom --labels build/msx/rc2.labels --no-title
+```
 
 ### 4.5 Running the checks
 
@@ -1068,8 +1093,9 @@ tools/msxpuzl.py render build/extracted/files/PUZL_25.bin RAM.bin OUT --offset 0
 C,R,I` (`rd_st0`, EE20h, when R#2 shows page 0; `0x2E90`, `rd_st1`, for page 1; the cursor as
 that set's SAT holds it) and compare `OUT.sc5` with the page's lines 0-161 and its sprites (SAT Y
 = 1 + 16r shows from line 2 + 16r). The record, still, HUD, restore and flow checks of 4.2 and 4.4
-ran on scratch scripts that are not in the repository (`impl/` of the night's scratch folder:
-section 9).
+first ran on the night's scratch scripts (`impl/` of its scratch folder: section 9).
+
+**The harness** of these checks lives in `tools/`, as `docs/HARNESS.md` describes.
 
 **Unit tests**: `tests/test_puzl.py` (11: the solver, the compare, the fuzz keys, the Tcl procs in
 `tclsh` with openMSX mocked; the bench case needs Unicorn), `tests/test_msxpuzl.py` (17),
@@ -1088,8 +1114,8 @@ section 9).
 | 6 | The stage's logic | `9cc1512` | `msx/puzl.asm`, `msx/msx.inc` | the nine drives 0 differ (4.1); the display black for now |
 | 7 | The stage's display | `2eefba4` | `msx/puzl.asm`, `msx/msx.inc` | 4.2 checks 2-6; traces still 0 differ |
 | — | The review's fixes | `14bc5ef` | `msx/front.asm`, `msx/cold.asm` (a comment), `Makefile` | the turbo R's PAUSE during the bonus screens; `make matrix` with a home path holding spaces (section 10) |
-| 8 | The morning ROMs | `cae5193` (the tool); the candidates in progress at this writing | `tools/msxmatrix.py` (`--no-title`), `tests/test_msxmatrix.py`; the two candidates (`ROBOCOP2_v0.1.3-test2`, `TAG=2`) and their notes | its commit: the products pass the ten set-ups in title mode, the `PZ_TEST` ROMs with `--no-title`; the candidates are built from `14bc5ef` or later (the PAUSE fix), and their notes say that the stage is silent and that a `PZ_LEVEL=2` visit shows Murphy |
-| 9 | Documentation | `b99784e`, then this file's commit | `analysis/puzl_17100.sym`, `analysis/ghidra_seeds_puzl.tsv` (`tools/ghidra_seeds.py`, `tools/ramimage.py`: the image with PUZL at `$17100`); this file, `docs/MSX_ARCHITECTURE.md`, `docs/AMIGA_ANALYSIS.md`, `docs/ROM_BUDGET.md`, `docs/TURBO_R.md`, `README.md` | REA accepts the new seeds (0 failed) |
+| 8 | The morning ROMs | `cae5193` (the tool) | `tools/msxmatrix.py` (`--no-title`), `tests/test_msxmatrix.py`; outside the repository, four candidates with their notes (section 6): `ROBOCOP2_v0.1.3-test2` (`TAG=2`), `-test2-bonus` (`PZ_TEST=1 TAG=2`), `-test2-2M` (`TAG=2 ROM_2M=1`) and `-test2-bonus-2M` (`PZ_TEST=1 TAG=2 ROM_2M=1`) | all four built from `14bc5ef`'s sources (the PAUSE fix; a rebuild at `cae5193` gives the same four images); the products pass the ten set-ups in title mode and the bonus ROMs with `--no-title`; the fresh-machine runs pass (section 6); the notes give each file's SHA-256 and say that the stage is silent and that a `PZ_LEVEL=2` visit shows Murphy |
+| 9 | Documentation | `b99784e`, `a050d0a`, then the completeness review's fixes (section 10) | `analysis/puzl_17100.sym`, `analysis/ghidra_seeds_puzl.tsv` (`tools/ghidra_seeds.py`, `tools/ramimage.py`: the image with PUZL at `$17100`); this file, `docs/MSX_ARCHITECTURE.md`, `docs/AMIGA_ANALYSIS.md`, `docs/ROM_BUDGET.md`, `docs/TURBO_R.md`, `README.md`, `tools/msxpuzl.py` (comments only); the review's fixes: this file, `README.md`, `Makefile` | REA accepts the new seeds (0 failed); `make -n matrix` with a `~/` home and with a spaced one |
 
 **Milestone 2: sound** (the plan).
 
@@ -1119,10 +1145,43 @@ section 9).
   do not depend on it. AG is cleared by `ng_go`, so score 0, two lives and `$805E` 0: the bench's
   starting globals.
 - The harness: `EXTJOY=1 PZ_TEST=1` (and `PZ_LEVEL=2` for `solve2`, `fuzz2`).
-- Through `make`: `make rom ROMOPTS="PZ_TEST=1 TAG=2"` (it writes `build/msx/rc2.rom`).
-- **The candidates** (step 8), both with `TAG=2`: the product (level 1, statistics, Brainstorm,
-  result, title) and the same with `PZ_TEST=1` (straight into Brainstorm). Built in the scratchpad;
-  only the two exact files sent to the user go to `build/msx/`.
+- Through `make`: `make rom ROMOPTS="PZ_TEST=1 TAG=2"` (it writes `build/msx/rc2.rom`). `make
+  matrix` reports such a build as FAIL (it has no title): check it with `tools/msxmatrix.py
+  --no-title` (4.4).
+
+**The candidates** (step 8), four, all with `TAG=2`:
+
+| File | Options | What it is |
+|---|---|---|
+| `ROBOCOP2_v0.1.3-test2.ROM` | `TAG=2` | the product, 1 MiB: the title, level 1, its statistics, Brainstorm (the intro, the stage, the result), then the title again |
+| `ROBOCOP2_v0.1.3-test2-bonus.ROM` | `PZ_TEST=1 TAG=2` | 1 MiB: Brainstorm right after the BIOS, without the title or level 1 first; then the title and level 1 |
+| `ROBOCOP2_v0.1.3-test2-2M.ROM` | `TAG=2 ROM_2M=1` | the product as a 2 MiB image: it starts as the complete game will, through the boot guard's 2 MiB check |
+| `ROBOCOP2_v0.1.3-test2-bonus-2M.ROM` | `PZ_TEST=1 TAG=2 ROM_2M=1` | the bonus ROM as a 2 MiB image |
+
+- Built from `14bc5ef`'s sources with `tools/mkrom.py`, outside `build/msx/` (a rebuild at
+  `cae5193` gives the same four images). Each has a label file of the same name. Only the exact
+  files sent to the user go to `build/msx/`.
+- Banks 0-85 hold data in each (86 banks). The 1 MiB images have 128 banks; the 2 MiB twins have
+  256, with the boot guard's tag in bank 255.
+- Each file's SHA-256, what to test, how to reach each ending and the known limits are in the
+  candidates' notes, delivered with them, not in the repository.
+- Their checks (openMSX, headless):
+  - `tools/msxmatrix.py`, 10 set-ups each: all PASS. The products ran in title mode, with the
+    same lines as `14bc5ef`'s product; the bonus ROMs with `--no-title` (`tick_n` up by 349-351
+    between 20 s and 27 s). A product with `--no-title` and a bonus ROM without it FAIL, as they
+    should.
+  - Fresh machines (power-on RAM). `test2` on a Gradiente Expert 2.0: the title, its music and
+    level 1's start equal step 0's record (4.4); `test2-2M` the same, except the game's random
+    word `$B32` (2 bytes: it is seeded from the Z80's R register every frame, and the guard's
+    extra instructions shift R). `test2`'s whole flow on the Expert and on a Sony HB-F1XDJ
+    (V9958): PASS (4.4's flow check).
+  - The bonus ROMs (`test2-bonus` on both machines, `test2-bonus-2M` on the Expert), with five
+    moves from the cursor keys: the cursor and the score as the bench gives for the same moves,
+    then board 0's time out, OUT OF TIME. with TEST 2, the title and a new game. The text screens
+    are pixel-exact; 56 stills each equal the render; 1,000 recorded VBLANKs each show 0 torn
+    blocks, 0 changed pixels outside the elements and 0 cursor errors.
+  - The acceptance suite of 4.1-4.4 ran again on `cae5193`'s harness builds (byte-identical to
+    the review fixes'): the same results.
 
 ## 7. Defaults chosen while the user slept
 
@@ -1179,7 +1238,7 @@ pass per frame on a real Amiga (no hardware timing seen); PZM's drum samples cla
 | 9 | **SCC test bytes.** With 92 banks, bank 90 holds data; mkrom stops if its 1800h holds 5Ah | open (milestone 3) |
 | 10 | **Headless runs**: at most 2 instances, no `exit` in callbacks, files opened once | kept in every run |
 | 11 | **Quirk 1** was not observable in any drive | retired: `pz_quirk1` (4.1) |
-| 12 | **The silent stage** and Murphy on visit 2 must be in the candidates' notes, or the user reports them as bugs | step 8 |
+| 12 | **The silent stage** and Murphy on visit 2 must be in the candidates' notes, or the user reports them as bugs | retired: the four candidates' notes say both (step 8), and also the turbo R's 0.1 s blank and its PAUSE rule |
 | 13 | **The solved path on the MSX**: the WELL DONE screen and `$805E` + 1 | open: the drives stop at `pz_done`, so neither was seen on the MSX; they rest on the code (`front_bonus`, the original's script bytes) and on the converter's render |
 | 14 | **The turbo R's HUD blank** before the intro (0.1 s) | the user's call (section 7) |
 | 15 | **PAUSE on a turbo R** after the result: a press left pending during the bonus holds the game (the HUD kept, the pause LED lit) until PAUSE is pressed again | by design: as at the end of `front_stats` and `front_over` |
@@ -1226,7 +1285,8 @@ bank shift was wrong (3.10).
 
 **The implementation's review (after step 7), three findings:**
 1. `make matrix OMHOME=...` broke on a home path with spaces (the MSX-AI MCP's): fixed in
-   `14bc5ef` (the recipe quotes it); all 10 set-ups PASS with that home.
+   `14bc5ef` (the recipe quotes it); all 10 set-ups PASS with that home. The quotes also stopped
+   the shell's tilde expansion: see the completeness review below.
 2. **Turbo R: PAUSE during the Brainstorm screens** [V: openMSX, FS-A1GT]. CHGCPU(80h) had left the
    Z80's hardware pause on (A7h = 02h), and nothing wrote A7h during the bonus: a PAUSE press held
    the Z80, and with it the HUD split and the VBLANK list, at any line. For 9 emulated seconds the
@@ -1239,3 +1299,18 @@ bank shift was wrong (3.10).
    holds the CPU as before. FRONT grew by 15 bytes.
 3. **Turbo R: the HUD blank between the statistics and the intro**: measured (6 frames) and left to
    the user (section 7, default 2).
+
+**The completeness review (after `a050d0a`)** asked for these fixes, in the documentation and the
+`Makefile` only:
+- `make matrix OMHOME=~/...` typed in zsh gave the tool a literal `~/...`: zsh passes the `~` to
+  make as typed, and the recipe's quotes stop the shell's tilde expansion. The `Makefile` now
+  expands a leading `~/` with `$(HOME)` itself and passes a path without one as typed. Checked with
+  `make -n matrix`: without `OMHOME`, with the MCP's home (spaces), with the same home typed as
+  `~/...`, with `OMHOME=~/x` typed in zsh and in bash, and with a path holding a double space and a
+  `~` inside. A stand-in `PYTHON` that prints its arguments receives one `--home` argument holding
+  the whole path.
+- `README.md`: the `--no-title` command next to `make matrix`, and `PZ_TEST`, `PZ_LEVEL` and `TAG`
+  on the build options line.
+- This file: the four candidates in step 8's row and section 6 (their hashes stay in their
+  notes); the HUD check stated as measured (4.2 check 4, 3.8); the defaults to review, pointed at
+  from the summary; where the harness lives (4.5).

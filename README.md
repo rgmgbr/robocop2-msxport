@@ -103,7 +103,7 @@ Open `build/ram/puzl_full.bin` as above with `REA_GHIDRA_SEED_FILE` set to
 ```sh
 make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's graphics, tables and texts (build/msx/)
 make rom      # MegaROM (KonamiSCC/MegaRAM mapper) in build/msx/rc2.rom
-make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, ...)
+make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, PZ_TEST, PZ_LEVEL, TAG, ...)
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
 make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brainstorm, then the title
 make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TEST 2 on the bonus text screens
@@ -122,7 +122,21 @@ visit shows the first visit's face. Build options for it (`tools/mkrom.py`):
 
 `make matrix` runs the ROM headless on a fixed set of generic set-ups (`tools/msxmatrix.py`):
 MSX2, MSX2+, turbo R, 50 Hz, a disk interface before the cartridge, a slot expander, an FM-PAC,
-and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone.
+and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone. `make matrix OMHOME=DIR` uses an openMSX
+home that has those machines, such as the MSX-AI MCP's (a leading `~/` is expanded; default:
+`$OPENMSX_HOME`, else `~/.openMSX`).
+
+The tool waits for the title on every set-up, so a `PZ_TEST=1` build, which starts without the
+title, FAILs under `make matrix`. Check such a build with the tool itself (add `--home DIR` for
+another openMSX home):
+
+```sh
+python3 -I tools/msxmatrix.py build/msx/rc2.rom --labels build/msx/rc2.labels --no-title
+```
+
+With `--no-title` it waits for no title and presses no key: the game's tick counter (`tick_n`,
+which the stage's passes advance) must go up between samples at 20 s and 27 s from the power-on,
+with the display on and no DI; HALT.
 
 The engine is Z80 assembly in `msx/` (z80asm 1.8). Run it in openMSX with
 `carta insert build/msx/rc2.rom -romtype KonamiSCC`. RoboCop is played with joystick port 1
