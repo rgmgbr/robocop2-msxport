@@ -95,6 +95,10 @@ make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEM
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
 ```
 
+`make matrix` runs the ROM headless on a fixed set of generic set-ups (`tools/msxmatrix.py`):
+MSX2, MSX2+, turbo R, 50 Hz, a disk interface before the cartridge, a slot expander, an FM-PAC,
+and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone.
+
 The engine is Z80 assembly in `msx/` (z80asm 1.8). Run it in openMSX with
 `carta insert build/msx/rc2.rom -romtype KonamiSCC`. RoboCop is played with joystick port 1
 (button A fires, button B jumps, also while walking or firing and from a crouch, up aims) or

@@ -6,7 +6,7 @@ DISK1 ?= amiga/Robocop 2 (1991)(Ocean)[cr Melnok](Disk 1 of 2).adf
 DISK2 ?= amiga/Robocop 2 (1991)(Ocean)[cr Melnok](Disk 2 of 2).adf
 X := $(BUILD)/extracted
 
-.PHONY: setup list extract pics ram seeds rea-asm sprites msx mock rom banktest disasm test clean reference
+.PHONY: setup list extract pics ram seeds rea-asm sprites msx mock rom banktest matrix disasm test clean reference
 
 setup:
 	$(PYTHON) -m venv "$(VENV)"
@@ -75,6 +75,11 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/sprites/catalog.json $(B
 
 rom: msx
 	$(PYTHON) -I tools/mkrom.py $(BUILD)/msx/level1 $(BUILD)/msx/rc2.rom $(ROMOPTS)
+
+# the ROM on the generic set-ups, headless (tools/msxmatrix.py; OMHOME: an openMSX home that has
+# the machines, default ~/.openMSX)
+matrix:
+	$(PYTHON) -I tools/msxmatrix.py $(BUILD)/msx/rc2.rom --labels $(BUILD)/msx/rc2.labels $(if $(OMHOME),--home $(OMHOME))
 
 # a 2 MiB Konami SCC bank test cartridge, not the game (docs/ROM_BUDGET.md 6.1)
 banktest:
