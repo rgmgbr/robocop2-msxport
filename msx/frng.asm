@@ -26,10 +26,11 @@
 ; masks and priority plane (rg_tmp), so that the tests that read past their own blit (T1) see what
 ; the earlier blits left there.
 ;
-; The display stays black for now (front_range's intro left the palette black; the HUD shows below
-; it as in the game), but every pass records what the original draws (rg_want, msx.inc: range.inc's
-; shown-state layout) for the renderer (docs/RANGE.md 3.3, steps 8-9 of its section 5). The sound's
-; effects go to snd_rfx (silent until step 11).
+; The display (msx/frngview.asm, docs/RANGE.md 3.3): every pass records what the original draws
+; (rg_want, msx.inc: range.inc's shown-state layout), and the renderer (rg_show at the entry, rg_feed
+; between the passes, rg_hide at the exit) puts that on the screen, double-buffered on pages 0 and
+; 1, the vertical lines as sprites, the HUD below as in the game; the camera stays at its start
+; (s = 32) until step 9 of docs/RANGE.md 5. The sound's effects go to snd_rfx (silent until step 11).
 ;
 ; Its variables live in the mirror at their Amiga addresses (msx.inc frv_...: $B00-$BC5) and in
 ; fr_code (msx.inc: FRNG's code-area state), so that the trace harness compares them pass by pass
@@ -104,6 +105,7 @@ rg_stage:
 rg_v1:  ld (rg_pal),hl              ; ($1FBB4: $1F9B0 = $1FBEA, or $1FC2A from the second visit on)
         call rg_init                ; (the port's own: the hit test's list, the wanted state; before
                                     ;  the timer's set-up, which the first pass follows at once)
+        call rg_show                ; (the stage's screen, the palette black: msx/frngview.asm)
         ld a,0xFF
         ld (frv_fadein),a           ; ($1FBA6: $BC1 = 0 by the clear, $BC0 = FFh: a fade in)
         xor a
@@ -127,6 +129,7 @@ rg_loop:
         call sec_tick               ; ($1015E: the CIA-B's seconds; still in script builds)
 fr_tick:
         call fr_frame               ; ($1EA4A-$1EAA4: the pass; the trace's sampling point)
+        call rg_feed                ; (the renderer)
         ld hl,(frv_end)             ; $1EAA6: the end checks
         ld a,h
         or l
@@ -143,6 +146,7 @@ fr_tick:
         ld a,(frv_fade)
         or a
         jr nz,rg_loop
+        call rg_hide                ; (the display as the result's screen expects it)
         jp fr_done                  ; ($1EAC4: the counts stay in $B04 and $B06)
 rge_n:  ld hl,(AG + 0x8030)         ; ($1EACE: tst.w $8030)
         ld a,h
@@ -160,6 +164,7 @@ rge_t:  ld a,(AG + (0x804C ^ 1))    ; ($1EAE8: tst.b $804C)
         inc (hl)                    ; ($1EAF2: $B08 + 1)
         ld a,HUD_MSG_1EB3B
         call game_msg               ; ($1EAFA: jmp $8008, "TIME OUT.": its rts leaves FRNG at once)
+        call rg_hide
         jp fr_done
 
 ; ($1EA40) The next 50 Hz tick: a VBLANK, at 60 Hz every sixth one skipped (front.asm fs_tick's
@@ -168,7 +173,10 @@ rge_t:  ld a,(AG + (0x804C ^ 1))    ; ($1EAE8: tst.b $804C)
 rg_wait:
         ld a,(tick)
         ld b,a
-rw_lp:  ld a,(tick)
+rw_lp:  push bc
+        call rg_feed                ; (the renderer's work meanwhile)
+        pop bc
+        ld a,(tick)
         cp b
         jr z,rw_lp
         ld a,(RG9SAV)
@@ -332,8 +340,9 @@ fr_frame:
         ret
 
 ; $1F980: the fade's level ($BC1, 0-31): + 1 a pass while $BC0 is set, else - 1, nothing more at
-; either end; at the end of a fade out the palette pointer goes back to visit 1's ($1F9A4). (The
-; palette itself, COLOR01-31 limited by the level, comes with the display: step 8.)
+; either end; at the end of a fade out the palette pointer goes back to visit 1's ($1F9A4). Then
+; pf_pal (COLOR01-31's, which the VBLANK loads for the play area) is the visit's graded palette with
+; every component at most fade_cap[$BC1 >> 2] (msx/logic.asm pal_fade's rule, msx/puzl.asm bs_fade's).
 rg_fade:
         ld hl,frv_fade
         ld a,(frv_fadein)
@@ -343,14 +352,58 @@ rg_fade:
         cp 0x1F
         ret z
         inc (hl)
-        ret
+        jr rf_pal
 rf_out: ld a,(hl)
         or a
         ret z
         dec (hl)
-        ret nz
+        jr nz,rf_pal
         ld hl,rg_pal1
         ld (rg_pal),hl
+rf_pal: ld a,(frv_fade)
+        rrca
+        rrca
+        and 7
+        ld e,a
+        ld d,0
+        ld hl,fade_cap
+        add hl,de
+        ld a,(hl)
+        ld c,a                      ; the limit for B and G
+        rlca
+        rlca
+        rlca
+        rlca
+        ld b,a                      ; the limit for R (bits 4-6)
+        ld hl,(rg_pal)
+        ld de,pf_pal
+rfp_lp: ld a,(hl)
+        and 0x70
+        cp b
+        jr c,rfp_r
+        ld a,b
+rfp_r:  ld (de),a                   ; R
+        ld a,(hl)
+        and 7
+        cp c
+        jr c,rfp_b
+        ld a,c
+rfp_b:  ex de,hl
+        or (hl)
+        ld (hl),a                   ; R | B
+        ex de,hl
+        inc hl
+        inc de
+        ld a,(hl)
+        cp c
+        jr c,rfp_g
+        ld a,c
+rfp_g:  ld (de),a                   ; G
+        inc hl
+        inc de
+        ld a,e
+        cp (pf_pal + 32) & 0xFF
+        jr nz,rfp_lp
         ret
 
 ; $1EB00: the hits' delays. $BBC (a correct hit's, 10 at the hit) - 1 while not negative: below 0,
@@ -1549,6 +1602,8 @@ rml_l:  add hl,hl
         add hl,de
 rml_n:  djnz rml_l
         ret
+
+        include "frngview.asm"      ; the display: rg_show, rg_feed, rg_hide
 
 ; ----- data -----
 

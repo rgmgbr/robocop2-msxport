@@ -11,6 +11,9 @@ The final checks' scripts (`np.tcl`, `ft.tcl`, `run8f.tcl`, `titlecmp.py`, `titl
 went out, and followed the others here: their checks are 5.17, and section 10 says what changed
 and what was verified when they moved.
 
+The shooting range, the second bonus stage, adds its display's checks (`rgview.tcl`, `rgview.py`,
+`rgview.sh`): section 5.18.
+
 The harness has two sides:
 
 - **The emulator side** is Tcl, sourced into the MSX-AI MCP's openMSX with `msx_local_cmd`. It
@@ -71,6 +74,9 @@ The harness has two sides:
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
+| `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 54 jobs) |
+| `rgview.py still` / `rec` / `rate` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states; the pass rate (5.18) |
+| `rgview.sh builds W` / `check W` | shell | the range's three test builds; every verdict of 5.18, then "rgview: PASS" |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -80,7 +86,10 @@ The Tcl reads these labels from a ROM's label file:
 - the game tick: `tick_start`, `game_tick`;
 - the CPU switch: `cs_go`, `display_on`, `front_bonus`;
 - the final checks: `new_game` (`np_two_setup`), `init` (`ft_boot_job`: its first byte must be DI,
-  F3h).
+  F3h);
+- the shooting range (5.18): `fr_tick`, `fr_frame`, `fr_done`, `fr_rated`, `fr_code`, `ac_diff`,
+  `diff_tab`, `rg_loop`, `tick`, `iv_late`, `txt_rg_intro`, `txt_bs_time` and the other `txt_`
+  labels (a text's span ends at the next one).
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -97,6 +106,7 @@ It also uses RAM addresses of `msx/msx.inc` directly:
 | 1084h | `mp_lost` | 1082h | `atr_lost` |
 | 1088h | `rd_lost` | 069Ch | `fb_lost` |
 | C2A6h | `cpu_tr` | C623h | `msg_wr` |
+| EE40h | `rgs0` (the range) | EE68h | `rgs1` (the range) |
 
 The Amiga mirror is read at D000h (`$B00` + n) and DC00h (`$8000` + n). The BIOS's RG9SAV (FFE8h)
 and CASPRV (FCB1h) are read too. If `msx.inc` moves one of these, update the scripts.
@@ -917,6 +927,97 @@ python3 -I tools/bstest/shots.py CDIR/shots CDIR/run/solved_m2_result.bin
 Expected: "bonus check: PASS" (WELL DONE with TEST N, then the title, fire and the new game) and "6
 snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 
+### 5.18 The shooting range's display (step 8 of its plan: the camera at s = 32)
+
+The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; the plan's 3.3 and 4.2 are
+in the range chain's scratch notes until `docs/RANGE.md` lands) draws what the original draws in each
+pass: the wanted state `rg_want` (EE00h, `range.inc`'s `RG_ST_` layout), taken whole when a build of
+the page not on screen starts, so that each display page shows one pass. Each page's shown state is
+kept in RAM with the pass it was taken at (`rgs0` EE40h, `rgs1` EE68h: `RG_ST_LEN` bytes, then the
+pass, `$B00`, as a word). Every check compares what the VDP shows with `tools/msxrange.py`'s render
+of that state (`Range.shown`: the page as built, its SAT, R#18), and that state with the one the
+bench's trace gives for its pass.
+
+```sh
+sh tools/bstest/rgview.sh builds W          # W/fr2, W/fr2v2, W/ext; prints the Tcl line
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [rgv_suite {W}]   (54 jobs; poll)
+```
+```sh
+sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
+```
+
+`rgv_suite` (`rgview.tcl`) runs, each job on a new machine from the power-on through
+`rc2_fr_drive` (the drive's trace into `W/O/tr/`):
+
+- `armed`, `mixed`, `edge`, `timeout` and `armed2` (visit 2: the `fr2v2` build) on C-BIOS_MSX2
+  (`_m2`), the Panasonic FS-A1FX (`_fx`, a V9958) and the FS-A1GT (`_tr`, the turbo R; the stage
+  runs on its Z80), each with snapshots at chosen passes (`W/O/st/NAME/pNNNN.bin`, `hz7_snap`'s
+  layout) and a record of every VBLANK from the first pass to 150 VBLANKs past the stage's end
+  (`W/O/st/NAME/rec.bin`: 22,272 bytes a VBLANK, taken at `iv_late`, once the list is applied:
+  the registers, the page R#2 shows, the SAT R#5 shows, `pf_pal`, the list, RAM C000h-C0FFh,
+  C600h-C6FFh, D000h-D0FFh and EE00h-EFFFh);
+- the display guard (`rc2_guard`, tears counted) over `armed`'s passes 5 to about 1,130 on the three
+  machines (`guard_*`); the entry's uploads and builds and `rg_hide`'s SAT writes fall outside it by
+  design (the palette black there);
+- the VRAM speed over `armed` from the power-on to `fr_rated` at 3.58 MHz (C-BIOS_MSX2, FS-A1GT)
+  and 5.37 MHz (FS-A1FX, C-BIOS_MSX2+): `fast_*`;
+- the pass rate of `armed`, `mixed` and `edge` at 60 Hz (C-BIOS_MSX2) and 50 Hz (C-BIOS_MSX2_EU):
+  `rate_*`, a line a pass (`tick`, the times at the loop's work, `fr_tick`, after `fr_frame` and
+  after the pass's `rg_feed`, the active CPU);
+- the other ten drives' traces on C-BIOS_MSX2 and the FS-A1GT, `armed` and `opp` on the Gradiente
+  Expert 2.0;
+- the restore (`rgv_after_setup`): `timeout`'s stage (it times out at pass 301 with the palette lit),
+  OUT OF TIME., the new game's frame 50 and six pictures (`W/O/flow/after_rg_*`), against
+  `hz7_fresh_setup`'s fresh start of the `ext` build (`fresh_rg_*`), on C-BIOS_MSX2 and the
+  FS-A1GT.
+
+`rgview.sh check` gives one verdict for each:
+
+- **the traces**: `tools/frngcmp.py` against `build/emu/fr_DRIVE_ram.jsonl`: 0 differ with equal
+  results and ratings (the display does not change the logic);
+- **the stills** (`rgview.py still ... --ref --gen`): the page the applied list shows (lines 0-161)
+  equals the render of its shown state, index 1 (the sheets' black, which a front layer puts where
+  the scene is 0) counting as 0; its set's SAT equals the state's; the colour rows of its sprites are
+  all 15; the picture as shown (the sprites drawn from VRAM's patterns and colour rows, R#18's
+  shift) equals the render's; the list's R#18 is (s - c) & 15; the view equals the converter's model
+  of the Amiga's own composition (`compare`: 0 pixels, quirk 4's apart); the state is the bench's
+  for its pass (pass 0: `rg_show`'s, nothing drawn);
+- **the records** (`rgview.py rec`): at every VBLANK showing a stage page, the page equals its
+  state's render (no torn element), R#18 and the SAT are the state's (at most 31 entries, at most 3
+  sprites on a line, every sprite whole in lines 0-157), no pixel outside both states' elements
+  changes between two pictures shown in a row (compared in scene coordinates, screen x + s), and
+  every picture's state is the bench's for its pass. VBLANKs with the SATs empty and the palette
+  black are `rg_hide`'s (counted, accepted). The crosshair's line off the view is counted: at a fixed
+  s = 32 it leaves the view at the street's ends (the camera, step 9, keeps it in);
+- **the guard**: reg, pal, cmd, cpu, vbl and tear 0 on all three;
+- **the VRAM speed**: 0 lost writes in the cartridge (C-BIOS_MSX2+ loses 1 in its own BIOS, at
+  05B3h, before the cartridge starts);
+- **the pass rate** (`rgview.py rate`): no late pass (50 Hz: every step 1 VBLANK; 60 Hz: four 1s and
+  a 2 in every 5, `fs_div`'s skip), the worst pass's T-states against a VBLANK's;
+- **the restore** (`restorecheck.py ... --known --range`, then `tools/checkrun.py` with the venv's
+  Python): after the stage page 2 equals `level1.vram`, page 3 lines 0-87 the intro's, both SATs
+  start with Y = 216; at the new game's frame 50, page 2, the atlas, the HUD and the mirror equal a
+  fresh start's, the sprite tables apart from the known items (`--range`: the colour rows of the
+  line sprites 0-29, which the engine rewrites before use: cold.asm `spr_init`); the lost counters
+  0; every checkrun picture 0 pixels differ and every sprite pixel exact (its "tile VRAM changed"
+  item adds, after the range, page 3 lines 88-161: sheet S3, which `fb_init` freed, as `fe_text`
+  runs it first and `engines_init` before any field use).
+
+The run of 2026-10-27 (the commit after `3c3a735`): every verdict PASS.
+
+- 45 traces 0 differ (`armed` 1,163 passes, `mixed` 1,869, `edge` 344, `timeout` 301, `armed2`
+  1,163, the other ten as at step 7).
+- 282 stills equal to the render; the records 0 torn, 0 SAT errors, 0 coherence errors, every
+  state the bench's: `armed` 613 pictures in 1,158 passes on C-BIOS_MSX2 (606 FS-A1FX, 611
+  FS-A1GT), `mixed` 1,163 in 1,868 (about 27 pictures a second).
+- The guard: 1,348 frames, about 3,100 commands, all 0. VRAM speed 0 in the cartridge.
+- The pass rate: 0 late passes; the worst pass 37,131 T-states at 60 Hz (a VBLANK: 59,659),
+  38,603 at 50 Hz.
+- The restore PASS; the HUD at `armed`'s 39 passes equal to step 7's build (`hudcheck.py
+  W/O/st/armed_m2 REF/st/armed_m2`: a build of `3c3a735` in a worktree, the same `rgv_job`).
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/hz.sh builds W/R`, and the base reference if the milestone has none yet
@@ -929,7 +1030,9 @@ snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 5. The checks the suite does not run: `hz6_arm` (5.4), `hz6_time` (5.11), `hzp_setup` (5.12)
    and `hudcheck.py` against the base (5.6).
 6. The final checks (5.17 a-g), and `c8f_chain` instead of `c8_chain` for test candidates (5.17 h).
-7. `msx_local_shutdown`; the matrix (5.13); `make test`.
+7. The shooting range's display (5.18): `rgview.sh builds W`, `hz_chain [rgv_suite {W}]`,
+   `rgview.sh check W`.
+8. `msx_local_shutdown`; the matrix (5.13); `make test`.
 
 ## 7. For the next milestones
 

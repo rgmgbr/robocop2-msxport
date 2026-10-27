@@ -63,14 +63,15 @@ proc hz_cfg {} {
 
 # every breakpoint, condition, watchpoint and pending 'after time' of these checks removed, and the
 # output channels a job keeps open (rc2_drive_trace's, hz_fresh's music log, rc2_pz_arm's trace,
-# hz7.tcl's record, fixchk.tcl's event log) closed: a job that timed out leaves no file open
+# hz7.tcl's record, fixchk.tcl's event log, rc2_fr_arm's trace, rgview.tcl's record and rate log)
+# closed: a job that timed out leaves no file open
 proc hz_clean {} {
 	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
 	foreach {id opts} [debug condition list] { debug condition remove $id }
 	hz_nowp
 	if {[info exists ::hz_afters]} { foreach a $::hz_afters { catch {after cancel $a} } }
 	set ::hz_afters {}
-	foreach v {rd_out hz_mf rpz_out h7_rf hzb_f} {
+	foreach v {rd_out hz_mf rpz_out h7_rf hzb_f rfr_out rv_rf rv_tf} {
 		if {[info exists ::$v]} { catch {close [set ::$v]}; unset ::$v }
 	}
 }

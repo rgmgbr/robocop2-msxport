@@ -417,6 +417,42 @@ rg_last:    equ 0xC68A              ; the tick of the last pass, or of the timer
 rg_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immediate at $1F9B0: the visit's)
 rg_clip:    equ 0xC68D              ; 2: frng_draw_bob's right clip (the immediate at $1EE42)
 rg_mode:    equ 0xC68F              ; 2: its first blit's mode (the immediate at $1EEC6)
+; its renderer (msx/frngview.asm rg_feed: display pages 0 and 1, sprite sets A and B)
+rgr_state:  equ 0xC691              ; 0 idle, 3 preparing a build of the page not shown, 1 building it,
+                                    ;   4 finishing it, 2 its list published
+rgr_shown:  equ 0xC692              ; the page on screen (0, 1)
+rgr_page:   equ 0xC693              ; the page being built (the other one)
+rgr_ri:     equ 0xC694              ; the build's next rectangle,
+rgr_ph:     equ 0xC695              ;   its next command (0-2 restores, 3 on the elements)
+rgr_rn:     equ 0xC696              ; the build's dirty rectangles
+rgr_fr:     equ 0xC697              ; 2: $B00 when the last build started (a build only after a pass)
+rgr_bank:   equ 0xC699              ; the entry's uploads: the bank at 8000h
+rgr_cmd:    equ 0xC69A              ; 15: the command being sent (R#32-R#46)
+rgr_nx:     equ 0xC6A9              ; 2: its NX,
+rgr_ny:     equ 0xC6AB              ;   NY
+rgr_rx0:    equ 0xC6AC              ; the rectangle being built (page x 0-255, lines 0-161): x0,
+rgr_ry0:    equ 0xC6AD              ;   y0,
+rgr_rx1:    equ 0xC6AE              ;   x1,
+rgr_ry1:    equ 0xC6AF              ;   y1 (inclusive)
+rgr_ex0:    equ 0xC6B0              ; an element's part in it: x0,
+rgr_ey0:    equ 0xC6B1              ;   y0,
+rgr_ex1:    equ 0xC6B2              ;   x1,
+rgr_ey1:    equ 0xC6B3              ;   y1
+rgr_c:      equ 0xC6B4              ; the coarse offset c of the elements being made (a page's)
+rgr_ep:     equ 0xC6B5              ; 2: the next element they go to
+rgw_x0:     equ 0xC6B7              ; 8: a rectangle being cut (Amiga coordinates, signed words x0,
+                                    ;   x1, y0, y1, inclusive)
+rgk_x0:     equ 0xC6BF              ; 8: what it is cut to
+rgw_ax:     equ 0xC6C7              ; 2: an element's source block's corner (Amiga x,
+rgw_ay:     equ 0xC6C9              ; 2:   row),
+rgw_sx:     equ 0xC6CB              ;   where the sheets hold it: VDP x,
+rgw_sy:     equ 0xC6CC              ; 2:   y (over the 4 pages)
+rgw_n16:    equ 0xC6CE              ; the fire box's 16 n
+rgr_eg:     equ 0xC6CF              ; the build's preparation: its next group of elements,
+rgr_full:   equ 0xC6D0              ;   1 when the whole page is dirty,
+rgr_ge:     equ 0xC6D1              ;   2: the group's first element and their count,
+rgr_go:     equ 0xC6D3              ;   its state bytes' offset,
+rgr_rt:     equ 0xC6D4              ;   2: its routine
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -795,6 +831,18 @@ rg_spic:    equ 0xF0A0              ; 42: by script, its pop-up's picture (RG_NO
 rg_rpic:    equ 0xF0CA              ; 10: by frame, the riser's
 rg_wpic:    equ 0xF0D4              ; 16: by kind, the walker's
 rg_fpic:    equ 0xF0E4              ; 22: by frame, the dissolve's (F0E4h-F0F9h)
+; its display (msx/frngview.asm), in objl_ram between the wanted state and the logic's: per display
+; page its shown state, what the page holds once its last build is done (range.inc's RG_ST_ layout,
+; then the pass $B00 whose wanted state it is: RGS_LEN, 37 bytes; tools/bstest/rgcheck reads them
+; here), the build's target (the same), the dirty rectangles, the elements of the target and of each
+; page (RGE_N of RGE_LEN)
+rgs0:       equ 0xEE40              ; page 0's shown state
+rgs1:       equ 0xEE68              ; page 1's
+rgt:        equ 0xEE90              ; the build's target: rg_want as the last pass left it, its c, its pass
+rg_rects:   equ 0xEEB8              ; 72: the dirty rectangles (x0, y0, x1, y1 in the page)
+rg_el:      equ 0xEF00              ; 72: the target's elements
+rg_elp0:    equ 0xEF48              ; 72: page 0's
+rg_elp1:    equ 0xEF90              ; 72: page 1's (to EFD7h)
 SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32)
 dg_msxv:    equ 0xE900              ; DIAG test builds (tools/mkrom.py, music.asm dg_main; before any level):
 dg_a8b:     equ 0xE901              ;   the BIOS's MSX version and A8h at the start (rc2.asm init),

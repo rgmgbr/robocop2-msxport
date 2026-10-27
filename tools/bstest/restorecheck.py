@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """4.2 check 5 and 4.4's "level 1 after the stage" on hz7_after / hz7_fresh records.
 
-usage: restorecheck.py DIR AFTER_TAG FRESH_TAG [--known]
+usage: restorecheck.py DIR AFTER_TAG FRESH_TAG [--known [--range]]
 
 - DIR/AFTER_result.bin (the result screen after the stage): VRAM 10000h-17FFFh = build/msx/level1.vram's
   (the tiles vdp_setup wrote), page 3 lines 0-87 (18000h-1ABFFh, the play-field atlas) = the intro's
@@ -18,6 +18,13 @@ parked sprites, sets swapped: the engine's set phase is one flip apart). Without
 the check, as they did that night; with --known the colour rows are left out and entries 30-31 must
 equal the fresh start's, in the same set or swapped.
 
+--range (with --known; docs/RANGE.md 4.2 check 7, docs/HARNESS.md 5.18): the shooting range ran before
+the new game. It leaves the colour rows of its line sprites, 0 to 29 (RG_SPR_MAX), in both sets
+(1E000h-1E1DFh, 1E400h-1E5DFh: colour 15) where a fresh start holds other bytes until the engine shows
+those sprites; at a level's start cold.asm spr_init marks every colour row unknown (col_held FFh), so
+the engine writes a sprite's rows before showing it. They are left out too (on 2026-10-27: sprites
+18-29 of both sets, 384 bytes, at the new game's frame 50; the engine had rewritten 2-17).
+
 Reads build/msx/level1.vram of the repository this file is in (tools/bstest/).
 """
 from __future__ import annotations
@@ -28,10 +35,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 KNOWN_COLOURS = set(range(0x1E000, 0x1E020)) | set(range(0x1E400, 0x1E420))
+RANGE_COLOURS = set(range(0x1E000, 0x1E000 + 30 * 16)) | set(range(0x1E400, 0x1E400 + 30 * 16))
 SAT30_A, SAT30_B = (0x1E278, 0x1E280), (0x1E678, 0x1E680)
 
 
-def known_items(ga: bytes, gb: bytes, diff: list[int]) -> tuple[list[int], str]:
+def known_items(ga: bytes, gb: bytes, diff: list[int], rng: bool = False) -> tuple[list[int], str]:
     """The differing addresses left once the known items are taken out, and what was taken."""
     a_a, a_b = ga[slice(*SAT30_A)], ga[slice(*SAT30_B)]
     b_a, b_b = gb[slice(*SAT30_A)], gb[slice(*SAT30_B)]
@@ -40,12 +48,18 @@ def known_items(ga: bytes, gb: bytes, diff: list[int]) -> tuple[list[int], str]:
     rest = [i for i in diff if i not in KNOWN_COLOURS and not (swapped and i in sat)]
     ncol = sum(1 for i in diff if i in KNOWN_COLOURS)
     nsat = sum(1 for i in diff if i in sat) if swapped else 0
-    return rest, f"{ncol} in the colour rows of sprites 0-1, {nsat} in SAT entries 30-31 (sets swapped)"
+    what = f"{ncol} in the colour rows of sprites 0-1, {nsat} in SAT entries 30-31 (sets swapped)"
+    if rng:
+        nrg = sum(1 for i in rest if i in RANGE_COLOURS)
+        rest = [i for i in rest if i not in RANGE_COLOURS]
+        what += f", {nrg} in the range's colour rows of sprites 2-29"
+    return rest, what
 
 
 def main(argv: list[str]) -> int:
     known = "--known" in argv
-    args = [a for a in argv if a != "--known"]
+    rng = known and "--range" in argv
+    args = [a for a in argv if a not in ("--known", "--range")]
     if len(args) != 3:
         print(__doc__, file=sys.stderr)
         return 2
@@ -73,7 +87,7 @@ def main(argv: list[str]) -> int:
                              ("HUD (1E800h-1FE7Fh)", 0x1E800, 0x1FE80)):
             if known and lo == 0x1D800:
                 diff = [i for i in range(lo, hi) if ga[i] != gb[i]]
-                rest, what = known_items(ga, gb, diff)
+                rest, what = known_items(ga, gb, diff, rng)
                 chk(f"new game at frame 50 vs a fresh start: {name}, the known items left out", not rest,
                     f" ({len(diff)} bytes differ: {what}; {len(rest)} others"
                     + (f", first at {rest[0]:05X}h)" if rest else ")"))
