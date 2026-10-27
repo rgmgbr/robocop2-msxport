@@ -92,7 +92,9 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
    Pico+ on the SX-2 and on the Hotbit (`docs/ROM_BUDGET.md` 6.1). A 2 MiB ROM drops 1 MiB
    MegaRAMs and flash cartridges (decision 2). The Pico+ runs the ROM through a cache of 55
    pages of 8 KiB, 53 of them for the banks at 8000h and A000h (firmware v2.12, the user's
-   setting). So each level selects at most 53 banks (`docs/PICO_CACHE.md`).
+   setting). So each level aims at no more than 53 banks (`docs/PICO_CACHE.md`). This is a speed
+   target for devices that run the ROM through a cache, not a requirement: the game is not tied
+   to the Pico+ and works the same on any device with the Konami SCC mapper.
 7. **Game logic at 25 Hz** (final, 2026-10-20 evening): the original's routines are ported
    with their variables, tables and order, and run 25 times per second, the PAL design speed
    (the dumped Data East release is NTSC: `main_loop` waits for 2 VBLs of 60 Hz, 30 Hz; the

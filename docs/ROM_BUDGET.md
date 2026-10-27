@@ -608,8 +608,11 @@ been tested on hardware.
   - **What a miss costs.** A hit costs about 73-74 T. A reload holds the Z80 for 877-885 T: about
     246 µs, or 1.5 % of a 60 Hz frame. The page is copied when its bank number is written, even if
     the window is never read.
-  - **The rule for the layout:** at most 53 banks selected per level, counting 3Fh and the sound
-    banks (`docs/PICO_CACHE.md` 6). Level 1 selects 47 in play.
+  - **A speed target for the layout, not a requirement:** at most 53 banks selected per level,
+    counting 3Fh and the sound banks (`docs/PICO_CACHE.md` 6). Level 1 selects 47 in play.
+    - Beyond 53, a device that runs the ROM through a cache only pauses briefly for each reload.
+    - ROM and RAM devices have no cache and no such limit.
+    - No content is cut to meet the target.
 - Run it on the Pico+ and on the SX-2's internal ESE-MegaSCC+.
 - Find out which OCM-PLD version the SX-2 runs, and which loader accepts a 2 MiB Konami SCC
   image.

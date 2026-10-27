@@ -30,6 +30,12 @@
   Konami SCC image (the user's decision, 2026-10-26); the 0.1.x releases (level 1) are 1 MiB.
   Keep this minimum in `README.md` (Requirements) and in every release's notes. Images over
   1 MiB carry the boot guard (`msx/cold.asm` `rom_guard`).
+- Generic hardware support. The game relies only on what README.md lists as requirements: the
+  standard Konami SCC mapper, the PSG, and the optional SCC/SCC+ (in any slot) and
+  MSX-MUSIC/FM-PAC. Never tie the design to one device, such as the user's MSX Pico+.
+  - A device's quirk (its page cache, how it decodes the SCC) may set a speed target or a
+    safety rule that is harmless on every other device.
+  - It never becomes a requirement, and never costs content or features.
 
 ## Conventions
 - `tools/` in Python (stdlib whenever possible), `Makefile`, `docs/`, `tests/`; `build/` is ignored.

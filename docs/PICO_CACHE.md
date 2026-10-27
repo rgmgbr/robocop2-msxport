@@ -47,6 +47,16 @@ Conventions:
 **The cache does not limit the size of the ROM. It limits how many different banks one level
 selects: 53 on the user's Pico+.**
 
+**This is about speed on one kind of device, never about compatibility.** The game must not be
+tied to the Pico+ (the user, 2026-10-26).
+- Beyond the budget the game still runs on the Pico+, with a pause of about 0.25 ms for each
+  reload.
+- Devices that hold the ROM in ROM or RAM have no cache and no such limit: MegaRAMs, flash
+  cartridges, FPGA machines, emulators.
+- Other cache-based devices, such as the MSX PicoVerse, may hold fewer or more pages. Compact
+  levels help them all.
+- So 53 is a target the layout aims at, and no content is cut to meet it.
+
 - **ROM size plays no part (D).** When a ROM starts, the Pico+ gives the cache all its free SRAM.
   A 1 MiB and a 2 MiB image get the same cache. Only ROMs that fit the free SRAM (at most
   451,584 B or 490,496 B) run without one.
@@ -496,8 +506,8 @@ Other phases (E, from the budget's sizes, since their code does not exist yet):
   - the code and logic banks, the level tables, the map, the tiles;
   - the sprite banks its frames use, the HUD, FIELD, the dynamic and streamed frames;
   - the sound code and data, and 3Fh with an SCC.
-- Stop the build above 53, and print the margin. Also print the margin against 46, the music or
-  WaveGame case.
+- Print the count and the margin, and warn above 53. Also print the margin against 46, the music
+  or WaveGame case. It is a speed target, so the build does not stop.
 - 53 assumes image B with an empty heap, as the fit says. Fix the number only after check 7.1. If
   the menu shows FM-PAC disabled, the limit stays unknown until BT2M-2 runs with FM-PAC on
   (section 8, question 1).
