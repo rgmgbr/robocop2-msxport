@@ -14,9 +14,11 @@
 ; palette pointer back to visit 1's at the end of every fade out (quirk 5).
 ;
 ; The display: every pass records what the original draws (pz_want, msx.inc), and the renderer
-; (bs_show, bs_board, bs_feed, bs_hide) puts that on the screen. For now the play area stays
-; black (bs_show clears it) and the renderer does nothing else. Silent for now: the effect each
-; pass starts (pz_sfx) and the board's tune (pz_tune) are only recorded.
+; (bs_show at the entry, bs_board at a set-up, bs_feed between the passes, bs_hide at the exit)
+; puts that on the screen: the original's art 1:1 in the 256 x 162 play area, double-buffered on
+; pages 0 and 1, the cursor as hardware sprites, the HUD below as in the game (docs/BRAINSTORM.md
+; 3.3). Silent for now: the effect each pass starts (pz_sfx) and the board's tune (pz_tune) are
+; only recorded.
 
         include "puzl.inc"          ; the stage's places, sheet and VRAM coordinates (tools/msxpuzl.py)
 
@@ -685,33 +687,798 @@ bsk_f:  inc a                       ; (a free neighbour)
 
 ; ----- the display -----
 
-; The stage's screen at its entry, the palette black: for now page 0's play area black (the
-; intro's text gone: front.asm fs_clear; done before the fade in starts); nothing drawn yet in
-; the wanted state.
+; The play area is double-buffered (docs/BRAINSTORM.md 3.3): display page 0 with sprite set A,
+; page 1 with set B, each published at a VBLANK by a register list (bs_list, as front.asm fs_list
+; does), the HUD below through the split as in the game. Each page keeps the state it shows
+; (rd_st0, rd_st1: puzl.inc's PZ_ST_ layout); a build brings the page not shown to the wanted
+; state (pz_want, the board's cells) with one HMMM an element that differs, from the sheet (page
+; 0 lines 162-217) or the TV pictures (page 2), then writes its set's SAT (the cursor) and
+; publishes it; that page is then shown, and the next build goes to the other one. A page is
+; never drawn while it shows (only a board's set-up draws both, with the palette black), so no
+; block shows half drawn, and every change reaches each page once, at its next build. The VDP's
+; commands go through vdp_cmd (cmd_lock; never cmdbuf, which the tile engine keeps); the VRAM
+; streams set their address with vram_write and end with vram_done.
+
+; The stage's screen at its entry (bs_stage), the play area black (pf_pal 0) with the intro's
+; list on screen (page 0, sprites off): the screen and the sheet into page 0, page 0's play area
+; copied to page 1, the visit's TV pictures into page 2, the cursor's patterns and both sets'
+; colour rows (sprite 0 the cursor's colour, sprite 1 image 2's second colour), both SATs empty;
+; nothing drawn yet in the wanted state nor in either page's.
+RD_SAT_A:   equ SPR_COL_A + 0x200   ; the SATs of sprite sets A (page 0) and B (page 1)
+RD_SAT_B:   equ SPR_COL_B + 0x200
 bs_show:
-        ld hl,fs_clear
-        call vdp_cmd
         call vdp_wait
+        ld hl,PZ_GFX_SCREEN
+        call rd_at
+        push hl
+        ld e,0
+        ld hl,0
+        call vram_write             ; page 0 from its first line: the screen, then the sheet
+        pop hl
+        ld bc,PZ_GFX_PAGE0
+        call rd_rom
+        call vram_done
+        ld hl,rd_cp01
+        call vdp_cmd                ; page 0's play area to page 1
+        ld hl,(pz_tv)
+        call rd_at                  ; the visit's 9 TV pictures (TV_STATES order) into page 2:
+        ld de,0                     ;   picture n at (80 (n % 3), 80 (n / 3)), a line at a time
+        ld c,3
+bsw_r:  push bc
+        push de                     ; (a row of pictures)
+        ld b,3
+bsw_p:  push bc
+        push de                     ; (a picture)
+        ld b,PZ_TV_W
+bsw_l:  push bc
+        push de
+        push hl
+        ex de,hl
+        ld e,PZ_TV_VRAM >> 16
+        call vram_write
+        pop hl
+        ld b,PZ_TV_LINE
+        call rd_line
+        call vram_done
+        pop de
+        push hl
+        ld hl,PZ_LINE_BYTES
+        add hl,de
+        ex de,hl                    ; (its next line)
+        pop hl
+        pop bc
+        djnz bsw_l
+        pop de
+        push hl
+        ld hl,PZ_TV_LINE
+        add hl,de
+        ex de,hl                    ; (the next picture of the row)
+        pop hl
+        pop bc
+        djnz bsw_p
+        pop de
+        push hl
+        ld hl,PZ_LINE_BYTES * PZ_TV_W
+        add hl,de
+        ex de,hl                    ; (the next row)
+        pop hl
+        pop bc
+        dec c
+        jr nz,bsw_r
+        ld a,BANK_FRONT
+        call bank_8000              ; (FRONT at 8000h again)
+        ld e,SPR_PAT >> 16
+        ld hl,SPR_PAT & 0xFFFF
+        call vram_write             ; the cursor's patterns from slot 0 (sprites.asm's slots: the
+        ld hl,pz_cursor             ;  level's start forgets them, cold.asm spr_init)
+        ld de,PZ_CUR_PATS * 32
+bsw_s:  ld a,(hl)
+        out (VDP_DATA),a
+        inc hl
+        dec de
+        ld a,d
+        or e
+        jr nz,bsw_s
+        call vram_done
+        ld hl,(AG + 0x8050)         ; the cursor's colours: the visit's (bs_stage's test)
+        ld de,2
+        or a
+        sbc hl,de
+        ld bc,PZ_CUR_COL_1 * 256 + PZ_CUR_COL2_1
+        jp m,bsw_c
+        ld bc,PZ_CUR_COL_2 * 256 + PZ_CUR_COL2_2
+bsw_c:  ld hl,SPR_COL_A & 0xFFFF
+        call rd_cols
+        ld hl,SPR_COL_B & 0xFFFF
+        call rd_cols
+        ld hl,RD_SAT_A & 0xFFFF
+        call rd_hide
+        ld hl,RD_SAT_B & 0xFFFF
+        call rd_hide
         ld hl,pz_want
         ld bc,PW_LEN
         ld a,PZ_ST_NONE
-        call fill
+        call fill                   ; nothing drawn yet
         xor a
         ld (pw_tvk),a
         ld (pw_tvf),a
+        ld hl,rd_st0
+        ld bc,PZ_ST_LEN
+        ld a,PZ_ST_NONE
+        call fill
+        ld hl,rd_st1
+        ld bc,PZ_ST_LEN
+        ld a,PZ_ST_NONE
+        call fill                   ; both pages: the screen's own pixels
+        ld hl,rd_cmd
+        ld bc,15
+        xor a
+        call fill
+        ld a,0xD0
+        ld (rd_cmd + 14),a          ; (HMMM; the high bytes of SX, DX, NX and NY stay 0)
+        xor a
+        ld (rd_state),a
+        ld (rd_shown),a             ; (the intro's list: page 0)
+        ld (rd_acc),a
+        ld (rd_face),a
+        ld hl,(pzv_frame)
+        ld (rd_fr),hl               ; (the first build after the first pass)
+        dec a
+        ld (rd_tvw),a
         ret
 
-; A board's set-up ($173D2, the palette black): its 88 cells into both pages (the renderer).
+rd_cp01:
+        dw 0, 0, 0, PZ_PAGE_B, 256, PZ_SCREEN_LINES    ; SX, SY, DX, DY, NX, NY
+        db 0, 0, 0xD0                                   ; HMMM
+
+; HL = an offset in puzl_gfx.bin -> its bank at 8000h (rd_bank), HL = its address there.
+rd_at:  ld a,h
+        rlca
+        rlca
+        rlca
+        and 7
+        add a,PUZL_GFX_BANK
+        ld (rd_bank),a
+        call bank_8000
+        ld a,h
+        and 0x1F
+        or 0x80
+        ld h,a
+        ret
+
+; BC = bytes from HL (rd_bank at 8000h) to port 98h: rd_line's pieces of 128 at most.
+rd_rom: ld a,b
+        or c
+        ret z
+        ld a,b
+        or a
+        ld a,128
+        jr nz,rr_n                  ; (256 or more left)
+        ld a,c
+        cp 128
+        jr c,rr_n
+        ld a,128
+rr_n:   push bc
+        push af
+        ld b,a
+        call rd_line
+        pop af
+        pop bc
+        ld e,a
+        ld a,c
+        sub e
+        ld c,a
+        jr nc,rd_rom
+        dec b
+        jr rd_rom
+
+; B = bytes (1-128) from HL (rd_bank at 8000h) to port 98h, the next bank from A000h on (no OTIR
+; reads past 9FFFh: BANK_PUZL holds A000h) -> HL = the next byte's place (rd_bank). Changes D, E.
+rd_line:
+        ld a,h
+        cp 0x9F
+        jr c,rl_all                 ; (256 bytes or more to the window's end)
+        ld a,l
+        neg                         ; (those left: 256 - L)
+        jr z,rl_all
+        cp b
+        jr nc,rl_all
+        ld e,a
+        ld a,b
+        sub e
+        ld d,a                      ; (the rest, from the next bank)
+        ld b,e
+        ld c,VDP_DATA
+        otir
+        call rl_nb
+        ld b,d
+rl_all: ld c,VDP_DATA
+        otir
+        ld a,h
+        cp 0xA0
+        ret nz
+rl_nb:  ld a,(rd_bank)
+        inc a
+        ld (rd_bank),a
+        call bank_8000
+        ld hl,0x8000
+        ret
+
+; HL = a colour table's low 16 bits (page 3), B, C = the colours of sprites 0 and 1: their 16
+; rows each.
+rd_cols:
+        ld e,SPR_COL_A >> 16
+        call vram_write
+        ld a,b
+        call rdc_16
+        ld a,c
+        call rdc_16
+        jp vram_done
+rdc_16: ld e,16
+rdc_lp: out (VDP_DATA),a
+        dec e
+        jr nz,rdc_lp
+        ret
+
+; HL = a SAT's low 16 bits (page 3): its first entry Y = 216, no sprite.
+rd_hide:
+        ld e,RD_SAT_A >> 16
+        call vram_write
+        ld a,216
+        out (VDP_DATA),a
+        jp vram_done
+
+; A board's set-up ($173D2, the palette black: the fade out reached 0, or the entry): its 88 cells
+; into both pages at once, the one on screen included (the fade in never shows the last board),
+; and in both pages' states; the cursor at the board's start from the next picture on (the copper
+; interrupt $17B5A reads $B0C and $B0E as the set-up left them). The passes wait meanwhile; a
+; build goes on afterwards.
 bs_board:
+        ld a,(pzv_col)
+        ld (pw_ccol),a
+        ld a,(pzv_row)
+        ld (pw_crow),a
+        ld hl,(pzv_cells + 2)
+        ld a,PZ_ST_CELL
+bbd_lp: push hl
+        push af
+        ld e,a
+        ld d,0
+        ld a,(hl)
+        and 0x1F
+        ld c,a                      ; its tile
+        ld hl,rd_st0
+        add hl,de
+        ld (hl),c
+        ld hl,rd_st1
+        add hl,de
+        ld (hl),c
+        ld a,e
+        call rd_mk
+        xor a
+        call rd_go                  ; page 0
+        ld a,1
+        call rd_go                  ; page 1
+        pop af
+        pop hl
+        inc hl
+        inc a
+        cp PZ_ST_LEN
+        jr nz,bbd_lp
         ret
 
-; The renderer's state machine: called while bs_wait waits and after each pass.
+; A = a page: rd_cmd into it (vdp_cmd waits for the command before).
+rd_go:  ld (rd_cmd + 7),a           ; (DY's high byte: the page)
+        ld hl,rd_cmd
+        jp vdp_cmd
+
+; The renderer's state machine, called while bs_wait waits and after each pass; it never waits for
+; the VDP. Idle: after a pass, with the VDP idle, a build of the page not shown starts (its TV
+; picture by the duty rule). Building: with the VDP idle, one HMMM for the next element whose
+; wanted state differs from the page's (that page's state updated); none left: the cursor into
+; the page's sprite set, its list published. Published: once that list is on screen (app_seq),
+; the page is the one shown; idle again.
 bs_feed:
+        ld a,(rd_state)
+        dec a
+        jr z,bf_bld
+        dec a
+        jr z,bf_pub
+        ld hl,(pzv_frame)
+        ld de,(rd_fr)
+        or a
+        sbc hl,de
+        ret z                       ; (no pass since the last build: nothing new)
+        call vdp_busy
+        ret nz
+        ld hl,(pzv_frame)
+        ld (rd_fr),hl
+        call rd_tvp
+        ld a,(rd_shown)
+        xor 1
+        ld (rd_page),a
+        xor a
+        ld (rd_elem),a
+        inc a
+        ld (rd_state),a
+bf_bld: call vdp_busy
+        ret nz
+        call rd_next
+        jr c,bf_end
+        ld (hl),c                   ; (the page shows it once this command ran)
+        call rd_mk
+        ld hl,rd_cmd
+        jp vdp_cmd
+bf_end: call rd_sat
+        call bs_list
+        ld a,2
+        ld (rd_state),a
+        ret
+bf_pub: ld a,(app_seq)
+        ld b,a
+        ld a,(pub_seq)
+        cp b
+        ret nz                      ; (not on screen yet)
+        ld a,(rd_page)
+        ld (rd_shown),a
+        xor a
+        ld (rd_state),a
         ret
 
-; The stage's end: the VDP idle, the display as the result's screen expects it.
+; The TV picture of a build (rd_tvw) from the passes since the last one (pw_tvk of them, pw_tvf
+; with the face: taken here). The face shows when acc + f/k >= 1/2, then acc += f/k - shown (in
+; 1/256: acc stays within -128..127), under the newest pass's static frame: board 2's face, every
+; other pass, keeps its half duty when a picture covers two passes; with a picture a pass this is
+; the original's sequence. Once the memory is restored, the face alone.
+rd_tvp: ld a,(pz_want)
+        cp PZ_ST_NONE
+        ret z                       ; (no pass yet)
+        ld d,a
+        ld a,(pw_tvk)
+        ld c,a
+        ld a,(pw_tvf)
+        ld h,a
+        xor a
+        ld (pw_tvk),a
+        ld (pw_tvf),a
+        ld a,d
+        cp PZ_TV_CLEAN
+        jr nc,rtp_s
+        and 3
+        ld d,a                      ; (the newest static frame)
+        ld a,c
+        or a
+        jr z,rtp_f                  ; (no pass since the last build: its decision again)
+        ld l,0                      ; HL = f x 256
+        call rd_div                 ; HL = f x 256 / k
+        ld a,(rd_acc)
+        ld c,a
+        rla
+        sbc a,a
+        ld b,a
+        add hl,bc                   ; t = acc + f/k
+        ld a,h
+        or a
+        jp m,rtp_n
+        jr nz,rtp_y                 ; (256 or more)
+        ld a,l
+        cp 128
+        jr c,rtp_n
+rtp_y:  ld a,l
+        ld (rd_acc),a               ; (t - 256)
+        ld a,1
+        jr rtp_d
+rtp_n:  ld a,l
+        ld (rd_acc),a               ; (t)
+        xor a
+rtp_d:  ld (rd_face),a
+rtp_f:  ld a,(rd_face)
+        or a
+        ld a,PZ_TV_BLACK
+        jr z,rtp_b
+        ld a,PZ_TV_FACE
+rtp_b:  add a,d
+rtp_s:  ld (rd_tvw),a
+        ret
+
+; HL / C (C 1-255) -> HL. Changes A, B.
+rd_div: xor a
+        ld b,16
+rdv_l:  add hl,hl
+        rla
+        jr c,rdv_s
+        cp c
+        jr c,rdv_n
+rdv_s:  sub c
+        inc l
+rdv_n:  djnz rdv_l
+        ret
+
+; -> the build's next element whose wanted value (not FFh: never drawn) differs from the page's:
+; NC, A = the element, C = its value, HL = its byte in the page's state (rd_elem past it); carry
+; when none is left. Elements: the TV (rd_tvw), pz_want's LEDs, timer, button, lights and bars,
+; then the board's 88 cells (their tiles).
+rd_next:
+        ld a,(rd_page)
+        or a
+        ld hl,rd_st0
+        jr z,rn_p
+        ld hl,rd_st1
+rn_p:   ld a,(rd_elem)
+        ld e,a
+        ld d,0
+        add hl,de                   ; HL = its byte in the page's state
+        or a
+        jr nz,rn_w
+        ld a,(rd_tvw)
+        ld c,a
+        inc a
+        jr z,rn_t                   ; (no TV picture yet)
+        ld a,c
+        cp (hl)
+        jr nz,rn_hit
+rn_t:   inc hl
+        inc e
+rn_w:   ld a,e
+        cp PZ_ST_CELL
+        jr nc,rn_c
+        push hl
+        ld hl,pz_want
+        add hl,de
+        ex de,hl                    ; DE = its wanted byte
+        pop hl
+        neg
+        add a,PZ_ST_CELL
+        ld b,a
+rn_wl:  ld a,(de)
+        ld c,a
+        inc a
+        jr z,rn_wn                  ; (never drawn)
+        ld a,c
+        cp (hl)
+        jr nz,rn_hit
+rn_wn:  inc de
+        inc hl
+        djnz rn_wl
+        ld e,PZ_ST_CELL
+rn_c:   ld a,e
+        cp PZ_ST_LEN
+        ccf
+        ret c                       ; (none left)
+        push hl
+        ld hl,(pzv_cells + 2)
+        ld d,0
+        add hl,de
+        ld de,0 - PZ_ST_CELL
+        add hl,de
+        ex de,hl                    ; DE = its cell
+        pop hl
+        neg
+        add a,PZ_ST_LEN
+        ld b,a
+rn_cl:  ld a,(de)
+        and 0x1F
+        cp (hl)
+        jr nz,rn_hc
+        inc de
+        inc hl
+        djnz rn_cl
+        scf
+        ret
+rn_hc:  ld c,a
+rn_hit: ld a,(rd_page)
+        or a
+        ld a,l
+        jr nz,rn_h1
+        sub rd_st0 & 0xFF
+        jr rn_h
+rn_h1:  sub rd_st1 & 0xFF
+rn_h:   ld e,a
+        inc a
+        ld (rd_elem),a
+        ld a,e
+        or a                        ; (NC)
+        ret
+
+; A = an element, C = its value -> rd_cmd: the HMMM that draws it into the page being built
+; (rd_page: DY's high byte), from the TV pictures (page 2) or the sheet (page 0).
+rd_mk:  ld b,0
+        or a
+        jr nz,rmk_l
+        ld hl,rd_tvsrc              ; the TV: picture C
+        add hl,bc
+        add hl,bc
+        add hl,bc
+        ld a,(hl)
+        ld (rd_cmd),a
+        inc hl
+        ld a,(hl)
+        ld (rd_cmd + 2),a
+        inc hl
+        ld a,(hl)
+        ld (rd_cmd + 3),a           ; (SY: page 2)
+        ld a,PZ_TV_X
+        ld e,PZ_TV_Y
+        ld bc,PZ_TV_W * 256 + PZ_TV_W
+        jp rmk_put
+rmk_l:  cp PZ_ST_TIMER
+        jr nc,rmk_t
+        dec a                       ; an LED position: digit C
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_LED_X
+        ld e,PZ_LED_Y
+        jr rmk_dg
+rmk_t:  cp PZ_ST_BUTTON
+        jr nc,rmk_b
+        sub PZ_ST_TIMER             ; a timer digit
+        ld e,a
+        ld d,0
+        ld hl,rd_tmx
+        add hl,de
+        ld a,(hl)
+        ld e,PZ_TIMER_Y
+rmk_dg: ld d,a
+        ld a,c
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_DIGIT_SX
+        ld l,PZ_DIGIT_SY
+        ld bc,PZ_DIGIT_W * 256 + PZ_DIGIT_H
+        jr rmk_sh
+rmk_b:  cp PZ_ST_LIGHT
+        jr nc,rmk_lb
+        ld a,c                      ; the button: image C
+        rrca
+        rrca
+        rrca
+        and 0x20
+        add a,PZ_BUTTON_SX
+        ld l,PZ_BUTTON_SY
+        ld d,PZ_BUTTON_X
+        ld e,PZ_BUTTON_Y
+        ld bc,PZ_BUTTON_W * 256 + PZ_BUTTON_H
+        jr rmk_sh
+rmk_lb: cp PZ_ST_CELL
+        jr nc,rmk_c
+        cp PZ_ST_BAR
+        jr nc,rmk_br
+        sub PZ_ST_LIGHT             ; a light's row: image C
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_ROW_Y
+        ld e,a
+        ld a,c
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_LIGHT_SX
+        ld l,PZ_LIGHT_SY
+        ld d,PZ_LIGHT_X
+        ld bc,PZ_LIGHT_W * 256 + PZ_LIGHT_H
+        jr rmk_sh
+rmk_br: sub PZ_ST_BAR               ; a bar's row: image C
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_ROW_Y
+        ld e,a
+        ld a,c
+        add a,a
+        add a,c
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_BAR_SX
+        ld l,PZ_BAR_SY
+        ld d,PZ_BAR_X
+        ld bc,PZ_BAR_W * 256 + PZ_BAR_H
+        jr rmk_sh
+rmk_c:  sub PZ_ST_CELL              ; a cell: tile C
+        ld e,PZ_CELL_Y
+rmk_cr: cp PZ_COLS
+        jr c,rmk_cc
+        sub PZ_COLS
+        ld d,a
+        ld a,e
+        add a,PZ_CELL_W
+        ld e,a
+        ld a,d
+        jr rmk_cr
+rmk_cc: add a,a
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_CELL_X
+        ld d,a
+        ld a,c
+        and 0x10
+        add a,PZ_CHIP_SY
+        ld l,a
+        ld a,c
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_CHIP_SX
+        ld bc,PZ_CELL_W * 256 + PZ_CELL_W
+; A = SX, L = SY (the sheet, page 0), D = DX, E = DY (in the page), B = NX, C = NY
+rmk_sh: ld (rd_cmd),a
+        ld a,l
+        ld (rd_cmd + 2),a
+        xor a
+        ld (rd_cmd + 3),a
+        ld a,d
+; A = DX, E = DY (in the page), B = NX, C = NY
+rmk_put:
+        ld (rd_cmd + 4),a
+        ld a,e
+        ld (rd_cmd + 6),a
+        ld a,(rd_page)
+        ld (rd_cmd + 7),a
+        ld a,b
+        ld (rd_cmd + 8),a
+        ld a,c
+        ld (rd_cmd + 10),a
+        ret
+
+rd_tvsrc:                           ; per TV picture its place in page 2: SX, SY
+        db PZ_TV0_SX
+        dw PZ_TV0_SY
+        db PZ_TV1_SX
+        dw PZ_TV1_SY
+        db PZ_TV2_SX
+        dw PZ_TV2_SY
+        db PZ_TV3_SX
+        dw PZ_TV3_SY
+        db PZ_TV4_SX
+        dw PZ_TV4_SY
+        db PZ_TV5_SX
+        dw PZ_TV5_SY
+        db PZ_TV6_SX
+        dw PZ_TV6_SY
+        db PZ_TV7_SX
+        dw PZ_TV7_SY
+        db PZ_TV8_SX
+        dw PZ_TV8_SY
+rd_tmx: db PZ_TMIN_X, PZ_TTEN_X, PZ_TUNIT_X     ; the timer digits' x
+
+; The cursor into the SAT of the page's set ($17B5A's sprite 0 over cell ($B0C, $B0E)): sprite 0
+; its image's colour-3 pixels, sprite 1 image 2's colour-2 pixels, then Y = 216; nothing (Y = 216
+; first) in the end sequences ($B12 = $17FE8: the original's junk sprite is not shown).
+rd_sat: ld a,(rd_page)
+        or a
+        ld hl,RD_SAT_A & 0xFFFF
+        jr z,rs_a
+        ld hl,RD_SAT_B & 0xFFFF
+rs_a:   ld e,RD_SAT_A >> 16
+        call vram_write
+        ld a,(pw_cimg)
+        cp 8
+        jr nc,rs_end                ; (no cursor)
+        ld e,a
+        ld d,0
+        ld hl,rd_cura
+        add hl,de
+        ld b,(hl)
+        ld hl,rd_curb
+        add hl,de
+        ld c,(hl)                   ; (sprite 1's pattern, FFh: none)
+        ld a,(pw_crow)
+        and 15
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_SAT_Y
+        ld d,a
+        ld a,(pw_ccol)
+        and 15
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        add a,PZ_SAT_X
+        ld e,a
+        call rs_one
+        ld b,c
+        inc c
+        call nz,rs_one
+rs_end: ld a,216
+        out (VDP_DATA),a
+        jp vram_done
+rs_one: ld a,d                      ; Y, X, 4 x the pattern, 0
+        out (VDP_DATA),a
+        ld a,e
+        out (VDP_DATA),a
+        ld a,b
+        add a,a
+        add a,a
+        out (VDP_DATA),a
+        xor a
+        out (VDP_DATA),a
+        ret
+
+rd_cura:                            ; per cursor image sprite 0's pattern,
+        db PZ_CURA_0, PZ_CURA_1, PZ_CURA_2, PZ_CURA_3, PZ_CURA_4, PZ_CURA_5, PZ_CURA_6, PZ_CURA_7
+rd_curb:                            ;   sprite 1's (FFh: none)
+        db PZ_CURB_0, PZ_CURB_1, PZ_CURB_2, PZ_CURB_3, PZ_CURB_4, PZ_CURB_5, PZ_CURB_6, PZ_CURB_7
+
+; The register list of the page built (front.asm fs_list's, with the sprites on): its page and
+; sprite set, unscrolled; the split shows the HUD as in the game.
+bs_list:
+        call next_list
+        push hl
+        inc hl
+        ld (hl),14                  ; 7 registers (10 on the V9958)
+        inc hl
+        ex de,hl
+        ld hl,rd_regs
+        ld bc,8
+        ldir
+        ex de,hl
+        ld a,(rd_page)
+        or a
+        ld bc,R2_PAGE0 * 256 + R5_SET_A
+        jr z,bl_a
+        ld bc,R2_PAGE1 * 256 + R5_SET_B
+bl_a:   ld (hl),b
+        inc hl
+        ld (hl),0x82
+        inc hl
+        ld (hl),0
+        inc hl
+        ld (hl),0x92                ; R#18
+        inc hl
+        ld (hl),c
+        inc hl
+        ld (hl),0x85
+        inc hl
+        ld a,(vdp_id)
+        cp 2
+        jp nz,list_tail
+        ex (sp),hl
+        inc hl
+        ld (hl),20
+        dec hl
+        ex (sp),hl
+        ld b,3
+        ld a,0x99
+bl_58:  ld (hl),0                   ; V9958: R#25-R#27 = 0 (one page, unscrolled)
+        inc hl
+        ld (hl),a
+        inc hl
+        inc a
+        djnz bl_58
+        jp list_tail
+rd_regs:
+        db 0, 0x97                  ; R#23 first (isr.asm iv_list: the split's R#19 from it)
+        db SPLIT_LINE, 0x93         ; R#19: the HUD's split
+        db R1_ON, 0x81
+        db R8_SPR_ON, 0x88
+
+; The stage's end: the VDP idle and the last list published on screen (front.asm fe_text then
+; shows page 0 with the sprites off); both SATs empty; page 2's tiles back (cold.asm
+; tiles_upload, the same bytes vdp_setup wrote: the title uploads them again in the product,
+; script builds have no title).
 bs_hide:
-        jp vdp_wait
+        call vdp_wait
+bh_w:   ld a,(app_seq)
+        ld b,a
+        ld a,(pub_seq)
+        cp b
+        jr nz,bh_w
+        ld hl,RD_SAT_A & 0xFFFF
+        call rd_hide
+        ld hl,RD_SAT_B & 0xFFFF
+        call rd_hide
+        ld a,BANK_FRONT
+        call bank_8000
+        ld e,4
+        jp tiles_upload
 
 ; ----- data -----
 

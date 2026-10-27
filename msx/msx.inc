@@ -385,6 +385,17 @@ pz_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immedia
 pz_tv:      equ 0xC68D              ; 2: the visit's TV pictures in puzl_gfx.bin (the immediate at $1729A)
 pz_tune:    equ 0xC68F              ; the board's tune (header byte 5: the immediate at $17441)
 pz_sfx:     equ 0xC690              ; the effect the pass's step started ($18014's D0; 0: none)
+; its renderer (msx/puzl.asm bs_feed: display pages 0 and 1, sprite sets A and B)
+rd_state:   equ 0xC691              ; 0 idle, 1 building the page not shown, 2 its list published
+rd_shown:   equ 0xC692              ; the page on screen (0, 1)
+rd_page:    equ 0xC693              ; the page being built (the other one)
+rd_elem:    equ 0xC694              ; the next element the build compares (0 to PZ_ST_LEN)
+rd_tvw:     equ 0xC695              ; the TV picture of the build (the duty rule; FFh: none yet)
+rd_acc:     equ 0xC696              ; the duty rule's accumulator (signed, 1/256)
+rd_face:    equ 0xC697              ; 1: the last build's TV shows the face
+rd_fr:      equ 0xC698              ; 2: $B00 when the last build started (a build only after a pass)
+rd_bank:    equ 0xC69A              ; the entry's uploads: the bank at 8000h
+rd_cmd:     equ 0xC69B              ; 15: the HMMM being sent (R#32-R#46)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -696,6 +707,8 @@ pw_ccol:    equ 0xEE18              ; the cursor at the pass's end: its column (
 pw_crow:    equ 0xEE19              ;   row ($B0E),
 pw_cimg:    equ 0xEE1A              ;   image 0-7 ($B12's offset / 40h; 8: $17FE8, no cursor)
 PW_LEN:     equ 27
+rd_st0:     equ 0xEE20              ; PZ_ST_LEN: what display page 0 shows (puzl.inc PZ_ST_...; FFh:
+rd_st1:     equ 0xEE90              ;   the screen's own pixels), page 1's (each in one 256-byte page)
 SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32)
 dg_msxv:    equ 0xE900              ; DIAG test builds (tools/mkrom.py, music.asm dg_main; before any level):
 dg_a8b:     equ 0xE901              ;   the BIOS's MSX version and A8h at the start (rc2.asm init),
