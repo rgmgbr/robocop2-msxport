@@ -44,6 +44,13 @@ Then it enters supervisor mode (vector `$20` trick), stores `$100` in `($C0)` an
   name is `Z` and `($8050) == 2`. **[verified]**
 - The 14 PP20 files decrunch with exact bit-stream consumption (`tools/pp20.py`).
   **[verified]**
+- FRNG and disk 1's PUZL are not PP20: their callers decrunch them after the loader with the
+  game's ByteKiller routine `$124A6` (A0 source, A1 destination; `$12528` reads the next long,
+  `$12534` a field of bits). Header: stream length, decrunched length, checksum; the stream is read
+  backwards one long at a time and the output written backwards. `$124A6` returns without testing
+  the checksum (its `rts` at `$12526`). `tools/bytekiller.py` transcribes it from the REA listing:
+  FRNG_15 and PUZL_13 give checksum 0 with every long read, and the original run on the bench gives
+  the same 170,970 bytes for FRNG. **[verified]**
 
 ### Files
 
@@ -60,7 +67,7 @@ Then it enters supervisor mode (vector `$20` trick), stores `$100` in `($C0)` an
 | RB1 | `$12588` | 10290 | the 8 letters of the title logo, BOBs with masks (48 px wide), flown in by `$106E2` (section 5) **[verified]** |
 | DATAL1–3 | `$28000` | 144716 / 105816 / 185356 | level data: tiles, map, BOBs **[verified]** |
 | MADEX | `$45250` | 25340 | level-2 BOBs **[inferred]** |
-| FRNG | `$1E980` | 93224 | bonus stage *Gun Calibration* **[inferred]** |
+| FRNG | `$1E980` | 93224 | the shooting range (*Gun Calibration*): its code, tables, graphics and FRM (a copy of the music player with its tune and effects), crunched; `$8420` decrunches it with `$124A6` into `$1EA00-$485D9` (170,970 bytes) on both visits (section 5, *The shooting range*) **[verified]** |
 | PUZL | `$17080`/`$17100` | 76012 / 113632 | bonus stage *Brainstorm*: its code, boards, graphics and PZM (a copy of the music player with its tunes); disk 1's copy is crunched and decrunched at `$17100` by `$124A6` into the bytes of disk 2's plain copy (section 5, *Brainstorm*) **[verified]** |
 
 Static-screen format: 32 bytes of OCS palette (`$0RGB`) followed by sequential planes
@@ -923,7 +930,7 @@ every screen in `screens/`.
   and `$3FF0` patched at `$1FB34`/`$1FB38`), `jsr $1EA00` → D0 dummy targets, D1 correct
   targets. Time out (`$804C`): `$8060` = `$C72E` and `$11698`. Otherwise rating = max(0, min(3,
   (6 × correct − dummy − 50 − 12 × [timer minutes = 0]) div 14)): POOR, FAIR, GOOD, SHARP
-  (`$1140D`), `$8060` = `$C716` + 24 − 8 × rating.
+  (`$1140D`), `$8060` = `$C716` + 24 − 8 × rating. The stage itself: *The shooting range* below.
 - **Gun calibration = enemy hit points**: a spawned enemy (`$C512`, `$C706`) gets slot byte
   +`$21` (= +41h from `$BC4` in *Hit test*: one off per hit while ≥ 0, so n + 1 hits kill)
   from `$8060`'s table, indexed by its class, the word at `$BEB4` + 16 × type (0–7): SHARP
@@ -1027,6 +1034,106 @@ The port's design and the full spec (pseudo-code of the loop and the step): `doc
   through the "hidden" frame, a junk sprite on the last cell; a pass never slips a frame on a real
   Amiga; the messages left in the queue print on the panel during the result screen.
 
+### The shooting range (FRNG at `$1EA00`) **[verified: REA listings of `$8420`, `$124A6` and FRNG's routines; bench runs of the original (`$8420`'s whole path, 9 drives); an executable model equal to the original in every compared field of 22 traces, 14,949 passes]**
+
+Sources: the range's area reports of 2026-10-27 (flow, logic, gfx, sound, bench), on the image
+below; the port's design and its full spec go into the range's own document, as Brainstorm's into
+`docs/BRAINSTORM.md`. Names: `analysis/frng_1ea00.sym`.
+
+- **The image for REA.** FRNG_15 (93,224 bytes, loaded at `$1E980`) decrunches into
+  `$1EA00-$485D9` (170,970 bytes, sha256 `2ec1d6a4…b6d26f`). REA opens the level-1 RAM with those
+  bytes there: `python3 -I tools/ramimage.py build/extracted build/ram/frng RB1 MU1 DATAL1 SPERMA
+  PERMA FRNG@1ea00` (`NAME@ADDR`: the file decrunched by `tools/bytekiller.py`, placed at ADDR) →
+  `build/ram/frng_full.bin` (sha256 `9470791f…5f3d91a`), raw-binary m68k, entry `0x0`, with
+  `REA_GHIDRA_SEED_FILE` = `analysis/ghidra_seeds_frng.tsv` (the main code's seeds plus
+  `analysis/frng_1ea00.sym`: `tools/ghidra_seeds.py` with the extra sym file; REA creates 161
+  functions, finds 1 present and applies 261 labels, 0 failed). The REA MCP server's environment
+  names `analysis/ghidra_seeds.tsv`: FRNG's seeds go through the REA CLI (the same rea-agents 6.7.0
+  and Ghidra, `REA_GHIDRA_SEED_FILE` set, `--snapshot` to keep the analysis between calls) or a
+  server started with that variable. The image differs from `level1_full.bin` only in
+  `$1EA00-$485D9` (MU1's tail and DATAL1 there), so main-code answers hold for both; FRNG's seeds
+  never go into `analysis/ghidra_seeds.tsv`. In the game's RAM `$1E980-$1E9FF` then holds the
+  crunched file's first 128 bytes; the image keeps level 1's there (nothing reads them).
+- **The caller** `$8420` (D0 = 1 from `load_level1` at `$8590`, D0 = 5 from `load_level2` at `$853C`;
+  no other caller): the intro `$1142D` through `$10762`; `show_picture` (PIC2 / PIC6: D0 picks only
+  the picture); `$10320` = `$1032E`; the loader with "FRNG" (`$841B`) at `$1E980`, then `$124A6`
+  into `$1EA00`, on both visits; `clr.b $804C`; `$1FB34` = `$1880` and `$1FB38` = `$3FF0` (the
+  values of the DIWSTRT and DIWSTOP moves in FRNG's copper list: the file holds `$0090` and
+  `$3FF0`); `jsr $1EA00` → D0 = `$B06` dummy targets, D1 = `$B04` correct targets; then the time
+  out or the rating (*Level statistics and bonus stages*). The rating formula matches the original
+  `$8498-$8516` run on the bench in 5,043 cases (correct and dummy 0-40, minutes 0-2).
+- **Memory map.** Code: `$1EA00` the entry, pass loop and end checks; `$1EB00` the sound delays;
+  `$1EB5C` the crosshair; `$1ED5A` a bitmap line; `$1EDBC` the BOB draw with the hit test; `$1EF6A`
+  the random word; `$1F0DA` the two slots; `$1F14E` the riser; `$1F32A` the walker;
+  `$1F3F6`/`$1F44A` the big target's draw and erase; `$1F46E` a refusal; `$1F472-$1F501` 23 stubs
+  (`lea` descriptor, `bra $1F50C`); `$1F50C` the pop-up handler; `$1F808`, `$1F83A`, `$1F940` the
+  hit effect; `$1F980` the fade; `$1F9EA` the copper interrupt; `$1FB52` the hardware init;
+  `$20000-$2CC61` FRM, the player with its tune and effects. Data: `$1EB30-$1EB5B` the music
+  divider, "NO AMMO." and "TIME OUT.", the gun's variables, the restore list; `$1ED96` blit and clip
+  masks; `$1EF88-$1F0D7` 42 script entries of 8 bytes; `$1F1C2-$1F215` the riser's tables;
+  `$1F246-$1F329` the walkers'; `$1F46C` the big target's clip; `$1F502` 10 position locks;
+  `$1F60E-$1F807` 23 descriptors of 22 bytes; `$1F8AA-$1F97D` the effects'; `$1FA8C` the sprite
+  table and `$1FA9E-$1FB51` the copper list; `$1FBEA`/`$1FC2A` the palettes of visits 1 and 2;
+  `$2CC62-$3E061` the graphics (pop-ups, walkers, riser, dissolves); `$3E062` the clean street, 5
+  planes of 320 × 172; `$466C2` the priority plane. Outside the file: the screen `$769B0`, the
+  sprite data `$7F330`, the hit test's mask buffer `$7FC50`.
+- **Entry** (`$1EA00`): FRM init; set_weapon(0); ammo `$0025`; `$1FB52` (`$FE14` through `$8028`;
+  the clean street to the screen; `$B00-$BC4` = 0; vector `$6C` = `$1F9EA`; COP1LC = `$1FA9E`; fade
+  in; the palette by `$8050` (`$1FBBE`); setup_ciab_timer 2:00); `$804C` = 0; the crosshair at (240,
+  72); tune 1, once; the two hit delays idle.
+- **The loop.** `$1EA40` waits for raster line `$C0`: one pass a frame. A pass (`$1EA4A`): COLOR00
+  = 0, fade, big erase, effect erase, random word, the slots (then the big target), effect draw,
+  crosshair, `$B00` + 1, `$B02` + 3, the music tick on 4 passes of 5 (`$1EB30` starts at 1),
+  read_joystick (for the next pass), panel digits, message ticker, sound delays. End checks
+  (`$1EAA6`): `$B08` not 0: + 1, below 99 (signed) loop, then fade out, return at fade 0 (130 passes
+  after the last shot); else ammo 0: "NO AMMO.", `$B08` = 1; else `$804C`: "TIME OUT." through
+  `jmp $8008`, whose `rts` returns to `$847A` in that pass, with no fade-out.
+- **The rules.** 25 shots (`$8030`, BCD; `$8010` per shot); fire held shoots every 25 passes
+  (`$1EB48` from `$18`), and after a release (or with no ammo) the next press shoots at once. The
+  crosshair: X `$B9A` from 240 within `$7C-$198`, Y `$B9E` from 72 within `$10-$9E`, 4 a pass, right
+  before left and down before up; the hit pixel is bitplane x X − 111, row Y. Two slots (`$B2E`,
+  `$B32`): an empty one spawns script (`$B00` & `$3F`) + 1, less 32 from 40 on (1-39); a refused
+  script costs two passes. Pop-ups: 27 scripts through 23 stubs to 22 descriptors, 9 positions, one
+  pop-up each. The riser (scripts 23-25, always armed) and the walkers (14-22, 16 kinds by `$B00` &
+  `$1E`): one big target at a time (`$BA6`). A shot in pass n is tested by every draw of pass n + 1
+  against the target's mask (a pop-up's less the priority plane: only what shows in its opening)
+  and scored in pass n + 2; armed or dummy by the hit column from the BOB's word-aligned left edge
+  (pop-ups: < the threshold, walkers: ≤). Correct: `$B04` + 1, and 10 passes later effect 3 and 25
+  points (BCD); dummy: `$B06` + 1, and 10 passes later effect 4. A hit starts a dissolve unless one
+  runs. The timer: 2:00, `$804C` set at the 121st CIA-B second. No random number is read: nothing
+  reads `$B0C`. Visit 2 (`$8050` ≥ 2) changes only the palette.
+- **State.** FRNG reuses `$B00-$BC5` (the game's camera, buffers and object slots otherwise; the sym
+  file names each field) and the globals `$802E`, `$8030`, `$8046-$8049`, `$804A-$804C`, `$8050`,
+  `$805C`. FRNG's own bytes hold state too, fresh from the file at every visit: the music divider
+  `$1EB30`, the shot flag, fire repeat and recoil box `$1EB46-$1EB4B`, the walker's kind `$1F246`,
+  the big clip `$1F46C`, the locks `$1F502` (position 6 locked in the file), the descriptors' +1,
+  +`$12` and +`$13`; and four immediates the code rewrites: `$1EE42` (the draw's right clip),
+  `$1EE76` (its C source), `$1EEC6` (its first blit's mode), `$1F9B0` (the fade's palette).
+- **Display.** 320 × 172 in 5 planes at `$769B0`, one buffer restored from `$3E062`; the status panel
+  below (COPJMP2 to `$10356`). The horizontal crosshair is a bitmap row in colour 31; the vertical
+  one attached sprite pair 0, a 1-pixel column on rows 0-167; the fire box (32n × 32n, n = 8 → 0)
+  has sprite sides (pairs 1 and 2) and bitmap top and bottom. The fade limits each component of
+  COLOR01-31 to (`$BC1` >> 1) & `$1E`, one step a pass. Quirks: restoring the old crosshair row
+  wipes that row from targets drawn in the same pass; the set-up copies 10 bytes short (row 171, x
+  240-319, plane 4); a hit big target is drawn once more under its dissolve.
+- **Sound.** FRM is MU1's player relocated to `$20000` (entries `$20000-$20018`; its instructions
+  equal MU1's but 6 per-file operands; `rc2music.py --verify` on it: 12,600 ticks, 0 differences).
+  Tune 1 starts once (channels 0-2, 5,999 ticks, no loop) and nothing in FRNG stops it (the result
+  text's `$FE14` does). Effects on channel 3: 2 a shot, 3 a correct hit (with the + 25), 4 a dummy
+  hit, under `$2022C`'s priority rule; 5 is never requested. The text screens are silent.
+- **Quirks** (kept by the port): the hit test accepts one row below a BOB, reading bytes earlier
+  blits left (T1); position 6 never opens (T2); a split target's border moves with x & 15 (T3); a
+  second armed hit within 10 passes loses one + 25 (T4); a time out in the NO AMMO. sequence still
+  gives OUT OF TIME. and POOR (T5); the time out returns at once (T6); both slots spawn script 1 in
+  pass 0 (T9); a hit on a pop-up in the pass it goes away is never scored (T10).
+- **[inferred]** (display hardware the bench does not emulate, and timing): one pass a frame on a
+  real Amiga (the bench counts 807-2,796 instructions and 552-8,928 blitter words a pass); the
+  vertical line's and the box sides' bitplane x; the box sides hidden above line `$20` (sprite DMA
+  from there); all 320 columns shown; the composer's tempo of 50 ticks a second (FRNG ticks 40 a
+  second on PAL; at 50 the tune lasts the stage's 2:00); the 3 `nop`s at `$8596`, a disk-2 prompt
+  the crack removed; `$1FC6A-$1FFFF` (an earlier build's code, "MUSRNG", "RNGBAK") and
+  `$481A2-$485D9` (FFh) unused, as nothing references them.
+
 ### Game over, high scores and continues **[verified: code]**
 
 - `main_loop` `$82A8`: PIC9 (251 VBLs or fire), 128 more VBLs, `high_score_entry` `$12082`,
@@ -1082,7 +1189,8 @@ energy and level skip; section 5).
 | `tools/copper.py` | copper list decoder | stdlib |
 | `tools/m68kdis.py` | quick listing (complements Ghidra) | Capstone |
 | `tools/ghidra_seeds.py` | REA/Ghidra seeds from the jump tables | stdlib |
-| `tools/ramimage.py` | per-level RAM images to open in REA (and Brainstorm's, with `PUZL_25`) | stdlib |
+| `tools/ramimage.py` | per-level RAM images to open in REA (and Brainstorm's, with `PUZL_25`; the range's, with `FRNG@1ea00`: a file decrunched and placed at an address) | stdlib |
+| `tools/bytekiller.py` | ByteKiller decruncher, the game's `$124A6` transcribed (FRNG, disk 1's PUZL) | stdlib |
 | `tools/rea_dump_asm.sh` | bulk Ghidra assembly export through the REA CLI | REA |
 | `tools/bobcatalog.py` | BOB catalogue and sheets from the exported assembly | stdlib |
 | `tools/player.py` | RoboCop frames from the animation table | stdlib |
@@ -1099,4 +1207,7 @@ Code analysis: **REA + Ghidra** (project rule, see `CLAUDE.md`). Targets to open
 Ghidra by `analysis/ghidra_seeds.tsv` (generated by `tools/ghidra_seeds.py` from
 `analysis/main_8000.sym`). Brainstorm has an image and seeds of its own: `build/ram/puzl_full.bin`
 (`tools/ramimage.py ... PUZL_25`) with `analysis/ghidra_seeds_puzl.tsv` (`tools/ghidra_seeds.py`
-with `analysis/puzl_17100.sym` after the main sym file); section 5, *Brainstorm*.
+with `analysis/puzl_17100.sym` after the main sym file); section 5, *Brainstorm*. So has the
+shooting range: `build/ram/frng_full.bin` (`tools/ramimage.py ... FRNG@1ea00`) with
+`analysis/ghidra_seeds_frng.tsv` (with `analysis/frng_1ea00.sym`), through the REA CLI; section 5,
+*The shooting range*.

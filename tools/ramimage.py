@@ -8,9 +8,16 @@ plain copy, at $17100). Outputs:
   <out>_full.bin : RAM from $0 to $7FFFF; $0 holds JMP $8000 (REA entry = 0x0)
   <out>_8000.bin : RAM from $8000 to $7FFFF (REA entry = 0x8000)
 
+NAME@ADDR (hex) places the file decrunched instead, at ADDR: a ByteKiller file that the game's $124A6
+decrunches after the loader (FRNG: loaded at $1E980, decrunched into $1EA00), through
+tools/bytekiller.py, which refuses a checksum that is not 0. The crunched copy is not placed.
+
 usage: ramimage.py build/extracted build/ram/level1 MU1 DATAL1 SPERMA PERMA RB1
        ramimage.py build/extracted build/ram/puzl RB1 MU1 DATAL1 SPERMA PERMA PUZL_25
        (the level-1 image with Brainstorm's PUZL at $17100-$32CDF: docs/AMIGA_ANALYSIS.md, Brainstorm)
+       ramimage.py build/extracted build/ram/frng RB1 MU1 DATAL1 SPERMA PERMA FRNG@1ea00
+       (the level-1 image with the shooting range's FRNG decrunched at $1EA00-$485D9:
+       docs/AMIGA_ANALYSIS.md, the shooting range)
 """
 from __future__ import annotations
 
@@ -18,6 +25,9 @@ import json
 import struct
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bytekiller  # noqa: E402
 
 CHIP = 0x80000
 
@@ -37,12 +47,17 @@ def main(argv: list[str]) -> int:
         d = (x / path).read_bytes()
         ram[addr:addr + len(d)] = d
     struct.pack_into(">I", ram, 0xC0, 0x100)
-    for name in argv[3:]:
+    for item in argv[3:]:
+        name, at, dest = item.partition("@")
         f = files[name]
         d = (x / f["file"]).read_bytes()
         a = f["load_address"]
+        if at:                                  # decrunched, as $124A6 does after the loader
+            d, a = bytekiller.decrunch(d), int(dest, 16)
+        if a + len(d) > CHIP:
+            raise SystemExit(f"{item}: ${a:05x}-${a + len(d):05x} does not fit in ${CHIP:05x} bytes of RAM")
         ram[a:a + len(d)] = d
-        print(f"  {name:7} ${a:05x}-${a + len(d):05x}")
+        print(f"  {name:7} ${a:05x}-${a + len(d):05x}" + (" (decrunched)" if at else ""))
     out.parent.mkdir(parents=True, exist_ok=True)
     Path(f"{out}_full.bin").write_bytes(ram)
     Path(f"{out}_8000.bin").write_bytes(ram[0x8000:])

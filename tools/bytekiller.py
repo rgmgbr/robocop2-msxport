@@ -23,8 +23,9 @@ downwards, from A1 + U to A1, by these commands:
   1 10 n(8) o(12)    n + 1 bytes from o above
   1 11 n(8)          n + 9 literal bytes
 A copy goes byte by byte downwards, so an offset below the count repeats the last o bytes. The
-commands run until the output reaches A1 (tested after each command); then D5, the checksum
-xor every long read, must be 0.
+commands run until the output reaches A1 (cmpa.l A2,A1 after each command). D5, the checksum xor
+every long read, is then 0 for an intact file: $124A6 returns it untested (its rts at $12526), and
+decrunch() refuses any other value.
 
 The original would read or write outside its buffers on a damaged stream: this decruncher refuses
 that instead (a copy from offset 0 or from beyond the output's end, a command that writes below

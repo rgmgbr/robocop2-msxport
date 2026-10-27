@@ -1,0 +1,232 @@
+# Symbols of FRNG, the shooting range (the bonus stage after Brainstorm, after levels 1 and 2), decrunched at $1EA00.
+# Format: ADDRESS NAME [comment], with +entry and +data lines, as analysis/main_8000.sym and analysis/puzl_17100.sym.
+#
+# For the RAM image with FRNG at $1EA00 only: build/ram/frng_full.bin (sha256 9470791f...5f3d91a), made by
+#   python3 -I tools/ramimage.py build/extracted build/ram/frng RB1 MU1 DATAL1 SPERMA PERMA FRNG@1ea00
+# (build/ram/level1_full.bin with FRNG_15 decrunched by tools/bytekiller.py, as $124A6 does after the loader, over
+# $1EA00-$485D9: 170,970 bytes; in level1_full.bin those addresses hold MU1's tail and DATAL1, so these names must never
+# seed a level image). $8420 also patches $1FB34 = $1880 and $1FB38 = $3FF0 (the copper list's DIWSTRT/DIWSTOP values)
+# before its jsr $1EA00; the image keeps the file's words.
+# Its REA/Ghidra seeds are analysis/ghidra_seeds_frng.tsv, the main code's plus these, as for PUZL:
+#   python3 -I tools/ghidra_seeds.py build/extracted/boot/main_8000.bin analysis/main_8000.sym \
+#       analysis/ghidra_seeds_frng.tsv analysis/frng_1ea00.sym
+# FRNG's variables below take the place of the main code's names at the same addresses ($B00-$BC5: the game's
+# camera, buffers and object slots otherwise, all cleared by $FE14 and again by frng_init_hw).
+#
+# Names: the range's logic report of 2026-10-27 (REA, Ghidra provider: the listings of FRNG's routines; bench runs of
+# the original with the project's Unicorn bench and an executable model equal to it in every compared field).
+# Checked with REA on 2026-10-27 (REA CLI 6.7.0, Ghidra provider, REA_GHIDRA_SEED_FILE = analysis/ghidra_seeds_frng.tsv:
+# 161 functions created, 1 already present, 261 labels, 0 failed): the instructions of the 17 routines next to the
+# +data ranges end on each range's first byte ($1F97E, the fade's rts, just after +data 1f972 1f97e), and no
+# instruction of them lies inside a +data range. docs/AMIGA_ANALYSIS.md "The shooting range" holds the facts.
+#
+# FRNG's routines: reached from $8420's jsr $1EA00, from the script table $1EF88 (handler = entry + its first word;
+# frng_targets calls it with jsr (0,A2,D5.w)), and from the copper interrupt (vector $6C, which frng_init_hw writes)
++entry 1ea00
++entry 1eb00
++entry 1eb5c
++entry 1ed5a
++entry 1edbc
++entry 1ef6a
++entry 1f0d8
++entry 1f0da
++entry 1f14e
++entry 1f32a
++entry 1f3f6
++entry 1f44a
++entry 1f46e
++entry 1f472
++entry 1f47a
++entry 1f482
++entry 1f48a
++entry 1f490
++entry 1f496
++entry 1f49c
++entry 1f4a2
++entry 1f4a8
++entry 1f4ae
++entry 1f4b4
++entry 1f4ba
++entry 1f4c0
++entry 1f4c6
++entry 1f4cc
++entry 1f4d2
++entry 1f4d8
++entry 1f4de
++entry 1f4e4
++entry 1f4ea
++entry 1f4f0
++entry 1f4f6
++entry 1f4fc
++entry 1f50c
++entry 1f808
++entry 1f83a
++entry 1f940
++entry 1f980
++entry 1f9ea
++entry 1fb52
+# FRM, FRNG's copy of the music player (MU1's code relocated to $20000): its 7 BRA.W entries
++entry 20000
++entry 20004
++entry 20008
++entry 2000c
++entry 20010
++entry 20014
++entry 20018
++data 1eb30 1eb5c      music divider, the two messages, the gun's and the recoil box's variables, the restore list
++data 1ed96 1edbc      the second blit's AFWM/ALWM long, then 17 clip masks
++data 1ef88 1f0d8      the 42 script entries (8 bytes each)
++data 1f1c2 1f216      h_rise's graphics, sizes and rows by frame, then an unused word
++data 1f246 1f32a      h_move's kind word, then its 6 tables of 16
++data 1f46c 1f46e      frng_big_clip
++data 1f502 1f50c      the position locks (the file holds $FF at position 6)
++data 1f60e 1f808      the 23 popup descriptors (22 bytes each)
++data 1f8aa 1f940      effect sizes (31 words, 22 used) and graphics (22 longs)
++data 1f972 1f97e      effect start and end frames by type
++data 1fa8c 1fb52      the sprite table, then the copper list $1FA9E-$1FB51
++data 1fbe8 20000      the palettes, then bytes nothing references (an earlier build's leftovers)
+1ea00 frng_main            $8420's jsr: FRM init, set_weapon(0), ammo $0025, init, $804C = 0, crosshair (240, 72), tune 1, $BBE/$BBC idle; the pass loop; D0 = dummy hits ($B06), D1 = correct hits ($B04); time out: queues "TIME OUT." and returns at once (jmp $8008)
+1ea40 frng_wait            the pass loop: waits for VHPOSR = $C0 (raster line 192), once a frame
+1ea4a frng_pass            one pass: COLOR00 = 0, fade, big erase, effect erase, random, targets, effect draw, crosshair, $B00 + 1, $B02 + 3, music (4 passes of 5), read_joystick, panel digits, ticker, sound delays
+1eaa6 frng_end_checks      $B08 not 0: + 1; below 99 (signed): loop; then fade out, at 0 return; else ammo 0: "NO AMMO.", $B08 = 1; else $804C: "TIME OUT.", return
+1eacc frng_rts             the main loop's rts (frng_sound_delays branches to it)
+1eb00 frng_sound_delays    $BBC: at its expiry (11th call) effect 3 and 25 points (BCD); else $BBE: at its expiry effect 4
+1eb30 frng_music_div       word: - 1 a pass; 0: no tick; below 0: 4 and a tick (1 in the file: ticks on passes 1-4, 6-9 ...)
+1eb32 frng_msg_no_ammo     "NO AMMOe" $FF ('e' = the font's '.')
+1eb3b frng_msg_time_out    "TIME OUTe" $FF
+1eb46 frng_shot            byte: $FF from a shot to the next pass's crosshair (every draw's hit test of that pass reads it)
+1eb48 frng_fire_repeat     word: fire held: - 1 a pass, a shot below 0 (then $18: one shot every 25 passes); fire released or no ammo: high byte $FF (the next press shoots at once); $FF18 in the file
+1eb4a frng_recoil          word: the recoil box n = 8..0 after a shot (- 1 a pass), -1 idle; $FFFF in the file
+1eb4c frng_restore_list    2 x (long address in the screen, word words - 1 (negative: none), word pad): the box's lines drawn last pass, restored from $3E062 (2 longs a word)
+1eb5c frng_crosshair       restore, recoil box (sprite pairs 1-2 and two lines), the old row restored, the shot, the move (4 px, right before left, down before up), the clamp X $7C-$198, Y $10-$9E, the row drawn
+1ed56 frng_draw_bob_out    frng_draw_bob's exit when the clip leaves no word (addq.l #4,SP; then the rts below)
+1ed58 frng_hline_rts       the rts of frng_hline's refusals
+1ed5a frng_hline           D1 row (refused outside 0-$9D), D4 byte column + 14, D3 words - 1, D2 cut: a line of $FFFF words in 5 planes, logged in the restore list
+1ed96 frng_blit_masks      long: AFWM/ALWM of the second blit (FFFFFFFF at each call; the ALWM word $1ED98 from the clip masks)
+1ed9a frng_clip_masks      17 words: 0000 0001 0003 ... 7FFF FFFF
+1edbc frng_draw_bob        A2 graphic (mask plane, then 5 planes of h x (w-1) words), D0 x, D1 y, D4 BLTSIZE: right clip ($1EE42), the first blit (mode $1EEC6) into $7FC50, the hit test (when frng_shot), the cookie-cut into the screen ($769B0) over $1EE76's planes; bitplane x = x - 128
+1ee40 frng_clip_imm        subi.w #imm,D2: the immediate $1EE42 is the right clip limit (x + 16(w-1) from it on is cut): $1F4 (500), $258 (popups), $1F46C's (big targets)
+1ee74 frng_cbase_imm       lea imm,A4: the immediate $1EE76 is the C source of both blits ($3E062 the clean background; $769B0 the screen, for the big targets and the effects)
+1eec4 frng_mode_imm        ori.w #imm,D0: the immediate $1EEC6 is the first blit's BLTCON0 low bits: $9F0 D = A (mask), $B50 D = A & ~C (mask less the priority plane), $100 D = 0 (an erase)
+1ef6a frng_random          $B0C = rol($B0C, CIA-A TALO) ^ CIA-A timer B, once a pass; nothing reads $B0C
+1ef88 frng_scripts         42 entries of 8 bytes: handler offset (word, from the entry), an offset to $1F0D8 (unused), effect type 1-4 (word), 0; entry 0 empty, 40-41 never spawned
+1f0d8 frng_rts_unused      rts: every script entry's second word points here; nothing calls it
+1f0da frng_targets         slots $B2E and $B32: an empty one spawns script ($B00 & $3F) + 1 (- $20 from $28 on), else the script's handler (A3 = slot, $BB8 = entry); D0 not 0 frees it; then frng_big_draw
+1f112 frng_spawn           the spawn: $B26/$B0E longs cleared then D0/D1's leftover words, script byte, +9 = 10, +10 = 0, $B16/$B1E/$B2E longs cleared
+1f14e frng_h_rise          scripts 23-25: one big armed target rising at x $82 + ($B00 & $FF) (lock $BA6): frames 0-4 every 2 passes, 4 held 53 more, 5-9, then gone; a hit: correct, effect at (x, $54)
+1f1c2 frng_rise_gfx        10 longs: the graphic by frame
+1f1ea frng_rise_size       10 words: BLTSIZE by frame (rows 16 32 48 70 88 88 70 48 32 16, 5 words)
+1f200 frng_rise_y          10 words: the row by frame (156 140 124 102 84 84 102 124 140 156); $1F214 an unused word
+1f216 frng_rise_hit        h_rise's hit: $B04 + 1, $BBC = 10, the effect, $BB2 = 0, $BA6 = 0, D0 = -1
+1f246 frng_move_kind       word: 2 x h_move's kind, ($B00 & $1E) at its first call ($0014 in the file)
+1f248 frng_move_y          16 words: the row by kind
+1f268 frng_move_clip       16 words: the clip limit by kind ($1A0 or $1C0, into $1F46C)
+1f288 frng_move_thr        16 words: hit x <= thr: armed (correct), else dummy (0 dummy, 99 armed, 32 split)
+1f2a8 frng_move_xoff       16 words: x offset by kind (0 or 34)
+1f2ca frng_move_size       16 words: BLTSIZE by kind
+1f2ea frng_move_gfx        16 longs: the graphic by kind
+1f32a frng_h_move          scripts 14-22: one big target sliding in from x $198 (lock $BA6): 64 passes left (1 px), 63 back right, then gone; a hit: armed or dummy by its kind's threshold, effect at (x + 6, $68)
+1f3e6 frng_big_end         clr.w $BA6, clr.b $BB2, D0 = -1
+1f3f6 frng_big_draw        $BB2 = 0; when $BA8: draws the big target into the screen (mode $9F0, C = the screen, clip from $1F46C), then $BB2 = the hit, $BB5 = the hit x
+1f44a frng_big_erase       when $BA8: $BA8 = 0 and the last big target erased (mode $100)
+1f46c frng_big_clip        word: the clip limit frng_big_draw uses ($1C0 in the file; the handlers set it every pass)
+1f46e frng_h_reject        moveq #-1,D0; rts: a script refused (its position or the big lock taken)
+1f472 frng_stub_26         lea $1F7DC,A0; bra frng_h_popup (and so on: frng_stub_N = script N's descriptor)
+1f47a frng_stub_27         $1F7B0 (position 6: never shown)
+1f482 frng_stub_28         $1F784
+1f48a frng_stub_1          $1F758
+1f490 frng_stub_29         $1F742
+1f496 frng_stub_30         $1F72C
+1f49c frng_stub_3          $1F700
+1f4a2 frng_stub_31         $1F6EA
+1f4a8 frng_stub_2          $1F716
+1f4ae frng_stub_4          $1F7F2
+1f4b4 frng_stub_5          $1F7C6 (position 6: never shown)
+1f4ba frng_stub_7          $1F79A
+1f4c0 frng_stub_6          $1F76E
+1f4c6 frng_stub_34         $1F60E
+1f4cc frng_stub_35         $1F624
+1f4d2 frng_stub_36         $1F63A
+1f4d8 frng_stub_37         $1F650 (also scripts 40)
+1f4de frng_stub_10         $1F692
+1f4e4 frng_stub_11         $1F6A8 (also scripts 33, 38, 39, 41)
+1f4ea frng_stub_12         $1F6BE
+1f4f0 frng_stub_13         $1F6D4
+1f4f6 frng_stub_8          $1F63A (as frng_stub_36)
+1f4fc frng_stub_9          $1F67C (also script 32)
+1f502 frng_locks           10 bytes: $FF while a popup holds the position; $FF at position 6 in the file (never cleared)
+1f50c frng_h_popup         A0 descriptor, A3 slot: first call takes the position or is refused; rise (speed, duration), hold, lower, then gone; a hit (seen a pass later): armed if hit x < thr, the effect, erased; else drawn (mode $B50, clip $258) and the hit test stored in the descriptor
+1f538 frng_popup_move      D0/D1 from the offset before this pass's change; the phase logic
+1f5e2 frng_popup_draw      the draw: mode $B50, clip $258, then +$12 = $B0B, +$13 = $BA3
+1f60e frng_descriptors     23 x 22 bytes: +0 position, +1 phase (FF rise, 1 hold, 2 lower), +2 coordinate A (x; y when +$B), +4 coordinate B base, +7 rise/lower passes, +8 speed, +$A hold passes, +$B horizontal, +$C BLTSIZE, +$E graphic, +$12 hit, +$13 hit x, +$14 threshold
+1f666 frng_desc_unused     descriptor 4: no stub points to it
+1f808 frng_fx_erase        mode $100; when $B3E: the effect's last frame erased
+1f83a frng_fx_draw         C = the screen, mode $9F0; $BB6 - 1 every pass; when $B3E: below 0 $BB6 = 3 and the frame + $B3E; at the end frame $B3E = 0, else the frame drawn
+1f8aa frng_fx_size         words: BLTSIZE by frame (0-21 used)
+1f8e8 frng_fx_gfx          22 longs: the graphic by frame
+1f940 frng_fx_start        D5 type, D0 x, D1 y: unless one runs ($B3E), frames $1F974[D5]..$1F979[D5] - 1 at (x, y - 8), $BB6 = 3
+1f974 frng_fx_first        bytes by type 1-4: 0 4 8 16
+1f979 frng_fx_end          bytes by type 1-4: 4 8 12 22
+1f97e frng_fade_rts        the rts the fade branches to at either end
+1f980 frng_fade            $BC1 towards $1F ($BC0 set) or 0 (at 0 the palette immediate $1F9B0 back to $1FBEA); COLOR01-31 limited to ($BC1 >> 1) & $1E
+1f9b0 frng_palette_imm     the lea's immediate: the palette ($1FBEA; $1FC2A when $8050 >= 2)
+1f9ea frng_irq_copper      level 3 (COPER at line $10): BPL1-5PT = $769B0 + n $1AE0; sprite pairs 0-3 attached, all on $7F330/$7F488; pair 0 at H $B9A, V $22, 172 lines; pairs 1-3 from frng_sprite_table
+1fa8c frng_sprite_table    3 x (H, VSTART, height): pairs 1-2 the recoil box's sides, pair 3 unused (0); 3 more words read past it
+1fa9e frng_copper          copper list: COPER at $10, COLOR01-31, DDF $34-$CC, DIWSTRT/DIWSTOP ($1FB34/$1FB38, patched by $8420 to $1880/$3FF0), sprites on at $20, BPLCON0 $5200 at $22, COPJMP2 (the panel)
+1fb52 frng_init_hw         $FE14 ($8028); background $3E062 -> screen $769B0; $B00-$BC4 = 0; sprite data $0001; vector $6C; COP1LC; $BC1 = 0, $BC0 = $FF; $802C = 0; the palette by $8050; DMACON $85A0; setup_ciab_timer(2:00)
+1fbea frng_palette_v1      31 words COLOR01-31 ($8050 < 2)
+1fc2a frng_palette_v2      31 words ($8050 >= 2)
+1fc6a frng_leftovers       to $1FFFF: an earlier build's code and copper list, "MUSRNG", "RNGBAK": nothing references them
+20000 frm_entry_init       FRM: bra.w $20180 (init)
+20004 frm_entry_stop_all   bra.w $20194
+20008 frm_entry_stop_tune_a bra.w $201E8
+2000c frm_entry_stop_tune_b bra.w $201E8
+20010 frm_entry_music      bra.w $2024E (tune D0 as music: tune 1 at the start)
+20014 frm_entry_effect     bra.w $2022C (tune D0 as an effect: 2 a shot, 3 an armed hit, 4 a dummy hit)
+20018 frm_entry_tick       bra.w $20316 (one tick)
+2cc62 frng_gfx_popups      popup targets' graphics ($2CC62, $2CDCA, $2CF32, $2D202, $2D4D2, $2D7A2, $2DA72, $2DE32)
+2e972 frng_gfx_movers      h_move's graphics ($2E972, $2F272, $2F7B2, $2FF92, $30802, $33C22)
+30c82 frng_gfx_rise        h_rise's 5 frames ($30C82, $31D02, $32A22, $33322, $33922)
+346a2 frng_gfx_effects     the hit effects' frames ($346A2-$3CFE2)
+3e062 frng_background      the clean background: 5 planes of $1AE0 (320 x 172, 40 bytes a line); read only
+466c2 frng_priority        the 6th plane: 1 where the scenery hides the popups (mode $B50); read only
+769b0 frng_screen          the shown screen: 5 planes of $1AE0 (one buffer)
+7f330 frng_sprite_data     $2B0 words of $0001 (the sprites' 1-pixel lines)
+7fc50 frng_hit_mask        the first blit's output (rows of 2(w - k) bytes, no modulo): the hit test reads it
+# FRNG's variables: its use of $B00-$BC5 (cleared by $FE14 and again by frng_init_hw, $B00-$BC4)
+b00   frng_pass            word: passes so far (+ 1 a pass, after the crosshair)
+b02   frng_pass3           word: + 3 a pass; nothing reads it
+b04   frng_correct         word: armed targets hit (returned in D1)
+b06   frng_dummy           word: dummy targets hit (returned in D0)
+b08   frng_end_count       word: 0 in play; 1 from "NO AMMO." on, + 1 a pass (the fade out from 99 on); 1 at a time out
+b0b   frng_hit             byte: frng_draw_bob's hit test ($FF a hit); popups and frng_big_draw copy it
+b0c   frng_random          word: frng_random's word; nothing reads it
+b0e   frng_slot0_leftover  word: written at a spawn with D1's leftover; nothing reads it (slot 1: $B12)
+b10   frng_slot0_offset    word: the popup's offset (rise and lower); slot 1: $B14
+b16   frng_slot0_unused    longs $B16/$B1A, $B1E/$B22: cleared at a spawn, nothing reads them
+b26   frng_slot0_x         word: x of a big target (a popup's +2 copy, never read); a spawn's D0 leftover until the first call; slot 1: $B2A
+b28   frng_slot0_hold      word: h_rise's hold count ($34); slot 1: $B2C
+b2e   frng_slot0_state     long: popup: byte 0 the phase countdown, byte 3 the first-call flag; big: byte 0 the flag, word 2 the counter; slot 1: $B32
+b36   frng_slot0_script    byte: the script 1-39 (0 empty); +1 = 10, +2 = 0 (never read); slot 1: $B3A
+b3e   frng_fx_step         byte: 1 while an effect runs, 0 idle ($B3F-$B45 unused)
+b46   frng_fx_frame        byte: the effect's frame
+b4e   frng_fx_end          byte: its end frame
+b56   frng_fx_x            word
+b66   frng_fx_y            word: the start's D1 - 8
+b9a   frng_cross_x         word: crosshair X, $7C-$198 (240 at the start); the hit pixel is BOB x X + 17 (bitplane x X - 111)
+b9e   frng_cross_y         word: crosshair Y = bitplane row, $10-$9E (72 at the start)
+ba2   frng_hit_x           word: X + 17 - (x & $FFF0) when inside the BOB's word-aligned box (0..16w-1, rows 0..h), else high byte $FF
+ba4   frng_hit_row         word: Y - y
+ba6   frng_big_busy        byte: $FF while a big target (h_rise or h_move) is out
+ba8   frng_big_size        word: the big target's BLTSIZE to draw this pass (0 none); cleared by frng_big_erase
+baa   frng_big_gfx         long
+bae   frng_big_x           word
+bb0   frng_big_y           word
+bb2   frng_big_hit         byte: frng_big_draw's hit test, seen by the handler the next pass
+bb4   frng_big_hitx        word: the hit x (low byte $BB5; the high byte stays 0)
+bb6   frng_fx_delay        byte: - 1 every pass; the effect's frame advances when it goes below 0 (then 3)
+bb8   frng_script_entry    long: the running slot's script entry ($1EF88 + 8 n): its word 2 is the effect type
+bbc   frng_correct_delay   word: 10 at an armed hit; effect 3 and 25 points at its 11th call; $FF00 idle
+bbe   frng_dummy_delay     word: 10 at a dummy hit; effect 4 at its 11th call; $FF00 idle
+bc0   frng_fade_in         byte: $FF fade in, 0 fade out
+bc1   frng_fade_level      byte: 0-$1F
