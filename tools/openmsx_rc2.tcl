@@ -1545,3 +1545,215 @@ proc rc2_pz_disarm {} {
 		}
 	}
 }
+
+# ---------------------------------------------------------------- the shooting range (FRNG)
+# The bonus stage's driven trace, which tools/frngcmp.py compares with tools/amigaemu.py frng
+# --trace-ram pass by pass (one pass = one FRNG frame: the Amiga's frame loop $1EA40-$1EAFA).
+# The port provides, by the labels of the ROM's label file:
+#   fr_tick    the instruction 'call fr_frame' at the start of every pass, after the pass's wait,
+#              hud_keep and sec_tick, before anything else of the pass (the Amiga's $1EA4A); the
+#              breakpoint checks its bytes (CD lo hi), so it fires only where the stage's bank is
+#              mapped;
+#   fr_frame   its target;
+#   fr_done    fixed code (a ret), reached once when the stage returns, before anything changes the
+#              mirror (the Amiga's $847A);
+#   fr_rated   fixed code (a ret), reached once after ac_diff is set, on both paths (the rating and
+#              the time out: the Amiga's $8518 and $848C);
+#   fr_code    FRNG's code-area state: 526 bytes, $1EB46-$1EB4B, $1F246-$1F247, $1F46C-$1F46D,
+#              $1F502-$1F50B and $1F60E-$1F807 one after the other (tools/frngcmp.py PIECES);
+#   ac_diff, diff_tab   the rating's readout: the word at ac_diff less diff_tab (0 SHARP, 8 GOOD,
+#              16 FAIR, 24 POOR or a time out; the Amiga's $8060 less $C716);
+#   ext_joy    (EXTJOY=1 builds) the joystick byte the stage's read_joystick takes;
+#   the mirror FRNG's variables $B00-$BC5 at D000h-D0C5h and the globals $8000-$80FF at
+#              DC00h-DCFFh (msx/msx.inc AM, AG); fr_code in the same rule (words little-endian, the
+#              byte at A at A ^ 1).
+# The file: a first line "# D000 DC00 <fr_code>", then one line a pass (from FRNG frame 'from' on,
+# 'n' lines at most): D000h-D0C5h, DC00h-DCFFh and the 526 bytes at fr_code as hex; at fr_done
+# "# result DUMMY CORRECT TIMEOUT" ($B06, $B04 and $804C from the mirror), at fr_rated "# rating
+# OFFSET". After a pass's line, that pass's input as tools/amigaemu.py frng applies it: the
+# joystick byte of FRNG frame $B00 (D000h) into ext_joy (0 past the script), then the pokes of that
+# frame (Amiga addresses of AM, AG or fr_code's pieces; size 1 or 2; another address is skipped
+# with a "# poke ... skipped" line). 'script': tools/drivejoy.py's four lines (its teleports and god
+# mode are not used). At the n-th line or at fr_rated: the file closed, the breakpoints removed,
+# ::rc2_trace_done = 1 and the emulation paused; ::rc2_fr_result holds "DUMMY CORRECT TIMEOUT" ({}
+# when the stage did not return) and ::rc2_fr_rating the offset (-1 before fr_rated). Poll
+# ::rc2_trace_done from the session; never vwait inside msx_local_cmd. These procs never call
+# exit, vwait, max or min, and open the file once.
+
+# rc2_fr_drive: a fresh start of 'rom' (an EXTJOY=1 PZ_TEST=2 build, with PZ_LEVEL=2 for the
+# second visit; 'labels' its label file): every breakpoint and condition removed, the cartridge
+# inserted again, the machine reset, then rc2_fr_arm.
+proc rc2_fr_drive {rom labels file n from script} {
+	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
+	foreach {id opts} [debug condition list] { debug condition remove $id }
+	carta eject
+	carta insert $rom -romtype KonamiSCC
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	reset
+	rc2_fr_arm $labels $file $n $from $script
+}
+
+# rc2_fr_arm: the same trace in the running machine, without a reset, other breakpoints kept: the
+# stage reached from a played level 1 and Brainstorm (rc2_drive_rom with build/emu/drive_end.txt,
+# then rc2_pz_arm with build/emu/pz_fail.drive, paused at its end: rc2_fr_arm resumes the
+# emulation, and the game runs on through Brainstorm's result and the range's intro into the
+# stage). ext_joy is cleared, so the text screens before the stage see no input and run their
+# whole length.
+proc rc2_fr_arm {labels file n from script} {
+	rc2_fr_disarm
+	set f [open $script r]
+	set ::rfr_joy [string trim [gets $f]]
+	gets $f
+	gets $f
+	set ::rfr_poke {}
+	foreach t [split [string trim [gets $f]]] {
+		if {$t ne ""} { lappend ::rfr_poke [split $t :] }
+	}
+	close $f
+	set ::rfr_code [rc2_label $labels fr_code]
+	set ::rfr_extjoy [rc2_label $labels ext_joy]
+	set ::rfr_done [rc2_label $labels fr_done]
+	set ::rfr_rated [rc2_label $labels fr_rated]
+	set ::rfr_acdiff [rc2_label $labels ac_diff]
+	set ::rfr_difftab [rc2_label $labels diff_tab]
+	set tick [rc2_label $labels fr_tick]
+	set target [rc2_label $labels fr_frame]
+	set ::rfr_left $n
+	set ::rfr_from $from
+	set ::rfr_seen 0
+	set ::rfr_op -1
+	set ::rfr_op2 -1
+	set ::rc2_trace_done 0
+	set ::rc2_fr_result {}
+	set ::rc2_fr_rating -1
+	set ::rfr_out [open $file w]
+	puts $::rfr_out [format "# D000 DC00 %04X" $::rfr_code]
+	poke $::rfr_extjoy 0
+	set cond "\[peek $tick\] == 0xCD && \[rc2_w [expr {$tick + 1}]\] == $target"
+	set ::rfr_bp [debug set_bp $tick $cond rc2_fr_hit]
+	set ::rfr_bp2 [debug set_bp $::rfr_done {} rc2_fr_end]
+	set ::rfr_bp3 [debug set_bp $::rfr_rated {} rc2_fr_rated]
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	return "driving FRNG into $file; poll ::rc2_trace_done"
+}
+
+# The MSX address of an Amiga address in the trace: AM ($B00-$BC5) at C500h + A, AG ($8000-$80FF)
+# at 5C00h + A, fr_code's pieces at fr_code + their offset (a word there little-endian, a byte at
+# the returned address ^ 1); -1 for any other address.
+proc rc2_fr_addr {a} {
+	if {$a >= 0x8000 && $a < 0x8100} { return [expr {0x5C00 + $a}] }
+	if {$a >= 0xB00 && $a < 0xBC6} { return [expr {0xC500 + $a}] }
+	set off 0
+	foreach {base len} {0x1EB46 6 0x1F246 2 0x1F46C 2 0x1F502 10 0x1F60E 506} {
+		if {$a >= $base && $a < $base + $len} { return [expr {$::rfr_code + $off + $a - $base}] }
+		incr off $len
+	}
+	return -1
+}
+
+proc rc2_fr_hit {} {
+	if {$::rc2_trace_done} return
+	if {!$::rfr_seen} {
+		set ::rfr_seen 1
+		set ::rfr_op [peek $::rfr_done]     ;# (fr_done's and fr_rated's first bytes: the stage's slot)
+		set ::rfr_op2 [peek $::rfr_rated]
+	}
+	set pf [rc2_w 0xD000]
+	if {$pf >= $::rfr_from && $::rfr_left > 0} {
+		binary scan [debug read_block memory 0xD000 0xC6] H* vars
+		binary scan [debug read_block memory 0xDC00 0x100] H* glob
+		binary scan [debug read_block memory $::rfr_code 526] H* code
+		puts $::rfr_out "$vars $glob $code"
+		incr ::rfr_left -1
+		if {$::rfr_left == 0} {
+			rc2_fr_stop
+			return
+		}
+	}
+	set i [expr {2 * $pf}]
+	set b [string range $::rfr_joy $i [expr {$i + 1}]]
+	poke $::rfr_extjoy [expr {$b eq "" ? 0 : "0x$b"}]
+	foreach t $::rfr_poke {
+		lassign $t tf pa pv ps
+		if {$tf == $pf} {
+			set m [rc2_fr_addr [expr {$pa}]]
+			if {$m < 0} {
+				puts $::rfr_out "# poke [join $t :] skipped: not in the trace's blocks"
+			} elseif {$ps == 1} {
+				poke [expr {$m ^ 1}] [expr {$pv & 0xFF}]
+			} else {
+				rc2_wset $m $pv
+			}
+		}
+	}
+}
+
+# fr_done's and fr_rated's breakpoints fire at their addresses in any slot: hits before the stage's
+# first pass, or with another byte there than at that pass, are not the stage's.
+proc rc2_fr_end {} {
+	if {$::rc2_trace_done || !$::rfr_seen || $::rc2_fr_result ne ""} return
+	if {[peek $::rfr_done] != $::rfr_op} return
+	set ::rc2_fr_result [list [rc2_w 0xD006] [rc2_w 0xD004] [peek [expr {0xDC4C ^ 1}]]]
+	catch { puts $::rfr_out "# result $::rc2_fr_result" }
+}
+
+proc rc2_fr_rated {} {
+	if {$::rc2_trace_done || !$::rfr_seen || $::rc2_fr_result eq ""} return
+	if {[peek $::rfr_rated] != $::rfr_op2} return
+	set ::rc2_fr_rating [expr {([rc2_w $::rfr_acdiff] - $::rfr_difftab) & 0xFFFF}]
+	catch { puts $::rfr_out "# rating $::rc2_fr_rating" }
+	rc2_fr_stop
+}
+
+proc rc2_fr_stop {} {
+	rc2_fr_disarm
+	set ::rc2_trace_done 1
+	set ::pause on
+}
+
+# The trace's file closed and its three breakpoints removed (the names unset: a later open may get
+# the same channel name, which a second close must not reach).
+proc rc2_fr_disarm {} {
+	if {[info exists ::rfr_out]} {
+		catch { close $::rfr_out }
+		unset ::rfr_out
+	}
+	foreach v {::rfr_bp ::rfr_bp2 ::rfr_bp3} {
+		if {[info exists $v]} {
+			catch { debug remove_bp [set $v] }
+			unset $v
+		}
+	}
+}
+
+# rc2_fr_timeout: a time out at the range's next first pass, for the builds whose timer stands still
+# (EXTJOY=1, or a JOY script): at the next fr_tick hit (the stage's bank mapped) it pokes AG $804C
+# (DC4Dh) = FFh, so that the stage returns at the end of that pass ("TIME OUT.") and front_range
+# shows OUT OF TIME. with POOR; then it removes its breakpoint and sets ::rc2_fr_timeout_done = 1.
+# One-shot: arm it again for a later visit. It neither pauses nor resumes the emulation and keeps
+# every other breakpoint (a trace by rc2_fr_arm may run at the same time).
+proc rc2_fr_timeout {labels} {
+	rc2_fr_timeout_off
+	set tick [rc2_label $labels fr_tick]
+	set target [rc2_label $labels fr_frame]
+	set ::rc2_fr_timeout_done 0
+	set cond "\[peek $tick\] == 0xCD && \[rc2_w [expr {$tick + 1}]\] == $target"
+	set ::rft_bp [debug set_bp $tick $cond rc2_fr_timeout_hit]
+	return "the range's next pass times out; poll ::rc2_fr_timeout_done"
+}
+
+proc rc2_fr_timeout_hit {} {
+	if {$::rc2_fr_timeout_done} return
+	poke [expr {0xDC4C ^ 1}] 0xFF
+	set ::rc2_fr_timeout_done 1
+	rc2_fr_timeout_off
+}
+
+proc rc2_fr_timeout_off {} {
+	if {[info exists ::rft_bp]} {
+		catch { debug remove_bp $::rft_bp }
+		unset ::rft_bp
+	}
+}

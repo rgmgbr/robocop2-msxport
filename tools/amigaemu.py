@@ -34,6 +34,21 @@ stage's variables recorded, until $17100 returns D0 (0 solved, 1 failed, 2 out o
 music player ($18000, PZM) is skipped as MU1's is. The timer (CIA-B, level 6) stands still unless
 --sec N raises it after every N-th PUZL frame.
 
+"frng" runs the shooting range, the bonus stage after Brainstorm (load_level1 $8582 -> $8420 with D0 =
+1, load_level2 $8524 -> $8420 with D0 = 5): the same set-up ($FEDA, $FFC4), $8050 = the level done,
+then what $8420 does from its loader call on (FRNG by the game's loader at $1E980, decrunched by the
+game's $124A6 into $1EA00; $8420 entered at $845E: clr.b $804C, its two patches of FRNG's copper list,
+jsr $1EA00, the rating), or with --via-8420 the whole of $8420 (intro text, PIC2 / PIC6, loader).
+FRNG keeps its own frame loop: $1EA40 waits for raster line $C0, which the bench's VHPOSR gives at
+once, so the bench frame ends there (one FRNG frame a VBL, as on the Amiga while a frame's work fits
+in a frame). At the start of every FRNG frame ($1EA4A) the joystick script is applied and the
+stage's variables recorded, until $1EA00 returns D0 (dummy targets) and D1 (correct targets) and
+$8420 sets the next level's hit-point table ($8060) and the result text ($848C out of time, $8518
+the rating). FRNG's music player (FRM's: MU1's player code at $20000) is skipped: GameBench's MU1
+hook, which would cover FRNG's own code at $1EA00-$27FFF, moves to $20000-$2001B. FRNG reads no
+random number (its $1EF6A word, from the CIA timers, has no reader). The timer (CIA-B, level 6)
+stands still unless --sec N raises it after every N-th FRNG frame.
+
 Depends on Unicorn (pip install unicorn).
 
 usage:
@@ -49,6 +64,11 @@ usage:
                    [--trace OUT.jsonl] [--trace-ram] [--screenshot OUT.png] [--dump OUT.bin]
      (--joy PUZLFRAME:COUNT:KEYS, PUZL frames counted from its first; --drive: tools/drivejoy.py's
      file, its joystick bytes and pokes)
+  amigaemu.py frng [--level 1] [--via-8420] --fframes 3000 [--joy 0:11:dr --joy 32:1:f ...]
+                   [--drive FILE] [--poke F:ADDR:VALUE[:SIZE] ...] [--sec 50]
+                   [--trace OUT.jsonl] [--trace-ram] [--screenshot OUT.png] [--dump OUT.bin]
+     (--joy FRNGFRAME:COUNT:KEYS, FRNG frames counted from its first; the last trace line holds the
+     result and the rating)
 """
 from __future__ import annotations
 
@@ -486,7 +506,8 @@ class GameBench(AmigaEmu):
         self.uc.hook_add(UC_HOOK_CODE, self._on_sentinel, None, SENTINEL, SENTINEL + 1)
         # the music player (MU1 at $18000, called from the interrupt) waits on audio hardware the
         # bench lacks: every call into it returns at once (the game logic does not depend on it)
-        self.uc.hook_add(UC_HOOK_CODE, self._on_music, None, MUSIC[0], MUSIC[1] - 1)
+        self._music_hook = self.uc.hook_add(UC_HOOK_CODE, self._on_music, None, MUSIC[0], MUSIC[1] - 1)
+        self._frame_done = False        # (the frng mode: a FRNG frame's work ended, the bench frame ends)
 
     def _on_music(self, uc, address, size, user_data):
         sp = uc.reg_read(UC_M68K_REG_A7)
@@ -536,6 +557,9 @@ class GameBench(AmigaEmu):
                 self._service_loader()
                 budget -= 100
                 continue
+            if self._frame_done:        # (the frng mode: one FRNG frame per bench frame)
+                self._frame_done = False
+                break
             budget -= chunk
         self.vpos = 0
         if not self._sentinel_hit:      # (no interrupt on top of a routine that returned)
@@ -822,6 +846,185 @@ class PuzlBench(GameBench):
         write_png(path, 640, 352, render(idx, pal, False, 2))
 
 
+# ---------------------------------------------------------------- the shooting range (FRNG)
+FRNG_PACKED, FRNG_ENTRY = 0x1E980, 0x1EA00   # the loader's copy (crunched), and where $124A6 decrunches it
+RANGE = 0x8420                              # load_level1's call (D0 = 1: PIC2), load_level2's (D0 = 5: PIC6)
+RANGE_LOADED = 0x845E                       # $8420 after its loader call and $124A6: clr.b $804C, the patches, jsr $1EA00
+RANGE_RET = 0x847A                          # $8420 right after its jsr $1EA00: D0 dummy targets, D1 correct ones
+RANGE_TEXTS = {0x848C: "out of time", 0x8518: "calibration"}   # its result texts' set-ups ($11698, $113A5)
+FRNG_PATCHES = ((0x1FB34, 0x1880), (0x1FB38, 0x3FF0))  # $8420's: DIWSTRT and DIWSTOP in FRNG's copper list
+                                            # (its own code applies them: setup() enters it at $845E)
+FRNG_LOOP = 0x1EA40                         # FRNG's frame loop: its wait for raster line $C0
+FRNG_FRAME_START = 0x1EA4A                  # right after the wait: a FRNG frame's start (COLOR00 = 0)
+FRNG_PLAYER = (0x20000, 0x2001C)            # FRM's player (MU1's player code, relocated to $20000): its
+                                            # jump table, skipped as MU1's is
+FRNG_VARS = (0xB00, 0xBC6)                  # FRNG's variables ($1FB52 clears $B00-$BC4; an even length)
+FRNG_CODE = ((0x1EB30, 0x1EB32),            # state kept inside FRNG (its write census, scripts/census.py):
+             (0x1EB46, 0x1EB5A),            # the music divider (sound timing); the shot flag $1EB46, its
+             (0x1F246, 0x1F248),            # repeat count $1EB48, the flash count $1EB4A, the flash's two
+             (0x1F46C, 0x1F46E),            # saved line areas $1EB4C-$1EB59 (display); the moving target's
+             (0x1F502, 0x1F50C),            # track; the pending draw's right clip; the lanes' locks (lane 6
+             (0x1F60E, 0x1F808),            # shipped locked); the 23 descriptor records (22 used: phase +1,
+             (0x1F9B0, 0x1F9B4),            # hit +$12, hit column +$13); the palette pointer (the fade's
+             (0x1FA8C, 0x1FA98),            # lea: display); the flash's sprite records (display); and
+             (0x1ED96, 0x1ED9A), (0x1EE42, 0x1EE44), (0x1EE76, 0x1EE7A), (0x1EEC6, 0x1EEC8))  # draw_bob's
+                                            # per-call immediates (display)
+FRNG_TRACE = {                              # name: (address, size, signed)
+    "game_frame": (0xB00, 2, False), "anim": (0xB02, 2, False), "correct": (0xB04, 2, False),
+    "dummy": (0xB06, 2, False), "endc": (0xB08, 2, False), "hit": (0xB0B, 1, False),
+    "cx": (0xB9A, 2, True), "cy": (0xB9E, 2, True), "hitcol": (0xBA2, 2, True), "tlock": (0xBA6, 1, False),
+    "pend": (0xBA8, 2, False), "pend_x": (0xBAE, 2, True), "pend_y": (0xBB0, 2, True), "pend_hit": (0xBB2, 1, False),
+    "sfx_ok": (0xBBC, 2, True), "sfx_bad": (0xBBE, 2, True), "fade_in": (0xBC0, 1, False),
+    "fade": (0xBC1, 1, False), "type0": (0xB36, 1, False), "type1": (0xB3A, 1, False),
+    "shot": (0x1EB46, 1, False), "rep": (0x1EB48, 2, True), "flash": (0x1EB4A, 2, True),
+    "joy": (0x802E, 1, False), "ammo": (0x8030, 2, False), "timer": (0x804A, 2, False),
+    "timeout": (0x804C, 1, False), "score": (0x8046, 4, False),
+}
+
+
+class FrngBench(PuzlBench):
+    """The shooting range (FRNG) on the bench: the module's docstring, "frng"."""
+
+    def __init__(self, extracted: Path, ram: Path, *, verbose: bool = False):
+        super().__init__(extracted, ram, verbose=verbose)
+        # GameBench's MU1 hook covers $18000-$27FFF, FRNG's own code: FRM's player is skipped instead
+        self.uc.hook_del(self._music_hook)
+        self._music_hook = self.uc.hook_add(UC_HOOK_CODE, self._on_music, None, FRNG_PLAYER[0], FRNG_PLAYER[1] - 1)
+        self.uc.hook_add(UC_HOOK_CODE, self._on_frng_loop, None, FRNG_LOOP, FRNG_LOOP + 1)
+        self._frng_busy = False         # a FRNG frame's work under way ($1EA4A up to the next $1EA40)
+        self.returned: dict | None = None   # D0, D1 and the timer when $1EA00 returned
+        self.rating: dict | None = None     # what $8420 then set up: $8060, the result text's fields
+
+    def _on_frng_loop(self, uc, address, size, user_data):
+        """FRNG waits for raster line $C0 ($1EA40), which the bench's VHPOSR (one line a read) gives at
+        once: the frame's work done, the bench frame ends here, so that every FRNG frame gets one VBL
+        (as on the Amiga while a frame's work fits in a frame)."""
+        if self._frng_busy:
+            self._frng_busy = False
+            self._frame_done = True
+            uc.emu_stop()
+
+    def setup(self, level: int = 1, via_8420: bool = False) -> None:
+        """A new game's set-up, level 'level' done ($8050), then the range: with via_8420 the call
+        of $8420 itself (D0 = 1 or 5: intro text, PIC2 / PIC6, loader; fire pulsed until FRNG starts),
+        else its steps from $8436 on: $10320 = $1032E, FRNG by the loader at $1E980, decrunched by
+        $124A6 into $1EA00, then $8420 entered at $845E (clr.b $804C, the two patches, jsr $1EA00,
+        the rating) with the sentinel as its return address (play() runs it)."""
+        self.boot_game()
+        self.uc.mem_write(0x8050, struct.pack(">H", level))
+        if via_8420:
+            self.uc.reg_write(d_reg(0), 4 * level - 3)
+            self.pulse_fire = True
+            self._push_call(RANGE)
+            return
+        self.uc.mem_write(0x10320, struct.pack(">I", 0x1032E))
+        self.load_file("FRNG")
+        self.uc.reg_write(a_reg(0), FRNG_PACKED)
+        self.uc.reg_write(a_reg(1), FRNG_ENTRY)
+        self.call(DECRUNCH)
+        self._push_call(RANGE_LOADED)
+
+    def frng_row(self, n: int, keys: str, ram: bool) -> dict:
+        """The stage's variables at the start of FRNG frame n (with ram: the whole state as hex)."""
+        row = {"frame": n} | {name: self.read_var(*spec) for name, spec in FRNG_TRACE.items()}
+        row["keys"] = keys
+        if ram:
+            row["vars"] = bytes(self.uc.mem_read(FRNG_VARS[0], FRNG_VARS[1] - FRNG_VARS[0])).hex()
+            row["glob"] = bytes(self.uc.mem_read(GLOB_BLOCK[0], GLOB_BLOCK[1] - GLOB_BLOCK[0])).hex()
+            row["code"] = {f"{lo:x}": bytes(self.uc.mem_read(lo, hi - lo)).hex() for lo, hi in FRNG_CODE}
+        return row
+
+    def _text_field(self, addr: int) -> str:
+        """A number $11DC6 wrote into a script: '[' + digit, leading zeros as spaces."""
+        raw = bytes(self.uc.mem_read(addr, 8))
+        return "".join(chr(b - 0x5B + 0x30) if 0x5B <= b <= 0x64 else chr(b) for b in raw).strip()
+
+    def play(self, fframes: int, script: list[tuple[int, int, str]], ram: bool = False,
+             pokes: list[tuple[int, int, int, int]] = (), first: int = 0, sink=None, bot=None) -> list[dict]:
+        """Runs FRNG frames until $1EA00 returns (self.returned, then $8420's result: self.rating) or
+        fframes have run; returns the rows (with sink, a text file: written there as JSON lines
+        instead, and a last line {"result": ...}). Each frame's start ($1EA4A): its keys applied
+        (JOY1DAT, fire), the row recorded, then the pokes (frame, address, value, size 1/2/4) and,
+        with sec, the CIA-B second due after the frame. bot(row) -> keys, when given, chooses the
+        keys from the row instead of the script."""
+        hits = []
+        count = [0]
+        self.returned = self.rating = None
+        self._frng_busy = False
+
+        def on_start(uc, address, size, user_data):      # (via $8420: the fire pulses stop)
+            self.pulse_fire = False
+            self.fire = False
+
+        def on_frame(uc, address, size, user_data):
+            n = count[0]
+            count[0] += 1
+            self._frng_busy = True
+            keys = "".join(k for s, c, k in script if s <= n < s + c)
+            if bot is not None:
+                keys = bot(self.frng_row(n, keys, False))
+            self.joy = joy_value(keys)
+            self.fire = "f" in keys
+            if n >= first:
+                row = self.frng_row(n, keys, ram)
+                if sink is not None:
+                    sink.write(json.dumps(row) + "\n")
+                else:
+                    hits.append(row)
+            for f, addr, v, size in pokes:
+                if f == n:
+                    uc.mem_write(addr, (v & ((1 << 8 * size) - 1)).to_bytes(size, "big"))
+            if self.sec and (n + 1) % self.sec == 0:
+                self.cia_pending = True
+            if count[0] > fframes:
+                uc.emu_stop()
+                self._sentinel_hit = True
+
+        def on_return(uc, address, size, user_data):     # $847A: D0 dummy, D1 correct
+            self.returned = {"dummy": uc.reg_read(d_reg(0)) & 0xFFFF, "correct": uc.reg_read(d_reg(1)) & 0xFFFF,
+                             "timer": self.read_word(0x804A), "timeout": self.read_var(0x804C, 1, False),
+                             "frames": count[0]}
+
+        def on_text(uc, address, size, user_data):       # the result text's set-up: $8060 and the fields
+            table = self.read_long(0x8060)
+            self.rating = {"text": RANGE_TEXTS[address], "table": f"{table:05x}",
+                           "rating": (0xC716 + 24 - table) // 8 if address == 0x8518 else None}
+            if address == 0x8518:
+                self.rating |= {"correct_field": self._text_field(0x113CA), "dummy_field": self._text_field(0x113E4),
+                                "rated": bytes(self.uc.mem_read(0x11400, 8)).decode("latin-1")}
+            uc.emu_stop()
+            self._sentinel_hit = True
+
+        hooks = [self.uc.hook_add(UC_HOOK_CODE, on_frame, None, FRNG_FRAME_START, FRNG_FRAME_START + 1),
+                 self.uc.hook_add(UC_HOOK_CODE, on_start, None, FRNG_ENTRY, FRNG_ENTRY + 1),
+                 self.uc.hook_add(UC_HOOK_CODE, on_return, None, RANGE_RET, RANGE_RET + 1)]
+        hooks += [self.uc.hook_add(UC_HOOK_CODE, on_text, None, a, a + 1) for a in RANGE_TEXTS]
+        self._sentinel_hit = False
+        while not self._sentinel_hit:
+            self._run_one_frame()
+        for h in hooks:
+            self.uc.hook_del(h)
+        self.fframes_run = count[0]
+        if sink is not None and self.returned is not None:   # (the last line: how the stage ended)
+            sink.write(json.dumps({"result": self.returned, "rating": self.rating, "frames": count[0]}) + "\n")
+        return hits
+
+    def frng_screenshot(self, path: Path) -> None:
+        """FRNG's screen: 5 planes of 320 x 172 at $769B0 ($1AE0 apart), the copper list's colours
+        (COLOR01-31 from $1FAA8, as the fade wrote them), the vertical sight line (sprite 0 at x
+        $B9A) drawn in white."""
+        from planar import decode_indices, render, write_png
+        ram = bytes(self.uc.mem_read(0, CHIP_SIZE))
+        pal = [(0, 0, 0)] + [rgb12_to_rgb24(struct.unpack_from(">H", ram, 0x1FAA8 + 4 * i)[0]) for i in range(31)]
+        pal.append((255, 255, 255))
+        idx = decode_indices(ram, 0x769B0, 320, 172, 5, "planes", row_bytes=40)
+        x = self.read_var(0xB9A, 2, True) - 111           # (the hit test's point: column $B9A + 17 - x, x = bitplane x + 128)
+        if 0 <= x < 320:
+            for y in range(172):
+                idx[y][x] = 32
+        write_png(path, 640, 344, render(idx, pal, False, 2))
+
+
 def parse_range(s: str) -> tuple[int, int]:
     lo, hi = s.split("-")
     return int(lo, 0), int(hi, 0)
@@ -829,21 +1032,23 @@ def parse_range(s: str) -> tuple[int, int]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("run", "game", "puzl"))
+    ap.add_argument("cmd", choices=("run", "game", "puzl", "frng"))
     ap.add_argument("--ram", type=Path, default=ROOT / "build" / "ram" / "level1_full.bin")
-    ap.add_argument("--level", type=int, default=1, help="puzl: the level done ($8050): 1 or 2")
+    ap.add_argument("--level", type=int, default=1, help="puzl, frng: the level done ($8050): 1 or 2")
     ap.add_argument("--via-8382", action="store_true", help="puzl: run $8382 itself (intro text, picture, loader)")
+    ap.add_argument("--via-8420", action="store_true", help="frng: run $8420 itself (intro text, picture, loader)")
+    ap.add_argument("--fframes", type=int, default=3000, help="frng: FRNG frames to play at most")
     ap.add_argument("--pframes", type=int, default=600, help="puzl: PUZL frames to play at most")
-    ap.add_argument("--poke", action="append", default=[], help="puzl: FRAME:ADDRESS:VALUE[:SIZE] after the row")
-    ap.add_argument("--sec", type=int, default=0, help="puzl: the timer's second (CIA-B) after every N-th frame")
+    ap.add_argument("--poke", action="append", default=[], help="puzl, frng: FRAME:ADDRESS:VALUE[:SIZE] after the row")
+    ap.add_argument("--sec", type=int, default=0, help="puzl, frng: the timer's second (CIA-B) after every N-th frame")
     ap.add_argument("--gframes", type=int, default=100, help="game: game frames to play")
-    ap.add_argument("--joy", action="append", default=[], help="game, puzl: FRAME:COUNT:KEYS (u d l r f)")
-    ap.add_argument("--trace", type=Path, help="game, puzl: JSON lines of the traced variables")
-    ap.add_argument("--trace-ram", action="store_true", help="game, puzl: also the variables' blocks in the trace")
+    ap.add_argument("--joy", action="append", default=[], help="game, puzl, frng: FRAME:COUNT:KEYS (u d l r f)")
+    ap.add_argument("--trace", type=Path, help="game, puzl, frng: JSON lines of the traced variables")
+    ap.add_argument("--trace-ram", action="store_true", help="game, puzl, frng: also the variables' blocks in the trace")
     ap.add_argument("--tele", action="append", default=[], help="game: GAMEFRAME:X:Y puts RoboCop and the camera there")
     ap.add_argument("--god", action="store_true", help="game: energy and lives kept full, the level never ends")
-    ap.add_argument("--trace-from", type=int, default=0, help="game, puzl: trace rows from this frame on")
-    ap.add_argument("--drive", type=Path, help="game (puzl: joystick and pokes): a tools/drivejoy.py file")
+    ap.add_argument("--trace-from", type=int, default=0, help="game, puzl, frng: trace rows from this frame on")
+    ap.add_argument("--drive", type=Path, help="game (puzl, frng: joystick and pokes): a tools/drivejoy.py file")
     ap.add_argument("--extracted", type=Path, default=ROOT / "build" / "extracted")
     ap.add_argument("--frames", type=int, default=300)
     ap.add_argument("--insns", type=int, default=40000, help="instructions per frame")
@@ -854,6 +1059,36 @@ def main() -> int:
     ap.add_argument("--bobs", type=Path, help="game: JSON lines of each game frame's draw_bob calls")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.cmd == "frng":
+        bench = FrngBench(a.extracted, a.ram, verbose=a.verbose)
+        bench.sec = a.sec
+        bench.setup(a.level, a.via_8420)
+        script = []
+        for j in a.joy:
+            f, c, k = j.split(":")
+            script.append((int(f), int(c), k))
+        pokes = [tuple(int(v, 0) for v in (t.split(":") + ["1"])[:4]) for t in a.poke]
+        if a.drive:                      # (the same input as the MSX's driven trace)
+            joy_hex, _tele, _god, poke_s = (a.drive.read_text().split("\n") + ["", "", "", ""])[:4]
+            for n, b in enumerate(bytes.fromhex(joy_hex.strip())):
+                if b:
+                    script.append((n, 1, "".join(k for k, m in zip("udlrf", (1, 2, 4, 8, 16)) if b & m)))
+            pokes += [tuple(int(v, 0) for v in t.split(":")) for t in poke_s.split()]
+        if a.trace:
+            a.trace.parent.mkdir(parents=True, exist_ok=True)
+            with a.trace.open("w") as sink:
+                rows = bench.play(a.fframes, script, a.trace_ram, pokes, a.trace_from, sink)
+        else:
+            rows = bench.play(a.fframes, script, a.trace_ram, pokes, a.trace_from)
+        for r in rows[:: max(1, len(rows) // 12)]:
+            print({k: v for k, v in r.items() if k not in ("vars", "glob", "code")})
+        print(f"VBL frames {bench.frame}, FRNG frames {bench.fframes_run}, "
+              + (f"returned {bench.returned}, {bench.rating}" if bench.returned is not None else "still playing"))
+        if a.screenshot:
+            bench.frng_screenshot(a.screenshot)
+        if a.dump:
+            bench.dump(a.dump)
+        return 0
     if a.cmd == "puzl":
         bench = PuzlBench(a.extracted, a.ram, verbose=a.verbose)
         bench.sec = a.sec

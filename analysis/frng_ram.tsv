@@ -1,0 +1,167 @@
+# The shooting range (FRNG): the fields tools/frngcmp.py compares, FRNG frame by FRNG frame, between
+# tools/amigaemu.py frng --trace-ram (vars $B00-$BC5, glob $8000-$80FF, FRNG's code blocks) and
+# tools/openmsx_rc2.tcl rc2_fr_drive / rc2_fr_arm (D000h, DC00h: the mirror AM / AG; fr_code).
+# The list is what FRNG writes in its frames (a write census of the bench run of 2026-10-27 and the
+# REA listings of $1EA00-$1FBE7), less:
+#   display: the copper list's colours ($1FAA8-$1FB21), the bitplanes, the flash's sprite records
+#     ($1FA8C-$1FA97) and saved line areas ($1EB4C-$1EB59), draw_bob's per-call immediates ($1ED96,
+#     $1EE42, $1EE76, $1EEC6), the pending draw's graphics pointer ($BAA), the palette pointer
+#     ($1F9B0), the panel's message ticker ($8054-$805B, slots $FD92-$FDA1);
+#   sound timing: the music divider ($1EB30);
+#   draw_bob's per-call results, which only the same call's caller reads: $B0B (hit), $BA2-$BA5
+#     (hit column and row), and the type record pointer $BB8 (the slot loop's, read in the same
+#     frame);
+#   dead state: the random word $B0C ($1EF6A writes it every frame, nothing in FRNG reads it: REA
+#     xrefs $80EC, $10296, $1EF70, $1EF82) and the slots' (-$20,A3) high words $B0E / $B12, where a
+#     spawn ($1F12C) stores a register's leftover (D1) that nothing reads.
+# Format: ADDRESS SIZE NAME [if=ADDRESS] [; comment]
+#   ADDRESS in $B00-$BC5 (the MSX's AM mirror at D000h), $8000-$80FF (AG at DC00h) or one of fr_code's
+#   pieces (tools/frngcmp.py PIECES: $1EB46-$1EB4B, $1F246-$1F247, $1F46C-$1F46D, $1F502-$1F50B,
+#   $1F60E-$1F807, in that order); every block in the mirror's rule: words little-endian, the byte
+#   at A at A ^ 1.
+#   if=: compared only in rows where the Amiga's byte at that address is not 0 (the field is read
+#   only then: a stale value otherwise).
+
+0b00 2 game_frame                 ; FRNG frames since its start ($1EA6E): the drive's frame index
+0b02 2 anim                       ; + 3 a frame ($1EA72; nothing in FRNG reads it)
+0b04 2 correct                    ; correct targets ($1F5B6, $1F21E, $1F3B0): D1 at the end
+0b06 2 dummy                      ; dummy targets ($1F5AA, $1F3BC): D0 at the end
+0b08 2 endc                       ; the end count: + 1 a frame from the frame the ammo ran out ($1EAD6, $1EAAC); 99: fade-out
+0b10 2 s0.rise                    ; (-$1E,A3): the pop-up's offset ($1F55C, $1F58C); 0 at a spawn
+0b16 4 s0.z18                     ; (-$18,A3): cleared at a spawn ($1F142), nothing else
+0b1e 4 s0.z10                     ; (-$10,A3): cleared at a spawn ($1F146), nothing else
+0b26 2 s0.x if=0b2e               ; (-8,A3): set by the handler's first call; a spawn leaves D0's leftover
+0b28 2 s0.hold                    ; (-6,A3): the rising target's hold count ($1F16E, $1F188); 0 at a spawn
+0b2e 1 s0.count                   ; (A3): the pop-up's phase count; FF once a rising or moving target started
+0b2f 1 s0.b1                      ; (1,A3)
+0b30 1 s0.b2                      ; (2,A3).w: the rising and moving targets' step ($1F18E, $1F358)
+0b31 1 s0.b3                      ; (3,A3): the pop-up's started flag ($1F51A)
+0b36 1 s0.type                    ; (8,A3): the type, 1-39 from $B00 at a spawn ($1F134); 0 free
+0b37 1 s0.t9                      ; (9,A3): 0Ah at a spawn ($1F13C)
+0b38 1 s0.tA                      ; (A,A3): 0 at a spawn ($1F138)
+0b39 1 s0.tB                      ; (B,A3)
+0b14 2 s1.rise                    ; (-$1E,A3): the pop-up's offset ($1F55C, $1F58C); 0 at a spawn
+0b1a 4 s1.z18                     ; (-$18,A3): cleared at a spawn ($1F142), nothing else
+0b22 4 s1.z10                     ; (-$10,A3): cleared at a spawn ($1F146), nothing else
+0b2a 2 s1.x if=0b32               ; (-8,A3): set by the handler's first call; a spawn leaves D0's leftover
+0b2c 2 s1.hold                    ; (-6,A3): the rising target's hold count ($1F16E, $1F188); 0 at a spawn
+0b32 1 s1.count                   ; (A3): the pop-up's phase count; FF once a rising or moving target started
+0b33 1 s1.b1                      ; (1,A3)
+0b34 1 s1.b2                      ; (2,A3).w: the rising and moving targets' step ($1F18E, $1F358)
+0b35 1 s1.b3                      ; (3,A3): the pop-up's started flag ($1F51A)
+0b3a 1 s1.type                    ; (8,A3): the type, 1-39 from $B00 at a spawn ($1F134); 0 free
+0b3b 1 s1.t9                      ; (9,A3): 0Ah at a spawn ($1F13C)
+0b3c 1 s1.tA                      ; (A,A3): 0 at a spawn ($1F138)
+0b3d 1 s1.tB                      ; (B,A3)
+0b3e 1 fx.on                      ; the hit effect: 1 while it runs ($1F95C), 0 at its end ($1F89C)
+0b46 1 fx.frame                   ; its frame ($1F950; + 1 every 4th frame: $1F86A)
+0b4e 1 fx.last                    ; its last frame ($1F958)
+0b56 2 fx.x                       ; ($1F960)
+0b66 2 fx.y                       ; ($1F964)
+0b9a 2 cx                         ; the sight's x (sprite H: 4 a frame, $7C-$198: $1ED22)
+0b9e 2 cy                         ; the sight's y (line: 4 a frame, $10-$9E: $1ED26)
+0ba6 1 tlock                      ; a rising or moving target runs ($1F15A, $1F342; the word cleared at $1F3E6)
+0ba7 1 tlock_lo
+0ba8 2 pend.size                  ; the pending draw's BLTSIZE ($1F19C, $1F37C); the next frame clears it there ($1F450)
+0bae 2 pend.x                     ; ($1F1A6, $1F39A)
+0bb0 2 pend.y                     ; ($1F1AA, $1F386)
+0bb2 1 pend.hit                   ; the pending draw's hit flag ($1F43C), read by the next frame's handler
+0bb5 1 pend.col if=0bb2           ; its hit column ($1F442)
+0bb6 1 fx.div                     ; the effect's 4-frame divider ($1F854, $1F864, $1F96A)
+0bbc 2 sfx_ok                     ; frames to effect 3 and + 25 points ($1F5BA, $1F222, $1F3B4; $1EB06); FF00h at the start
+0bbe 2 sfx_bad                    ; frames to effect 4 ($1F5AE, $1F3C0; $1EB22); FF00h at the start
+0bc0 1 fade_in                    ; FF fading in ($1FBAA), 0 fading out ($1EAB8)
+0bc1 1 fade                       ; 0-31 ($1F990, $1F99C)
+802e 1 joy                        ; read_joystick's byte (up 1, down 2, left 4, right 8, fire 10h)
+8030 2 ammo                       ; BCD: 25 at the start ($1EA0E), - 1 a shot ($AC9A)
+8046 4 score                      ; BCD: + 25 a correct target ($1EB16: $F6A0)
+804a 1 timer_min                  ; BCD: 2:00 ($1FBE2: $F9DC), counted down by the CIA-B
+804b 1 timer_sec
+804c 1 timeout                    ; FFh below 0:00 ($101A8): FRNG returns at once ($1EAFA)
+804d 1 input_lock
+804e 1 paused
+8050 2 level                      ; the level done: 2 picks the second palette ($1FBBE)
+805c 2 weapon                     ; set_weapon(0) at the start ($1EA08: $FD30)
+1eb46 1 shot                      ; a shot this frame ($1ECA2), cleared every frame ($1EC7E): the next frame's draws test it
+1eb48 2 rep                       ; the repeat count: 24 after a shot ($1EC9A), a shot below 0; FFxxh with fire up ($1ECC4)
+1eb4a 2 flash                     ; the flash: 8 after a shot ($1ECA8), - 1 a frame ($1EB9C)
+1f246 2 track                     ; the moving target's track: $B00 & 1Eh at its start ($1F33C)
+1f46c 2 pend.clip                 ; the pending draw's right clip ($1F194, $1F38A)
+1f502 1 lane0                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f503 1 lane1                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f504 1 lane2                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f505 1 lane3                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f506 1 lane4                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f507 1 lane5                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f508 1 lane6                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear); shipped FFh, never freed
+1f509 1 lane7                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f50a 1 lane8                     ; a lane's lock ($1F524 set; $1F594, $1F5C0 clear)
+1f60f 1 d00.phase                 ; descriptor $1F60E: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f620 1 d00.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f621 1 d00.col if=1f620          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f625 1 d01.phase                 ; descriptor $1F624: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f636 1 d01.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f637 1 d01.col if=1f636          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f63b 1 d02.phase                 ; descriptor $1F63A: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f64c 1 d02.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f64d 1 d02.col if=1f64c          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f651 1 d03.phase                 ; descriptor $1F650: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f662 1 d03.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f663 1 d03.col if=1f662          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f667 1 d04.phase                 ; descriptor $1F666 (no stub points here): FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f678 1 d04.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f679 1 d04.col if=1f678          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f67d 1 d05.phase                 ; descriptor $1F67C: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f68e 1 d05.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f68f 1 d05.col if=1f68e          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f693 1 d06.phase                 ; descriptor $1F692: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f6a4 1 d06.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f6a5 1 d06.col if=1f6a4          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f6a9 1 d07.phase                 ; descriptor $1F6A8: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f6ba 1 d07.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f6bb 1 d07.col if=1f6ba          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f6bf 1 d08.phase                 ; descriptor $1F6BE: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f6d0 1 d08.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f6d1 1 d08.col if=1f6d0          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f6d5 1 d09.phase                 ; descriptor $1F6D4: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f6e6 1 d09.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f6e7 1 d09.col if=1f6e6          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f6eb 1 d10.phase                 ; descriptor $1F6EA: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f6fc 1 d10.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f6fd 1 d10.col if=1f6fc          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f701 1 d11.phase                 ; descriptor $1F700: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f712 1 d11.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f713 1 d11.col if=1f712          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f717 1 d12.phase                 ; descriptor $1F716: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f728 1 d12.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f729 1 d12.col if=1f728          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f72d 1 d13.phase                 ; descriptor $1F72C: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f73e 1 d13.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f73f 1 d13.col if=1f73e          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f743 1 d14.phase                 ; descriptor $1F742: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f754 1 d14.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f755 1 d14.col if=1f754          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f759 1 d15.phase                 ; descriptor $1F758: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f76a 1 d15.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f76b 1 d15.col if=1f76a          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f76f 1 d16.phase                 ; descriptor $1F76E: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f780 1 d16.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f781 1 d16.col if=1f780          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f785 1 d17.phase                 ; descriptor $1F784: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f796 1 d17.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f797 1 d17.col if=1f796          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f79b 1 d18.phase                 ; descriptor $1F79A: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f7ac 1 d18.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f7ad 1 d18.col if=1f7ac          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f7b1 1 d19.phase                 ; descriptor $1F7B0: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f7c2 1 d19.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f7c3 1 d19.col if=1f7c2          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f7c7 1 d20.phase                 ; descriptor $1F7C6: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f7d8 1 d20.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f7d9 1 d20.col if=1f7d8          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f7dd 1 d21.phase                 ; descriptor $1F7DC: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f7ee 1 d21.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f7ef 1 d21.col if=1f7ee          ; its hit column ($1F604): below the threshold ($14,A0) correct
+1f7f3 1 d22.phase                 ; descriptor $1F7F2: FF rising, 1 holding, 2 lowering ($1F526, $1F564, $1F578)
+1f804 1 d22.hit                   ; its hit flag, from draw_bob's $B0B after its draw ($1F5FE; 0 at its start: $1F52A)
+1f805 1 d22.col if=1f804          ; its hit column ($1F604): below the threshold ($14,A0) correct
