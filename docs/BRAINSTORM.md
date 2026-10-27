@@ -3,7 +3,7 @@
 Written on 2026-10-27 as the plan for the night the user asked for the next phase ("prossiga com a
 implementação da próxima fase"), and updated the same day to what was built: milestone 1, the stage
 playable after level 1 with the original's logic and graphics, silent (commits `ac31d65` to
-`14bc5ef`, section 5). Milestones 2 (sound) and 3 (the second visit's face) are still plans.
+`b59a338`, section 5). Milestones 2 (sound) and 3 (the second visit's face) are still plans.
 
 The user's orders for that night:
 - **the ROM must stay within 2 MiB** (mandatory);
@@ -368,11 +368,11 @@ Boards are numbered 0-3 here, as `$B0A` / 2 counts them.
 | `pz_test` and its hooks | fixed area (`rc2.asm`), `PZ_TEST` builds only | +30 | power-on straight into Brainstorm (section 6) |
 | `front_bonus`, `fe_text` | FRONT (`front.asm`) | 207 (+32 with a `TAG`) | `$8382` and the text screens |
 | the four scripts | FRONT (`text.inc`) | 262 | `tools/msxtext.py` |
-| `bs_stage`, the renderer, the tables | **`BANK_PUZL` = 78 at A000h** (`msx/puzl.asm`) | 3,580 | PUZL, the display, the boards, the cursor's patterns, the graded palette |
+| `bs_stage`, the renderer, the tables | **`BANK_PUZL` = 78 at A000h** (`msx/puzl.asm`) | 3,582 | PUZL, the display, the boards, the cursor's patterns, the graded palette |
 | graphics | banks 79-85 (`PUZL_GFX_BANK`, 7 banks) | 56,704 | screen, sheet, TV pictures (`puzl_gfx.bin`) |
 
-Free afterwards [V: the label files of the product build at `14bc5ef`]: the fixed area 190 B (213
-before; 160 in `PZ_TEST` builds), FRONT 2,733 B (3,202 before), `BANK_PUZL` 4,612 B,
+Free afterwards [V: the label files of the product build at `b59a338`]: the fixed area 190 B (213
+before; 160 in `PZ_TEST` builds), FRONT 2,733 B (3,202 before), `BANK_PUZL` 4,610 B,
 `HUD_BANK` + 1 447 B (493 before).
 
 The hook (`rc2.asm` `ml_ev`; `FE_OVER`, `FE_RESTART` and `front_stats` unchanged):
@@ -832,7 +832,7 @@ From the graphics report's prototype (stdlib only; it imports `tools/planar.py`,
 | Item | Banks | Total |
 |---|---:|---:|
 | Before Brainstorm (`52149b0`) | 78 | 78 |
-| `BANK_PUZL` (code and tables, 3,580 B) | 1 | 79 |
+| `BANK_PUZL` (code and tables, 3,582 B) | 1 | 79 |
 | Graphics, visit 1, raw (56,704 B) | 7 | **86 (built)** |
 | PZM tune 1 (SCC, OPLL, PSG) and effects (~12.7 KiB) [E] | 2 (4 with one blob a bank) | 88 |
 | Visit 2's TV pictures (28,800 B: the blob grows to 85,504 B, 11 banks) [V: `--visits 1,2`] | 4 | 92 |
@@ -923,11 +923,13 @@ were re-checked from those runs' files and from scratch builds; no emulator was 
 - **Results [V]**: every drive gives "0 differ" in all 399 values of every pass and the right
   result, on C-BIOS_MSX2 (V9938, 60 Hz) and the Panasonic FS-A1GT (turbo R, the stage on its Z80);
   `solve1` also on the Panasonic FS-A1FX (MSX2+, V9958) and C-BIOS_MSX2_EU (50 Hz), `solve1` and
-  `opp` on the Gradiente Expert 2.0. The 20 traces of the final run (`14bc5ef`) were compared again
-  for this document: 0 differ.
+  `opp` on the Gradiente Expert 2.0. The 20 traces of the review fixes' run (`14bc5ef`) were
+  compared again for this document: 0 differ. The final checks ran the same 20 on `b59a338`'s
+  builds: 0 differ (4.6 h).
 - **After a played level 1** (`rc2_pz_arm`: `drive_end` on an `EXTJOY=1` build, then `fail`):
   `puzlcmp.py --skip score` (the score starts from level 1's): 182 passes, 398 fields, 0 differ,
   result 1, on C-BIOS_MSX2 and the FS-A1GT. Quirk 1's D0 there follows level 1's messages (8.7).
+  A solve after a played level 1, as the second Brainstorm of a session, is in 4.6 e.
 - Headless runs never press fire, so every text screen runs its full length: the statistics 362
   ticks, the intro 293, a result 130-144.
 
@@ -940,7 +942,9 @@ open files once.
    script (`text_bs_*.sc5`), pixel for pixel: the intro and OUT OF TIME. on the Gradiente Expert
    2.0, the FS-A1FX, the FS-A1GT and C-BIOS_MSX2 (with TEST 2 at row 10 in a `TAG=2` build on the
    Expert), MEMORY MALFUNCTION. on C-BIOS_MSX2 and the FS-A1GT. The solved text (WELL DONE MEMORY
-   RESTORED.) was not reached on the MSX (8.13).
+   RESTORED. / GAME CREDIT AWARDED) first ran in the final checks: equal to its render on
+   C-BIOS_MSX2 and the FS-A1GT, and with TEST 2 on the Expert, the HB-F1XDJ and the FS-A1GT (4.6 a
+   and e). Screens ended early by fire: 4.6 d.
 2. **The stage, still pictures.** Snapshots (VRAM, RAM, registers) at chosen passes: board 0's
    start, the fade-in, mid-solve, each board, the fade-outs with the palette black, the end with
    no cursor and the clean face (12 in `solve1`, 3 in `fail`, `timeout` and `solve2`, on each
@@ -982,8 +986,10 @@ open files once.
    in a `PZ_TEST` build: board 0 left alone times out about 61 s after its set-up (3.4).
 7. Previews for the user: plain and graded, Amiga against MSX (`build/msx/puzl_1_*.png`).
 
-Also measured: no VRAM access too fast (`rc2_count_too_fast`) over `solve1` with the entry's
-uploads and the exit's restore, on C-BIOS_MSX2 and the FS-A1GT.
+VRAM access speed: the "0 too fast" that step 7, the review fixes' suite and step 8's suite reported
+over `solve1` (`rc2_count_too_fast`, with the entry's uploads and the exit's restore) was not a
+measurement: the counter did not count before `b59a338`. The measurements, at 3.58 and 5.37 MHz,
+and the fix they led to are in 4.6 g.
 
 ### 4.3 Sound checks (milestone 2)
 
@@ -1003,14 +1009,14 @@ uploads and the exit's restore, on C-BIOS_MSX2 and the FS-A1GT.
 | Check | How | Result |
 |---|---|---|
 | Level 1's logic | the EXTJOY coverage drives (`rc2_drive_rom`, `drive_cov1` and `drive_cov0`) on an `EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1` build, `tools/tracecmp.py --ram` against `build/emu/trace_cov*_ram.jsonl` with that build's `--labels` | 4,401 frames on C-BIOS_MSX2, 1,400 on the FS-A1FX and the FS-A1GT: 0 differ, after every step |
-| The image | each step's ROMs against the previous step's, bank by bank | step 3: 296 bytes of former padding (FRONT, bank 45); step 4: banks 0-77 identical to `52149b0`'s; step 5: the code banks (the flow); steps 6 and 7: only bank 78 differs; the review fix: FRONT, and in banks 0 and 78 only the words of FRONT's labels that moved. The data banks 10-77 never changed |
+| The image | each step's ROMs against the previous step's, bank by bank | step 3: 296 bytes of former padding (FRONT, bank 45); step 4: banks 0-77 identical to `52149b0`'s; step 5: the code banks (the flow); steps 6 and 7: only bank 78 differs; the review fix: FRONT, and in banks 0 and 78 only the words of FRONT's labels that moved; the final checks' fix (`b59a338`): only bank 78. The data banks 10-77 never changed |
 | The title | on a fresh Gradiente Expert 2.0 from power-on: the title's VRAM, registers and palette 1 s after it shows, the music (5,046 ticks of SCC and PSG registers), the PSG writes of the speech (their hash), the game's VRAM and RAM at tick 300 | identical to `52149b0`'s after every step |
 | The flows | the product (the title, level 1 ended by `drive_end`'s teleport and poke, the statistics, the intro, the stage left alone to its time out, OUT OF TIME., the title, fire, a new game) and `PZ_TEST=1` from power-on, on the Gradiente Expert 2.0 and the FS-A1GT | the intro and the result pixel-exact, a HUD split at every VBLANK (4,075 / 4,075 and 4,078 / 4,077-4,078), the title, a new game |
 | Bench game mode | 600 frames of `drive_cov1` before and after the bench patch | byte-identical |
 | Set-ups | `make matrix` (`tools/msxmatrix.py`: MSX2, MSX2+, turbo R, 50 Hz, a disk interface before the cartridge, a slot expander, an FM-PAC, a 2 MiB MegaRAM with an SCC, an SCC+, none) on the product | all 10 PASS, the same lines as at `52149b0` |
 | Option sets | the review's 41 option sets built | all but `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1`, which fail with the same fixed-area overflow at `52149b0` |
 | Losses | `mp_lost`, `atr_lost`, `rd_lost`, `fb_lost` | 0 |
-| Unit tests | `make test` | 78 tests at `14bc5ef` (86 with step 8's): the same 4 failures as before tonight (`test_tools`: the sprite data and the joystick script) |
+| Unit tests | `make test` | 78 tests at `14bc5ef`, 86 with step 8's, 109 at `b59a338` (with `tests/test_bstest.py`'s 23, `70e775b`): the same 4 failures as before tonight (`test_tools`: the sprite data and the joystick script) |
 
 A `PZ_TEST` ROM shows no title, which `make matrix` would report as FAIL: `tools/msxmatrix.py
 --no-title` (`cae5193`, step 8) checks it instead, without the title wait: `tick_n` must advance
@@ -1095,11 +1101,184 @@ that set's SAT holds it) and compare `OUT.sc5` with the page's lines 0-161 and i
 = 1 + 16r shows from line 2 + 16r). The record, still, HUD, restore and flow checks of 4.2 and 4.4
 first ran on the night's scratch scripts (`impl/` of its scratch folder: section 9).
 
-**The harness** of these checks lives in `tools/`, as `docs/HARNESS.md` describes.
+**The harness.** Those scripts are now in `tools/bstest/` (`70e775b`), and `docs/HARNESS.md` is
+their manual: the files, the reference files each check needs, a session in the MCP's openMSX, the
+checks of 4.1, 4.2 and 4.4 with their commands and expected results, the whole suite in order, and
+what milestones 2 and 3 must add (4.3's sound checks are not in it yet). When they moved they were
+checked without an emulator only (`docs/HARNESS.md` 9): the Tcl's first real run is the next
+milestone's suite. Their VRAM-speed count, `rc2_count_too_fast` (`tools/openmsx_rc2.tcl`), counts
+from `b59a338` on (4.6 g). The final checks' own scripts (4.6) are not in `tools/bstest/`.
 
 **Unit tests**: `tests/test_puzl.py` (11: the solver, the compare, the fuzz keys, the Tcl procs in
 `tclsh` with openMSX mocked; the bench case needs Unicorn), `tests/test_msxpuzl.py` (17),
-`tests/test_bonus_text.py` (16), all in `make test`.
+`tests/test_bonus_text.py` (16), `tests/test_bstest.py` (23: the harness, without an emulator), all
+in `make test`.
+
+### 4.6 The final checks (`b59a338`)
+
+The final checks (2026-10-27, 06:10-06:55) ran the paths a completeness critic found no check had
+run, and measured the VRAM access speed again with a counter that counts; that led to `b59a338`
+(g). They ran on headless openMSX through the MSX-AI MCP, one instance at a time. Their own scripts
+stayed in the night's scratch folder (`impl/final`: `np.tcl`, `ft.tcl`, `titlecmp.py`,
+`titlecmp2.py`, `partialcheck.py`; section 9). For this document the trace compares, the text
+screens against `tools/msxtext.py`'s renders, the fire snapshots, the title's per-tick music logs,
+the game's RAM and VRAM at tick 300, the speed and watchpoint logs, the matrix logs and the ROM
+images were checked again from that run's files, without an emulator. Everything below is
+[V: openMSX] unless marked **I**.
+
+**a. The solved ending.**
+- `solve1` from the power-on (`EXTJOY=1 PZ_TEST=1`) on C-BIOS_MSX2 and the FS-A1GT: 732 passes, 399
+  fields, 0 differ, result 0. WELL DONE MEMORY RESTORED. / GAME CREDIT AWARDED equals
+  `build/msx/text_bs_ok.sc5` byte for byte; AG `$805E` = 1 after it; 1,237 VBLANKs and 1,238 HUD
+  splits between the intro's and the result's records; then a new game (an `EXTJOY` build has no
+  title).
+- With the candidates' options (`PZ_TEST=1 TAG=2`, no script) on the Gradiente Expert 2.0, the
+  drive's bytes pressed as the cursor keys and SPACE (keyboard row 8) at each `pz_tick`: 732
+  passes, 0 differ in 395 fields (`puzlcmp.py --skip joy,last_joy,timer_min,timer_sec`: the keyboard
+  sets bit 7 of `$802E` and `$B1E`, and a build without a script counts real seconds), result 0.
+  WELL DONE with TEST 2 equals its render; then the title, fire and a new game.
+
+**b. The title after Brainstorm, against the approved title.**
+- The product's flow (the title, level 1 ended by `drive_end`, the statistics, Brainstorm left to
+  its time out, OUT OF TIME.) and a record of the title that follows, on the Expert, the Sony
+  HB-F1XDJ (V9958) and the FS-A1GT. The reference is the approved flow: step 0's ROM (no
+  Brainstorm) through the same drive, recorded at the title that follows level 1's statistics. Each
+  record logs the music by music tick (the SCC's and the PSG's registers, the count and hash of the
+  PSG writes since the tick before) and takes the game the title starts by itself at exactly its
+  tick 300.
+- After Brainstorm against without it:
+  - the title's picture (G7, 256 × 212) and palette are identical on all three. So are the VDP
+    registers, but for R#5 (C7h/CFh) and R#19 (9Ch/9Dh) on the FS-A1GT; R#8 has the sprites off and
+    R#0 the line interrupt off in both. Against a fresh start R#19 and the palette differ in both
+    flows (and R#5 on the HB-F1XDJ, also in both);
+  - every PSG write is identical at all common ticks: 5,044 ticks and 150,851 writes (5,045 and
+    130,432 on the FS-A1GT). The PSG registers are identical but R6, the noise period, on the
+    FS-A1GT, where R7 keeps the noise off on all three channels at every tick. The SCC's registers
+    are identical on the Expert; on the HB-F1XDJ and the FS-A1GT only A6h/A7h (channel 3's
+    frequency) and their mirror B6h/B7h differ, and channel 3 stays disabled (AFh = 07h) at volume
+    0 at every tick;
+  - VRAM outside the title's picture differs;
+  - the game at tick 300: RAM D000h-DFFFh differs only in the random word `$B32` (D032h-D033h,
+    seeded from R) and, on the Expert, in the level timer's seconds (DC4Ah: 9:45 after Brainstorm,
+    9:44 without it, 9:47 on a fresh machine). VRAM differs in 9,615 bytes on the Expert (29 of
+    them in the HUD: rows 5-18, x 240-251), 23,963 on the HB-F1XDJ and 26,795 on the FS-A1GT (none
+    in the HUD); a fresh start and the approved flow already differ in 32,780-35,296 bytes there.
+- The timer's seconds at tick 300 depend on what ran before the game: the approved flow already
+  differs from a fresh machine there (9:44 against 9:47).
+- **I**: nothing that differs is seen or heard. R#5 and R#19 do nothing with the sprites and the
+  line interrupt off; channel 3 is silent; the noise period does nothing with the noise off. The
+  Expert's 29 HUD bytes are that timer's seconds digit. The game's other differences are of the
+  kind a fresh start already has.
+- Records polled every 0.1 s had first suggested a PSG difference (151,182 against 151,212
+  writes): their windows started a tick or two apart. The per-tick logs above settle it.
+
+**c. The 2 MiB product's level end into Brainstorm.** `test2-2M` (`TAG=2 ROM_2M=1`) on the
+Expert, through the product's flow: the intro and OUT OF TIME. with TEST 2 equal their renders,
+4,075 VBLANKs and 4,075 HUD splits between them, then the title, fire and a new game. The 1 MiB
+product had run the same flow (4.4, section 6).
+
+**d. Text screens ended by fire.** `test2-bonus` (`PZ_TEST=1 TAG=2`) on the Expert and the
+FS-A1GT, SPACE held for 0.15 s:
+- at the intro's `fs_n` 60: the snapshot just before the press equals the render of 60 `fs_step`
+  calls (TEST 2, then 56 of the intro's 95 characters); the intro ends at `fs_n` 61, and the stage's
+  first pass comes 0.72 s (the FS-A1GT: 0.75 s) after the press;
+- the stage that follows, stuck from the keyboard (the `fail` drive's moves: 182 passes, result 1),
+  equals the render in its 7 snapshots;
+- at the result's `fs_n` 61 (the FS-A1GT: 60): MEMORY MALFUNCTION. is complete (its 38 characters
+  after TEST 2) and equals its render; the screen ends at the next call, and the title starts 0.02
+  s after the press;
+- the title ignores the SPACE still held: the new game comes from the later fire. Lost counters 0.
+
+**e. A second Brainstorm in one session.**
+- A script build (`EXTJOY=1 PZ_TEST=1`) on C-BIOS_MSX2 and the FS-A1GT: the first stage (`fail`:
+  182 passes, 399 fields, 0 differ, result 1), its result, a new game; level 1 ended by `drive_end`
+  (its frames moved by the new game's `tick_n`), the statistics, the intro; the second stage by
+  `rc2_pz_arm` with `solve1`: 732 passes, 398 fields (`--skip score`), 0 differ, result 0; WELL DONE
+  equal to `text_bs_ok.sc5`, AG `$805E` = 1, a new game.
+- With the candidates' options and the keyboard, on the Expert, the HB-F1XDJ and the FS-A1GT: the
+  first stage (182 passes, 395 fields, 0 differ, result 1), the title, fire, a new game, level 1
+  ended, the statistics; the second stage (732 passes, 394 fields, 0 differ, result 0); WELL DONE
+  with TEST 2 equal to its render; the title, fire and a new game.
+- In the FS-A1GT's script run, `bonuscheck.py` (the night's copy; `tools/bstest/`'s has the same
+  test) reported FAIL: its intro record read R#1 = 22h (`R1_BLANK`, the display off) with R#2 = 7Fh
+  and R#23 = 29h (`R2_PAGE3`, `HUD_R23`: the HUD split's state, `msx/msx.inc`). **I**: a sampling
+  artefact, not a display off: the record fell in the split's blank lines, between its interrupt
+  and the HUD. The intro equals its render, and 1,237 HUD splits came in 1,238 VBLANKs between the
+  records (8.17).
+- Quirk 1 (8.7) did not show. In pass 602, which destroys the 4th board's last red chip, `solve1`'s
+  joystick byte goes from 8 to 0 [V: the bench's trace]: a change without a direction bit, so the
+  clobbered D0 moves nothing.
+
+**f. Turbo R: no write to 4000h-7FFFh.** On a turbo R the fixed area runs from a RAM copy in page
+1, and nothing may write 4000h-7FFFh after the copy (`docs/TURBO_R.md` 6). The product on the
+FS-A1GT, through its whole flow (the title, level 1, the statistics, Brainstorm to its time out,
+the title, a new game), with a write watchpoint on 4000h-7FFFh from `front_bonus`' entry (43.2 s)
+to the new game's tick 100 (124.7 s): 0 writes.
+
+**g. VRAM access speed at 5.37 MHz, and `rs_one`'s fix.**
+- **The counter.** `rc2_count_too_fast` (`tools/openmsx_rc2.tcl`) set
+  `VDP.too_fast_vram_access_callback` to an inline script. openMSX runs a callback setting's value
+  as a command (its own `callbackprocs.tcl` puts a proc's name there), so the script failed
+  silently and nothing was counted. The run showed it with an OTIR loop at 10.74 MHz: 0 with that
+  form, 725-729 lost writes with a proc's name (no file kept). So every "0 too fast" before
+  `b59a338` was not a measurement (4.2). `b59a338` names a proc, `rc2_too_fast_cb`. A run at
+  another Z80 speed must also set `z80_freq_locked off`: `hz_cfg` (`tools/bstest/hz.tcl`) locks it,
+  and openMSX ignores `z80_freq` while it is locked.
+- **The fix.** `rs_one` (`msx/puzl.asm`) writes the cursor's SAT entry: Y, X, the pattern, 0. Its X
+  write and its last write came 17 T after the write before (`ld a,e` / `xor a`, then `out`). A
+  `nop` before each makes the gaps 22, 27 and 22 T: two bytes in `BANK_PUZL`. The stage's other
+  VRAM streams [V: the source, timed per instruction with the MSX's M1 wait]: the uploads' OTIRs
+  (`rd_line`, `rd_rom`) and `fs_char`'s for the TEST line 23 T a byte, the cursor patterns 57 T,
+  the colour rows 30 T, `rd_hide` one write.
+- **Measured** with the working counter (`too_fast_vram_access real`): `solve1` on an `EXTJOY=1
+  PZ_TEST=1` build from the power-on to `pz_done` (the intro, the entry's uploads, 732 passes, the
+  exit's restore):
+
+| Machine, Z80 | Before (`14bc5ef`'s code) | After (`b59a338`) |
+|---|---|---|
+| Panasonic FS-A1FX, 5.37 MHz | 5 lost writes, all at `rs_one`'s two 17 T writes (A8A5h, A8ADh) | 0 |
+| C-BIOS_MSX2+, 5.37 MHz | 43 at `rs_one`, 1 in C-BIOS | 0 in the cartridge, the same 1 in C-BIOS |
+| C-BIOS_MSX2, the FS-A1FX, the FS-A1GT, 3.58 MHz | 0 | 0 |
+
+  All these traces compare with the bench's with 0 differences.
+- The whole bonus flow at 5.37 MHz, `test2-bonus` from the power-on (the intro with TEST 2, the
+  stage solved from the keyboard, WELL DONE with TEST 2) to the title's start: step 8's candidate
+  lost 8 writes on the FS-A1FX and 55 on C-BIOS_MSX2+, all in `rs_one`; the final candidate 0 in the
+  cartridge on both.
+- C-BIOS_MSX2+'s own 1-2 lost writes (05B0h, 05B3h) come at 3.49 s, before the cartridge's init
+  (3.53 s), with C-BIOS's return address 065Ah on the stack; at 3.58 MHz it loses none. The
+  FS-A1FX's own BIOS loses none at 5.37 MHz.
+- **I: the model.** openMSX's V99x8 serves a CPU access at the first access slot at least 16 VDP
+  cycles after the request, and in a bitmap mode with sprites on its slots are up to 70 cycles
+  apart (`VDPAccessSlots.cc`), so a gap of 86 cycles or more is always safe. One T state is 4 VDP
+  cycles at 5.37 MHz (22 T: 88 cycles; 17 T: 68) and 6 at 3.58 MHz (17 T: 102). That a real V9938
+  or V9958 behaves the same is not verified here.
+- **Level 1 at 5.37 MHz**, for the record (not tonight's code, unchanged): `drive_cov1`'s first
+  1,399 ticks on the FS-A1FX lose 790 writes, and the eight PCs the run logged (6AA6h-6AD4h) are
+  all in `outi32`/`outi16`, the sprite engine's 18 T OUTIs (72 cycles); at 3.58 MHz none. **I**:
+  the other 782 are there too, and by the model 22 T there would be safe. The user's call (8.16).
+  (Brainstorm's own losses, by contrast, are all in `rs_one`: the fix changed nothing else and
+  took the cartridge's count to 0.)
+
+**h. The acceptance suite and the candidates, on `b59a338`.**
+- The six harness builds again, with the fix (`pz1` is g's "after" build), and the suite of
+  4.1-4.4, with the same results: the 20 traces 0 differ with their results; stills 0 differences;
+  records with 0 torn blocks, 0 pixels outside the elements and 0 cursor errors (`solve1`: 470,
+  465 and 460 pictures in 922, 921 and 922 VBLANKs on the MSX2, the turbo R and the MSX2+; 429 in
+  766 at 50 Hz); the display guard's reg, pal, cpu and vbl 0, its cmd and tear entries only at
+  `bs_board`'s three set-ups with the palette black; the speed count at 3.58 MHz, now counting, 0
+  on C-BIOS_MSX2 and the FS-A1GT; the level-1 regression 0 differ; the title equal to step 0's
+  record; the four flows PASS; the restore with only the known 72 sprite-table bytes; the turbo R's
+  blank 6 frames. `make test`: 109 tests, the 4 known failures only.
+- The four candidates of section 6, rebuilt at `b59a338` (a second rebuild gives the same images
+  and label files): against step 8's only bank 78 differs, where `puzl_end` moves from ADFCh to
+  ADFEh. The matrix: 10 set-ups each, all PASS, every log equal to step 8's line for line. Fresh
+  machines, as in step 8: `test2`'s title, music and game start equal step 0's record (`test2-2M`:
+  all but `$B32`); the products' whole flow PASS on the Expert and the HB-F1XDJ; the bonus ROMs
+  with five keyboard moves (`test2-bonus` on the Expert and the HB-F1XDJ, `test2-bonus-2M` on the
+  Expert): the text screens equal their renders, 56 stills each equal the render, 500 pictures
+  each with 0 torn blocks, 0 changed pixels outside the elements and 0 cursor errors; and `solve1`
+  from the keyboard on the Expert: WELL DONE with TEST 2, 6 stills equal.
 
 ## 5. Implementation record
 
@@ -1116,6 +1295,8 @@ first ran on the night's scratch scripts (`impl/` of its scratch folder: section
 | — | The review's fixes | `14bc5ef` | `msx/front.asm`, `msx/cold.asm` (a comment), `Makefile` | the turbo R's PAUSE during the bonus screens; `make matrix` with a home path holding spaces (section 10) |
 | 8 | The morning ROMs | `cae5193` (the tool) | `tools/msxmatrix.py` (`--no-title`), `tests/test_msxmatrix.py`; outside the repository, four candidates with their notes (section 6): `ROBOCOP2_v0.1.3-test2` (`TAG=2`), `-test2-bonus` (`PZ_TEST=1 TAG=2`), `-test2-2M` (`TAG=2 ROM_2M=1`) and `-test2-bonus-2M` (`PZ_TEST=1 TAG=2 ROM_2M=1`) | all four built from `14bc5ef`'s sources (the PAUSE fix; a rebuild at `cae5193` gives the same four images); the products pass the ten set-ups in title mode and the bonus ROMs with `--no-title`; the fresh-machine runs pass (section 6); the notes give each file's SHA-256 and say that the stage is silent and that a `PZ_LEVEL=2` visit shows Murphy |
 | 9 | Documentation | `b99784e`, `a050d0a`, then the completeness review's fixes (section 10) | `analysis/puzl_17100.sym`, `analysis/ghidra_seeds_puzl.tsv` (`tools/ghidra_seeds.py`, `tools/ramimage.py`: the image with PUZL at `$17100`); this file, `docs/MSX_ARCHITECTURE.md`, `docs/AMIGA_ANALYSIS.md`, `docs/ROM_BUDGET.md`, `docs/TURBO_R.md`, `README.md`, `tools/msxpuzl.py` (comments only); the review's fixes: this file, `README.md`, `Makefile` | REA accepts the new seeds (0 failed); `make -n matrix` with a `~/` home and with a spaced one |
+| — | The harness in the repository | `70e775b` | `tools/bstest/` (the night's scratch scripts of 4.2 and 4.4), `docs/HARNESS.md`, `tests/test_bstest.py` | 23 tests; checked against the night's records without an emulator (`docs/HARNESS.md` 9) |
+| — | The final checks | `b59a338` | `msx/puzl.asm` (`rs_one`: two `nop`s), `tools/openmsx_rc2.tcl` (`rc2_count_too_fast` names a proc) | the paths no check had run; the VRAM speed at 5.37 MHz; the suite again; the four candidates rebuilt (4.6) |
 
 **Milestone 2: sound** (the plan).
 
@@ -1158,9 +1339,11 @@ first ran on the night's scratch scripts (`impl/` of its scratch folder: section
 | `ROBOCOP2_v0.1.3-test2-2M.ROM` | `TAG=2 ROM_2M=1` | the product as a 2 MiB image: it starts as the complete game will, through the boot guard's 2 MiB check |
 | `ROBOCOP2_v0.1.3-test2-bonus-2M.ROM` | `PZ_TEST=1 TAG=2 ROM_2M=1` | the bonus ROM as a 2 MiB image |
 
-- Built from `14bc5ef`'s sources with `tools/mkrom.py`, outside `build/msx/` (a rebuild at
-  `cae5193` gives the same four images). Each has a label file of the same name. Only the exact
-  files sent to the user go to `build/msx/`.
+- Step 8 built them from `14bc5ef`'s sources with `tools/mkrom.py`, outside `build/msx/` (a
+  rebuild at `cae5193` gives the same four images). The final checks rebuilt all four at
+  `b59a338` (4.6 h): only bank 78 differs from step 8's (`rs_one`'s two `nop`s), and their notes
+  say they replace step 8's. Each has a label file of the same name. Only the exact files sent to
+  the user go to `build/msx/`.
 - Banks 0-85 hold data in each (86 banks). The 1 MiB images have 128 banks; the 2 MiB twins have
   256, with the boot guard's tag in bank 255.
 - Each file's SHA-256, what to test, how to reach each ending and the known limits are in the
@@ -1182,6 +1365,8 @@ first ran on the night's scratch scripts (`impl/` of its scratch folder: section
     blocks, 0 changed pixels outside the elements and 0 cursor errors.
   - The acceptance suite of 4.1-4.4 ran again on `cae5193`'s harness builds (byte-identical to
     the review fixes'): the same results.
+  - The rebuilt four (`b59a338`): the matrix and the fresh-machine runs again, with the same
+    results, and `solve1` from the keyboard on the Expert (WELL DONE with TEST 2): 4.6 h.
 
 ## 7. Defaults chosen while the user slept
 
@@ -1233,15 +1418,17 @@ pass per frame on a real Amiga (no hardware timing seen); PZM's drum samples cla
 | 4 | **Bank renumbering** | avoided: `STAGES` after the effects; no data bank moved or changed |
 | 5 | **The fixed area** had 213 B | 23 taken (190 free; 160 in `PZ_TEST` builds) |
 | 6 | **Sound** changes `music.asm`, which the title uses: the title must stay register-exact | milestone 2 (step 10's acceptance); milestone 1 did not touch it |
-| 7 | **Quirk 1 after level 1.** D0 comes from `msg_wr`, which counts the HUD's messages since the last `hud_init`; `$8056` on the Amiga may count differently across games | open: exact in `PZ_TEST` runs (the bench's start); after a played level 1 only that pass's move could differ, and no drive solves the 4th board there |
+| 7 | **Quirk 1 after level 1.** D0 comes from `msg_wr`, which counts the HUD's messages since the last `hud_init`; `$8056` on the Amiga may count differently across games | open: exact in `PZ_TEST` runs (the bench's start); after a played level 1 only that pass's move could differ. The final checks solved the 4th board there (4.6 e), but `solve1` changes no direction in that pass, so the case is still not exercised |
 | 8 | **Visit 2** shows Murphy until step 13 (the boards and logic are already visit 2's) | open (milestone 3) |
 | 9 | **SCC test bytes.** With 92 banks, bank 90 holds data; mkrom stops if its 1800h holds 5Ah | open (milestone 3) |
 | 10 | **Headless runs**: at most 2 instances, no `exit` in callbacks, files opened once | kept in every run |
 | 11 | **Quirk 1** was not observable in any drive | retired: `pz_quirk1` (4.1) |
 | 12 | **The silent stage** and Murphy on visit 2 must be in the candidates' notes, or the user reports them as bugs | retired: the four candidates' notes say both (step 8), and also the turbo R's 0.1 s blank and its PAUSE rule |
-| 13 | **The solved path on the MSX**: the WELL DONE screen and `$805E` + 1 | open: the drives stop at `pz_done`, so neither was seen on the MSX; they rest on the code (`front_bonus`, the original's script bytes) and on the converter's render |
+| 13 | **The solved path on the MSX**: the WELL DONE screen and `$805E` + 1 | retired: seen in the final checks (4.6 a and e), from the power-on and after a played level 1, on the MSX2, the MSX2+ and the turbo R: WELL DONE equal to its render, AG `$805E` = 1 |
 | 14 | **The turbo R's HUD blank** before the intro (0.1 s) | the user's call (section 7) |
 | 15 | **PAUSE on a turbo R** after the result: a press left pending during the bonus holds the game (the HUD kept, the pause LED lit) until PAUSE is pressed again | by design: as at the end of `front_stats` and `front_over` |
+| 16 | **Level 1 at 5.37 MHz** (the turbo of some MSX2+ and FPGA machines; the normal speed is 3.58 MHz): level 1 loses VRAM writes in openMSX, the ones logged in the sprite engine's 18 T OUTIs (`outi32`, `outi16`) | open, the user's call: 790 lost in 1,399 ticks of `drive_cov1` on the FS-A1FX, none at 3.58 MHz (4.6 g); real hardware not checked. A level-1 change, not made tonight. Brainstorm itself loses none since `b59a338` |
+| 17 | **The harness's text-screen check** (`tools/bstest/bonuscheck.py`) reads R#1 once per record, so a record taken inside the HUD split's blank lines reads as a display off | open: one such FAIL in the final checks (4.6 e). Accept R#1 = 22h with R#2 = 7Fh and R#23 = 29h, or sample again a few ms later, as `tools/msxmatrix.py` does |
 
 ## 9. Sources
 
@@ -1256,13 +1443,14 @@ pass per frame on a real Amiga (no hardware timing seen); PZM's drum samples cla
 | graphics | `$BS/gfx/GFX.md` | the screen read from the code, the 256 × 162 layout, the palette search, the VRAM map, the renderer, the converter prototype |
 | sound | `$BS/sound/SOUND.md` | PZM = MU1's player, the calls, what is heard, the routing, sizes, the player plan, hazards H1-H12 |
 | bench | `$BS/bench/BENCH.md` | `amigaemu.py puzl`, solutions, references, the Unicorn fixes, the Tcl procs, `puzlcmp.py` |
-| implementation | `$BS/impl/HANDOFF.md` | each step's work, commands and measured results; the harness scripts of 4.2 and 4.4 (`impl/harness`, `impl/step7`, `impl/fix`) |
+| implementation | `$BS/impl/HANDOFF.md` | each step's work, commands and measured results; the harness scripts of 4.2 and 4.4 (`impl/harness`, `impl/step7`, `impl/fix`; now in `tools/bstest/`: 4.5) and those of the final checks (`impl/final`: 4.6) |
 
 All Amiga facts in section 2 come from REA (Ghidra provider) listings and byte reads in those
 reports, on the level-1 RAM image with `PUZL_25.bin` at `$17100` (sha256 `9c76e13f…a9431a`:
 `build/ram/puzl_full.bin`, `docs/AMIGA_ANALYSIS.md` "Brainstorm"), and from bench runs of the
 original code; `$8382`, `$17100`, the PZM entries, `$17AEE` and `$17D04` were read again with REA
-for this document. MSX facts cite the source at `14bc5ef`.
+for this document. MSX facts cite the source at `14bc5ef`, which `b59a338` changed only in `rs_one`
+(two `nop`s: 4.6 g); the sizes in 3.1 and 3.10 are `b59a338`'s.
 
 ## 10. Reviews
 
