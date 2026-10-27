@@ -109,6 +109,23 @@ class MkromTuneTests(unittest.TestCase):
         asm = (ROOT / "msx" / "tune.asm").read_text()
         self.assertRegex(asm, r"\n\s+ld a,\(hl\)\n\s+inc a\b[^\n]*\n\s+ld \(tn_busy\),a")
 
+    def test_the_tune_tick_0_waits_for_the_stage_next_pass(self):
+        # the 68000 ticks PZM inside PUZL's pass, after that pass's request ($17794, then $17212),
+        # and the stop all and tune 1 end a board's set-up: its first tick plays tune 1's tick 0 with
+        # the effect the next pass asks for (5 at boards 1-3). tn_start saves the pass counter's low
+        # byte and sets tn_hold; fx_tkd holds the tune's ticks until the counter moved, then clears
+        # tn_hold and goes on into tn_tick
+        tune = (ROOT / "msx" / "tune.asm").read_text()
+        start = tune.split("\ntn_start:")[1].split("\ntn_fm:")[0]
+        self.assertRegex(start, r"\n\s+ld a,\(pzv_frame\)[^\n]*\n\s+ld \(tn_hpz\),a[^\n]*\n\s+ld a,1\n"
+                                r"\s+ld \(tn_hold\),a\n\s+ei\n\s+ret\n")
+        disp = tune.split("\nfx_tkd: ")[1].split("\ntn_tick:")[0]
+        self.assertRegex(disp, r"\n\s+jr z,fxd_t\n(.*\n)+fxd_t:\s+ld hl,tn_hold\n\s+ld a,\(hl\)\n\s+or a\n"
+                               r"\s+jp z,tn_tick\n\s+inc hl[^\n]*\n\s+ld a,\(pzv_frame\)\n\s+cp \(hl\)\n"
+                               r"\s+ret z[^\n]*\n\s+dec hl\n\s+ld \(hl\),0[^\n]*\n\n(;[^\n]*\n)*;[^\n]*$")
+        inc = equates(ROOT / "msx" / "msx.inc")
+        self.assertEqual(inc["tn_hpz"], inc["tn_hold"] + 1)
+
     def test_tune_inc_holds_tune_asm_layout(self):
         # pz_desc's bytes up to pz_fx are TD_SIZE (tune.asm checks it at build time too), each
         # effect TF_SIZE; the streams' and waveforms' banks and addresses in the 8000h window

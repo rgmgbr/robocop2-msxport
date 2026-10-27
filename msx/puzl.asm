@@ -21,9 +21,9 @@
 ;
 ; The sound (msx/tune.asm, in BANK_MUSIC, ticked by the VBLANK interrupt: docs/BRAINSTORM.md 3.6):
 ; a board's set-up ends with PZM tune 1 from its start after the stop all ($1743A, $17442: tune.asm
-; tn_pzm through mus_call); the step sends the pass's pending request with snd_bfx where $17794
-; starts it (pz_sfx keeps it for the traces). Neither writes the mirror, so the traces are those of
-; the silent stage.
+; tn_pzm through mus_call), whose tick 0 waits for the next pass and plays with its request; the
+; step sends the pass's pending request with snd_bfx where $17794 starts it (pz_sfx keeps it for
+; the traces). Neither writes the mirror, so the traces are those of the silent stage.
 
         include "puzl.inc"          ; the stage's places, sheet and VRAM coordinates (tools/msxpuzl.py)
 
@@ -237,7 +237,7 @@ bsu_c:  ld a,(hl)
         xor a
         ld (pzv_done),a             ; $B17 = 0
 bsu_t:  ld hl,tn_pzm                ; ($1743A stop all, $17442 the tune: pz_tune, 1 in every record:
-        jp mus_call                 ;  PZM tune 1, msx/tune.asm)
+        jp mus_call                 ;  PZM tune 1, msx/tune.asm; its tick 0 after the next pass)
 
 ; $171C2-$1722F: one pass, after its wait (tools/openmsx_rc2.tcl samples the mirror at pz_tick's
 ; call): the cursor's image, the fade, what the TV, the LED row and the timer show, the step,

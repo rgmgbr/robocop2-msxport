@@ -15,6 +15,11 @@
 ; $18010); the VBLANK interrupt ticks it 50 times a second while the tune or an effect plays:
 ; sndplay.asm sq_frame's ticks (at 60 Hz every sixth VBLANK skipped) while fx_act is not 0, with
 ; sndplay.asm voice A's SV_CH set to TN_MARK (sound.asm fx_tk -> fx_tkd: tn_tick).
+; - Its tick 0 waits for the stage's next pass (tn_hold: the pass counter $B00 moved). The 68000
+;   ticks PZM inside PUZL's pass, after that pass's request ($17794, then $17212), and the stop all
+;   and tune 1 end a board's set-up: the first tick plays tune 1's tick 0 with the effect the next
+;   pass asks for (5 at boards 1-3: the jingle and the tune start together), at 50 and 60 Hz
+;   whichever VBLANKs the passes' and the ticks' dividers skip.
 ; - The tune: music.asm's voices (mus_v: three melodic, the drums), readers and outputs (mv_rec,
 ;   mo_fm3, mo_rhy, mo_pv) with mus_on 0 (sound.asm spv_on then turns the SCC's channels 0-3 on);
 ;   on the SCC tn_sc1, mo_sc1's output with the waveforms from the tune's own table (tn_wv). With
@@ -63,12 +68,13 @@ tn_pzm: ld hl,pz_desc
 
 ; HL = a tune's descriptor (through mus_call): the stop all, then the tune from its start on this
 ; machine's chips: its voices set up here, the interrupts off meanwhile (the chips' accesses: the
-; PSG's latch, the SCC's bank; up to about 2 ms, the OPLL's patch the most), its tick 0 at the
-; next tick (the VBLANK's, as every tick: its waveform loads are the longest work). The interrupts
-; on: it waits for the next VBLANK first (tick), so that this runs far from the HUD split's line
-; interrupt (~13 ms on) and that a stop still queued for the PSG player (snd_stop: that VBLANK
-; writes voices A-C silent) cannot silence the new tune (H7); without a VBLANK, a second or so at
-; most.
+; PSG's latch, the SCC's bank; up to about 2 ms, the OPLL's patch the most). Its tick 0 is the
+; first tick after the stage's next pass (tn_hold, fx_tkd), with the request that pass sends: a
+; tick is the VBLANK's, as every tick (its waveform loads are the longest work); the chips stay
+; silent until then. The interrupts on: it waits for the next VBLANK first (tick), so that this
+; runs far from the HUD split's line interrupt (~13 ms on) and that a stop still queued for the
+; PSG player (snd_stop: that VBLANK writes voices A-C silent) cannot silence the new tune (H7);
+; without a VBLANK, a second or so at most.
 tn_start:
         push hl
         ld hl,tick
@@ -173,6 +179,10 @@ tns_t:  ld a,(tn_mode)
         ld (snd_v + SV_CH),a        ; (the PSG player's stop ends this tune too: fx_tkd)
         ld a,2
         ld (fx_act),a               ; (the VBLANK ticks it from its tick 0: sound.asm fx_tk)
+        ld a,(pzv_frame)            ; (its tick 0 held until the stage's pass counter, $B00's low
+        ld (tn_hpz),a               ;  byte, is no longer this: fx_tkd)
+        ld a,1
+        ld (tn_hold),a
         ei
         ret
 
@@ -196,20 +206,31 @@ tn_fm:  ld c,0
 
 ; sound.asm fx_tk (the VBLANK interrupt: sndplay.asm sq_frame's tick while fx_act is not 0;
 ; BANK_MUSIC at A000h through fx_bk): the tick of a tune of these while one plays (sndplay.asm
-; voice A's SV_CH is TN_MARK: tn_start); else the in-game effects' tick on the SCC (music.asm
-; fx_tick). fx_act is fx_tick's OR of its voices' ticks left, any value: only the mark tells the
-; tune's ticks apart. Without an SCC the in-game effects never set fx_act: what is left is a
-; tune's the PSG player's stop ended (snd_stop: mus_stop does not run, sq_stop takes the mark
-; away): no more ticks.
+; voice A's SV_CH is TN_MARK: tn_start), its tick 0 held until the stage's next pass (tn_hold: the
+; pass counter's low byte no longer tn_hpz, the one tn_start saw; a held tick writes nothing); else
+; the in-game effects' tick on the SCC (music.asm fx_tick). fx_act is fx_tick's OR of its voices'
+; ticks left, any value: only the mark tells the tune's ticks apart. Without an SCC the in-game
+; effects never set fx_act: what is left is a tune's the PSG player's stop ended (snd_stop:
+; mus_stop does not run, sq_stop takes the mark away): no more ticks.
 fx_tkd: ld a,(snd_v + SV_CH)
         cp TN_MARK
-        jr z,tn_tick
+        jr z,fxd_t
         ld a,(mus_mode)
         rra
         jp c,fx_tick
         xor a
         ld (fx_act),a
         ret
+fxd_t:  ld hl,tn_hold
+        ld a,(hl)
+        or a
+        jp z,tn_tick
+        inc hl                      ; (tn_hpz)
+        ld a,(pzv_frame)
+        cp (hl)
+        ret z                       ; (no pass since tn_start: held)
+        dec hl
+        ld (hl),0                   ; (this tick is its tick 0: on into tn_tick)
 
 ; One tick (from the VBLANK: sndplay.asm sq_frame's tick through fx_tkd; the first after
 ; tn_start, tick 0, reads every voice's first record): the effect requested first (tn_go), then the
