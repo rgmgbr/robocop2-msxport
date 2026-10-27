@@ -111,7 +111,12 @@ nm_ok:
         ld (tick_n),hl              ; (the test scripts' game frames)
         xor a
         ld (front_mode),a
+        if PZ_TEST
+        ld a,1
+        ld (pz_first),a             ; (test build: Brainstorm first, without the title: pz_test)
+        else
         call title
+        endif
         jr ng_go
 
 ; A new game ($FFC4, $FFD8): level 1 from the disk's state again (the map without the last
@@ -161,6 +166,11 @@ ng_go:
         call demo_init
         endif
         call display_on
+        if PZ_TEST
+        ld a,(pz_first)
+        or a
+        jp nz,pz_test               ; (test build: Brainstorm once, before level 1's main loop)
+        endif
 mainloop:
         call wait_frame             ; feeds the VDP while waiting; returns right after the VBLANK
         call sprites_vblank         ; SAT of the list now on screen (still in the VBLANK)
@@ -227,14 +237,32 @@ ml_ev:  ld a,(g_event)
         cp FE_OVER
         ld hl,front_over            ; game over: PIC9
         jr z,ml_fe
-        ld hl,front_stats           ; the next level: its statistics ($85D8), then (for now) the
-ml_fe:  call front_call             ; title and a new game (a turbo R: the Z80 again, front.asm)
+        ld hl,front_stats           ; the next level: its statistics ($85D8; a turbo R: the Z80
+        call front_call             ;  again, front.asm), then load_level1's bonus stage
+        ld hl,front_bonus           ;  (Brainstorm $8382; the range $8420 and level 2 later),
+ml_fe:  call front_call             ;  then (for now) the title and a new game
         call title
         jp new_game
 ml_rst: call level_restart
         xor a
         ld (g_tick),a               ; (no picture of the ticks before the restart)
         jp mainloop
+
+        if PZ_TEST
+; (Test build, tools/mkrom.py PZ_TEST=1) Once after the power-on, instead of level 1's main loop:
+; Brainstorm as after level PZ_LEVEL ($8050; AG as ng_go cleared it: score 0, two lives, no
+; continue) from the state front_stats leaves (a turbo R: the Z80 again), then the title and a
+; new game as after a level.
+pz_test:
+        xor a
+        ld (pz_first),a
+        ld hl,PZ_LEVEL
+        ld (AG + 0x8050),hl         ; (the level done: the stage's visit)
+        ld hl,cpu_title
+        call front_call             ; (cold.asm)
+        ld hl,front_bonus
+        jr ml_fe
+        endif
 
 ; The CIA-B interrupt ($1015E, an alarm of 15625 lines: once a second) unless paused: the timer's
 ; seconds - 1 (BCD), at the bottom its minutes - 1 and seconds 59; below 0:00 time out ($804C,
@@ -291,6 +319,11 @@ display_on:
         ld a,R1_ON
         ld b,1
         jp wrreg                    ; display and VBLANK interrupt on
+
+; Brainstorm's end (msx/puzl.asm bs_stage), A = its result: the trace harness's breakpoint
+; (tools/openmsx_rc2.tcl rc2_pz_drive), reached once, before anything changes the mirror.
+pz_done:
+        ret
 
 ; After a death with lives left (main_loop $82E4: level_init again, without reloading the
 ; level): the map keeps its changes and the lists their state (ao_start resets the object

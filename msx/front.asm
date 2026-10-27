@@ -357,6 +357,135 @@ fs_clear:
         dw 0, 0, 0, 0, 256, VIEW_LINES  ; SX, SY, DX, DY, NX, NY
         db 0, 0, 0xC0                   ; colour 0, ARG, HMMV
 
+; ----- the bonus stages -----
+
+; load_level1 $8582 after the statistics: Brainstorm ($8382, D0 = 2 after level 1; PIC3 dropped,
+; decision 5 of the port): its intro, the stage (msx/puzl.asm, BANK_PUZL at A000h), a continue
+; when it is solved ($805E), its result. The shooting range ($8420) and level 2 come later. From
+; the state front_stats leaves: the play area black, the HUD below it; a turbo R on the Z80 with
+; the display and the interrupts off (cpu_title), the HUD split measured for the R800 only.
+front_bonus:
+        ld a,(cpu_tr)               ; a turbo R: the split measured on the Z80 (split_cal), the line
+        or a                        ;  and VBLANK interrupts and the display on again (other
+        call nz,display_on          ;  machines keep theirs: split_cal blanks the HUD a while)
+        xor a
+        ld (g_tick),a               ; (hud_energy keeps the can: PUZL never calls $89BE)
+        ld hl,txt_bs_intro
+        call fe_text                ; ($8384: $114AA through $10762)
+        ld a,BANK_PUZL
+        call bank_a000
+        call bs_stage               ; ($83DE: jsr $17100) -> A = 0 solved, 1 failed, 2 out of time
+        push af
+        call snd_stop               ; ($83E4: PUZL's player, init and stop all)
+        pop af
+        or a
+        jr nz,fb_res
+        ld hl,(AG + 0x805E)
+        inc hl
+        ld (AG + 0x805E),hl         ; ($83FA: a continue)
+        xor a
+fb_res: add a,a
+        ld e,a
+        ld d,0
+        ld hl,fb_texts
+        add hl,de
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        jp fe_text                  ; ($8400: the result through $10762)
+fb_texts:
+        dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)
+
+; A text screen of the bonus stages ($10762: $10768's screen and loop, then $FE14), HL = its
+; script in this bank (positions, characters, FF 02 n, FF 07: tools/msxtext.py txt_bs_*):
+; front_stats' screen and loop, the script read in place, with the HUD's work each tick (the VBL
+; handler $10266 runs message_ticker $FDA2 during the text screens: the stage's last messages
+; tick on). Silent ($FE14), the play area black at its end. A test candidate (TAG) shows TEST n
+; below the text (row 10) for the screen's whole length, outside the script: its length stays.
+fe_text:
+        push hl
+        call snd_stop               ; ($10768: $FE14)
+        ld hl,fb_init
+        call field_call             ; (no play-field BOB holds a list now)
+        ld hl,pf_pal
+        ld bc,32
+        xor a
+        call fill                   ; black from the next VBLANK
+        call fs_vbl
+        ld hl,fs_clear
+        call vdp_cmd                ; the play area of page 0 black
+        call fs_list                ; page 0 unscrolled, no sprites
+fe_on:  call fs_vbl
+        ld a,(app_seq)
+        ld b,a
+        ld a,(pub_seq)
+        cp b
+        jr nz,fe_on                 ; (until that list is on screen)
+        call vdp_wait
+        if TAG
+        ld a,FE_TAG_COL
+        ld (fs_col),a
+        ld a,10
+        ld (fs_row),a
+        ld hl,fe_tag
+fe_tg:  ld a,(hl)
+        or a
+        jr z,fe_tgx
+        push hl
+        call fs_char
+        pop hl
+        inc hl
+        jr fe_tg
+fe_tgx:
+        endif
+        ld hl,txt_pal
+        ld de,pf_pal
+        ld bc,32
+        ldir                        ; ($109A8 at once)
+        pop hl
+        ld (fs_ptr),hl
+        ld hl,0
+        ld (fs_wait),hl
+        ld (fs_n),hl
+        xor a
+        ld (fs_done),a
+        ld (fs_col),a
+        ld (fs_row),a
+fe_lp:  call fs_tick
+        call hud_keep               ; ($10266: the panel's messages; its digits)
+        call fs_step
+        ld hl,(fs_n)
+        inc hl
+        ld (fs_n),hl
+        ld de,50
+        or a
+        sbc hl,de
+        jr c,fe_lp                  ; (not before tick 50)
+        ld a,(fs_done)
+        or a
+        jr nz,fe_end
+        call ff_bits
+        jr z,fe_lp
+fe_end: ld hl,pf_pal
+        ld bc,32
+        xor a
+        call fill
+        jp snd_stop                 ; ($FE14)
+
+        if TAG
+        if TAG > 9
+FE_TAG_COL: equ 14                  ; (TEST nn at x 96-151)
+        else
+FE_TAG_COL: equ 15                  ; (TEST n at x 104-151)
+        endif
+fe_tag: db "TEST "
+        if TAG > 9
+        db 0x30 + TAG / 10
+        endif
+        db 0x30 + TAG - TAG / 10 * 10, 0
+        endif
+
 ; ----- pictures -----
 
 ; A = the picture's first bank, B = its lines: SCREEN 8 (G7) with it centred, the rest black;

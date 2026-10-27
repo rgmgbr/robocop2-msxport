@@ -377,6 +377,8 @@ scn_at:     equ 0xC684              ; 2: the timed RAM block's scn_inc (split.as
 sp8_tmo:    equ 0xC686              ; 2: the R800's wait for the split's match at most (split8.asm)
 key_tp:     equ 0xC688              ; the turbo R's PAUSE flip-flop as last seen (player.asm key_scan)
 sp8_cnt:    equ 0xC689              ; the R800 split's waits that timed out (split8.asm; tests: 0)
+pz_first:   equ 0xC6FF              ; PZ_TEST builds: 1 from the power-on until Brainstorm ran once
+                                    ;   (rc2.asm pz_test; C68Ah-C6FEh: the stage's own, docs/BRAINSTORM.md 3.2)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -728,8 +730,8 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B6h-C2C1h, C2C5h-C2FFh,
-; C68Ah-C6FFh, ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h, F271h-F27Fh (below the stack),
-; F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
+; C68Ah-C6FEh (Brainstorm's while it runs), ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h,
+; F271h-F27Fh (below the stack), F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
 ; the BIOS's area: F380h-F43Bh so_x, so_n, F500h-F9FFh the map patches' MP_B)
 

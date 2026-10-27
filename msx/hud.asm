@@ -62,6 +62,19 @@ dgb_lp: inc b
 
 ; (The HUD's state at a new game: cold.asm hud_init.)
 
+; hud_frame for code in the banked windows (the bonus stages: front.asm fe_text, msx/puzl.asm):
+; the banks both windows showed come back (hud_frame maps HUD_BANK at 8000h and HUD_BANK + 1 at
+; A000h and leaves them there). (act_8000 and act_a000 are adjacent: one word holds both.)
+hud_keep:
+        ld hl,(act_8000)            ; L: the 8000h window's bank, H: the A000h window's
+        push hl
+        call hud_frame
+        pop hl
+        ld a,h
+        call bank_a000              ; (keeps HL)
+        ld a,l
+        jp bank_8000
+
 ; Once per frame, right after the VBLANK: the ticker, then one other piece of work: a job
 ; slice, else an energy step, else a digit cell.
 hud_frame:

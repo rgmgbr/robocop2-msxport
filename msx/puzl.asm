@@ -8,10 +8,11 @@
 
         include "puzl.inc"          ; the stage's places, sheet and VRAM coordinates (tools/msxpuzl.py)
 
-; $17100: the stage -> A = its result ($17100's D0): 0 solved, 1 failed, 2 out of time.
+; $17100: the stage -> A = its result ($17100's D0): 0 solved, 1 failed, 2 out of time. It
+; leaves through pz_done (rc2.asm: the trace harness's end) with A = the result.
 bs_stage:
         ld a,2                      ; (stub: out of time)
-        ret
+        jp pz_done
 
 ; ----- data -----
 
