@@ -20,7 +20,10 @@
         speech in the music (voice_mix.bin) from VOICE_MIX_BANK, the title music for the SCC
         (tools/msxscc.py scc.bin) from bank SCC_BANK and for the OPLL (tools/msxfm.py fm.bin) from
         bank FM_BANK, the sound effects for the SCC (tools/msxsccfx.py sccfx.bin) from bank
-        SCCFX_BANK (msx/music.asm reads them through the 8000h window); up to 256 banks in all
+        SCCFX_BANK (msx/music.asm reads them through the 8000h window), Brainstorm's code (the last
+        section of msx/rc2.asm, msx/puzl.asm: STAGES, bank BANK_PUZL) and its graphics
+        (tools/msxpuzl.py puzl_gfx.bin: its screen, sheet and TV pictures, raw; msx/puzl.asm reads
+        them through the 8000h window) from bank PUZL_GFX_BANK; up to 256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
         window maps must not have (b & 3Fh) = 3Fh (those select the SCC's registers at 9800h on
@@ -36,7 +39,9 @@ camera-cell masks of the level's spawn list and hazards (tools/cellmasks.py: cel
 game logic's shortcuts), checks that every map cell and attribute value the level's writers can
 change fits the map patches and the packed map's codes (tools/mapcells.py: the build fails
 otherwise), copies the level palette and the HUD's
-(both through the colour grade: level1_grade.pal, hud_grade.pal; the HUD's also from colour 4 on,
+(both through the colour grade: level1_grade.pal, hud_grade.pal; Brainstorm's too, puzl_1_grade.pal,
+with the stage's equates and tables, puzl.inc and puzl_tab.inc, and its cursor, puzl_cursor.spr,
+tools/msxpuzl.py; the HUD's also from colour 4 on,
 hud_split.pal, the order the HUD split loads it: msx/isr.asm isr_split), the HUD (tools/msxhud.py) and RoboCop's
 logic tables (tools/player.py --inc) into build/msx/gen, assembles with z80asm and writes
 build/msx/rc2.rom.
@@ -65,6 +70,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK = 0x2000
 LOGIC = ("LC1", "LC2", "L1", "LC3", "INPUT", "FRONT", "FIELD", "MUSIC")  # logic banks after the two code banks (msx/rc2.asm
                                     # sections): modules at 8000h (one at a time), the level at A000h
+STAGES = ("PUZL",)                  # the bonus stages' code banks (msx/rc2.asm's last sections, at A000h
+                                    # while they run; PUZL: Brainstorm, msx/puzl.asm), placed after the
+                                    # sound effects, so that no bank before them moves (with PUZL after
+                                    # MUSIC every data bank moved up by one, and bank 24h's 1800h then
+                                    # held 24h, an SCC test value: msx/sound.asm scc_pat)
 PICTURES = (("title", "title_credit"), ("gameover", "gameover_text"))   # the SCREEN 8 pictures next to
                                     # the level's files (name, file): TPIC with the port's credit
                                     # (tools/msxtext.py), PIC9 with GAME OVER below it
@@ -106,6 +116,10 @@ OPTIONS = {
                     " types 1 and 2, damage 40h) at most 2, the user's choice (msx/hits.asm)"),
     "ROM_2M": (0, "1 = a 2 MiB image while the game still fits 1 MiB (test: the start of a 2 MiB ROM, msx/cold.asm"
                   " rom_guard)"),
+    "PZ_TEST": (0, "1 = test build: at power-on, without the title, level 1's start, then Brainstorm (the bonus stage"
+                   " after level 1: its intro, the stage, its result), the title and a new game (msx/rc2.asm pz_test)"),
+    "PZ_LEVEL": (1, "PZ_TEST's visit of Brainstorm: 1 after level 1, 2 after level 2 (the game's level, AG $8050)"),
+    "TAG": (0, "N > 0 = test candidate: the bonus text screens show TEST N below their text (msx/front.asm fe_text)"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -375,6 +389,9 @@ def main(argv: list[str]) -> int:
     if not 1 <= opts["DAMAGE_X"] <= 3:
         print("DAMAGE_X must be 1, 2 or 3 (msx/hits.asm)", file=sys.stderr)
         return 2
+    if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1) or not 0 <= opts["TAG"] <= 99:
+        print("PZ_TEST must be 0 or 1, PZ_LEVEL 1 or 2 and TAG 0-99", file=sys.stderr)
+        return 2
     vram = level.with_suffix(".vram").read_bytes()
     mp = level.with_suffix(".map").read_bytes()
     rows = len(mp) // (COLS * 2)
@@ -387,8 +404,10 @@ def main(argv: list[str]) -> int:
                                    "fade_cap:                           ; per fade step its limit (msx/logic.asm pal_fade)\n"
                                    "        db " + ", ".join(map(str, BRIGHT)) + "\n")
     for name in ("robocop.inc", "robocop_flash.inc", "robocop_field.inc", "hud_rt.inc", "player.inc",
-                 "sound.inc", "text.inc", "voice.inc"):
+                 "sound.inc", "text.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr"):
         shutil.copy(level.parent / name, gen / name)
+    # Brainstorm (msx/puzl.asm): its palette through the colour grade, as game play (decision 8)
+    (gen / "puzl_1_grade.pal").write_bytes(grade_pal((level.parent / "puzl_1.pal").read_bytes()))
     atr = level.with_suffix(".atrp").read_bytes()               # (packed: copied to page-0 RAM)
     otile = level.with_suffix(".otile").read_bytes()
     otile += level.with_suffix(".atr2").read_bytes()        # (ATR2 = OTILE + 400h)
@@ -489,7 +508,13 @@ def main(argv: list[str]) -> int:
     bank_scc = bank_voice + len(voice) // BANK
     bank_fm = bank_scc + len(scc) // BANK
     bank_sccfx = bank_fm + len(fm) // BANK
-    banks_used = bank_sccfx + len(sccfx) // BANK
+    bank_stage = bank_sccfx + len(sccfx) // BANK       # (STAGES: the bonus stages' code)
+    # Brainstorm's graphics (tools/msxpuzl.py puzl_gfx.bin: the screen and the sheet, then the TV
+    # pictures, packed across banks: msx/puzl.asm streams them into VRAM through the 8000h window)
+    puzl_gfx = (level.parent / "puzl_gfx.bin").read_bytes()
+    puzl_gfx += b"\xff" * (-len(puzl_gfx) % BANK)
+    bank_puzl_gfx = bank_stage + len(STAGES)
+    banks_used = bank_puzl_gfx + len(puzl_gfx) // BANK
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
@@ -518,6 +543,8 @@ def main(argv: list[str]) -> int:
                   for i, (n, f) in enumerate(PICTURES)) +
         f"VOICE_BANK: equ {bank_voice}\nVOICE_MIX_BANK: equ {bank_mix}\nSCC_BANK: equ {bank_scc}\nFM_BANK: equ {bank_fm}\n"
         f"SCCFX_BANK: equ {bank_sccfx}\n"
+        + "".join(f"BANK_{n}: equ {bank_stage + i}\n" for i, n in enumerate(STAGES)) +
+        f"PUZL_GFX_BANK: equ {bank_puzl_gfx}\nPUZL_GFX_BANKS: equ {len(puzl_gfx) // BANK}\n"
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
         f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
@@ -559,16 +586,18 @@ def main(argv: list[str]) -> int:
               f"shows the SCC there with 3Fh at 9000h)", file=sys.stderr)
         return 1
     cb = code.read_bytes()
-    if len(cb) != (2 + len(LOGIC)) * BANK:
-        print(f"error: code is {len(cb)} bytes (expected {(2 + len(LOGIC)) * BANK})", file=sys.stderr)
+    if len(cb) != (2 + len(LOGIC) + len(STAGES)) * BANK:
+        print(f"error: code is {len(cb)} bytes (expected {(2 + len(LOGIC) + len(STAGES)) * BANK})", file=sys.stderr)
         return 1
+    stage_code = cb[bank_tiles * BANK:]                 # (the last sections: STAGES, at bank_stage)
+    cb = cb[:bank_tiles * BANK]
     rom = (cb + tiles + b"".join(map_banks) + sprites + hudrt + b"\xff" * (2 * BANK - len(hudrt))
            + atr + bytes(BANK - len(atr)) + hud_img + b"\xff" * (BANK - len(hud_img))
            + otile + b"\xff" * (BANK - len(otile))
            + field_img + b"\xff" * (BANK - len(field_img))
            + field_dyn + b"\xff" * (dyn_banks * BANK - len(field_dyn))
            + b"".join(p + b"\xff" * (-len(p) % BANK) for p in pics)
-           + voice + scc + fm + sccfx)
+           + voice + scc + fm + sccfx + stage_code + puzl_gfx)
     if len(rom) != banks_used * BANK:
         print(f"error: the image holds {len(rom)} bytes, the layout {banks_used} banks", file=sys.stderr)
         return 1
@@ -601,7 +630,8 @@ def main(argv: list[str]) -> int:
     print(f"{out}: {len(rom) // 1024} KiB ({len(rom) // BANK} banks); tiles in {bank_tiles}-{bank_map - 1}, "
           f"map in {bank_map}-{bank_spr - 1} ({rows} rows), RoboCop sprites in {bank_spr}-"
           f"{bank_hud - 1}, HUD data in {bank_hud}-{bank_hud + 1}, attributes in {bank_atr}, HUD image in "
-          f"{bank_atr + 1}, level tables in {bank_atr + 2}" + (f"; joystick script {script}" if script else ""))
+          f"{bank_atr + 1}, level tables in {bank_atr + 2}; Brainstorm's code in {bank_stage}, its graphics in "
+          f"{bank_puzl_gfx}-{banks_used - 1}" + (f"; joystick script {script}" if script else ""))
     return 0
 
 

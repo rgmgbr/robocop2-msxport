@@ -516,3 +516,10 @@ music_tab:
                                     ;  error here when tools/msxvoice.py's RATE_T changes)
 music_end:
         ds 0xC000 - music_end, 0xFF
+
+; ----- Brainstorm, the bonus stage after level 1 (BANK_PUZL at A000h while it runs, FRONT at
+; 8000h: front.asm front_bonus) -----
+        org 0xA000
+        include "puzl.asm"
+puzl_end:
+        ds 0xC000 - puzl_end, 0xFF
