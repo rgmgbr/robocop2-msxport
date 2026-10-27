@@ -501,8 +501,28 @@ frv_pass3:  equ AM + 0x0B02         ; 2: + 3 a pass (nothing reads it)
 frv_correct: equ AM + 0x0B04        ; 2: the correct targets hit ($1EAC8: D1 at the return)
 frv_dummy:  equ AM + 0x0B06         ; 2: the dummy targets hit ($1EAC4: D0 at the return)
 frv_end:    equ AM + 0x0B08         ; 2: 0 in play; 1 at "NO AMMO." (+ 1 a pass) or at a time out
+frv_hit:    equ AM + (0x0B0B ^ 1)   ; $B0B: frng_draw_bob's hit (FFh), per call (its caller reads it)
+frv_slot0:  equ AM + 0x0B2E         ; 4: slot 0's state (A3 = $B2E; slot 1's A3 = $B32): a long, its
+frv_slot1:  equ AM + 0x0B32         ;   fields at A3 - $20 ... A3 + 11 (msx/frng.asm rg_targets)
+frv_fxon:   equ AM + (0x0B3E ^ 1)   ; $B3E: 1 while the hit effect runs
+frv_fxfrm:  equ AM + (0x0B46 ^ 1)   ; $B46: its frame (0-21)
+frv_fxend:  equ AM + (0x0B4E ^ 1)   ; $B4E: its type's end frame
+frv_fxx:    equ AM + 0x0B56         ; 2: its x
+frv_fxy:    equ AM + 0x0B66         ; 2: its y (the start's D1 - 8)
 frv_cx:     equ AM + 0x0B9A         ; 2: the crosshair's x (the hit pixel's bitplane x + 111)
 frv_cy:     equ AM + 0x0B9E         ; 2: the crosshair's y (its row)
+frv_hitx:   equ AM + 0x0BA2         ; 2: $BA2: the shot's column in the BOB's word-aligned box, per
+                                    ;   call (its high byte FFh: outside; its low byte, $BA3, here)
+frv_hitrow: equ AM + 0x0BA4         ; 2: $BA4: its row in the box, per call
+frv_bigon:  equ AM + (0x0BA6 ^ 1)   ; $BA6: FFh while a big target is out ($BA7 is cleared with it)
+frv_bigsz:  equ AM + 0x0BA8         ; 2: the big target's BLTSIZE to draw this pass (0: none)
+frv_biggfx: equ AM + 0x0BAA         ; 4: its graphic (a long: the high word first)
+frv_bigx:   equ AM + 0x0BAE         ; 2: its x
+frv_bigy:   equ AM + 0x0BB0         ; 2: its y
+frv_bighit: equ AM + (0x0BB2 ^ 1)   ; $BB2: $1F3F6's hit, which the handler scores a pass later
+frv_bigcol: equ AM + 0x0BB4         ; 2: the word $BB4 (its high byte stays 0): $BB5 the hit's column
+frv_fxdiv:  equ AM + (0x0BB6 ^ 1)   ; $BB6: the effect's frame divider, - 1 every pass
+frv_entry:  equ AM + 0x0BB8         ; 4: $BB8: the running slot's script entry, $1EF88 + 8 n (a long)
 frv_cdelay: equ AM + 0x0BBC         ; 2: a correct hit's delay (10 at the hit; FF00h idle)
 frv_ddelay: equ AM + 0x0BBE         ; 2: a dummy hit's delay
 frv_fadein: equ AM + (0x0BC0 ^ 1)   ; FFh: fading in, 0: fading out
@@ -744,6 +764,37 @@ pw_cimg:    equ 0xEE1A              ;   image 0-7 ($B12's offset / 40h; 8: $17FE
 PW_LEN:     equ 27
 rd_st0:     equ 0xEE20              ; PZ_ST_LEN: what display page 0 shows (puzl.inc PZ_ST_...; FFh:
 rd_st1:     equ 0xEE90              ;   the screen's own pixels), page 1's (each in one 256-byte page)
+; The shooting range (msx/frng.asm) while it runs, in objl_ram: the wanted state, what the original
+; has drawn as of the last pass (fr_frame), for the renderer, in range.inc's shown-state layout
+; (RG_ST_LEN bytes, at most RGW_ROOM: RG_ST_C unused, RG_NONE; RG_ST_S the camera s; the pop-ups by
+; slot, the big target, the dissolve, RG_NONE when nothing is drawn; the crosshair, $B9A 0: none;
+; the fire box). EE30h-F07Fh: free for the renderer. Then the logic's own: the hit test's work,
+; the pictures' tables (rgt_pics indices, made at the entry)
+rg_want:    equ 0xEE00
+RGW_ROOM:   equ 0x30
+rg_btop:    equ 0xF080              ; the recent-blit list's end (its low byte: the list, rg_blits, is
+                                    ;   in one 256-byte page)
+rg_blost:   equ 0xF081              ; the list's entries dropped for want of room (0 expected:
+                                    ;   tools/msxrange.py's RG_BLITS_MAX bound)
+rg_bigpic:  equ 0xF082              ; the big target's picture, set by its handler with $BAA
+rgb_pic:    equ 0xF083              ; rg_bob: the picture whose mask its first blit reads,
+rg_wp:      equ 0xF084              ; 2: rg_targets: the running slot's pop-up in rg_want,
+rg_lock:    equ 0xF086              ; 2: rg_popup: its position's lock (A1),
+rg_px:      equ 0xF088              ; 2:   its D0,
+rg_py:      equ 0xF08A              ; 2:   its D1
+rgb_x:      equ 0xF08C              ; 2: rg_bob: D0,
+rgb_y:      equ 0xF08E              ; 2:   D1,
+rgb_sz:     equ 0xF090              ; 2:   D4 (the BLTSIZE),
+rgb_h:      equ 0xF092              ; 2:   its rows,
+rgb_wb:     equ 0xF096              ;   the mask's row bytes,
+rgb_row:    equ 0xF097              ;   the first blit's (2 w');
+rgb_c:      equ 0xF098              ; rg_tmp: the byte's column in its row,
+rgb_pr:     equ 0xF099              ;   the priority plane's byte there,
+rgb_win:    equ 0xF09A              ;   3: the mask's bytes around it
+rg_spic:    equ 0xF0A0              ; 42: by script, its pop-up's picture (RG_NONE: not a pop-up)
+rg_rpic:    equ 0xF0CA              ; 10: by frame, the riser's
+rg_wpic:    equ 0xF0D4              ; 16: by kind, the walker's
+rg_fpic:    equ 0xF0E4              ; 22: by frame, the dissolve's (F0E4h-F0F9h)
 SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32)
 dg_msxv:    equ 0xE900              ; DIAG test builds (tools/mkrom.py, music.asm dg_main; before any level):
 dg_a8b:     equ 0xE901              ;   the BIOS's MSX version and A8h at the start (rc2.asm init),
