@@ -86,18 +86,57 @@ The seeds are re-read on every `open_binary`; changing the server registration r
 reconnecting `rea` (`/mcp`). Names and comments live in `analysis/main_8000.sym`, the
 source of truth, because the Ghidra session inside REA is ephemeral.
 
+Brainstorm's code (PUZL, loaded at `$17100`) has an image and a seed file of its own; never
+seed a level image with them (those addresses hold other files there):
+
+```sh
+python3 -I tools/ramimage.py build/extracted build/ram/puzl RB1 MU1 DATAL1 SPERMA PERMA PUZL_25
+python3 -I tools/ghidra_seeds.py build/extracted/boot/main_8000.bin analysis/main_8000.sym \
+    analysis/ghidra_seeds_puzl.tsv analysis/puzl_17100.sym
+```
+
+Open `build/ram/puzl_full.bin` as above with `REA_GHIDRA_SEED_FILE` set to
+`analysis/ghidra_seeds_puzl.tsv`; PUZL's names live in `analysis/puzl_17100.sym`.
+
 ## MSX build
 
 ```sh
-make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables (build/msx/)
+make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's graphics, tables and texts (build/msx/)
 make rom      # MegaROM (KonamiSCC/MegaRAM mapper) in build/msx/rc2.rom
-make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938)
+make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, PZ_TEST, PZ_LEVEL, TAG, ...)
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
+make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brainstorm, then the title
+make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TEST 2 on the bonus text screens
 ```
+
+After level 1 the game runs Brainstorm, the bonus stage (its intro, the chip puzzle, its result),
+then the title: [docs/BRAINSTORM.md](docs/BRAINSTORM.md). For now it is silent, and a second
+visit shows the first visit's face. Build options for it (`tools/mkrom.py`):
+
+| Option | Effect |
+|---|---|
+| `PZ_TEST=1` | power-on without the title: level 1's set-up, then Brainstorm once, then the title and a new game |
+| `PZ_LEVEL=1` or `2` | `PZ_TEST`'s visit: after level 1 (default) or after level 2 (the second set of boards) |
+| `TAG=n` | a test candidate (1-99): the bonus text screens show TEST n below their text |
+| `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stage's timer stands still |
 
 `make matrix` runs the ROM headless on a fixed set of generic set-ups (`tools/msxmatrix.py`):
 MSX2, MSX2+, turbo R, 50 Hz, a disk interface before the cartridge, a slot expander, an FM-PAC,
-and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone.
+and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone. `make matrix OMHOME=DIR` uses an openMSX
+home that has those machines, such as the MSX-AI MCP's (a leading `~/` is expanded; default:
+`$OPENMSX_HOME`, else `~/.openMSX`).
+
+The tool waits for the title on every set-up, so a `PZ_TEST=1` build, which starts without the
+title, FAILs under `make matrix`. Check such a build with the tool itself (add `--home DIR` for
+another openMSX home):
+
+```sh
+python3 -I tools/msxmatrix.py build/msx/rc2.rom --labels build/msx/rc2.labels --no-title
+```
+
+With `--no-title` it waits for no title and presses no key: the game's tick counter (`tick_n`,
+which the stage's passes advance) must go up between samples at 20 s and 27 s from the power-on,
+with the display on and no DI; HALT.
 
 The engine is Z80 assembly in `msx/` (z80asm 1.8). Run it in openMSX with
 `carta insert build/msx/rc2.rom -romtype KonamiSCC`. RoboCop is played with joystick port 1
@@ -111,6 +150,23 @@ with a joystick script and traces its variables per game frame; a ROM built with
 script (`JOY=...`) traced with `rc2_trace FILE N ADDR TARGET` (`tools/openmsx_rc2.tcl`, the
 `tick_start` and `game_tick` addresses from `build/msx/rc2.labels`) is compared with
 `tools/tracecmp.py A.jsonl FILE`.
+
+Brainstorm's logic is checked the same way, pass by pass (the commands, the drives and their
+results: [docs/BRAINSTORM.md](docs/BRAINSTORM.md) 4.5). The bench plays a drive and traces
+PUZL's state (`PY=~/.venvs/msxports/bin/python`):
+
+```sh
+$PY -I tools/puzlsolve.py build/emu/pz_solve1          # the four boards solved: pz_solve1.drive
+$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_solve1.drive \
+    --trace build/emu/pz_solve1_ram.jsonl --trace-ram
+python3 -I tools/mkrom.py build/msx/level1 OUT/rc2_pz1.rom EXTJOY=1 PZ_TEST=1   # OUT outside build/msx
+```
+
+then, in headless openMSX, `source tools/openmsx_rc2.tcl` and `rc2_pz_drive ROM LABELS FILE 2000 0
+build/emu/pz_solve1.drive` (poll `::rc2_trace_done`; `rc2_pz_arm` reaches the stage from a played
+level 1), and `tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl FILE` prints "0 differ" and both
+results. `tools/msxpuzl.py render` draws a display page from its shown state in a RAM dump, to
+compare with the screen.
 
 Checking a run in headless openMSX (MSX-AI `msx_local_cmd`): `source tools/openmsx_rc2.tcl`,
 then `rc2_snaps DIR N SECS` (or `rc2_snaps_when` for a condition) saves VRAM, RAM and VDP
@@ -129,3 +185,5 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [Disk or ROM for the whole game](docs/DISK_VS_ROM.md)
 - [The MSX Pico+ page cache and the 2 MiB ROM](docs/PICO_CACHE.md)
 - [MSX port architecture and decisions](docs/MSX_ARCHITECTURE.md)
+- [MSX turbo R support (R800)](docs/TURBO_R.md)
+- [Brainstorm, the bonus stage after level 1](docs/BRAINSTORM.md)

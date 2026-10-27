@@ -3,6 +3,12 @@
 Measured on 2026-10-26 against release v0.1.2 (`build/msx/ROBOCOP2_v0.1.2.ROM`: level 1, the
 title, the game over and the statistics screen).
 
+**Update, 2026-10-27.** Brainstorm, the bonus stage after level 1, is built (milestone 1: its logic
+and graphics, silent; `docs/BRAINSTORM.md`). The image now uses **86 of its 128 banks** (still 1
+MiB): its code in bank 78, its graphics stored raw in banks 79-85 (section 2.1). Section 4.1 counts
+the whole game against 2 MiB again from there: about 189 banks likely and 198 high, 196 and 203
+with the range's graphics raw too, of 256. The rest of this document is the budget of 2026-10-26.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -32,6 +38,8 @@ Conventions:
 |---|---:|---:|
 | Used today (banks 0-77) | 78 | 624 |
 | Free today (banks 78-127) | 50 | 400 |
+| Used on 2026-10-27, with Brainstorm (banks 0-85) | 86 | 688 |
+| Free on 2026-10-27 (banks 86-127) | 42 | 336 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -113,6 +121,27 @@ Slack inside the 78 used banks (M):
 Only one of these is a whole bank. Bank 20 holds row 50 of the level-1 map (320 B) and 7,872 B
 of fill. `rowtab.inc` stores a bank and an address for each row, so that row can move into bank
 46's free 4 KiB, and bank 20 then becomes free.
+
+### 2.1 Added on 2026-10-27: Brainstorm
+
+M, from the product's image and label file at `14bc5ef`:
+
+| Banks | Content | Bytes used | Fill or free |
+|---|---|---:|---:|
+| 78 | `BANK_PUZL`: Brainstorm's code, its boards and tables, the cursor's patterns, its graded palette (`msx/puzl.asm`) | 3,580 | 4,612 |
+| 79-85 | Brainstorm's graphics, raw (`tools/msxpuzl.py` `puzl_gfx.bin`: the screen and the sheet 27,904 B, visit 1's 9 TV pictures 28,800 B) | 56,704 | 640 (bank 85) |
+| 86-127 | Free | 0 | 344,064 |
+
+- `tools/mkrom.py` places the bonus stages' code banks (`STAGES`) after the sound effects, so no
+  bank before 78 moved, and the data banks 10-77 are byte-identical to those of `52149b0`
+  (`ROBOCOP2_v0.1.3-test1.ROM`, the last image before Brainstorm) but for bank 45's padding, which
+  took PUZL's three HUD messages (447 B free in `HUD_BANK` + 1, 493 before).
+- The code banks changed where code was added: 23 B of fixed code (the hook, `hud_keep`,
+  `pz_done`: 190 B free, 213 at `52149b0`), with the banked modules' calls into the fixed area
+  moved by a few words, and FRONT (`front_bonus`, `fe_text` and the four bonus texts: 2,733 B free,
+  3,202 at `52149b0`).
+- Bank 90 (5Ah) is still padding; when it holds data, its byte at 1800h must not be an SCC test
+  value (mkrom checks it).
 
 ## 3. What the rest of the game needs
 
@@ -373,6 +402,12 @@ Decision numbers are those of the port's decision list.
   - The second range differs only by its palette.
   - Leaving the second visits out saves less than half a bank.
 - **Music.** The stages' tunes are counted once, in 3.6.
+- **Brainstorm as built (2026-10-27, M).** Its code takes 3,580 B of one bank (the estimate:
+  4.4-7.2 KiB, 1 bank), with the boards and tables. Its graphics are stored raw, not in ZX0 (the
+  project has no decompressor): the screen re-laid out to 256 × 162 with a sheet of its blocks
+  (27,904 B) and each visit's 9 TV pictures pre-composed (the face or black under each static
+  frame, 28,800 B): 7 banks for visit 1, 11 with visit 2 (`tools/msxpuzl.py --visits 1,2`), against
+  2-3 in ZX0. ZX0 stays the fallback (−8 to −9 banks). Section 4.1 counts the difference.
 
 ### 3.8 Total of the plan
 
@@ -440,6 +475,28 @@ In a 1 MiB image, bank 127 (like bank 63 today) may only hold data that is never
 8000h. The plan has such data: the level logic banks and the map banks are read at A000h. But
 `mkrom.py` today treats every data bank up to the dynamic frames as mapped at 8000h, so it must
 learn that maps are A000h-only.
+
+### 4.1 Again on 2026-10-27, with Brainstorm built
+
+E, from the numbers above. Brainstorm's code (1 bank) and its visit-1 graphics (7 banks, raw) are
+now in the image: 86 banks used. Against the scenarios they replace Brainstorm's code (1/1/1) and
+its ZX0 graphics (2/2/3) of 3.7, and add visit 2's TV pictures raw (+4 banks, M: the converter's
+85,504-byte blob for both visits). The rest of the game, low / likely / high, then counts from 86:
+
+| Scenario | Rest of the game | Whole game | 2 MiB (256) spare |
+|---|---|---|---|
+| A. Today's pipeline, the range's graphics in ZX0 | 98 / 103 / 112 | 184 / 189 / 198 | 72 / 67 / 58 |
+| A, the range's graphics raw too (73,984 B: 10 banks against 2 / 3 / 5) | 106 / 110 / 117 | 192 / 196 / 203 | 64 / 60 / 53 |
+| B. The plan (one palette, one sprite pool), the range in ZX0 | 59 / 64 / 73 | 145 / 150 / 159 | 111 / 106 / 97 |
+| A with all the optional content of 3.9, photos raw | about 172 likely | about 258 | about 2 over (9 with the range raw) |
+
+- **The mandatory 2 MiB holds the whole game** in every scenario but the last, with at least 53
+  banks to spare.
+- Only the content decision 5 dropped (3.9: the photos, raw) would no longer fit (it had 7 banks to
+  spare before Brainstorm's raw graphics); ZX0 for the bonus graphics stays the fallback (−8 to −9
+  banks for Brainstorm).
+- 1 MiB holds none of them, not even B with the savings 2 + 3 of section 6 (about 133 banks
+  likely): the 2 MiB decision stands.
 
 ## 5. Verdict
 
@@ -704,7 +761,7 @@ banks.
 | 1 | 1 MiB or 2 MiB? | the limit, by 128 banks | The 256-bank test image on the Pico+ and the SX-2; revisit decision 2. |
 | 2 | Bring the photos back? | +12 to +49 banks: PIC1/4/7 and PICF take 12-14 in ZX0 (25 raw); all eight take 21-23 in ZX0 (49 raw) | The user's decision; it only makes sense with 2 MiB. |
 | 3 | One palette for all levels? | about 39 banks (102 → 63) | Show a level-3 preview under level 1's palette beside its own. The alternatives are a palette fitted over all three levels (which converts level 1 again) or the middle way of 3.10 (about +10 banks). |
-| 4 | Port the bonus stages? | 14 banks (8 with PSG-only tunes) | The user's decision. Their effects on the game: continues, the $8060 hit points. |
+| 4 | Port the bonus stages? | 14 banks (8 with PSG-only tunes) | The user's decision. Their effects on the game: continues, the $8060 hit points. Brainstorm is ported (2026-10-27, milestone 1, silent: 8 banks, graphics raw; 4.1); the range is still open. |
 | 5 | Per-tile tile compression? | −11 banks | Count tile-cache misses per tick on the coverage drive (both scroll engines) and time a 128-B decode. |
 | 6 | The CMP speech? | +2 or +10 banks | The user listens to `build/music/cand_CMP_s1.wav`. |
 | 7 | Music formats and chips? | −3 to −11 banks (options 4, 5, 7) | Build the repeat-record reader on one tune; decide on OPLL for the new tunes. |

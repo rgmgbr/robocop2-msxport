@@ -129,6 +129,11 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
 | page 3 lines 200–207 | sprite set B: colour table `1E400h`, SAT `1E600h` (R#5 = CFh) |
 | page 3 lines 208–252 | HUD (45 lines; shown with R#23 = 41 at display line 167) |
 
+Brainstorm, the bonus stage after level 1, lends some of it while it runs (see "Brainstorm" under
+Front end, and `docs/BRAINSTORM.md` 3.3): pages 0–1 are its two display pages, page 0 lines 162–217
+its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its end), page 3 lines
+176–207 its cursor's patterns, colour rows and SATs. The atlas and the HUD are never touched.
+
 ## Sprite engine (`msx/sprites.asm`): RoboCop and the enemies
 
 - **Data** (`tools/msxsprites.py`, 264 KiB from bank `SPR_BASE_BANK`): 130 RoboCop
@@ -741,7 +746,9 @@ which as sprites were striped, cut or left out.
   `tools/tracecmp.py --ram` compares it field by field (`analysis/amiga_ram.tsv`) with the
   bench's trace of the original. Identical so far: movement, fire, the level-1 coverage
   scenarios (20,540 and 4,400 frames), a death and the restart, game over after three deaths,
-  and the level's end (type 32's sequence, the score count, the fade, `$8050` + 1).
+  and the level's end (type 32's sequence, the score count, the fade, `$8050` + 1). Brainstorm's
+  logic is checked the same way, pass by pass (`EXTJOY=1 PZ_TEST=1` builds, `rc2_pz_drive`,
+  `tools/puzlcmp.py` against `tools/amigaemu.py puzl`: `docs/BRAINSTORM.md` 4).
 - **Main loop order**: wait for the VBLANK, SAT, keys, seconds, HUD; the picture of the ticks
   run at the end of the last frame (scroll engine, RoboCop, BOBs to objects, budget and layout
   when late) or, without one, the scroll engine and `cam_follow`; the sprite engine's frame;
@@ -788,8 +795,8 @@ which as sprites were striped, cut or left out.
   to its end, 103.68 s: the user's choices, 2026-10-25, the original loops it until fire and
   cuts it) → level 1; game over → PIC9 for 30 seconds or until fire is
   pressed once released (the original: 128 frames; the user's choice) → title; the level's
-  end → the level's statistics → title (the bonus stages and level 2 come later). Test builds
-  with a script skip the title.
+  end → the level's statistics → Brainstorm (its intro, the stage, its result: below) → title
+  (the shooting range and level 2 come later). Test builds with a script skip the title.
 - **The level's statistics** (`front_stats`, `show_level_stats` `$85D8`: script `$1132F` through
   `$10762`): the henchmen killed (`$16C2`), the nukes collected (`$16C0`) and the hostages
   rescued (`$16BE`) typed into the play area of page 0 (a register list of its own: page 0
@@ -804,7 +811,9 @@ which as sprites were striped, cut or left out.
 - The ROM is 1 MiB (128 banks; the user's choice, 2026-10-22, for RoboCop's speech and the next
   levels: a 1 MiB MegaRAM or flash cartridge): the first 65 hold the game (the pictures take the
   last 13 of them), then the speech (`VOICE_BANK`; in the music: `VOICE_MIX_BANK`), the title
-  music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), 74 banks in all; the rest is free.
+  music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), the SCC effects (`SCCFX_BANK`),
+  Brainstorm's code (`BANK_PUZL`, 78) and its graphics (`PUZL_GFX_BANK`, 79–85): 86 banks in all
+  (2026-10-27); the rest is free.
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
   Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
   every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
@@ -848,6 +857,70 @@ which as sprites were striped, cut or left out.
 
   With both fixes the game starts in openMSX with the DDX 3.0 in slot 1, on the Gradiente
   Expert 2.0, plain and as CocoaMSX's.
+
+### Brainstorm, the bonus stage after level 1 (`front_bonus`, `msx/puzl.asm`, 2026-10-27)
+
+The design, the measurements and the original's facts: `docs/BRAINSTORM.md`. Milestone 1 is
+built: the original's logic and graphics, silent; the second visit (after level 2) shows visit
+1's face until milestone 3.
+
+- **Flow.** `rc2.asm` `ml_ev`, FE_NEXT (the level's end): `front_stats`, then `front_bonus`, then
+  the title and a new game; FE_OVER and FE_RESTART are unchanged. `front_bonus` (FRONT) is the
+  original's `$8382` without its picture (decision 5): on a turbo R the Z80's hardware pause off
+  and `display_on` (which measures the HUD split for the Z80, where `front_stats`' `cpu_title`
+  left the game); `g_tick` = 0 (the energy can stays); the intro (`fe_text`); `BANK_PUZL` at A000h
+  and `call bs_stage` → A = 0 solved, 1 failed, 2 out of time; `snd_stop`; `$805E` + 1 (a
+  continue) when solved; the result text; `jp cpu_title`. The stage ends through `pz_done` (fixed
+  code, a `ret`: the trace harness's end).
+- **Text screens.** `fe_text` is `front_stats`' screen and loop (page 0's play area, sprites off,
+  the HUD below through the split, one script element a tick at 50 a second), with the script
+  read in place (`txt_bs_intro`, `txt_bs_ok`, `txt_bs_fail`, `txt_bs_time`: `tools/msxtext.py`,
+  in FRONT), `hud_keep` every tick (the panel's messages tick on, as the Amiga's VBL handler does)
+  and `snd_stop` at its start and its end. The intro's 34-character line is split over two rows,
+  the original's call count kept.
+- **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
+  places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
+  `BANK_PUZL` = 78 (3,580 B used), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw)
+  from `PUZL_GFX_BANK` = 79 to 85. While the stage runs FRONT stays at 8000h; it maps the graphics
+  banks only at 8000h, at its entry, and never runs an OTIR past 9FFFh. `hud_keep` (fixed) is
+  `hud_frame` for banked callers: it puts both windows' banks back.
+- **RAM.** PUZL's variables at their own place in the mirror (`AM + $B00-$B21`, D000h-D021h,
+  `msx.inc` `pzv_...`: cleared at the entry as `$FE14` does); the stage's scalars and the
+  renderer's at C68Ah-C6A9h (C6AAh-C6FEh still free); `pz_first` at C6FFh (`PZ_TEST` builds); the
+  wanted state and both pages' shown states in `objl_ram` (EE00h-EEFDh); the visit's boards copied
+  to `pz_boards` = `MP_B` (F500h-F817h). `new_game` rebuilds all of them.
+- **VRAM.** Pages 0 and 1 are two display pages (page 0 with sprite set A, page 1 with set B),
+  page 0 lines 162-217 the sheet the copies come from, page 2 the visit's 9 TV pictures (80 × 80:
+  the face or black under each static frame), page 3's sprite area the cursor's 9 patterns and
+  both sets' colour rows of sprites 0-1. At the exit `bs_hide` empties both SATs and uploads page
+  2's tiles again (`tiles_upload` E = 4). The atlas and the HUD are kept.
+- **The renderer.** Each pass records what the original draws (`pz_want`: the TV picture, the LED
+  digits, the timer, the button, the lights and bars, the cursor; the cells are the board
+  itself). `bs_feed`, called while the stage waits for its tick and after each pass, never waiting
+  for the VDP, builds the page not shown up to that state, one HMMM an element that differs
+  (through `vdp_cmd`, never `cmdbuf`), then writes that set's SAT (the cursor: sprite 0, and
+  sprite 1 for one image's two pixels) and publishes a register list (`bs_list`: `fs_list`'s with
+  the sprites on, the page and the set). A page is never drawn while it shows, except the 88 cells
+  of a board's set-up, which go into both pages with the palette black. A picture covering several
+  passes shows the TV's face by a duty rule that keeps its share. About 30 pictures a second at
+  60 Hz and 28 at 50 Hz; no torn block, no pixel outside the elements changing.
+- **Timing.** One pass per 50 Hz tick on 50 and 60 Hz machines (`fs_tick`'s rule), the PAL design
+  rate of PUZL's loop; the board's timer counts real seconds (`sec_tick`; still in script builds).
+  On a turbo R the stage runs on the Z80.
+- **HUD.** The game's HUD stays below the stage, updated as in play (the timer, the score, the
+  message line; the can never moves). PUZL's messages "TIMEOUT.", "MALFUNCTION." and "MEMORY
+  RESTORED." are a second table after `HUD_WEAPONS` (`tools/msxhudrt.py`, `HUD_PZ_MSGS`), posted
+  with `game_msg` as numbers 174-176 (`HUD_MSG_17738`, `HUD_MSG_17741`, `HUD_MSG_1774E`); level 1's
+  21 messages keep their numbers.
+- **Build options** (`tools/mkrom.py`): `PZ_TEST=1` starts at power-on, without the title, in
+  Brainstorm (once, after level 1's set-up), then the title and a new game; `PZ_LEVEL=1|2` its
+  visit; `TAG=n` (1-99) shows TEST n below the bonus text screens of a test candidate. The trace
+  harness builds `EXTJOY=1 PZ_TEST=1`. The product's flow and bytes do not depend on them.
+- **Checked** (openMSX): the stage's variables equal the original's pass by pass in nine drives on
+  an MSX2 and a turbo R, the full solve also on an MSX2+ and at 50 Hz (`tools/openmsx_rc2.tcl`
+  `rc2_pz_drive` against `tools/amigaemu.py puzl`, `tools/puzlcmp.py`); the pictures against the
+  converter's renders; the restore against a fresh start; level 1's traces, the title and its
+  music unchanged.
 
 ## Sound (`msx/sound.asm`)
 
@@ -1554,6 +1627,12 @@ messages (15.6 KiB, banks `HUD_BANK`–`HUD_BANK+1`, mapped at 8000h–BFFFh whi
 - Values use the game's layouts (BCD timer, ammo and score; energy 0..100h), so the ported
   game logic can write them directly; `hud_message`, `hud_request` (heads, icon) and
   `en_target` are its other entry points. A demo (`hud_demo`) drives them for now.
+- Messages: `game_msg` A = n reads the n-th pointer from `HUD_MSGS` (`HUD_BANK + 1`). Level 1's 21
+  are numbers 0-20 (`HUD_NMSGS`); Brainstorm's three (PUZL's `$17738`, `$17741`, `$1774E`) are a
+  second table after `HUD_WEAPONS` (`HUD_PZ_MSGS`, BE14h, a pad byte for an even distance first),
+  which the same addressing reaches as numbers 174-176; 447 B of that bank stay free (2026-10-27).
+- Code in a banked window calls `hud_keep` instead of `hud_frame`: the banks both windows showed
+  come back (Brainstorm's stage and its text screens).
 
 ## MSX turbo R: the R800 for the game (2026-10-25)
 
@@ -1573,3 +1652,10 @@ Every MSX2/MSX2+ machine runs exactly as before (the Z80 block and its rows unch
 
 The busiest windows run at 24.5-24.7 game ticks a second there (13.3-13.9 on its Z80), the logic
 traces are the Amiga's (0 differ), verified in openMSX only (no turbo R here).
+
+Brainstorm (2026-10-27) runs on the Z80, after `front_stats`' switch back: `front_bonus` turns the
+Z80's hardware pause off (A7h bit 1, which CHGCPU(80h) sets) and calls `display_on`, which
+measures the HUD split for the Z80; at its end `cpu_title` waits for a PAUSE press left pending and
+turns the hardware pause on again. The screen goes black, HUD included, for 6 frames between the
+statistics and the intro there, while the CPU switches (the user's call: `docs/BRAINSTORM.md` 7).
+Details: `docs/TURBO_R.md` 3.4 and 12.
