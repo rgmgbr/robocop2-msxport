@@ -75,6 +75,7 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/sprites/catalog.json $(B
 	$(PYTHON) -I tools/msxgun.py $(BUILD)/msx
 	$(VPYTHON) -I tools/msxtune.py --out $(BUILD)/msx --cache $(BUILD)/music
 	$(PYTHON) -I tools/msxpuzl.py $(X)/files/PUZL_25.bin $(BUILD)/msx/puzl
+	$(PYTHON) -I tools/msxrange.py $(X)/files/FRNG_15.bin $(BUILD)/msx/range
 
 rom: msx
 	$(PYTHON) -I tools/mkrom.py $(BUILD)/msx/level1 $(BUILD)/msx/rc2.rom $(ROMOPTS)
