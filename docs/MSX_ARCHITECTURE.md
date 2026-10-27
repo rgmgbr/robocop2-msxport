@@ -928,7 +928,7 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   an MSX2 and a turbo R, the full solve also on an MSX2+ and at 50 Hz (`tools/openmsx_rc2.tcl`
   `rc2_pz_drive` against `tools/amigaemu.py puzl`, `tools/puzlcmp.py`); the pictures against the
   converter's renders; the restore against a fresh start; level 1's traces, the title and its
-  music unchanged. The sound so far offline (below, under Sound).
+  music unchanged. The sound offline and in openMSX (below, under Sound).
 
 ## Sound (`msx/sound.asm`)
 
@@ -1388,8 +1388,12 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
     first; after a played level 1, with the PSG alone, both write while silent the tone periods
     level 1's effects left in the PSG player's voices), and only SCC channel 3's waveform and
     period, which the title never writes (its channels 0-2 only), keep the stage's values.
-  - The emulator checks (the registers per tick in openMSX on every chip set, the title after
-    the stage, the audio for the user's ears) still have to run.
+  - In openMSX (2026-10-27): PZM's registers per tick equal the streams on every chip set, at 50
+    and 60 Hz, on an MSX2, an MSX2+ and a turbo R; the title's registers equal main's at power-on
+    (11 chip sets) and after the stage (28 pairs); level 1's traces and effects are main's; the
+    recordings match the converters' renders by pitch, 96-99.5 % the same note
+    (`docs/BRAINSTORM.md` 4.3). With an SCC, level 1's random choices follow another sequence
+    than main's for the same input (the effects' tick takes longer: `docs/BRAINSTORM.md` 3.6).
 
 ## HUD
 

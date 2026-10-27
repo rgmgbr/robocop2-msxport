@@ -51,13 +51,13 @@ Tags:
     the OPLL alone (MSX-MUSIC, FM-PAC) or the PSG alone. A board's set-up ends with the tune, whose
     first tick waits for the next pass, so the jingle of boards 1-3 starts with it as on the
     Amiga. The fixed area did not grow (`fx_tk`'s operand only), and the title's and level 1's
-    sound are unchanged, write for write [V: offline, in a Z80 interpreter on the images; the
-    openMSX checks are still to run].
+    sound are unchanged, write for write [V: offline, in a Z80 interpreter on the images, and in
+    openMSX on every chip set (4.3)].
   - Graphics are stored raw (no decompressor). The ROM uses **88 of its 128 banks: 1 MiB** (the
     music and effects in banks 86-87), far within the mandatory 2 MiB (3.10).
 - **Not yet.** A second visit (`PZ_LEVEL=2`) plays visit 2's boards with visit 1's face and
-  palette (milestone 3). The shooting range and level 2 come later. The sound waits for its
-  openMSX checks and the user's ears (3.6, 4.3).
+  palette (milestone 3). The shooting range and level 2 come later. The sound waits for the
+  user's ears on real hardware (the test3 candidates; 3.6, 4.3).
 - **Test builds (section 6).** `PZ_TEST=1` starts in Brainstorm at power-on, for the user's quick
   test and for the trace harness; `TAG=n` marks a test candidate. The product's flow does not
   depend on them. The morning's four candidates (step 8) are the product and the `PZ_TEST=1` ROM,
@@ -719,13 +719,13 @@ pz_frame: $B12; bs_fade; bs_tv; bs_led; bs_tmr; bs_step; $B02 += 3; $B00 + 1;
 - The stage has no pause (the original clears `$804E` and never sets it); on a turbo R the PAUSE
   key does nothing during the bonus screens (3.1).
 
-### 3.6 Sound [D; V: in a Z80 interpreter on the images, openMSX to come]
+### 3.6 Sound [D; V: in a Z80 interpreter on the images and in openMSX]
 
 What the original plays is in 2.9. Milestone 2 plays it on the MSX (the branch `bs-sound-int`:
 section 5's steps 10-12 and the integration review's fixes). The stage still calls `snd_stop` at
-its entry and `front_bonus` after it, and the text screens stay silent, as on the Amiga. Every
-check so far ran offline, in a Z80 interpreter on the ROM images (4.3); the openMSX checks and the
-user's ears are still to come.
+its entry and `front_bonus` after it, and the text screens stay silent, as on the Amiga. The
+checks ran offline, in a Z80 interpreter on the ROM images, then in openMSX on every chip set
+(4.3); the user's ears on real hardware are still to come (the test3 candidates).
 
 - **Data** (`tools/msxtune.py` → `build/msx/pzm.bin`, 12,734 B, banks 86-87 from `PZM_BANK`; `make
   msx` runs it with the project's venv: numpy).
@@ -820,9 +820,23 @@ user's ears are still to come.
   for SCC channel 3's waveform and period, which the title never writes (its music uses channels
   0-2, with 3 off): they keep what the stage's effects left. Level 1's effects after the stage are
   a fresh machine's.
+- **Level 1's random choices** [V: openMSX]. With an SCC, level 1's effects now tick through
+  `fx_tkd`'s dispatch, about 54 T-states more per tick in the VBLANK interrupt. Builds without an
+  input script (the product) mix the Z80's R register into the random word `$B32` every frame
+  (`logic.asm` `rnd_step`), so for the same input it takes other values than in main's build (from
+  row 31 of the product's drive; the objects differ from row 153), and the random choices follow
+  another sequence. The logic and the effects are unchanged (the `EXTJOY` traces and the
+  `LOCKSTEP` writes are main's), and builds without an SCC are identical. The same class as the
+  2 MiB guard's timing; a human's input already varies R.
 - **Open, for the user's ears** [I]: the effects' balance on the SCC (3 and 4 come out at SCC
-  volume 3, the tune's scale); the OPLL's custom patch on instrument #4, chosen on the converters'
-  approximate OPLL model; effect 6's buzz design; PERCUSH1/2 classified as toms.
+  volume 3, the tune's scale). Measured in openMSX against the same music without the effect: a
+  blip's loudest tick 3.6-6.7 dB under the music's median (the Amiga 6.1), the jingle 8.2-9.8 dB
+  over it (the Amiga 5.1), the buzz 2.4-3.7 dB over it (the Amiga 1.4). The OPLL's custom patch on
+  instrument #4, chosen on the converters' approximate OPLL model: it sounds only with the OPLL
+  alone (mode 06, no SCC); with an SCC and an OPLL (mode 05) the OPLL plays the rhythm only. The
+  user's machines find the Pico+'s SCC, so they play mode 01 or 05; `NO_SCC=1` test builds play the
+  OPLL-alone and PSG-alone versions there. Their OPLLs are an FPGA core (the SX-2's MSX-MUSIC) and
+  the Pico+'s firmware, not YM2413 chips. Effect 6's buzz design; PERCUSH1/2 classified as toms.
 
 ### 3.7 The intro and result texts [D, V]
 
@@ -1119,16 +1133,40 @@ decoders, the effects' schedule from `$1822C`'s rule modelled apart.
   the PSG player's voices (3.6). Level 1's effects after the stage: as on a fresh machine, write
   for write.
 
-**In openMSX, still to run**, with the headless harness: the title's registers on every chip set
-against main's images; level 1's effects (LOCKSTEP builds) and traces; the stage's nine drives with
-the sound in (the traces must stay the silent stage's); PZM's registers per tick on every chip set
-(the cartridge's SCC and another slot's, SCC + OPLL, the OPLL alone, the PSG alone, an FM-PAC, 50
-and 60 Hz, the turbo R), checked against the streams by the same decoders, the jingle's request
-before the tune's first tick; the tune's end and the time out with the timer running; the title
-after the stage against the title after main's silent stage (main's build with the same options,
-on the same machine), in the product's flow and a `PZ_TEST` build's (its writes in order, and at
-every music tick the registers it has written so far); audio recordings for the user, judged by
-pitch and level.
+**In openMSX** [V, 2026-10-27, at `74b9901`, the merge of main `a90e77a`: the sound's emulator
+plan, with scratch scripts outside the repository; one openMSX at a time, headless]. Every image
+was rebuilt and compared bank by bank with main's twin (main's sources, the same options): only
+banks 1, 9, 78 and 86-87 differ, and main's tree rebuilds the user's four test2 ROMs byte for byte.
+- The title, register-exact: `TAG=3` and its 2 MiB twin on a power-on Gradiente Expert 2.0 against
+  the night's step-0 reference: VRAM, registers, palette, the 5,046 music ticks and every PSG write
+  identical; at game tick 300 the RAM differs only in `$B32` (3.6, level 1's random choices). On 11
+  chip sets the title's chips, logged tick by tick, equal main's twin's.
+- Level 1: the coverage drives (4,401, 1,400 and 1,400 frames on an MSX2, an MSX2+ and a turbo R)
+  0 differ; its effects (`LOCKSTEP` builds) equal main's write for write (423 effect starts), also
+  after a fully played stage, on 7 chip paths.
+- The stage: the nine drives (20 traces) 0 differ, as the silent stage's; the stills, records and
+  display guard as in 4.2 (one torn cell: board 1's set-up while the VDP's palette is black,
+  invisible); VRAM speed 0 lost writes at 3.58 and 5.37 MHz; the tenth drive, after a played
+  level 1, 0 differ; the real timer times out 60.6-60.9 s after the first pass at 50 and 60 Hz.
+- PZM's registers per tick against the streams decoded apart, 20 runs: the cartridge's SCC, an SCC
+  and an SCC+ in another slot, SCC + OPLL, the OPLL alone, the PSG alone, at 50 and 60 Hz, on an
+  MSX2, an MSX2+ and a turbo R: 0 differences. The jingle with tick 0 (3 of 3); the refusals and
+  the buzz's restarts as `$1822C`'s rule gives them; the tune's 3,001 ticks, then no chip write to
+  the time out (14 runs).
+- The title after the stage against the title after main's silent stage: 28 pairs PASS, among them
+  the SCC+, an FM-PAC, the OPLL alone and the turbo R's OPLL. Only stages left to their time out
+  were logged; an exit mid-tune (WELL DONE, MALFUNCTION) is checked offline only (above).
+- The candidates: `tools/msxmatrix.py` 10 of 10 set-ups for each; power-on machines through the
+  product's flow, the bonus ROMs' keyboard moves, OUT OF TIME. and WELL DONE: every lost counter 0.
+- Audio, nine recordings by pitch against the converters' renders, each read at its own tick rate
+  (49.936 Hz on a 60 Hz VDP, 50.159 Hz on a 50 Hz one): 96.8 % (the SCC), 96.3 % (the OPLL alone)
+  and 99.5 % (the PSG) the same note; SCC + OPLL 93.9-94.9 % on ticks without drums (its drums are
+  the OPLL's rhythm); the tune's end 54-125 dB under its peak; the buzz 49.2-50.0 Hz. Read at
+  50.000 ticks a second, a 60 Hz recording drifts 77 ms by the tune's end, and the OPLL alone first
+  measured 87.7 %: a defect of the measuring script, found by the evidence audit, not of the sound.
+- Limits: the MCP home's HB-F1XDJ has no MSX-MUSIC, so the MSX2+ ran the SCC alone and the PSG
+  alone; SCC + OPLL ran on the Expert with an FM-PAC and on the FS-A1GT. The 2 MiB product was
+  checked to game tick 300 and in the matrix, not through the stage (its 1 MiB twin was).
 
 ### 4.4 Regression [V]
 
@@ -1424,8 +1462,8 @@ to the new game's tick 100 (124.7 s): 0 writes.
 | — | The harness in the repository | `70e775b` | `tools/bstest/` (the night's scratch scripts of 4.2 and 4.4), `docs/HARNESS.md`, `tests/test_bstest.py` | 23 tests; checked against the night's records without an emulator (`docs/HARNESS.md` 9) |
 | — | The final checks | `b59a338` | `msx/puzl.asm` (`rs_one`: two `nop`s), `tools/openmsx_rc2.tcl` (`rc2_count_too_fast` names a proc) | the paths no check had run; the VRAM speed at 5.37 MHz; the suite again; the four candidates rebuilt (4.6) |
 
-**Milestone 2: sound**, as built on the branch `bs-sound-int` (offline checks: 4.3; its openMSX
-checks still to run).
+**Milestone 2: sound**, as built on the branch `bs-sound-int` (its offline and openMSX checks:
+4.3).
 
 | # | Step | Commit | Files | Result |
 |---|---|---|---|---|
@@ -1434,6 +1472,7 @@ checks still to run).
 | 12 | The wiring, after merging main | `284e861` (main `14bc5ef`), `188e791`, `d16b730` (main `cae5193`) | `msx/puzl.asm` | the set-up's tail starts tune 1; `bst_go` sends the request; the mirror untouched |
 | — | The integration review's fixes | `413561c`, `3f2330d` | `msx/sound.asm`, `msx/tune.asm`, `msx/puzl.asm`, `msx/rc2.asm` (`msx/sndtune.asm` removed), `msx/msx.inc`, `tests/test_msxtune.py` | the fixed area as before the sound, so every option set main assembles still assembles (1,771 built); the jingle with the tune's tick 0 (608 cases, 3.6) |
 | — | Documentation | `9b2ba67` (main's texts as the base), then this file's commits | this file, `README.md`, `docs/MSX_ARCHITECTURE.md`, `docs/ROM_BUDGET.md` | — |
+| — | The emulator checks | `74b9901` (the merge of main `a90e77a`); no code change | — | 4.3's openMSX checks PASS; the test3 candidates (section 6) |
 
 **Milestone 3: the second visit** (the plan; before level 2 exists).
 
@@ -1497,6 +1536,14 @@ checks still to run).
   - The rebuilt four (`b59a338`): the matrix and the fresh-machine runs again, with the same
     results, and `solve1` from the keyboard on the Expert (WELL DONE with TEST 2): 4.6 h.
 
+**The sound's candidates** (milestone 2), with `TAG=3`: `ROBOCOP2_v0.1.3-test3.ROM`,
+`-test3-bonus`, `-test3-2M` and `-test3-bonus-2M`, test2's four option sets, built at `74b9901`.
+Banks 0-87 hold data (the sound in 86-87). Two optional 1 MiB bonus builds play the versions the
+user's machines never pick, since they find the Pico+'s SCC: `-test3-bonus-noSCC` (`NO_SCC=1`: the
+OPLL alone with MSX-MUSIC or an FM-PAC, else the PSG alone) and `-test3-bonus-PSG` (`NO_SCC=1
+NO_FM=1`). Their checks are in 4.3 (the matrix and power-on machines for the four; the flows,
+stills, records, chip modes and register logs for the two).
+
 ## 7. Defaults chosen while the user slept
 
 | # | Question | Default | Alternative | Why | Status |
@@ -1546,7 +1593,7 @@ pass per frame on a real Amiga (no hardware timing seen); PZM's drum samples cla
 | 3 | **Turbo R.** The Z80's split delays are measured only by `front_bonus`' `display_on`; a missing call would hang the first `fs_vbl` | retired: checked on the FS-A1GT in every flow |
 | 4 | **Bank renumbering** | avoided: `STAGES` after the effects; no data bank moved or changed |
 | 5 | **The fixed area** had 213 B | 23 taken (190 free; 160 in `PZ_TEST` builds); the sound took none (3.6) |
-| 6 | **Sound** changes `music.asm`, which the title uses: the title must stay register-exact | `music.asm` unchanged: `tune.asm` is a player of its own after the title's code (3.6); the title's chip writes and executed instructions are main's in a Z80 interpreter (4.3); openMSX to run |
+| 6 | **Sound** changes `music.asm`, which the title uses: the title must stay register-exact | `music.asm` unchanged: `tune.asm` is a player of its own after the title's code (3.6); the title's chip writes and executed instructions are main's in a Z80 interpreter, and in openMSX its registers equal main's on 11 chip sets at power-on and in 28 pairs after the stage (4.3). Open: an exit mid-tune is checked offline only |
 | 7 | **Quirk 1 after level 1.** D0 comes from `msg_wr`, which counts the HUD's messages since the last `hud_init`; `$8056` on the Amiga may count differently across games | open: exact in `PZ_TEST` runs (the bench's start); after a played level 1 only that pass's move could differ. The final checks solved the 4th board there (4.6 e), but `solve1` changes no direction in that pass, so the case is still not exercised |
 | 8 | **Visit 2** shows Murphy until step 13 (the boards and logic are already visit 2's) | open (milestone 3) |
 | 9 | **SCC test bytes.** With 92 banks, bank 90 holds data; mkrom stops if its 1800h holds 5Ah | open (milestone 3) |
