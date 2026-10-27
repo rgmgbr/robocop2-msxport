@@ -24,6 +24,16 @@ VBL wait, $80CC) it applies the joystick script and records the traced variables
 for the MSX port of the game logic (the logic only depends on the inputs and on the random
 generator $B32, which reads CIA timers the bench returns as FFh).
 
+"puzl" runs Brainstorm, the bonus stage after levels 1 and 2 (load_level1 $8582 -> $8382): the
+same set-up ($FEDA, $FFC4), $8050 = the level done, then what $8382 does from its loader call on
+(PUZL loaded by the game's loader; disk 1's copy decrunched by the game's own $124A6 from $17080
+to $17100) and jsr $17100, or with --via-8382 the whole of $8382 (intro text, PIC3, loader).
+PUZL keeps its own frame loop ($171BA: one frame per $802C, one VBL; its VBL handler $17B5A); at
+the start of every PUZL frame (after the wait, $171C2) the joystick script is applied and the
+stage's variables recorded, until $17100 returns D0 (0 solved, 1 failed, 2 out of time). Its
+music player ($18000, PZM) is skipped as MU1's is. The timer (CIA-B, level 6) stands still unless
+--sec N raises it after every N-th PUZL frame.
+
 Depends on Unicorn (pip install unicorn).
 
 usage:
@@ -34,6 +44,11 @@ usage:
                    [--dump OUT.bin] (chip RAM after the last game frame: the map at $38000 ...)
      (--bobs: per game frame, every draw_bob $AB08 call: A2, D4, D0, D1, minterm, drawn)
      (--joy GAMEFRAME:COUNT:KEYS, keys among u d l r f, game frames counted from the first)
+  amigaemu.py puzl [--level 1] [--via-8382] --pframes 600 [--joy 0:1:r --joy 2:1:d ...]
+                   [--drive FILE] [--poke F:ADDR:VALUE[:SIZE] ...] [--sec 60]
+                   [--trace OUT.jsonl] [--trace-ram] [--screenshot OUT.png] [--dump OUT.bin]
+     (--joy PUZLFRAME:COUNT:KEYS, PUZL frames counted from its first; --drive: tools/drivejoy.py's
+     file, its joystick bytes and pokes)
 """
 from __future__ import annotations
 
@@ -63,6 +78,7 @@ CUSTOM_BASE = 0xDFF000
 CIA_BASE = 0xBFD000
 LOADER_ENTRY = 0x100
 LINES = 312  # PAL
+SR_STUB = 0xE00000          # a page outside the A500's map: 'move.w sr,(SR_STUB + $100).l' (live_sr)
 
 REG = {name: off for off, name in CUSTOM.items()}
 
@@ -182,6 +198,9 @@ class AmigaEmu:
         self.uc.mem_map(SLOW_BASE, SLOW_SIZE)
         self.uc.mmio_map(CUSTOM_BASE, 0x1000, self._custom_read, None, self._custom_write, None)
         self.uc.mmio_map(CIA_BASE, 0x2000, self._cia_read, None, self._cia_write, None)
+        self.uc.mem_map(SR_STUB, 0x1000)
+        self.uc.mem_write(SR_STUB, struct.pack(">HI", 0x40F9, SR_STUB + 0x100))
+        self.fix_sr = False     # interrupts push live_sr() (the puzl mode; see live_sr)
         self.regs = [0] * 0x100  # custom register words, index = offset
         self.dmacon = 0
         self.intena = 0
@@ -353,8 +372,19 @@ class AmigaEmu:
         bit = 0x0020 if self.intena & 0x0020 else 0x0010
         return self.inject(3, 0x6C, bit)
 
+    def live_sr(self) -> int:
+        """SR with the condition codes of the last instruction. Unicorn's m68k keeps the flags
+        lazily and reg_read(SR) returns a stale CCR, so an interrupt pushed from it returns with
+        the flags of an earlier instruction: the game's decruncher $124A6, stopped between its
+        cmpa.l A2,A1 ($12522) and blt ($12524) by a VBL, gave up after 2 frames. A 'move.w sr'
+        stub computes them without changing them."""
+        pc = self.uc.reg_read(UC_M68K_REG_PC)
+        self.uc.emu_start(SR_STUB, SR_STUB + 6)
+        self.uc.reg_write(UC_M68K_REG_PC, pc)
+        return self.read_word(SR_STUB + 0x100)
+
     def inject(self, level: int, vector: int, bit: int) -> bool:
-        sr = self.uc.reg_read(UC_M68K_REG_SR)
+        sr = self.live_sr() if self.fix_sr else self.uc.reg_read(UC_M68K_REG_SR)
         if not (self.intena & 0x4000 and self.intena & bit):
             return False
         if (sr >> 8) & 7 >= level:
@@ -512,7 +542,8 @@ class GameBench(AmigaEmu):
             self.inject_vbl()
         self.frame += 1
 
-    def start_level(self) -> None:
+    def boot_game(self) -> None:
+        """The RAM image, the interrupt vectors, $FEDA and $FFC4 (a new game's set-up)."""
         self.uc.mem_write(0, self.ram_image.read_bytes())
         for vec, handler in VECTORS.items():
             self.uc.mem_write(vec, struct.pack(">I", handler))
@@ -521,6 +552,9 @@ class GameBench(AmigaEmu):
         self.uc.reg_write(a_reg(6), 0xDFF002)   # the game keeps A6 on the custom chips (DMACONR)
         self.call(0xFEDA)                # hardware setup
         self.call(0xFFC4)                # level 1, score, lives
+
+    def start_level(self) -> None:
+        self.boot_game()
         self.pulse_fire = True
         self.call(0x871A)                # level_init (briefing and picture: fire pressed)
         self.pulse_fire = False
@@ -613,6 +647,181 @@ class GameBench(AmigaEmu):
         return hits[:game_frames - first]
 
 
+# ---------------------------------------------------------------- Brainstorm (PUZL)
+PUZL_PACKED, PUZL_ENTRY = 0x17080, 0x17100   # disk 1's copy, and where $124A6 decrunches it
+DECRUNCH = 0x124A6                          # the game's ByteKiller decruncher (A0 source, A1 destination)
+BRAINSTORM = 0x8382                         # load_level1's call (D0 = 2: PIC3), load_level2's (D0 = 4)
+BRAINSTORM_RET = 0x83E4                     # $8382 right after its jsr $17100: D0 = the result
+PUZL_FRAME_START = 0x171C2                  # PUZL's frame loop right after its wait for $802C ($171BA)
+PUZL_VARS = (0xB00, 0xB22)                  # PUZL's variables (cleared by $17D1A)
+PUZL_TABLE_PTR = 0x173D4                    # the board table it uses ($17448 after level 1, $175C0 after 2)
+PUZL_BOARD, PUZL_BOARDS = 94, 4             # a board: start column, row, red chips, timer (BCD), tune,
+                                            # then 11 x 8 cells (0 red chip, 1 black chip, 2-15 board;
+                                            # + $10 once visited); 4 boards a table
+PUZL_SPRITES = 0x17DE8                      # the cursor's sprite frames ($B12 points into them)
+PUZL_CODE = ((0x17282, 0x17284),            # state kept in the code: the music divider,
+             (0x1729A, 0x1729E),            # the face's graphics ($17298's lea),
+             (0x173D4, 0x173D8),            # the board table,
+             (0x17440, 0x17442),            # the board's tune (the moveq at $17440),
+             (0x17B20, 0x17B24),            # the palette ($17AF0's lea)
+             (0xFD92, 0xFDA2))              # and the main code's message slots ($FD76, $FDA2)
+PUZL_TRACE = {                              # name: (address, size, signed)
+    "game_frame": (0xB00, 2, False), "anim": (0xB02, 2, False), "sfx": (0xB04, 1, False),
+    "board2": (0xB0A, 2, True), "col": (0xB0C, 2, False), "row": (0xB0E, 2, False),
+    "reds": (0xB10, 2, False), "fail": (0xB16, 1, False), "done": (0xB17, 1, False),
+    "fade": (0xB19, 1, False), "endc": (0xB1A, 2, False), "last_joy": (0xB1E, 1, False),
+    "active": (0xB20, 1, False), "joy": (0x802E, 1, False), "timer": (0x804A, 2, False),
+    "timeout": (0x804C, 1, False), "score": (0x8046, 4, False),
+}
+PUZL_RESULTS = {0: "solved", 1: "failed (memory malfunction)", 2: "out of time"}
+
+
+class PuzlBench(GameBench):
+    """Brainstorm (PUZL) on the bench: the module's docstring, "puzl"."""
+
+    def __init__(self, extracted: Path, ram: Path, *, verbose: bool = False):
+        super().__init__(extracted, ram, verbose=verbose)
+        self.fix_sr = True              # (the decruncher's flags across interrupts: live_sr)
+        self.sec = 0                    # CIA-B (the timer's second) after every sec-th PUZL frame
+        self.cia_pending = False
+        self.result: int | None = None  # $17100's D0 once it returned
+        # The CIA-B handler's countdown ($1015E) tests each SBCD's borrow with BPL: the 68000 sets
+        # N from the result's bit 7 (00 - 01 = 99: minus), Unicorn leaves N alone (1:00 went on
+        # to 1:99). Its two BPLs take the branch from D0's bit 7 here.
+        for at, plus, minus in ((0x10198, 0x101BA, 0x1019A), (0x101A6, 0x101B0, 0x101A8)):
+            self.uc.hook_add(UC_HOOK_CODE, self._on_sbcd_bpl, (plus, minus), at, at + 1)
+
+    def _on_sbcd_bpl(self, uc, address, size, targets):
+        plus, minus = targets
+        uc.reg_write(UC_M68K_REG_PC, minus if uc.reg_read(d_reg(0)) & 0x80 else plus)
+
+    def inject_vbl(self) -> bool:
+        done = super().inject_vbl()
+        if self.cia_pending and self.inject(6, 0x78, 0x2000):     # (level 6 on top of the VBL's)
+            self.cia_pending = False
+        return done
+
+    def _push_call(self, addr: int) -> None:
+        sp = self.uc.reg_read(UC_M68K_REG_A7) - 4
+        self.uc.mem_write(sp, struct.pack(">I", SENTINEL))
+        self.uc.reg_write(UC_M68K_REG_A7, sp)
+        self.uc.reg_write(UC_M68K_REG_PC, addr)
+        self._sentinel_hit = False
+
+    def setup(self, level: int = 1, via_8382: bool = False) -> None:
+        """A new game's set-up, level 'level' done ($8050), then Brainstorm: with via_8382 the call
+        of $8382 itself (intro text, picture, loader; fire pulsed until PUZL starts), else its
+        steps from $8398 on: the copper and sprite pointers, PUZL by the loader, disk 1's copy
+        decrunched by $124A6, and the call of $17100 (play() runs it)."""
+        self.boot_game()
+        self.uc.mem_write(0x8050, struct.pack(">H", level))
+        if via_8382:
+            self.uc.reg_write(d_reg(0), 2 * level)
+            self.pulse_fire = True
+            self._push_call(BRAINSTORM)
+            return
+        self.uc.mem_write(0x10320, struct.pack(">I", 0x1032E))
+        self.uc.mem_write(0x8036, struct.pack(">I", 0x12558))
+        self.load_file("PUZL")           # (level 1: disk 1's PUZL_13 at $17080; 2: disk 2's at $17100)
+        if level < 2:
+            self.uc.reg_write(a_reg(0), PUZL_PACKED)
+            self.uc.reg_write(a_reg(1), PUZL_ENTRY)
+            self.call(DECRUNCH)
+        self.uc.mem_write(0x8036, struct.pack(">I", 0x12558))
+        self._push_call(PUZL_ENTRY)
+
+    def puzl_row(self, n: int, keys: str, ram: bool) -> dict:
+        """The stage's variables at the start of PUZL frame n (with ram: the whole state as hex)."""
+        row = {"frame": n} | {name: self.read_var(*spec) for name, spec in PUZL_TRACE.items()}
+        table = self.read_long(PUZL_TABLE_PTR)
+        grid = self.read_long(0xB06)
+        row["grid_at"] = grid - table   # 6 + 94 x board
+        row["grid"] = bytes(self.uc.mem_read(grid, 88)).hex() if table <= grid < table + 376 else ""
+        row["spr"] = self.read_long(0xB12) - PUZL_SPRITES
+        row["keys"] = keys
+        if ram:
+            row["vars"] = bytes(self.uc.mem_read(PUZL_VARS[0], PUZL_VARS[1] - PUZL_VARS[0])).hex()
+            row["glob"] = bytes(self.uc.mem_read(GLOB_BLOCK[0], GLOB_BLOCK[1] - GLOB_BLOCK[0])).hex()
+            row["boards"] = bytes(self.uc.mem_read(table, PUZL_BOARD * PUZL_BOARDS)).hex()
+            row["code"] = {f"{lo:x}": bytes(self.uc.mem_read(lo, hi - lo)).hex() for lo, hi in PUZL_CODE}
+        return row
+
+    def play(self, pframes: int, script: list[tuple[int, int, str]], ram: bool = False,
+             pokes: list[tuple[int, int, int, int]] = (), first: int = 0, sink=None, bot=None) -> list[dict]:
+        """Runs PUZL frames until $17100 returns (self.result) or pframes have run; returns the
+        rows (with sink, a text file: written there as JSON lines instead). Each frame's start:
+        its keys applied (JOY1DAT, fire), the row recorded, then the pokes (frame, address, value,
+        size 1/2/4) and, with sec, the CIA-B second due after the frame. bot(row) -> keys, when
+        given, chooses the keys from the row instead of the script (rows are then recorded with
+        the keys it chose)."""
+        hits = []
+        count = [0]
+        self.result = None
+
+        def on_start(uc, address, size, user_data):      # (via $8382: the fire pulses stop)
+            self.pulse_fire = False
+            self.fire = False
+
+        def on_frame(uc, address, size, user_data):
+            n = count[0]
+            count[0] += 1
+            keys = "".join(k for s, c, k in script if s <= n < s + c)
+            if bot is not None:
+                keys = bot(self.puzl_row(n, keys, False))
+            self.joy = joy_value(keys)
+            self.fire = "f" in keys
+            if n >= first:
+                row = self.puzl_row(n, keys, ram)
+                if sink is not None:
+                    sink.write(json.dumps(row) + "\n")
+                else:
+                    hits.append(row)
+            for f, addr, v, size in pokes:
+                if f == n:
+                    uc.mem_write(addr, (v & ((1 << 8 * size) - 1)).to_bytes(size, "big"))
+            if self.sec and (n + 1) % self.sec == 0:
+                self.cia_pending = True
+            if count[0] > pframes:
+                uc.emu_stop()
+                self._sentinel_hit = True
+
+        def on_return(uc, address, size, user_data):     # (via $8382: after its jsr $17100)
+            self.result = uc.reg_read(d_reg(0)) & 0xFFFF
+            uc.emu_stop()
+            self._sentinel_hit = True
+
+        hooks = [self.uc.hook_add(UC_HOOK_CODE, on_frame, None, PUZL_FRAME_START, PUZL_FRAME_START + 1),
+                 self.uc.hook_add(UC_HOOK_CODE, on_start, None, PUZL_ENTRY, PUZL_ENTRY + 1),
+                 self.uc.hook_add(UC_HOOK_CODE, on_return, None, BRAINSTORM_RET, BRAINSTORM_RET + 1)]
+        self._sentinel_hit = False
+        while not self._sentinel_hit:
+            self._run_one_frame()
+        for h in hooks:
+            self.uc.hook_del(h)
+        if self.result is None and count[0] <= pframes:  # (the direct call's return: the sentinel)
+            self.result = self.uc.reg_read(d_reg(0)) & 0xFFFF
+        self.pframes_run = count[0]
+        if sink is not None and self.result is not None:   # (the last line: how the stage ended)
+            sink.write(json.dumps({"result": self.result, "frames": count[0]}) + "\n")
+        return hits
+
+    def puzl_screenshot(self, path: Path) -> None:
+        """PUZL's screen: 5 planes of 320 x 176 at $2A320 ($1B80 apart), the copper list's colours
+        ($17BFC: COLOR01-31 from $17C5E), the cursor's cell outlined in white."""
+        from planar import decode_indices, render, write_png
+        ram = bytes(self.uc.mem_read(0, CHIP_SIZE))
+        pal = [(0, 0, 0)] + [rgb12_to_rgb24(struct.unpack_from(">H", ram, 0x17C5E + 4 * i)[0]) for i in range(31)]
+        pal.append((255, 255, 255))
+        idx = decode_indices(ram, 0x2A320, 320, 176, 5, "planes", row_bytes=40)
+        col, row = self.read_word(0xB0C), self.read_word(0xB0E)
+        if col < 11 and row < 8:
+            x0, y0 = 16 + 16 * col, 16 + 16 * row
+            for k in range(16):
+                for x, y in ((x0 + k, y0), (x0 + k, y0 + 15), (x0, y0 + k), (x0 + 15, y0 + k)):
+                    idx[y][x] = 32
+        write_png(path, 640, 352, render(idx, pal, False, 2))
+
+
 def parse_range(s: str) -> tuple[int, int]:
     lo, hi = s.split("-")
     return int(lo, 0), int(hi, 0)
@@ -620,16 +829,21 @@ def parse_range(s: str) -> tuple[int, int]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=("run", "game"))
+    ap.add_argument("cmd", choices=("run", "game", "puzl"))
     ap.add_argument("--ram", type=Path, default=ROOT / "build" / "ram" / "level1_full.bin")
+    ap.add_argument("--level", type=int, default=1, help="puzl: the level done ($8050): 1 or 2")
+    ap.add_argument("--via-8382", action="store_true", help="puzl: run $8382 itself (intro text, picture, loader)")
+    ap.add_argument("--pframes", type=int, default=600, help="puzl: PUZL frames to play at most")
+    ap.add_argument("--poke", action="append", default=[], help="puzl: FRAME:ADDRESS:VALUE[:SIZE] after the row")
+    ap.add_argument("--sec", type=int, default=0, help="puzl: the timer's second (CIA-B) after every N-th frame")
     ap.add_argument("--gframes", type=int, default=100, help="game: game frames to play")
-    ap.add_argument("--joy", action="append", default=[], help="game: GAMEFRAME:COUNT:KEYS (u d l r f)")
-    ap.add_argument("--trace", type=Path, help="game: JSON lines of the traced variables")
-    ap.add_argument("--trace-ram", action="store_true", help="game: also the variables' blocks in the trace")
+    ap.add_argument("--joy", action="append", default=[], help="game, puzl: FRAME:COUNT:KEYS (u d l r f)")
+    ap.add_argument("--trace", type=Path, help="game, puzl: JSON lines of the traced variables")
+    ap.add_argument("--trace-ram", action="store_true", help="game, puzl: also the variables' blocks in the trace")
     ap.add_argument("--tele", action="append", default=[], help="game: GAMEFRAME:X:Y puts RoboCop and the camera there")
     ap.add_argument("--god", action="store_true", help="game: energy and lives kept full, the level never ends")
-    ap.add_argument("--trace-from", type=int, default=0, help="game: trace rows from this game frame on")
-    ap.add_argument("--drive", type=Path, help="game: joystick, teleports and god mode from a tools/drivejoy.py file")
+    ap.add_argument("--trace-from", type=int, default=0, help="game, puzl: trace rows from this frame on")
+    ap.add_argument("--drive", type=Path, help="game (puzl: joystick and pokes): a tools/drivejoy.py file")
     ap.add_argument("--extracted", type=Path, default=ROOT / "build" / "extracted")
     ap.add_argument("--frames", type=int, default=300)
     ap.add_argument("--insns", type=int, default=40000, help="instructions per frame")
@@ -640,6 +854,37 @@ def main() -> int:
     ap.add_argument("--bobs", type=Path, help="game: JSON lines of each game frame's draw_bob calls")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.cmd == "puzl":
+        bench = PuzlBench(a.extracted, a.ram, verbose=a.verbose)
+        bench.sec = a.sec
+        bench.setup(a.level, a.via_8382)
+        script = []
+        for j in a.joy:
+            f, c, k = j.split(":")
+            script.append((int(f), int(c), k))
+        pokes = [tuple(int(v, 0) for v in (t.split(":") + ["1"])[:4]) for t in a.poke]
+        if a.drive:                      # (the same input as the MSX's driven trace)
+            joy_hex, _tele, _god, poke_s = (a.drive.read_text().split("\n") + ["", "", "", ""])[:4]
+            for n, b in enumerate(bytes.fromhex(joy_hex.strip())):
+                if b:
+                    script.append((n, 1, "".join(k for k, m in zip("udlrf", (1, 2, 4, 8, 16)) if b & m)))
+            pokes += [tuple(int(v, 0) for v in t.split(":")) for t in poke_s.split()]
+        if a.trace:
+            a.trace.parent.mkdir(parents=True, exist_ok=True)
+            with a.trace.open("w") as sink:
+                rows = bench.play(a.pframes, script, a.trace_ram, pokes, a.trace_from, sink)
+        else:
+            rows = bench.play(a.pframes, script, a.trace_ram, pokes, a.trace_from)
+        for r in rows[:: max(1, len(rows) // 12)]:
+            print({k: v for k, v in r.items() if k not in ("vars", "glob", "boards", "code", "grid")})
+        res = bench.result
+        print(f"VBL frames {bench.frame}, PUZL frames {bench.pframes_run}, board {bench.read_var(0xB0A, 2, True) // 2}, "
+              + (f"result D0 = {res} ({PUZL_RESULTS.get(res, '?')})" if res is not None else "still playing"))
+        if a.screenshot:
+            bench.puzl_screenshot(a.screenshot)
+        if a.dump:
+            bench.dump(a.dump)
+        return 0
     if a.cmd == "game":
         bench = GameBench(a.extracted, a.ram, verbose=a.verbose)
         bench.start_level()
