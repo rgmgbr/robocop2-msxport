@@ -881,11 +881,12 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   the original's call count kept.
 - **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
   places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
-  `BANK_PUZL` = 78 (3,600 B used, 20 of them the sound's two entries), the graphics
-  (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from `PUZL_GFX_BANK` = 79 to 85, the music and
-  effects (`pzm.bin`, 12,734 B) in 86-87. While the stage runs FRONT stays at 8000h; it maps the
-  graphics banks only at 8000h, at its entry, and never runs an OTIR past 9FFFh. `hud_keep`
-  (fixed) is `hud_frame` for banked callers: it puts both windows' banks back.
+  `BANK_PUZL` = 78 (3,580 B used at `14bc5ef`, 3,582 at `b59a338`, and 20 B more for the sound's
+  two entries), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from
+  `PUZL_GFX_BANK` = 79 to 85, the music and effects (`pzm.bin`, 12,734 B) in 86-87. While the
+  stage runs FRONT stays at 8000h; it maps the graphics banks only at 8000h, at its entry, and
+  never runs an OTIR past 9FFFh. `hud_keep` (fixed) is `hud_frame` for banked callers: it puts
+  both windows' banks back.
 - **RAM.** PUZL's variables at their own place in the mirror (`AM + $B00-$B21`, D000h-D021h,
   `msx.inc` `pzv_...`: cleared at the entry as `$FE14` does); the stage's scalars and the
   renderer's at C68Ah-C6A9h (C6AAh-C6FEh still free); `pz_first` at C6FFh (`PZ_TEST` builds); the
