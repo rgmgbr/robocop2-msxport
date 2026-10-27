@@ -57,12 +57,19 @@ proc rc2_log_end {} {
 }
 
 # Counts VRAM accesses the VDP loses because the CPU made them too fast (setting
-# too_fast_vram_access = real); ::rc2_too_fast holds the count, ::rc2_too_fast_pc the last PCs.
+# too_fast_vram_access = real); ::rc2_too_fast holds the count, ::rc2_too_fast_pc the first PCs.
+# openMSX runs a callback setting's value as a command (the event's arguments appended), so it
+# must name a proc: an inline script there fails silently and nothing is ever counted.
 proc rc2_count_too_fast {} {
 	set ::rc2_too_fast 0
 	set ::rc2_too_fast_pc {}
-	set {::VDP.too_fast_vram_access_callback} {incr ::rc2_too_fast; if {[llength $::rc2_too_fast_pc] < 16} {lappend ::rc2_too_fast_pc [format %04x [reg pc]]}}
+	set {::VDP.too_fast_vram_access_callback} rc2_too_fast_cb
 	return "counting lost VRAM accesses"
+}
+
+proc rc2_too_fast_cb {args} {
+	incr ::rc2_too_fast
+	if {[llength $::rc2_too_fast_pc] < 16} { lappend ::rc2_too_fast_pc [format %04x [reg pc]] }
 }
 
 # Takes 'n' snapshots (rc2_snap) every 'secs' of emulated time into dir/s00, dir/s01, ...
