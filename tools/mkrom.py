@@ -25,7 +25,11 @@
         (tools/msxpuzl.py puzl_gfx.bin: its screen, sheet and TV pictures, raw; msx/puzl.asm reads
         them through the 8000h window) from bank PUZL_GFX_BANK, its music and sound effects
         (tools/msxtune.py pzm.bin: msx/tune.asm reads them through the 8000h window) from bank
-        PZM_BANK; up to 256 banks in all
+        PZM_BANK; then the shooting range's code (the section after Brainstorm's, msx/frng.asm:
+        STAGES, bank BANK_FRNG), its graphics (tools/msxrange.py range_gfx.bin: the street and the
+        sheets, raw; msx/frng.asm streams them into VRAM through the 8000h window) from bank
+        RANGE_GFX_BANK and its hit data (range_hit.bin: the priority plane, then the masks the hit
+        test reads, from a bank's start) from bank RANGE_HIT_BANK; up to 256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
         window maps must not have (b & 3Fh) = 3Fh (those select the SCC's registers at 9800h on
@@ -44,7 +48,9 @@ change fits the map patches and the packed map's codes (tools/mapcells.py: the b
 otherwise), copies the level palette and the HUD's
 (both through the colour grade: level1_grade.pal, hud_grade.pal; Brainstorm's too, puzl_1_grade.pal,
 with the stage's equates and tables, puzl.inc and puzl_tab.inc, and its cursor, puzl_cursor.spr,
-tools/msxpuzl.py; the HUD's also from colour 4 on,
+tools/msxpuzl.py; the range's two visits' palettes too, range_1_grade.pal and range_2_grade.pal,
+with its equates and tables, range.inc and range_tab.inc, and its line's sprite patterns,
+range_line.spr, tools/msxrange.py; the HUD's also from colour 4 on,
 hud_split.pal, the order the HUD split loads it: msx/isr.asm isr_split), the HUD (tools/msxhud.py) and RoboCop's
 logic tables (tools/player.py --inc) into build/msx/gen, assembles with z80asm and writes
 build/msx/rc2.rom.
@@ -73,11 +79,13 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK = 0x2000
 LOGIC = ("LC1", "LC2", "L1", "LC3", "INPUT", "FRONT", "FIELD", "MUSIC")  # logic banks after the two code banks (msx/rc2.asm
                                     # sections): modules at 8000h (one at a time), the level at A000h
-STAGES = ("PUZL",)                  # the bonus stages' code banks (msx/rc2.asm's last sections, at A000h
-                                    # while they run; PUZL: Brainstorm, msx/puzl.asm), placed after the
+STAGES = ("PUZL", "FRNG")           # the bonus stages' code banks (msx/rc2.asm's last sections, at A000h
+                                    # while they run; PUZL: Brainstorm, msx/puzl.asm; FRNG: the shooting
+                                    # range, msx/frng.asm), each before its own data: PUZL's after the
                                     # sound effects, so that no bank before them moves (with PUZL after
                                     # MUSIC every data bank moved up by one, and bank 24h's 1800h then
-                                    # held 24h, an SCC test value: msx/sound.asm scc_pat)
+                                    # held 24h, an SCC test value: msx/sound.asm scc_pat), FRNG's after
+                                    # Brainstorm's music (docs/RANGE.md 3.12: no Brainstorm bank moves)
 PICTURES = (("title", "title_credit"), ("gameover", "gameover_text"))   # the SCREEN 8 pictures next to
                                     # the level's files (name, file): TPIC with the port's credit
                                     # (tools/msxtext.py), PIC9 with GAME OVER below it
@@ -120,8 +128,13 @@ OPTIONS = {
     "ROM_2M": (0, "1 = a 2 MiB image while the game still fits 1 MiB (test: the start of a 2 MiB ROM, msx/cold.asm"
                   " rom_guard)"),
     "PZ_TEST": (0, "1 = test build: at power-on, without the title, level 1's start, then Brainstorm (the bonus stage"
-                   " after level 1: its intro, the stage, its result), the title and a new game (msx/rc2.asm pz_test)"),
-    "PZ_LEVEL": (1, "PZ_TEST's visit of Brainstorm: 1 after level 1, 2 after level 2 (the game's level, AG $8050)"),
+                   " after level 1: its intro, the stage, its result) and the shooting range, the title and a new"
+                   " game; 2 = the same with the shooting range alone (its intro, the stage, its result: front.asm"
+                   " front_rgtest); once, later games as the product's (msx/rc2.asm pz_test)"),
+    "PZ_LEVEL": (1, "PZ_TEST's visit of the bonus stages: 1 after level 1, 2 after level 2 (the game's level, AG $8050)"),
+    "RG_ADJ": (1, "0 = test build: the shooting range's register lists keep R#18 = 0 and its camera moves in"
+                  " 16-pixel steps (for a VDP that ignores R#18 or applies it once a frame: msx/frng.asm,"
+                  " docs/RANGE.md section 6)"),
     "TAG": (0, "N > 0 = test candidate: the bonus text screens show TEST N below their text (msx/front.asm fe_text)"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
@@ -482,8 +495,9 @@ def main(argv: list[str]) -> int:
     if not 1 <= opts["DAMAGE_X"] <= 3:
         print("DAMAGE_X must be 1, 2 or 3 (msx/hits.asm)", file=sys.stderr)
         return 2
-    if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1) or not 0 <= opts["TAG"] <= 99:
-        print("PZ_TEST must be 0 or 1, PZ_LEVEL 1 or 2 and TAG 0-99", file=sys.stderr)
+    if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1, 2) or not 0 <= opts["TAG"] <= 99 \
+            or opts["RG_ADJ"] not in (0, 1):
+        print("PZ_TEST must be 0, 1 or 2, PZ_LEVEL 1 or 2, TAG 0-99 and RG_ADJ 0 or 1", file=sys.stderr)
         return 2
     vram = level.with_suffix(".vram").read_bytes()
     mp = level.with_suffix(".map").read_bytes()
@@ -497,10 +511,14 @@ def main(argv: list[str]) -> int:
                                    "fade_cap:                           ; per fade step its limit (msx/logic.asm pal_fade)\n"
                                    "        db " + ", ".join(map(str, BRIGHT)) + "\n")
     for name in ("robocop.inc", "robocop_flash.inc", "robocop_field.inc", "hud_rt.inc", "player.inc",
-                 "sound.inc", "text.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr"):
+                 "sound.inc", "text.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr",
+                 "range.inc", "range_tab.inc", "range_line.spr"):
         shutil.copy(level.parent / name, gen / name)
-    # Brainstorm (msx/puzl.asm): its palette through the colour grade, as game play (decision 8)
+    # Brainstorm (msx/puzl.asm): its palette through the colour grade, as game play (decision 8);
+    # the shooting range (msx/frng.asm): its two visits' palettes the same way
     (gen / "puzl_1_grade.pal").write_bytes(grade_pal((level.parent / "puzl_1.pal").read_bytes()))
+    for v in (1, 2):
+        (gen / f"range_{v}_grade.pal").write_bytes(grade_pal((level.parent / f"range_{v}.pal").read_bytes()))
     atr = level.with_suffix(".atrp").read_bytes()               # (packed: copied to page-0 RAM)
     otile = level.with_suffix(".otile").read_bytes()
     otile += level.with_suffix(".atr2").read_bytes()        # (ATR2 = OTILE + 400h)
@@ -601,12 +619,12 @@ def main(argv: list[str]) -> int:
     bank_scc = bank_voice + len(voice) // BANK
     bank_fm = bank_scc + len(scc) // BANK
     bank_sccfx = bank_fm + len(fm) // BANK
-    bank_stage = bank_sccfx + len(sccfx) // BANK       # (STAGES: the bonus stages' code)
+    bank_stage = bank_sccfx + len(sccfx) // BANK       # (STAGES: Brainstorm's code, PUZL)
     # Brainstorm's graphics (tools/msxpuzl.py puzl_gfx.bin: the screen and the sheet, then the TV
     # pictures, packed across banks: msx/puzl.asm streams them into VRAM through the 8000h window)
     puzl_gfx = (level.parent / "puzl_gfx.bin").read_bytes()
     puzl_gfx += b"\xff" * (-len(puzl_gfx) % BANK)
-    bank_puzl_gfx = bank_stage + len(STAGES)
+    bank_puzl_gfx = bank_stage + 1
     # Brainstorm's music and effects (tools/msxtune.py pzm.bin: msx/tune.asm reads its streams and
     # waveforms through the 8000h window across banks); test builds that never play the game (DIAG)
     # leave it out
@@ -618,7 +636,20 @@ def main(argv: list[str]) -> int:
         pzm = (level.parent / "pzm.bin").read_bytes()
         pzm_check(pzm)
     bank_pzm = bank_puzl_gfx + len(puzl_gfx) // BANK
-    banks_used = bank_pzm + -(-len(pzm) // BANK)
+    # the shooting range (STAGES: FRNG's code, msx/frng.asm), after Brainstorm's banks: its graphics
+    # (tools/msxrange.py range_gfx.bin: the street, its strip and the sheets, raw: msx/frng.asm streams
+    # them into VRAM through the 8000h window) and its hit data (range_hit.bin: the priority plane,
+    # then the masks, at offsets from the file's start: it starts at a bank, and msx/frng.asm's hit
+    # test reads it through the 8000h window, RANGE_HIT_BANK + offset / 2000h)
+    bank_frng = bank_pzm + -(-len(pzm) // BANK)
+    range_gfx = (level.parent / "range_gfx.bin").read_bytes()
+    range_gfx += b"\xff" * (-len(range_gfx) % BANK)
+    range_hit = (level.parent / "range_hit.bin").read_bytes()
+    range_hit += b"\xff" * (-len(range_hit) % BANK)
+    bank_range_gfx = bank_frng + 1
+    bank_range_hit = bank_range_gfx + len(range_gfx) // BANK
+    stage_bank = {"PUZL": bank_stage, "FRNG": bank_frng}
+    banks_used = bank_range_hit + len(range_hit) // BANK
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
@@ -647,9 +678,11 @@ def main(argv: list[str]) -> int:
                   for i, (n, f) in enumerate(PICTURES)) +
         f"VOICE_BANK: equ {bank_voice}\nVOICE_MIX_BANK: equ {bank_mix}\nSCC_BANK: equ {bank_scc}\nFM_BANK: equ {bank_fm}\n"
         f"SCCFX_BANK: equ {bank_sccfx}\n"
-        + "".join(f"BANK_{n}: equ {bank_stage + i}\n" for i, n in enumerate(STAGES)) +
+        + "".join(f"BANK_{n}: equ {stage_bank[n]}\n" for n in STAGES) +
         f"PUZL_GFX_BANK: equ {bank_puzl_gfx}\nPUZL_GFX_BANKS: equ {len(puzl_gfx) // BANK}\n"
         f"PZM_BANK: equ {bank_pzm}\n"
+        f"RANGE_GFX_BANK: equ {bank_range_gfx}\nRANGE_GFX_BANKS: equ {len(range_gfx) // BANK}\n"
+        f"RANGE_HIT_BANK: equ {bank_range_hit}\n"
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
         f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
@@ -696,7 +729,8 @@ def main(argv: list[str]) -> int:
     if len(cb) != (2 + len(LOGIC) + len(STAGES)) * BANK:
         print(f"error: code is {len(cb)} bytes (expected {(2 + len(LOGIC) + len(STAGES)) * BANK})", file=sys.stderr)
         return 1
-    stage_code = cb[bank_tiles * BANK:]                 # (the last sections: STAGES, at bank_stage)
+    stage_code = {n: cb[(bank_tiles + i) * BANK:(bank_tiles + i + 1) * BANK]   # (the last sections: STAGES,
+                  for i, n in enumerate(STAGES)}                            #  each at its stage_bank)
     cb = cb[:bank_tiles * BANK]
     rom = (cb + tiles + b"".join(map_banks) + sprites + hudrt + b"\xff" * (2 * BANK - len(hudrt))
            + atr + bytes(BANK - len(atr)) + hud_img + b"\xff" * (BANK - len(hud_img))
@@ -704,7 +738,12 @@ def main(argv: list[str]) -> int:
            + field_img + b"\xff" * (BANK - len(field_img))
            + field_dyn + b"\xff" * (dyn_banks * BANK - len(field_dyn))
            + b"".join(p + b"\xff" * (-len(p) % BANK) for p in pics)
-           + voice + scc + fm + sccfx + stage_code + puzl_gfx + pzm + b"\xff" * (-len(pzm) % BANK))
+           + voice + scc + fm + sccfx + stage_code["PUZL"] + puzl_gfx + pzm + b"\xff" * (-len(pzm) % BANK)
+           + stage_code["FRNG"] + range_gfx + range_hit)
+    if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
+           != stage_code[n] for n in STAGES):
+        print("error: a bonus stage's code is not at its bank", file=sys.stderr)
+        return 1
     if len(rom) != banks_used * BANK:
         print(f"error: the image holds {len(rom)} bytes, the layout {banks_used} banks", file=sys.stderr)
         return 1
@@ -738,7 +777,9 @@ def main(argv: list[str]) -> int:
           f"map in {bank_map}-{bank_spr - 1} ({rows} rows), RoboCop sprites in {bank_spr}-"
           f"{bank_hud - 1}, HUD data in {bank_hud}-{bank_hud + 1}, attributes in {bank_atr}, HUD image in "
           f"{bank_atr + 1}, level tables in {bank_atr + 2}; Brainstorm's code in {bank_stage}, its graphics in "
-          f"{bank_puzl_gfx}-{bank_pzm - 1}" + (f", its music in {bank_pzm}-{banks_used - 1}" if pzm else "")
+          f"{bank_puzl_gfx}-{bank_pzm - 1}" + (f", its music in {bank_pzm}-{bank_frng - 1}" if pzm else "")
+          + f"; the range's code in {bank_frng}, its graphics in {bank_range_gfx}-{bank_range_hit - 1}, its hit "
+          f"data in {bank_range_hit}-{banks_used - 1}"
           + (f"; joystick script {script}" if script else ""))
     return 0
 

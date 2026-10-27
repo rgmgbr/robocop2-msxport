@@ -559,3 +559,10 @@ music_end:
         include "puzl.asm"
 puzl_end:
         ds 0xC000 - puzl_end, 0xFF
+
+; ----- the shooting range, the second bonus stage after level 1 (BANK_FRNG at A000h while it
+; runs, FRONT at 8000h: front.asm front_range) -----
+        org 0xA000
+        include "frng.asm"
+frng_end:
+        ds 0xC000 - frng_end, 0xFF
