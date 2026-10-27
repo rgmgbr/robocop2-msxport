@@ -468,6 +468,7 @@ palette:
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
 rowtab:
         include "rowtab.inc"
+        include "sndtune.asm"       ; Brainstorm's sound entries (last: nothing before them moves)
 
 code_end:
         ds 0x8000 - code_end, 0xFF  ; pads banks 0-1 (16 KiB)
@@ -547,6 +548,9 @@ music_tab:
         include "voice.inc"         ; RoboCop's speech: its PSG tables (tools/msxvoice.py)
         ds (VOICE_RATE_T - 322) * 0x4000  ; (music.asm vm_cal aims at 322 T-states a sample: an
                                     ;  error here when tools/msxvoice.py's RATE_T changes)
+        include "tune.inc"          ; the tunes after the title: Brainstorm's descriptor (tools/mkrom.py)
+        include "tune.asm"          ;   and its player (after the title's code and tables: those keep
+                                    ;   their places and bytes)
 music_end:
         ds 0xC000 - music_end, 0xFF
 

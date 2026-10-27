@@ -1,4 +1,5 @@
-"""tools/msxtune.py: the routing step, Brainstorm's PZM.
+"""tools/msxtune.py (the routing step, Brainstorm's PZM) and tools/mkrom.py's part for it
+(pzm.bin's checks, tune.inc's layout against msx/tune.asm).
 
 The regression the routing rests on: through it TITM tune 1 gives today's conversions byte for
 byte (scc.bin 25,803 B, fm.bin 13,238 B, the PSG title 5,990 B at msxsound's lambda for the
@@ -15,6 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import mkrom  # noqa: E402
+
 try:
     import numpy  # noqa: F401
     HAVE_NUMPY = True
@@ -23,6 +26,13 @@ except ImportError:
 MSX = ROOT / "build" / "msx"
 TITM = ROOT / "build" / "music" / "TITM.json"
 PUZL = ROOT / "build" / "extracted" / "files" / "PUZL_25.bin"
+
+
+def equates(path: Path) -> dict[str, int]:
+    out = {}
+    for m in re.finditer(r"^(\w+):\s+equ (0x[0-9A-Fa-f]+|\d+)\b", path.read_text(), re.M):
+        out[m.group(1)] = int(m.group(2), 0)
+    return out
 
 
 def stream_len(b: bytes, start: int, kind: int) -> int:
@@ -37,6 +47,81 @@ def stream_len(b: bytes, start: int, kind: int) -> int:
         else:
             p += (2 if ctl & word else 0) + (1 if ctl & byte else 0)
     return p + 1 - start
+
+
+def stream(ticks: int, ctl: int, extra: bytes = b"") -> bytes:
+    """One record of `ticks` ticks (ctl and its fields), the end marker."""
+    return bytes([ticks, ctl]) + extra + b"\x00"
+
+
+def blob(T: int = 10, waves: int = 2, bad_align: bool = False, wave_no: int = 1) -> bytes:
+    """A small pzm.bin in tools/msxtune.py's layout (mkrom.pzm_parse)."""
+    streams = ([stream(T, 0x3F, bytes([1, 0, wave_no]))] * 3 + [stream(T, 0x0F)]
+               + [stream(T, 0x0F)] * 3 + [stream(T, 0x01)] + [stream(T, 0x0F)] * 3)
+    body, offs = bytearray(), []
+    for s in streams:
+        offs.append(mkrom.PZM_HEADER + len(body))
+        body += s
+    body += bytes(-(mkrom.PZM_HEADER + len(body)) % 32 + (1 if bad_align else 0))
+    w_off = mkrom.PZM_HEADER + len(body)
+    body += bytes(32 * waves)
+    p_off = mkrom.PZM_HEADER + len(body)
+    body += bytes(range(14))
+    e_off = mkrom.PZM_HEADER + len(body)
+    s_o, p_o = e_off + 9, e_off + 9 + 6
+    body += bytes([12]) + s_o.to_bytes(3, "little") + bytes([5]) + p_o.to_bytes(3, "little") + bytes([4])
+    body += stream(5, 0x38, bytes([2, 0, 0]))[:-1] + b"\x00" + stream(4, 0x0F)
+    head = b"".join(o.to_bytes(3, "little") for o in offs + [w_off, p_off, e_off])
+    head += bytes([waves, T & 0xFF, T >> 8, 3, 1])
+    return head + bytes(body)
+
+
+class MkromTuneTests(unittest.TestCase):
+    def test_parse_and_check_a_small_blob(self):
+        b = blob()
+        hd = mkrom.pzm_parse(b)
+        self.assertEqual((hd["T"], hd["W"], hd["fx0"], hd["fxn"]), (10, 2, 3, 1))
+        self.assertEqual(hd["effects"][0]["len"], 12)
+        self.assertEqual((hd["effects"][0]["scc_ticks"], hd["effects"][0]["psg_ticks"]), (5, 4))
+        mkrom.pzm_check(b)                                   # (no exception)
+
+    def test_check_refuses_what_tune_asm_cannot_play(self):
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(blob(bad_align=True))           # a waveform across a bank
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(blob(wave_no=2))                # past the table
+        b = bytearray(blob())
+        b[mkrom.pzm_parse(bytes(b))["streams"][5]] = 9      # a stream shorter than the tune
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(bytes(b))
+
+    def test_tune_inc_holds_tune_asm_layout(self):
+        # pz_desc's bytes up to pz_fx are TD_SIZE (tune.asm checks it at build time too), each
+        # effect TF_SIZE; the streams' and waveforms' banks and addresses in the 8000h window
+        eq = equates(ROOT / "msx" / "tune.asm")
+        text = mkrom.tune_inc(blob(), 86)
+        def size(part: str) -> int:
+            n = 0
+            for line in part.splitlines():
+                line = line.split(";")[0].strip()
+                if line.startswith("db "):
+                    n += len(line[3:].split(","))
+                elif line.startswith("dw "):
+                    n += 2 * len(line[3:].split(","))
+            return n
+        desc = text.split("pz_desc:")[1].split("pz_fx:")[0]
+        fx = text.split("pz_fx:")[1]
+        self.assertEqual(size(desc), eq["TD_SIZE"])
+        self.assertEqual(size(fx), eq["TF_SIZE"])
+        self.assertEqual((eq["TD_FM"], eq["TD_PSG"], eq["TD_TICKS"], eq["TD_PATCH"], eq["TD_FX"], eq["TD_WAVES"]),
+                         (12, 24, 33, 35, 49, 53))
+        self.assertIn("db 86\n        dw 0x802F", text)     # (the first stream at offset 47)
+
+    def test_the_fixed_area_additions_come_last(self):
+        # msx/sndtune.asm after everything else in the fixed area, so that no label moves
+        asm = (ROOT / "msx" / "rc2.asm").read_text()
+        self.assertRegex(asm, r'include "rowtab.inc"\n\s+include "sndtune.asm"[^\n]*\n\ncode_end:')
+        self.assertRegex(asm, r'include "voice.inc".*\n(.*\n){2}\s+include "tune.inc".*\n\s+include "tune.asm"')
 
 
 @unittest.skipUnless(HAVE_NUMPY, "needs numpy (the project's venv)")
