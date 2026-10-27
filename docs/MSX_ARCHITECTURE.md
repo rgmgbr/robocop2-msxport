@@ -1383,9 +1383,11 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
     voice's refusals equal those of `tools/rc2music.py`'s 68000 model for every pair of effects
     at 1, L - 1, L and L + 1 ticks; a board's start in 608 cases (50 Hz; at 60 Hz every phase of
     both dividers; four chip sets) gives tick 0 at the first tick after the first pass and effect
-    5 in that same tick at boards 1-3; the title after the stage writes its chips as a fresh
-    machine's does, write for write, and only SCC channel 3's waveform and period, which the
-    title never writes (its channels 0-2 only), keep the stage's values.
+    5 in that same tick at boards 1-3; the title after the stage writes its chips as the title
+    after main's silent stage does, write for write (as a fresh machine's when the stage comes
+    first; after a played level 1, with the PSG alone, both write while silent the tone periods
+    level 1's effects left in the PSG player's voices), and only SCC channel 3's waveform and
+    period, which the title never writes (its channels 0-2 only), keep the stage's values.
   - The emulator checks (the registers per tick in openMSX on every chip set, the title after
     the stage, the audio for the user's ears) still have to run.
 

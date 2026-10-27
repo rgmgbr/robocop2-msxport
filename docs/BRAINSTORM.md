@@ -811,9 +811,14 @@ user's ears are still to come.
   a board's tick 0 loads three SCC waveforms, up to about 3.7 ms in the VBLANK interrupt, well
   before the HUD split's line (about 13 ms on).
 - **After the stage.** `front_bonus`' `snd_stop` silences every chip set. The title after it writes
-  its chips as at power-on, write for write; the only registers it finds as the stage left them
-  are SCC channel 3's waveform and period, which it never writes (its music uses channels 0-2,
-  with 3 off). Level 1's effects after the stage are a fresh machine's.
+  its chips as the title after main's silent stage does, write for write: as at power-on when the
+  stage comes first (a `PZ_TEST` build). After a played level 1, with the PSG alone, both write
+  while silent the tone periods that level 1's last effects left in the PSG player's voices
+  (`sndplay.asm` `sq_stop` keeps `SV_PER`; `sq_init` runs at power-on only), never heard. The
+  registers the stage wrote keep its values only until the title's own records reach them, but
+  for SCC channel 3's waveform and period, which the title never writes (its music uses channels
+  0-2, with 3 off): they keep what the stage's effects left. Level 1's effects after the stage are
+  a fresh machine's.
 - **Open, for the user's ears** [I]: the effects' balance on the SCC (3 and 4 come out at SCC
   volume 3, the tune's scale); the OPLL's custom patch on instrument #4, chosen on the converters'
   approximate OPLL model; effect 6's buzz design; PERCUSH1/2 classified as toms.
@@ -1105,7 +1110,13 @@ decoders, the effects' schedule from `$1822C`'s rule modelled apart.
   lower one 1, L - 1, L and L + 1 ticks after, on four chip sets: 256 cases, 0 differences.
 - A board's start: 608 cases at 50 Hz and, at 60 Hz, for every phase of the passes' and the ticks'
   dividers (3.6). The build before the fix fails them.
-- The title after the stage, and level 1's effects after it: as on a fresh machine, write for write.
+- The title after the stage: as the title after main's silent stage, write for write, in the
+  product's flow (the power-on title, level 1's effects, the stage left alone to its time out, the
+  result) and a `PZ_TEST` build's, on four chip sets; as on a fresh machine when the stage comes
+  first. After a played level 1 the power-on title is no reference, on main either: with the PSG
+  alone the title's first records write, while silent, the tone periods level 1's effects left in
+  the PSG player's voices (3.6). Level 1's effects after the stage: as on a fresh machine, write
+  for write.
 
 **In openMSX, still to run**, with the headless harness: the title's registers on every chip set
 against main's images; level 1's effects (LOCKSTEP builds) and traces; the stage's nine drives with
@@ -1113,9 +1124,10 @@ the sound in (the traces must stay the silent stage's); PZM's registers per tick
 (the cartridge's SCC and another slot's, SCC + OPLL, the OPLL alone, the PSG alone, an FM-PAC, 50
 and 60 Hz, the turbo R), checked against the streams by the same decoders, the jingle's request
 before the tune's first tick; the tune's end and the time out with the timer running; the title
-after the stage against the power-on title, in the product's flow and a `PZ_TEST` build's (its
-writes in order, and at every music tick the registers it has written so far); audio recordings
-for the user, judged by pitch and level.
+after the stage against the title after main's silent stage (main's build with the same options,
+on the same machine), in the product's flow and a `PZ_TEST` build's (its writes in order, and at
+every music tick the registers it has written so far); audio recordings for the user, judged by
+pitch and level.
 
 ### 4.4 Regression [V]
 
