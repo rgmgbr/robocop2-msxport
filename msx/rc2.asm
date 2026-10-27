@@ -239,7 +239,7 @@ ml_ev:  ld a,(g_event)
         jr z,ml_fe
         ld hl,front_stats           ; the next level: its statistics ($85D8; a turbo R: the Z80
         call front_call             ;  again, front.asm), then load_level1's bonus stage
-        ld hl,front_bonus           ;  (Brainstorm $8382; the range $8420 and level 2 later),
+        ld hl,front_bonus           ;  (Brainstorm $8382, then the range $8420; level 2 later),
 ml_fe:  call front_call             ;  then (for now) the title and a new game
         call title
         jp new_game
@@ -249,18 +249,23 @@ ml_rst: call level_restart
         jp mainloop
 
         if PZ_TEST
-; (Test build, tools/mkrom.py PZ_TEST=1) Once after the power-on, instead of level 1's main loop:
-; Brainstorm as after level PZ_LEVEL ($8050; AG as ng_go cleared it: score 0, two lives, no
-; continue) from the state front_stats leaves (a turbo R: the Z80 again), then the title and a
-; new game as after a level.
+; (Test build, tools/mkrom.py PZ_TEST=1 or 2) Once after the power-on, instead of level 1's main
+; loop: the bonus stages as after level PZ_LEVEL ($8050; AG as ng_go cleared it: score 0, two
+; lives, no continue) from the state front_stats leaves (a turbo R: the Z80 again), then the title
+; and a new game as after a level. PZ_TEST=1: Brainstorm, then the shooting range (front_bonus);
+; PZ_TEST=2: the range alone (front.asm front_rgtest).
 pz_test:
         xor a
         ld (pz_first),a
         ld hl,PZ_LEVEL
-        ld (AG + 0x8050),hl         ; (the level done: the stage's visit)
+        ld (AG + 0x8050),hl         ; (the level done: the stages' visit)
         ld hl,cpu_title
         call front_call             ; (cold.asm)
+        if PZ_TEST = 2
+        ld hl,front_rgtest
+        else
         ld hl,front_bonus
+        endif
         jr ml_fe
         endif
 
@@ -461,6 +466,15 @@ slot_page2:
         include "player.asm"
         include "sound.asm"         ; the PSG and the OPLL (MSX-MUSIC / FM-PAC)
         include "player.inc"        ; RoboCop's logic tables (tools/player.py --inc)
+
+; The shooting range's end (msx/frng.asm rg_stage leaves through it, the counts in the mirror) and
+; its rating (front.asm front_range, ac_diff set, on both paths): the trace harness's breakpoints
+; (tools/openmsx_rc2.tcl rc2_fr_drive), reached once each, before anything changes what they
+; record. (After the code, before its tables: no routine moves.)
+fr_done:
+        ret
+fr_rated:
+        ret
 
 palette:
         incbin "level1_grade.pal"   ; (the level's palette through the colour grade: tools/mkrom.py)

@@ -411,6 +411,12 @@ rd_face:    equ 0xC697              ; 1: the last build's TV shows the face
 rd_fr:      equ 0xC698              ; 2: $B00 when the last build started (a build only after a pass)
 rd_bank:    equ 0xC69A              ; the entry's uploads: the bank at 8000h
 rd_cmd:     equ 0xC69B              ; 15: the HMMM being sent (R#32-R#46)
+; The shooting range (msx/frng.asm) while it runs: its own variables, in the same bytes as
+; Brainstorm's (C68Ah-C6FEh: the two stages never run together; docs/RANGE.md 3.2)
+rg_last:    equ 0xC68A              ; the tick of the last pass, or of the timer's set-up (rg_wait: wf_n)
+rg_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immediate at $1F9B0: the visit's)
+rg_clip:    equ 0xC68D              ; 2: frng_draw_bob's right clip (the immediate at $1EE42)
+rg_mode:    equ 0xC68F              ; 2: its first blit's mode (the immediate at $1EEC6)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's
@@ -487,6 +493,20 @@ pzv_fade:   equ AM + (0x0B19 ^ 1)   ; the palette's fade, 0-31
 pzv_endc:   equ AM + 0x0B1A         ; 2: the end sequence's passes (0 in play; it ends from 99 on)
 pzv_prevjoy: equ AM + (0x0B1E ^ 1)  ; the joystick byte of the last change
 pzv_fadein: equ AM + (0x0B20 ^ 1)   ; FFh: fading in, 0: fading out
+; The shooting range (msx/frng.asm): FRNG's variables $B00-$BC5 at their own place (cleared at the
+; stage's entry with AM_START..AM_END, as $FE14 does; tools/openmsx_rc2.tcl rc2_fr_drive traces
+; them with fr_code; docs/RANGE.md 2.5)
+frv_pass:   equ AM + 0x0B00         ; 2: the passes so far (+ 1 after the crosshair)
+frv_pass3:  equ AM + 0x0B02         ; 2: + 3 a pass (nothing reads it)
+frv_correct: equ AM + 0x0B04        ; 2: the correct targets hit ($1EAC8: D1 at the return)
+frv_dummy:  equ AM + 0x0B06         ; 2: the dummy targets hit ($1EAC4: D0 at the return)
+frv_end:    equ AM + 0x0B08         ; 2: 0 in play; 1 at "NO AMMO." (+ 1 a pass) or at a time out
+frv_cx:     equ AM + 0x0B9A         ; 2: the crosshair's x (the hit pixel's bitplane x + 111)
+frv_cy:     equ AM + 0x0B9E         ; 2: the crosshair's y (its row)
+frv_cdelay: equ AM + 0x0BBC         ; 2: a correct hit's delay (10 at the hit; FF00h idle)
+frv_ddelay: equ AM + 0x0BBE         ; 2: a dummy hit's delay
+frv_fadein: equ AM + (0x0BC0 ^ 1)   ; FFh: fading in, 0: fading out
+frv_fade:   equ AM + (0x0BC1 ^ 1)   ; the fade's level, 0-31
 
 ; game logic: the port's own variables
 G_VARS:     equ 0xCE00
@@ -802,7 +822,7 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2D9h-C2FFh (C2B6h-C2C1h and
-; C2C5h-C2D8h: tune.asm's), C68Ah-C6FEh (Brainstorm's while it runs), ECF0h-ED0Fh, EDC0h-EDFFh,
+; C2C5h-C2D8h: tune.asm's), C68Ah-C6FEh (the bonus stages' while they run), ECF0h-ED0Fh, EDC0h-EDFFh,
 ; E0FEh-E0FFh, F1CFh, F1E2h,
 ; F271h-F27Fh (below the stack), F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
@@ -825,6 +845,11 @@ MP_B:       equ 0xF500              ; the odd rows' pool (F500h-F9FFh, page 3's 
 pz_boards:  equ 0xF500              ; Brainstorm while it runs (MP_B: tiles_init rebuilds it): the
                                     ;   visit's 4 boards (PZ_TAB, Amiga order, a cell + 10h once
                                     ;   burnt) and what follows them in PUZL up to $1775F (msx/puzl.asm)
+fr_code:    equ 0xF500              ; the shooting range while it runs (MP_B, as pz_boards): FRNG's
+                                    ;   code-area state, RG_FC_LEN (526) bytes in the mirror's rule
+                                    ;   (range.inc RG_FC_...: $1EB46-$1EB4B, $1F246-$1F247, $1F46C-
+                                    ;   $1F46D, $1F502-$1F50B, $1F60E-$1F807), loaded at the entry
+rg_blits:   equ 0xF70E              ;   F70Eh-F7FFh: the hit test's recent blits (range.inc RG_BLITS_ROOM)
 MPF_COL:    equ 0x0000              ; per patch its column,
 MPF_NEXT:   equ 0x0100              ;   the next patch of the row (FFh: none),
 MPF_TILEL:  equ 0x0200              ;   its tile (low byte,

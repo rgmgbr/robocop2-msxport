@@ -361,28 +361,12 @@ fs_clear:
 
 ; load_level1 $8582 after the statistics: Brainstorm ($8382, D0 = 2 after level 1; PIC3 dropped,
 ; decision 5 of the port): its intro, the stage (msx/puzl.asm, BANK_PUZL at A000h), a continue
-; when it is solved ($805E), its result. The shooting range ($8420) and level 2 come later. From
-; the state front_stats leaves: the play area black, the HUD below it; a turbo R on the Z80 with
-; the display and the interrupts off (cpu_title), the HUD split measured for the R800 only.
-; A turbo R's Z80 runs these screens without its hardware pause: CHGCPU(80h) turned it on
-; (docs/TURBO_R.md H11, H18), and a PAUSE press would hold the Z80, the HUD split and the VBLANK
-; list with it, at any line: the picture garbled while held. The key is not read here (the
-; original stage has no pause; front_stats on the R800 ignores it too): cpu_title at the end waits
-; for a press left pending, the picture kept (cs_pz), and turns the hardware pause on again, so
-; that the title starts as it did after front_stats.
+; when it is solved ($805E), its result; then the shooting range ($8590: front_range). Level 2
+; comes later. From the state front_stats leaves: the play area black, the HUD below it; a turbo R
+; on the Z80 with the display and the interrupts off (cpu_title), the HUD split measured for the
+; R800 only (fb_prep).
 front_bonus:
-        ld a,(cpu_tr)
-        or a
-        jr z,fbo_go
-        ld a,(CASPRV)               ; a turbo R: the Z80's hardware pause off (A7h bit 1), first
-        and 0xFD                    ;  (a hold inside split_cal would cut a measure short)
-        ld (CASPRV),a
-        out (TR_PAUSE),a
-        call display_on             ; the split measured on the Z80 (split_cal), the line and
-                                    ;  VBLANK interrupts and the display on again (other machines
-                                    ;  keep theirs: split_cal blanks the HUD a while)
-fbo_go: xor a
-        ld (g_tick),a               ; (hud_energy keeps the can: PUZL never calls $89BE)
+        call fb_prep                ; (a turbo R: the Z80's hardware pause off, display_on; g_tick = 0)
         ld hl,txt_bs_intro
         call fe_text                ; ($8384: $114AA through $10762)
         ld a,BANK_PUZL
@@ -407,9 +391,121 @@ fb_res: add a,a
         ld h,(hl)
         ld l,a
         call fe_text                ; ($8400: the result through $10762)
+        call front_range            ; ($8590: moveq #1,D0 / bsr $8420; visit 2 runs the same code)
         jp cpu_title                ; (a turbo R: the hardware pause on again, the display off)
 fb_texts:
         dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)
+
+; The bonus stages' set-up, from the state front_stats or cpu_title leaves (front_bonus;
+; front_rgtest in PZ_TEST=2 builds). A turbo R's Z80 runs these screens without its hardware
+; pause: CHGCPU(80h) turned it on (docs/TURBO_R.md H11, H18), and a PAUSE press would hold the Z80,
+; the HUD split and the VBLANK list with it, at any line: the picture garbled while held. The key
+; is not read here (the original stages have no pause; front_stats on the R800 ignores it too):
+; cpu_title at the end waits for a press left pending, the picture kept (cs_pz), and turns the
+; hardware pause on again, so that the title starts as it did after front_stats.
+fb_prep:
+        ld a,(cpu_tr)
+        or a
+        jr z,fbp_go
+        ld a,(CASPRV)               ; a turbo R: the Z80's hardware pause off (A7h bit 1), first
+        and 0xFD                    ;  (a hold inside split_cal would cut a measure short)
+        ld (CASPRV),a
+        out (TR_PAUSE),a
+        call display_on             ; the split measured on the Z80 (split_cal), the line and
+                                    ;  VBLANK interrupts and the display on again (other machines
+                                    ;  keep theirs: split_cal blanks the HUD a while)
+fbp_go: xor a
+        ld (g_tick),a               ; (hud_energy keeps the can: PUZL and FRNG never call $89BE)
+        ret
+
+; $8420, the shooting range (D0 = 1 after level 1, 5 after level 2: it only picks PIC2 / PIC6,
+; dropped by decision 5 of the port; the stage reads the visit from $8050): its intro, the stage
+; (msx/frng.asm, BANK_FRNG at A000h), then the rating of its counts, which sets ac_diff ($8060:
+; the next level's enemy hit points, docs/RANGE.md 3.10), and its result; a time out gives POOR and
+; Brainstorm's OUT OF TIME. screen ($11698). The counts come from the mirror (AM $B04, $B06), where
+; the stage leaves them ($1EAC4). fr_rated (rc2.asm, a ret) marks ac_diff set on both paths for
+; the trace harness. No snd_stop after the stage: fe_text stops the sound first, as $10768's $FE14.
+front_range:
+        ld hl,txt_rg_intro
+        call fe_text                ; ($8422: $1142D through $10762)
+        ld a,BANK_FRNG
+        call bank_a000
+        xor a
+        ld (AG + (0x804C ^ 1)),a    ; ($845E: clr.b $804C)
+        call rg_stage               ; ($8474: jsr $1EA00; the counts stay in AM $B04, $B06)
+        ld a,(AG + (0x804C ^ 1))
+        or a
+        jr z,frg_rate               ; ($847A)
+        ld hl,diff_tab + 24
+        ld (ac_diff),hl             ; ($8482: $8060 = $C72E, POOR)
+        call fr_rated
+        ld hl,txt_bs_time
+        jp fe_text                  ; ($848C: $11698, Brainstorm's own copy)
+frg_rate:
+        ld hl,txt_rg_res
+        ld de,fs_buf
+        ld bc,TXT_RG_LEN
+        ldir
+        ld hl,(AM + 0x0B06)         ; ($849C: the dummy count into $113E4)
+        ld de,fs_buf + TXT_RG_F2
+        call fs_num
+        ld hl,(AM + 0x0B04)         ; ($84AE: the correct count into $113CA)
+        ld de,fs_buf + TXT_RG_F1
+        call fs_num
+        ld hl,(AM + 0x0B04)         ; ($84C0-$84DC: 6 correct - dummy - 50, in 16 bits)
+        ld d,h
+        ld e,l
+        add hl,hl
+        add hl,de
+        add hl,hl
+        ld de,(AM + 0x0B06)
+        or a
+        sbc hl,de
+        ld de,50
+        or a
+        sbc hl,de
+        ld a,(AG + (0x804A ^ 1))    ; ($84CE: tst.b $804A, the timer's minutes)
+        or a
+        jr nz,frg_s
+        ld de,12
+        sbc hl,de                   ; (- 12 below a minute; carry clear: or a)
+frg_s:  xor a                       ; ($84DE: below 0 -> 0, else (s div 14) up to 3)
+        bit 7,h
+        jr nz,frg_r
+        ld de,14
+frg_d:  or a
+        sbc hl,de
+        jr c,frg_r
+        inc a
+        cp 3
+        jr nz,frg_d
+frg_r:  add a,a
+        add a,a
+        add a,a                     ; ($84F0: lsl.w #3)
+        ld c,a
+        ld b,0
+        ld hl,diff_tab + 24
+        or a
+        sbc hl,bc
+        ld (ac_diff),hl             ; ($84FC: $8060 = $C716 + 24 - 8 x rating)
+        call fr_rated
+        ld hl,txt_rg_rate
+        add hl,bc
+        ld de,fs_buf + TXT_RG_F3
+        ld bc,8
+        ldir                        ; ($8502: the rating's name into $11400)
+        ld hl,fs_buf
+        jp fe_text                  ; ($8518: $113A5 through $10762)
+
+        if PZ_TEST = 2
+; (Test build, tools/mkrom.py PZ_TEST=2) rc2.asm pz_test's stage: the shooting range alone, from the
+; state level 1's set-up and cpu_title leave (a turbo R on the Z80, the display off), then the
+; title and a new game as after a level.
+front_rgtest:
+        call fb_prep
+        call front_range
+        jp cpu_title
+        endif
 
 ; A text screen of the bonus stages ($10762: $10768's screen and loop, then $FE14), HL = its
 ; script in this bank (positions, characters, FF 02 n, FF 07: tools/msxtext.py txt_bs_*):
