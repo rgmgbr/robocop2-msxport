@@ -3,11 +3,12 @@
 Measured on 2026-10-26 against release v0.1.2 (`build/msx/ROBOCOP2_v0.1.2.ROM`: level 1, the
 title, the game over and the statistics screen).
 
-**Update, 2026-10-27.** Brainstorm, the bonus stage after level 1, is built (milestone 1: its logic
-and graphics, silent; `docs/BRAINSTORM.md`). The image now uses **86 of its 128 banks** (still 1
-MiB): its code in bank 78, its graphics stored raw in banks 79-85 (section 2.1). Section 4.1 counts
-the whole game against 2 MiB again from there: about 189 banks likely and 198 high, 196 and 203
-with the range's graphics raw too, of 256. The rest of this document is the budget of 2026-10-26.
+**Update, 2026-10-27.** Brainstorm, the bonus stage after level 1, is built with its sound (its
+logic, graphics, music and effects; `docs/BRAINSTORM.md`). The image now uses **88 of its 128
+banks** (still 1 MiB): its code in bank 78, its graphics stored raw in banks 79-85, its music and
+effects in banks 86-87 (section 2.1). Section 4.1 counts the whole game against 2 MiB again from
+there: about 189 banks likely and 198 high, 196 and 203 with the range's graphics raw too, of 256.
+The rest of this document is the budget of 2026-10-26.
 
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
@@ -38,8 +39,8 @@ Conventions:
 |---|---:|---:|
 | Used today (banks 0-77) | 78 | 624 |
 | Free today (banks 78-127) | 50 | 400 |
-| Used on 2026-10-27, with Brainstorm (banks 0-85) | 86 | 688 |
-| Free on 2026-10-27 (banks 86-127) | 42 | 336 |
+| Used on 2026-10-27, with Brainstorm and its sound (banks 0-87) | 88 | 704 |
+| Free on 2026-10-27 (banks 88-127) | 40 | 320 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -124,13 +125,15 @@ of fill. `rowtab.inc` stores a bank and an address for each row, so that row can
 
 ### 2.1 Added on 2026-10-27: Brainstorm
 
-M, from the product's image and label file at `14bc5ef`:
+M, from the product's image and label file at `14bc5ef`, and with the sound from the product of
+`bs-sound-int` (`3f2330d`):
 
 | Banks | Content | Bytes used | Fill or free |
 |---|---|---:|---:|
-| 78 | `BANK_PUZL`: Brainstorm's code, its boards and tables, the cursor's patterns, its graded palette (`msx/puzl.asm`) | 3,580 | 4,612 |
+| 78 | `BANK_PUZL`: Brainstorm's code, its boards and tables, the cursor's patterns, its graded palette (`msx/puzl.asm`); with the sound's two entries (20 B) | 3,580; 3,600 | 4,612; 4,592 |
 | 79-85 | Brainstorm's graphics, raw (`tools/msxpuzl.py` `puzl_gfx.bin`: the screen and the sheet 27,904 B, visit 1's 9 TV pictures 28,800 B) | 56,704 | 640 (bank 85) |
-| 86-127 | Free | 0 | 344,064 |
+| 86-87 | Brainstorm's music and effects (`tools/msxtune.py` `pzm.bin`, `PZM_BANK`: PZM tune 1 for the SCC with the PSG drums 6,884 B, the OPLL 3,580 B and the PSG alone 1,878 B; effects 3-6; their waveforms and the OPLL patch) | 12,734 | 3,650 (bank 87) |
+| 88-127 | Free | 0 | 327,680 |
 
 - `tools/mkrom.py` places the bonus stages' code banks (`STAGES`) after the sound effects, so no
   bank before 78 moved, and the data banks 10-77 are byte-identical to those of `52149b0`
@@ -142,6 +145,23 @@ M, from the product's image and label file at `14bc5ef`:
   3,202 at `52149b0`).
 - Bank 90 (5Ah) is still padding; when it holds data, its byte at 1800h must not be an SCC test
   value (mkrom checks it).
+- **The sound** (`pzm.bin` after the graphics, so again no earlier bank moved):
+  - **The fixed area did not grow**: `sound.asm` `fx_tk` reads `ld hl,fx_tkd` where it read `ld
+    hl,fx_tick` (the same instruction, 2 bytes of operand), and nothing else of the sound is there.
+    `code_end` is 7F42h in the product as before (190 B free; 160 in `PZ_TEST` builds), and every
+    build option set that assembled before still assembles (1,771 sets built both ways).
+  - **MUSIC** holds the player after the title's code and tables, which keep their bytes: `tune.inc`
+    (the tune's descriptor and its effects' table, 92 B) and `msx/tune.asm` (732 B) from B700h, the
+    old `music_end`, to `music_end` = BA38h. 1,480 B stay free, all of them past B800h.
+  - **Under B800h nothing is left.** The MSX Pico+ shows the SCC at B800h-BFFFh while bank 3Fh is at
+    9000h, so what the title's player runs or reads with the SCC mapped must lie below B800h: its
+    code and tables end at `scc_time_end` B3EEh, `voice.inc` fills B400h-B6FFh, and `tune.inc` and
+    `tune.asm`'s first 164 B take B700h-B7FFh, the 256 B that 3.5, option 5 of section 6 and section
+    7 count. `tune.asm` itself never runs or reads anything with 3Fh at 9000h (the SCC's registers
+    through the fixed area's `scc_pv` and `scc_wv`, its waveforms copied to RAM first), so it can
+    move past B800h if SCC-time code needs those 256 B again.
+  - `BANK_PUZL` took the stage's two entries: the set-up's tail (`ld hl,tn_pzm` / `jp mus_call`) and
+    `snd_bfx` (20 B in all).
 
 ## 3. What the rest of the game needs
 
@@ -407,7 +427,8 @@ Decision numbers are those of the port's decision list.
   project has no decompressor): the screen re-laid out to 256 × 162 with a sheet of its blocks
   (27,904 B) and each visit's 9 TV pictures pre-composed (the face or black under each static
   frame, 28,800 B): 7 banks for visit 1, 11 with visit 2 (`tools/msxpuzl.py --visits 1,2`), against
-  2-3 in ZX0. ZX0 stays the fallback (−8 to −9 banks). Section 4.1 counts the difference.
+  2-3 in ZX0. ZX0 stays the fallback (−8 to −9 banks). Section 4.1 counts the difference. Its
+  sound (2.1): the music and effects 12,734 B, 2 banks as 3.6 counted them; the code 20 B more.
 
 ### 3.8 Total of the plan
 
@@ -497,6 +518,9 @@ its ZX0 graphics (2/2/3) of 3.7, and add visit 2's TV pictures raw (+4 banks, M:
   banks for Brainstorm).
 - 1 MiB holds none of them, not even B with the savings 2 + 3 of section 6 (about 133 banks
   likely): the 2 MiB decision stands.
+- **Brainstorm's sound built** (the same day, 2.1): its music and effects take banks 86-87, the 2
+  banks 3.6 counts for PZM tune 1 in "the rest of the game". The image uses 88 banks, the rest
+  counts 2 fewer, and every total above stands.
 
 ## 5. Verdict
 
@@ -761,7 +785,7 @@ banks.
 | 1 | 1 MiB or 2 MiB? | the limit, by 128 banks | The 256-bank test image on the Pico+ and the SX-2; revisit decision 2. |
 | 2 | Bring the photos back? | +12 to +49 banks: PIC1/4/7 and PICF take 12-14 in ZX0 (25 raw); all eight take 21-23 in ZX0 (49 raw) | The user's decision; it only makes sense with 2 MiB. |
 | 3 | One palette for all levels? | about 39 banks (102 → 63) | Show a level-3 preview under level 1's palette beside its own. The alternatives are a palette fitted over all three levels (which converts level 1 again) or the middle way of 3.10 (about +10 banks). |
-| 4 | Port the bonus stages? | 14 banks (8 with PSG-only tunes) | The user's decision. Their effects on the game: continues, the $8060 hit points. Brainstorm is ported (2026-10-27, milestone 1, silent: 8 banks, graphics raw; 4.1); the range is still open. |
+| 4 | Port the bonus stages? | 14 banks (8 with PSG-only tunes) | The user's decision. Their effects on the game: continues, the $8060 hit points. Brainstorm is ported (2026-10-27, with its sound: 10 banks, graphics raw; 4.1); the range is still open. |
 | 5 | Per-tile tile compression? | −11 banks | Count tile-cache misses per tick on the coverage drive (both scroll engines) and time a 128-B decode. |
 | 6 | The CMP speech? | +2 or +10 banks | The user listens to `build/music/cand_CMP_s1.wav`. |
 | 7 | Music formats and chips? | −3 to −11 banks (options 4, 5, 7) | Build the repeat-record reader on one tune; decide on OPLL for the new tunes. |

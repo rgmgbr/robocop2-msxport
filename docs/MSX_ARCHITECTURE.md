@@ -812,14 +812,15 @@ which as sprites were striped, cut or left out.
   levels: a 1 MiB MegaRAM or flash cartridge): the first 65 hold the game (the pictures take the
   last 13 of them), then the speech (`VOICE_BANK`; in the music: `VOICE_MIX_BANK`), the title
   music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), the SCC effects (`SCCFX_BANK`),
-  Brainstorm's code (`BANK_PUZL`, 78) and its graphics (`PUZL_GFX_BANK`, 79–85): 86 banks in all
-  (2026-10-27); the rest is free.
+  Brainstorm's code (`BANK_PUZL`, 78), its graphics (`PUZL_GFX_BANK`, 79–85) and its music and
+  effects (`PZM_BANK`, 86–87): 88 banks in all (2026-10-27); the rest is free.
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
   Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
   every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
   which takes bank 63. The check fails closed, so a block added later is checked too.
   `BANK_INPUT` holds the test builds' joystick script and the PSG player with its streams,
-  `BANK_MUSIC` the SCC / OPLL player and the speech's tables.
+  `BANK_MUSIC` the SCC / OPLL player, the speech's tables and, after them, Brainstorm's player
+  (`tune.asm`).
 - **Build checks** (2026-10-26, the 2 MiB audit). `tools/mkrom.py` stops when:
   - z80asm truncates a value. It only warns: level 1's type-25 object lost its body in 8 of
     every 64 frames this way, its frame `$402A0` written as `$302A0` (fixed in `level1.asm`
@@ -860,9 +861,9 @@ which as sprites were striped, cut or left out.
 
 ### Brainstorm, the bonus stage after level 1 (`front_bonus`, `msx/puzl.asm`, 2026-10-27)
 
-The design, the measurements and the original's facts: `docs/BRAINSTORM.md`. Milestone 1 is
-built: the original's logic and graphics, silent; the second visit (after level 2) shows visit
-1's face until milestone 3.
+The design, the measurements and the original's facts: `docs/BRAINSTORM.md`. Milestones 1 and 2
+are built: the original's logic and graphics, and its music and effects ("Brainstorm's music and
+effects" under Sound); the second visit (after level 2) shows visit 1's face until milestone 3.
 
 - **Flow.** `rc2.asm` `ml_ev`, FE_NEXT (the level's end): `front_stats`, then `front_bonus`, then
   the title and a new game; FE_OVER and FE_RESTART are unchanged. `front_bonus` (FRONT) is the
@@ -880,10 +881,11 @@ built: the original's logic and graphics, silent; the second visit (after level 
   the original's call count kept.
 - **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
   places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
-  `BANK_PUZL` = 78 (3,580 B used), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw)
-  from `PUZL_GFX_BANK` = 79 to 85. While the stage runs FRONT stays at 8000h; it maps the graphics
-  banks only at 8000h, at its entry, and never runs an OTIR past 9FFFh. `hud_keep` (fixed) is
-  `hud_frame` for banked callers: it puts both windows' banks back.
+  `BANK_PUZL` = 78 (3,600 B used, 20 of them the sound's two entries), the graphics
+  (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from `PUZL_GFX_BANK` = 79 to 85, the music and
+  effects (`pzm.bin`, 12,734 B) in 86-87. While the stage runs FRONT stays at 8000h; it maps the
+  graphics banks only at 8000h, at its entry, and never runs an OTIR past 9FFFh. `hud_keep`
+  (fixed) is `hud_frame` for banked callers: it puts both windows' banks back.
 - **RAM.** PUZL's variables at their own place in the mirror (`AM + $B00-$B21`, D000h-D021h,
   `msx.inc` `pzv_...`: cleared at the entry as `$FE14` does); the stage's scalars and the
   renderer's at C68Ah-C6A9h (C6AAh-C6FEh still free); `pz_first` at C6FFh (`PZ_TEST` builds); the
@@ -907,6 +909,11 @@ built: the original's logic and graphics, silent; the second visit (after level 
 - **Timing.** One pass per 50 Hz tick on 50 and 60 Hz machines (`fs_tick`'s rule), the PAL design
   rate of PUZL's loop; the board's timer counts real seconds (`sec_tick`; still in script builds).
   On a turbo R the stage runs on the Z80.
+- **Sound.** A board's set-up ends with PZM tune 1 after the stop all (its tail `bsu_t`: `ld
+  hl,tn_pzm` / `jp mus_call`), whose tick 0 waits for the next pass; each pass's step sends the
+  pending request with `snd_bfx`, a routine of `BANK_PUZL` that writes only RAM. Neither writes the
+  mirror, so the traces are the silent stage's. `snd_stop` at the stage's entry and in
+  `front_bonus` after it. Details: "Brainstorm's music and effects" under Sound.
 - **HUD.** The game's HUD stays below the stage, updated as in play (the timer, the score, the
   message line; the can never moves). PUZL's messages "TIMEOUT.", "MALFUNCTION." and "MEMORY
   RESTORED." are a second table after `HUD_WEAPONS` (`tools/msxhudrt.py`, `HUD_PZ_MSGS`), posted
@@ -920,7 +927,7 @@ built: the original's logic and graphics, silent; the second visit (after level 
   an MSX2 and a turbo R, the full solve also on an MSX2+ and at 50 Hz (`tools/openmsx_rc2.tcl`
   `rc2_pz_drive` against `tools/amigaemu.py puzl`, `tools/puzlcmp.py`); the pictures against the
   converter's renders; the restore against a fresh start; level 1's traces, the title and its
-  music unchanged.
+  music unchanged. The sound so far offline (below, under Sound).
 
 ## Sound (`msx/sound.asm`)
 
@@ -1233,7 +1240,8 @@ built: the original's logic and graphics, silent; the second visit (after level 
   new `sccfx.bin` replayed, 0 differences in 1570).
 - **Engine**: `sndplay.asm` `sq_sfx` hands an effect over when an SCC was found (`sound.asm`
   `fx_go` → `fx_start`, `BANK_MUSIC` mapped meanwhile) and ticks the engine with its own 50 Hz
-  ticks while one plays (`fx_act`; `fx_tk` → `fx_tick`). The tonal part plays on SCC channel 0-3
+  ticks while one plays (`fx_act`; `fx_tk` → `fx_tick`, through `tune.asm` `fx_tkd` since
+  Brainstorm's sound, below). The tonal part plays on SCC channel 0-3
   = the effect's Amiga channel (a new effect there replaces the one playing, as on the Amiga; the
   title music's voices `mus_v` serve, idle in game), the noise part on a PSG voice (`fx_pv`:
   channels 0-2 on A-C, channel 3 on an idle voice, C first, else the one nearest its record's
@@ -1334,26 +1342,51 @@ built: the original's logic and graphics, silent; the second visit (after level 
   ticks from its own). The tune's start clears the rule's memory, as stop all clears `$18023`.
 - **Ticks**: `sndplay.asm` `sq_frame`'s 50 Hz ticks while `fx_act` is set, the owner told by a
   mark in voice A's `SV_CH` (`TN_MARK`): `fx_act` is `fx_tick`'s OR of its voices' ticks left,
-  any value. `sound.asm` `fx_tk`'s first instruction jumps to `sndtune.asm` `fx_tkd` (the same
-  size: no label moves), which runs `fx_tick` exactly as before for the in-game effects. The
-  tick keeps running while the tune or an effect plays (an effect after the tune's end still
-  sounds); after 3,000 ticks the voices fall silent, as the Amiga's channels stop. `snd_stop`
-  ends it: `mus_quiet` with an SCC or an OPLL, the PSG player's stop (the mark gone) with the
-  PSG alone.
-- **Entries** (fixed area, last before `code_end`): `snd_tune` (a board's set-up: stop all and
-  tune 1; it waits for a VBLANK, so that its ~2 ms with the interrupts off come far from the HUD
-  split and a stop still queued cannot silence the new tune) and `snd_bfx` (the request byte,
-  once a pass; the higher of two requests between ticks stays, the one the Amiga lets sound).
-- **Checked offline** (no emulator: 2026-10-27, `bs-sound`): banks 0-77 of every build option's
-  image equal `d6239ec`'s but bank 1 (`fx_tk`'s three bytes, the new code in its padding) and
-  bank 9 (from `B700h`, its padding); in a scratch Z80 interpreter on the images, the title's
-  chip writes (four chip sets, 50 and 60 Hz) and level 1's 42 effects, the gun and a burst (SCC
-  and PSG) are identical to `d6239ec`'s write for write, and Brainstorm's registers equal the
-  streams decoded apart on every tick of the tune and its end, with effects, a board's restart,
-  `snd_stop`, a stop queued before the start, 60 Hz, the R800, the interrupt rule and the SCC
-  store rule; the effect voice's refusals equal those of `tools/rc2music.py`'s 68000 model for
-  every pair of effects at 1, L - 1, L and L + 1 ticks. The emulator checks still to run are
-  listed with the branch.
+  any value. `sound.asm` `fx_tk` calls `tune.asm` `fx_tkd` through `fx_bk` (`ld hl,fx_tkd` where
+  it read `ld hl,fx_tick`: the sound's only change to the fixed area), which runs `fx_tick`
+  exactly as before for the in-game effects. The tick keeps running while the tune or an effect
+  plays (an effect after the tune's end still sounds); after 3,000 ticks the voices fall silent,
+  as the Amiga's channels stop. `snd_stop` ends it: `mus_quiet` with an SCC or an OPLL, the PSG
+  player's stop (the mark gone) with the PSG alone.
+- **A board's first tick.** The 68000 ticks PZM inside PUZL's pass, after that pass's request
+  (`$17794`, then `$17212`), and a board's set-up ends with stop all and tune 1 (`$1743A`,
+  `$17442`): the next pass asks for effect 5 at boards 1-3, and its tick plays that jingle with
+  tune 1's tick 0. Here the VBLANK ticks and the stage's passes wait for their own 50 Hz ticks, so
+  `tn_start` keeps the pass counter's low byte (`$B00`) in `tn_hpz` and `fx_tkd` holds the tune
+  (`tn_hold`: no tick, no write) until the counter moved: tick 0 is the first tick after the next
+  pass, with its request, at 50 and 60 Hz whichever VBLANKs the passes' divider (`fs_div`) and
+  the ticks' (`snd_div`) skip. An idle first tick instead would still let tick 0 come before the
+  request at 60 Hz when the passes skip the first VBLANK after the set-up.
+- **Entries** (`BANK_PUZL`; none in the fixed area): the set-up's tail `bsu_t` (`ld hl,tn_pzm` /
+  `jp mus_call`: stop all and tune 1; `tn_start` waits for a VBLANK, so that its ~2 ms with the
+  interrupts off come far from the HUD split and a stop still queued cannot silence the new
+  tune) and `snd_bfx` (the request byte, once a pass, RAM only: `tn_req`, `fx_act`; the higher of
+  two requests between ticks stays, the one the Amiga lets sound). Test builds without a game
+  (DIAG) assemble `tn_pzm` as `mus_stop` and `fx_tkd` as `fx_tick`, no byte.
+- **RAM**: `tn_...` at C2B6h-C2C1h and C2C5h-C2D8h (`msx.inc`), the effect voice there too.
+- **Room**: the fixed area as before the sound (`code_end` 7F42h in the product, 190 B free):
+  every build option set that assembled still assembles. `BANK_MUSIC`: `tune.inc` and `tune.asm`
+  from B700h to `music_end` BA38h, 1,480 B free past B800h, none below it (`docs/ROM_BUDGET.md`
+  2.1).
+- **Checked offline** (no emulator; 2026-10-27, the branch `bs-sound-int`):
+  - The images of 23 option sets against main's built with the same options, bank by bank:
+    bank 1 differs only in `fx_tk`'s operand (DIAG builds: not at all), bank 9 from B700h (its
+    padding), bank 78 by the wiring (undone, main's listing exactly), banks 86-87 `pzm.bin`.
+  - 1,771 option sets built from both trees: every set main assembles assembles here, with its
+    `code_end`.
+  - In a scratch Z80 interpreter on the images: the title's chip writes and executed instructions
+    (four chip sets, 50 and 60 Hz) and level 1's 42 effects, the gun and a burst (SCC and PSG)
+    are main's write for write; Brainstorm's registers equal the streams decoded apart on every
+    tick of the tune and its end, with effects, a board's restart, `snd_stop`, a stop queued
+    before the start, 60 Hz, the R800, the interrupt rule and the SCC store rule; the effect
+    voice's refusals equal those of `tools/rc2music.py`'s 68000 model for every pair of effects
+    at 1, L - 1, L and L + 1 ticks; a board's start in 608 cases (50 Hz; at 60 Hz every phase of
+    both dividers; four chip sets) gives tick 0 at the first tick after the first pass and effect
+    5 in that same tick at boards 1-3; the title after the stage writes its chips as a fresh
+    machine's does, write for write, and only SCC channel 3's waveform and period, which the
+    title never writes (its channels 0-2 only), keep the stage's values.
+  - The emulator checks (the registers per tick in openMSX on every chip set, the title after
+    the stage, the audio for the user's ears) still have to run.
 
 ## HUD
 
