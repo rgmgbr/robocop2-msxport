@@ -395,12 +395,12 @@ sbk_r:  ld a,(act_a000)
         ret
 
 ; From sndplay.asm (BANK_INPUT at A000h, in the VBLANK interrupt) with an SCC: effect A starts
-; on the SCC and the PSG (fx_go: music.asm fx_start), or the effects advance a tick (fx_tk, A =
-; fx_act: sndtune.asm fx_tkd runs fx_tick, or tune.asm's tick while one of its tunes plays), with
+; on the SCC and the PSG (fx_go: music.asm fx_start), or the effects advance a tick (fx_tk:
+; tune.asm fx_tkd, which runs fx_tick, or the tick of a tune of tune.asm while one plays), with
 ; BANK_MUSIC at A000h meanwhile; BANK_INPUT again after.
 fx_go:  ld hl,fx_start
         jr fx_bk
-fx_tk:  jp fx_tkd                   ; (HL = fx_tick or tune.asm tn_tick)
+fx_tk:  ld hl,fx_tkd
 fx_bk:  ld c,a
         ld a,BANK_MUSIC
         ld (BANK_A000),a

@@ -1,8 +1,9 @@
 ; The tunes after the title: Brainstorm's music and sound effects (PZM, PUZL's copy of the
 ; player at $18000: tune 1 at every board, effects 3-6 on Amiga channel 3; docs/BRAINSTORM.md,
 ; tools/msxtune.py) on this machine's chips. BANK_MUSIC at A000h around every call (mus_call from
-; the main program: sndtune.asm snd_tune; fx_tk from the VBLANK interrupt). These routines and
-; their descriptors (tune.inc) come after the title's code and tables (music.asm, music.inc,
+; the main program: msx/puzl.asm's set-up, tn_pzm; sound.asm fx_tk from the VBLANK interrupt:
+; fx_tkd). Nothing of it is in the fixed area but fx_tk's operand. These routines and their
+; descriptors (tune.inc) come after the title's code and tables (music.asm, music.inc,
 ; voice.inc), which keep their places and bytes. Where they lie does not matter to the MSX Pico+
 ; (with 3Fh at 9000h it also shows the SCC at B800h-BFFFh): nothing here runs or is read while 3Fh
 ; is there (the SCC's registers through sound.asm's routines; the waveforms from RAM, scc_wv).
@@ -13,7 +14,7 @@
 ; table and its SCC waveforms. tn_start plays it from its start, the stop all first ($18004, then
 ; $18010); the VBLANK interrupt ticks it 50 times a second while the tune or an effect plays:
 ; sndplay.asm sq_frame's ticks (at 60 Hz every sixth VBLANK skipped) while fx_act is not 0, with
-; sndplay.asm voice A's SV_CH set to TN_MARK (sound.asm fx_tk -> sndtune.asm fx_tkd: tn_tick).
+; sndplay.asm voice A's SV_CH set to TN_MARK (sound.asm fx_tk -> fx_tkd: tn_tick).
 ; - The tune: music.asm's voices (mus_v: three melodic, the drums), readers and outputs (mv_rec,
 ;   mo_fm3, mo_rhy, mo_pv) with mus_on 0 (sound.asm spv_on then turns the SCC's channels 0-3 on);
 ;   on the SCC tn_sc1, mo_sc1's output with the waveforms from the tune's own table (tn_wv). With
@@ -24,17 +25,17 @@
 ; - The effect voice (tn_v, the fifth): the effects play over the music as on the Amiga, whose
 ;   music leaves channel 3 to them. With an SCC on its channel 3 (the music uses 0-2), else on
 ;   PSG voice C: the PSG version's voice 2 is muted while an effect sounds, then takes C back
-;   (its whole state written again: mo_pw), never lost. A request (snd_bfx: tn_req) starts at the
-;   next tick, before the records: $1822C's rule, refused while the voice is busy (tn_busy) with a
-;   higher effect than it (tn_last, cleared by the tune's start as stop all clears $18023). Busy
-;   as the 68000's channel 3: until the tick that reads the effect's end (TF_LEN ticks after its
-;   first), whose request still finds it busy (PUZL asks at $17794, before that pass's tick at
-;   $17212): a lower request is refused after 1 to TF_LEN of its ticks. An effect sounds for its
-;   stream's ticks (its trailing silence left out), then its channel goes back.
+;   (its whole state written again: mo_pw), never lost. A request (msx/puzl.asm snd_bfx: tn_req)
+;   starts at the next tick, before the records: $1822C's rule, refused while the voice is busy
+;   (tn_busy) with a higher effect than it (tn_last, cleared by the tune's start as stop all clears
+;   $18023). Busy as the 68000's channel 3: until the tick that reads the effect's end (TF_LEN
+;   ticks after its first), whose request still finds it busy (PUZL asks at $17794, before that
+;   pass's tick at $17212): a lower request is refused after 1 to TF_LEN of its ticks. An effect
+;   sounds for its stream's ticks (its trailing silence left out), then its channel goes back.
 ; - Stopped by snd_stop: mus_quiet (fx_act 0) with an SCC or an OPLL; with the PSG alone mus_stop
 ;   does not run, but the PSG player's stop (SQ_STOP: sndplay.asm sq_stop) sets voice A's SV_CH,
-;   which tn_start set to TN_MARK: sndtune.asm fx_tkd then ends the ticks (no write: sq_stop
-;   silenced voices A-C).
+;   which tn_start set to TN_MARK: fx_tkd then ends the ticks (no write: sq_stop silenced voices
+;   A-C).
 ; - The interrupt rule: the VBLANK runs tn_tick with DE and IX saved (sound.asm snd_bk), AF, BC
 ;   and HL by the interrupt; IY and the alternate registers are not used here.
 
@@ -56,7 +57,7 @@ TN_MARK:    equ 0xFE                ; sndplay.asm voice A's SV_CH while a tune o
 
         if DIAG = 0                 ; (test builds never play the game: no room, no tune)
 
-; snd_tune (through mus_call): Brainstorm's music, PZM tune 1.
+; msx/puzl.asm's set-up (bs_setup's end, through mus_call): Brainstorm's music, PZM tune 1.
 tn_pzm: ld hl,pz_desc
         ds (pz_fx - pz_desc - TD_SIZE) * 0x4000   ; (tools/mkrom.py's layout: an error if not)
 
@@ -169,7 +170,7 @@ tns_t:  ld a,(tn_mode)
         ld a,7
         call psg_w
         ld a,TN_MARK
-        ld (snd_v + SV_CH),a        ; (the PSG player's stop ends this tune too: tn_tick)
+        ld (snd_v + SV_CH),a        ; (the PSG player's stop ends this tune too: fx_tkd)
         ld a,2
         ld (fx_act),a               ; (the VBLANK ticks it from its tick 0: sound.asm fx_tk)
         ei
@@ -193,8 +194,25 @@ tn_fm:  ld c,0
         ld e,0x20
         jp opll_w
 
-; One tick (from the VBLANK: sndplay.asm sq_frame's tick through sndtune.asm fx_tkd; the first
-; after tn_start reads every voice's first record): the effect requested first (tn_go), then the
+; sound.asm fx_tk (the VBLANK interrupt: sndplay.asm sq_frame's tick while fx_act is not 0;
+; BANK_MUSIC at A000h through fx_bk): the tick of a tune of these while one plays (sndplay.asm
+; voice A's SV_CH is TN_MARK: tn_start); else the in-game effects' tick on the SCC (music.asm
+; fx_tick). fx_act is fx_tick's OR of its voices' ticks left, any value: only the mark tells the
+; tune's ticks apart. Without an SCC the in-game effects never set fx_act: what is left is a
+; tune's the PSG player's stop ended (snd_stop: mus_stop does not run, sq_stop takes the mark
+; away): no more ticks.
+fx_tkd: ld a,(snd_v + SV_CH)
+        cp TN_MARK
+        jr z,tn_tick
+        ld a,(mus_mode)
+        rra
+        jp c,fx_tick
+        xor a
+        ld (fx_act),a
+        ret
+
+; One tick (from the VBLANK: sndplay.asm sq_frame's tick through fx_tkd; the first after
+; tn_start, tick 0, reads every voice's first record): the effect requested first (tn_go), then the
 ; tune's records while it lasts (at its end every voice silent: the OPLL's at its least volume,
 ; key off), the effect voice's, then the chips (tn_mode). No more ticks (fx_act 0) when nothing
 ; plays any more: snd_bfx starts them again. Uses AF, BC, DE, HL, IX; the 8000h window shows
@@ -427,4 +445,8 @@ tng_v:  ld ix,tn_v
         ld a,(hl)
         ld (tn_snd),a
         ret
+
+        else                        ; (DIAG builds: no byte here, DIAG=2 fills BANK_MUSIC)
+tn_pzm:     equ mus_stop            ; (msx/puzl.asm's set-up: the stop all only)
+fx_tkd:     equ fx_tick             ; (sound.asm fx_tk: the in-game effects' tick, as before tune.asm)
         endif

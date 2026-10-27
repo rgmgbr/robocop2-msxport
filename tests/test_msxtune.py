@@ -131,11 +131,22 @@ class MkromTuneTests(unittest.TestCase):
                          (12, 24, 33, 35, 49, 53))
         self.assertIn("db 86\n        dw 0x802F", text)     # (the first stream at offset 47)
 
-    def test_the_fixed_area_additions_come_last(self):
-        # msx/sndtune.asm after everything else in the fixed area, so that no label moves
+    def test_nothing_of_the_tunes_in_the_fixed_area_but_fx_tk_operand(self):
+        # the fixed area is as without the tunes (no option set loses room), fx_tk's operand
+        # aside: ld hl,fx_tkd instead of ld hl,fx_tick, the same size, on into fx_bk. The dispatch
+        # (fx_tkd) is in BANK_MUSIC after the title's code and tables; the stage's two entries in
+        # BANK_PUZL: the set-up's tail through mus_call, the request a routine of its own
         asm = (ROOT / "msx" / "rc2.asm").read_text()
-        self.assertRegex(asm, r'include "rowtab.inc"\n\s+include "sndtune.asm"[^\n]*\n\ncode_end:')
+        self.assertNotIn("sndtune", asm)
+        self.assertRegex(asm, r'include "rowtab.inc"\n\ncode_end:')
         self.assertRegex(asm, r'include "voice.inc".*\n(.*\n){2}\s+include "tune.inc".*\n\s+include "tune.asm"')
+        self.assertRegex((ROOT / "msx" / "sound.asm").read_text(), r"\nfx_tk:\s+ld hl,fx_tkd\nfx_bk:")
+        tune = (ROOT / "msx" / "tune.asm").read_text()
+        self.assertRegex(tune, r"\nfx_tkd: ld a,\(snd_v \+ SV_CH\)\n")
+        self.assertRegex(tune, r"\n\s+else\b[^\n]*\ntn_pzm:\s+equ mus_stop\b[^\n]*\nfx_tkd:\s+equ fx_tick\b")
+        puzl = (ROOT / "msx" / "puzl.asm").read_text()
+        self.assertRegex(puzl, r"\n(\w+:)?\s+ld hl,tn_pzm\b[^\n]*\n\s+jp mus_call\b")
+        self.assertRegex(puzl, r"\nsnd_bfx:\n\s+ld hl,tn_req\n")
 
 
 @unittest.skipUnless(HAVE_NUMPY, "needs numpy (the project's venv)")

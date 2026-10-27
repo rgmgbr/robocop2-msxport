@@ -19,10 +19,11 @@
 ; pages 0 and 1, the cursor as hardware sprites, the HUD below as in the game (docs/BRAINSTORM.md
 ; 3.3).
 ;
-; The sound (msx/tune.asm through msx/sndtune.asm, in the VBLANK interrupt: docs/BRAINSTORM.md 3.6):
-; a board's set-up ends with snd_tune, PZM tune 1 from its start after the stop all ($1743A,
-; $17442); the step sends the pass's pending request with snd_bfx where $17794 starts it (pz_sfx
-; keeps it for the traces). Neither writes the mirror, so the traces are those of the silent stage.
+; The sound (msx/tune.asm, in BANK_MUSIC, ticked by the VBLANK interrupt: docs/BRAINSTORM.md 3.6):
+; a board's set-up ends with PZM tune 1 from its start after the stop all ($1743A, $17442: tune.asm
+; tn_pzm through mus_call); the step sends the pass's pending request with snd_bfx where $17794
+; starts it (pz_sfx keeps it for the traces). Neither writes the mirror, so the traces are those of
+; the silent stage.
 
         include "puzl.inc"          ; the stage's places, sheet and VRAM coordinates (tools/msxpuzl.py)
 
@@ -235,8 +236,8 @@ bsu_c:  ld a,(hl)
         ld (pzv_fadein),a           ; $B20 = FFh
         xor a
         ld (pzv_done),a             ; $B17 = 0
-        jp snd_tune                 ; ($1743A stop all, $17442 the tune: pz_tune, 1 in every record:
-                                    ;  PZM tune 1, sndtune.asm)
+bsu_t:  ld hl,tn_pzm                ; ($1743A stop all, $17442 the tune: pz_tune, 1 in every record:
+        jp mus_call                 ;  PZM tune 1, msx/tune.asm)
 
 ; $171C2-$1722F: one pass, after its wait (tools/openmsx_rc2.tcl samples the mirror at pz_tick's
 ; call): the cursor's image, the fade, what the TV, the LED row and the timer show, the step,
@@ -508,7 +509,7 @@ bst_go: ld a,(pzv_sfx)
         or a
         jr z,bst_c
         ld (pz_sfx),a               ; ($18014: the effect asked for)
-        call snd_bfx                ; (sndtune.asm: from the next tick, $1822C's rule there)
+        call snd_bfx                ; (from the next tick, $1822C's rule there)
         xor a
         ld (pzv_sfx),a
 bst_c:  ld a,(pzv_col)
@@ -618,6 +619,19 @@ bst_s:  call bs_stuck               ; $178A4
         ld (pzv_endc),hl
         ld a,0xFF
         ld (pzv_failed),a
+        ret
+
+; ($17794: jsr $18014) A = the pass's request ($B04: 3, 4, 5 or 6) to msx/tune.asm: that effect
+; from its next tick on (tn_go: $1822C's rule there); of two requests before a tick the higher one,
+; the one the Amiga lets sound. The ticks run again (fx_act: the tune may be over). RAM only, so
+; it needs no bank. Uses AF, HL.
+snd_bfx:
+        ld hl,tn_req
+        cp (hl)
+        ret c
+        ld (hl),a
+        ld a,2
+        ld (fx_act),a
         ret
 
 ; $178E8: E = D0 (a column), D = D1 (a row) -> HL = its cell, $B06 + 11 D1 + D0 (no bounds

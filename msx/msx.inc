@@ -103,7 +103,7 @@ cpu_png:    equ 0xC2AC              ; R800PING builds: 2: round trips done, 2: p
 ; (tune.asm: Brainstorm's) in C2B6h-C2C1h and C2C5h-C2D6h
 tn_left:    equ 0xC2B6              ; 2: tune.asm: the tune's ticks left + 1 (0: over, its voices silent)
 tn_mode:    equ 0xC2B8              ;   the chips it plays on (mus_mode's; no OPLL on the R800)
-tn_req:     equ 0xC2B9              ;   the effect requested (sndtune.asm snd_bfx), 0: none
+tn_req:     equ 0xC2B9              ;   the effect requested (puzl.asm snd_bfx), 0: none
 tn_busy:    equ 0xC2BA              ;   the effect voice's busy ticks left ($1822C: its effect's length + 1)
 tn_last:    equ 0xC2BB              ;   the last effect started ($18023)
 tn_snd:     equ 0xC2BC              ;   the effect voice's ticks left + 1 (0: idle, 1: its channel back)

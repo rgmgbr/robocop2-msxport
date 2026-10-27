@@ -468,7 +468,6 @@ palette:
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
 rowtab:
         include "rowtab.inc"
-        include "sndtune.asm"       ; Brainstorm's sound entries (last: nothing before them moves)
 
 code_end:
         ds 0x8000 - code_end, 0xFF  ; pads banks 0-1 (16 KiB)
