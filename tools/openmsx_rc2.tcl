@@ -1395,3 +1395,146 @@ proc rc2_replay {file secs dir labels} {
 	rc2_guard $secs 159 262 163 $labels
 	return "replaying from $t0 to $end"
 }
+
+# ---------------------------------------------------------------- Brainstorm (PUZL)
+# The bonus stage's driven trace, which tools/puzlcmp.py compares with tools/amigaemu.py puzl
+# --trace-ram pass by pass (one pass = one PUZL frame: the Amiga's frame loop $171BA-$17280).
+# The port provides, by the labels of the ROM's label file:
+#   pz_tick    the instruction 'call pz_frame' at the start of every pass, right after the pass's
+#              wait (the Amiga's $171C2); the breakpoint checks its bytes (CD lo hi), so it fires
+#              only where the stage's code is mapped;
+#   pz_frame   its target;
+#   pz_done    fixed code, reached once with A = the stage's result ($17100's D0: 0 solved,
+#              1 failed, 2 out of time), before anything changes the mirror;
+#   pz_boards  the visit's 4 boards in RAM: 376 bytes in the Amiga's order (each: start column,
+#              row, red chips, the timer as a BCD word, the tune, then the 11 x 8 cells; a cell
+#              + 10h once visited), unswapped;
+#   ext_joy    (EXTJOY=1 builds) the joystick byte the stage's joy_read takes;
+#   the mirror PUZL's variables $B00-$B21 at D000h-D021h and the globals $8000-$80FF at
+#              DC00h-DCFFh (msx/msx.inc AM, AG: words little-endian, the byte at A at A ^ 1);
+#              the long $B06 holds pz_boards + 6 + 94 x board in its low word (D008h) and 0 in
+#              its high word; the long $B12 the cursor frame's offset from $17DE8 (0, 40h ...
+#              1C0h; 200h in the end sequences) in its low word (D014h).
+# The file: a first line "# D000 DC00 <pz_boards>", then one line a pass (from PUZL frame 'from'
+# on, 'n' lines at most): D000h-D021h, DC00h-DCFFh and the 376 bytes at pz_boards as hex; "# result
+# N" as the last line when the stage returned. After a pass's line, that pass's input as
+# tools/amigaemu.py puzl applies it: the joystick byte of PUZL frame $B00 (D000h) into ext_joy
+# (0 past the script), then the pokes of that frame (Amiga addresses of AM / AG; size 1 or 2).
+# 'script': tools/drivejoy.py's four lines (its teleports and god mode are not used). At the n-th
+# line or at pz_done: the file closed, the breakpoints removed, ::rc2_trace_done = 1 and the
+# emulation paused; ::rc2_pz_result holds the result (-1 when the stage did not return). Poll
+# ::rc2_trace_done from the session; never vwait inside msx_local_cmd. These procs never call
+# exit, vwait, max or min, and open the file once.
+
+# rc2_pz_drive: a fresh start of 'rom' (an EXTJOY=1 PZ_TEST=1 build, with PZ_LEVEL=2 for the
+# second visit; 'labels' its label file): every breakpoint and condition removed, the cartridge
+# inserted again, the machine reset, then rc2_pz_arm.
+proc rc2_pz_drive {rom labels file n from script} {
+	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
+	foreach {id opts} [debug condition list] { debug condition remove $id }
+	carta eject
+	carta insert $rom -romtype KonamiSCC
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	reset
+	rc2_pz_arm $labels $file $n $from $script
+}
+
+# rc2_pz_arm: the same trace in the running machine, without a reset, other breakpoints kept: the
+# stage reached from a played level 1 (rc2_drive_rom with build/emu/drive_end.txt, paused after
+# its last row: then rc2_pz_arm resumes the emulation, and the game runs on through the statistics
+# and the intro into the stage). ext_joy is cleared, so the text screens before the stage see no
+# input and run their whole length.
+proc rc2_pz_arm {labels file n from script} {
+	rc2_pz_disarm
+	set f [open $script r]
+	set ::rpz_joy [string trim [gets $f]]
+	gets $f
+	gets $f
+	set ::rpz_poke {}
+	foreach t [split [string trim [gets $f]]] {
+		if {$t ne ""} { lappend ::rpz_poke [split $t :] }
+	}
+	close $f
+	set ::rpz_boards [rc2_label $labels pz_boards]
+	set ::rpz_extjoy [rc2_label $labels ext_joy]
+	set ::rpz_done [rc2_label $labels pz_done]
+	set tick [rc2_label $labels pz_tick]
+	set target [rc2_label $labels pz_frame]
+	set ::rpz_left $n
+	set ::rpz_from $from
+	set ::rpz_seen 0
+	set ::rpz_op -1
+	set ::rc2_trace_done 0
+	set ::rc2_pz_result -1
+	set ::rpz_out [open $file w]
+	puts $::rpz_out [format "# D000 DC00 %04X" $::rpz_boards]
+	poke $::rpz_extjoy 0
+	set cond "\[peek $tick\] == 0xCD && \[rc2_w [expr {$tick + 1}]\] == $target"
+	set ::rpz_bp [debug set_bp $tick $cond rc2_pz_hit]
+	set ::rpz_bp2 [debug set_bp $::rpz_done {} rc2_pz_end]
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	return "driving PUZL into $file; poll ::rc2_trace_done"
+}
+
+proc rc2_pz_hit {} {
+	if {$::rc2_trace_done} return
+	if {!$::rpz_seen} {
+		set ::rpz_seen 1
+		set ::rpz_op [peek $::rpz_done]     ;# (pz_done's first byte, the stage's slot in page 1)
+	}
+	set pf [rc2_w 0xD000]
+	if {$pf >= $::rpz_from && $::rpz_left > 0} {
+		binary scan [debug read_block memory 0xD000 0x22] H* vars
+		binary scan [debug read_block memory 0xDC00 0x100] H* glob
+		binary scan [debug read_block memory $::rpz_boards 376] H* boards
+		puts $::rpz_out "$vars $glob $boards"
+		incr ::rpz_left -1
+		if {$::rpz_left == 0} {
+			rc2_pz_stop
+			return
+		}
+	}
+	set i [expr {2 * $pf}]
+	set b [string range $::rpz_joy $i [expr {$i + 1}]]
+	poke $::rpz_extjoy [expr {$b eq "" ? 0 : "0x$b"}]
+	foreach t $::rpz_poke {
+		lassign $t tf pa pv ps
+		if {$tf == $pf} {
+			set m [expr {$pa >= 0x8000 ? 0x5C00 + $pa : 0xC500 + $pa}]
+			if {$ps == 1} { poke [expr {$m ^ 1}] [expr {$pv & 0xFF}] } else { rc2_wset $m $pv }
+		}
+	}
+}
+
+# pz_done's breakpoint fires at its address in any slot: hits before the stage's first pass, or
+# with another byte there than at that pass (another slot's code in page 1), are not the stage's.
+proc rc2_pz_end {} {
+	if {$::rc2_trace_done || !$::rpz_seen} return
+	if {[peek $::rpz_done] != $::rpz_op} return
+	set ::rc2_pz_result [reg a]
+	catch { puts $::rpz_out "# result $::rc2_pz_result" }
+	rc2_pz_stop
+}
+
+proc rc2_pz_stop {} {
+	rc2_pz_disarm
+	set ::rc2_trace_done 1
+	set ::pause on
+}
+
+# The trace's file closed and its two breakpoints removed (the names unset: a later open may get
+# the same channel name, which a second close must not reach).
+proc rc2_pz_disarm {} {
+	if {[info exists ::rpz_out]} {
+		catch { close $::rpz_out }
+		unset ::rpz_out
+	}
+	foreach v {::rpz_bp ::rpz_bp2} {
+		if {[info exists $v]} {
+			catch { debug remove_bp [set $v] }
+			unset $v
+		}
+	}
+}

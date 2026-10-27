@@ -9,8 +9,16 @@ every entry that covers a frame ORed), the teleports as "frame:x:y ...", god 0/1
 "frame:address:value:size ..." (Amiga addresses of the game's variables, $B00-$16EB or
 $8000-$80FF; size 1 or 2 bytes; numbers in C notation).
 
+Brainstorm's drives (tools/amigaemu.py puzl --drive, tools/openmsx_rc2.tcl rc2_pz_drive and
+rc2_pz_arm) are the same file with PUZL frames ($B00) for game frames; they use the joystick
+bytes and the pokes only.
+
 usage: drivejoy.py --joy F:C:KEYS,... [--tele F:X:Y,...] [--god] [--poke F:ADDR:VALUE[:SIZE],...] OUT
        drivejoy.py --scenario level1 --run 0 [--frames N] OUT   (also writes OUT.args: the bench's)
+       drivejoy.py --fuzz SEED [--frames N] [--joy ...] [--poke ...] OUT
+       (--fuzz: random keys from FUZZ_KEYS, each held 1-6 frames, up to frame N (2500 by
+       default): diagonals and fire toggles, as the Brainstorm logic report's random runs; the
+       same seed gives the same keys)
 """
 from __future__ import annotations
 
@@ -20,6 +28,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}
+# The random runs' key sets: the logic report's, with its "lr", "ud" and "udlr" replaced by "ur", "dl"
+# and "df". read_joystick's table ($BDEC, $BE26: 10 11 15 14 12 10 10 16 1A 10 10 10 18 19 10 10)
+# reads any key set with up and down or left and right as no direction, while an EXTJOY build
+# takes ext_joy's byte as it is: every set here reads as itself on both sides.
+FUZZ_KEYS = ("", "u", "d", "l", "r", "f", "uf", "rf", "ul", "dr", "ur", "dl", "df", "lf")
+
+
+def fuzz_items(seed: int, frames: int) -> list[tuple[int, int, str]]:
+    """Random joystick entries: a key set of FUZZ_KEYS ('' = none) held 1-6 frames, then the
+    next, until 'frames' (the last may run past it)."""
+    import random
+    rnd = random.Random(seed)
+    p, out = 0, []
+    while p < frames:
+        k, c = rnd.choice(FUZZ_KEYS), rnd.randint(1, 6)
+        if k:
+            out.append((p, c, k))
+        p += c
+    return out
 
 
 def frame_bytes(items: list[tuple[int, int, str]]) -> bytes:
@@ -42,7 +69,9 @@ def main() -> int:
     ap.add_argument("--poke", default="")
     ap.add_argument("--scenario")
     ap.add_argument("--run", type=int, default=0)
-    ap.add_argument("--frames", type=int, help="with --scenario: only the script up to this game frame")
+    ap.add_argument("--frames", type=int, help="with --scenario: only the script up to this game frame; "
+                    "with --fuzz: the random keys' length (2500)")
+    ap.add_argument("--fuzz", type=int, help="random keys from this seed (FUZZ_KEYS)")
     ap.add_argument("out", type=Path)
     a = ap.parse_args()
     joy, tele, god = a.joy, a.tele, a.god
@@ -54,6 +83,8 @@ def main() -> int:
         joy = ",".join(f"{f}:{c}:{k}" for f, c, k in run["script"])
         tele = ",".join(f"{f}:{x}:{y}" for f, x, y in run["tele"] if a.frames is None or f < a.frames)
         god = run["god"]
+    if a.fuzz is not None:
+        joy = ",".join(filter(None, [joy] + [f"{f}:{c}:{k}" for f, c, k in fuzz_items(a.fuzz, a.frames or 2500)]))
     items = []
     for item in filter(None, joy.split(",")):
         f, c, k = item.split(":")

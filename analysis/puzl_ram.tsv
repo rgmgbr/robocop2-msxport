@@ -1,0 +1,37 @@
+# Brainstorm (PUZL): the fields tools/puzlcmp.py compares, PUZL frame by PUZL frame, between
+# tools/amigaemu.py puzl --trace-ram (vars $B00-$B21, glob $8000-$80FF, the board table) and
+# tools/openmsx_rc2.tcl rc2_pz_drive / rc2_pz_arm (D000h, DC00h: the mirror AM / AG; pz_boards).
+# The list is what PUZL writes in its frames (the bench's write census and the REA listings of
+# $17100-$17D67), less the display-only state: the copper list's palette ($17C5E-$17CD6), the
+# bitplanes, the panel's message ticker ($8054-$805B, slots $FD92-$FDA1: the port keeps its own
+# msg_queue layout) and the music divider ($17282).
+# Format: ADDRESS SIZE NAME [ptr=AMIGA_BASE:MSX_BASE] [skip0] [; comment]
+#   ADDRESS in $B00-$B21 or $8000-$80FF (the MSX at the mirror's place: AM / AG, msx/msx.inc), or
+#   'boards' with SIZE = its bytes (the table, unswapped on both sides).
+#   ptr=: a long pointer on the Amiga, compared as value - AMIGA_BASE against the MSX long's low
+#   word - MSX_BASE ('table': the board table, ($173D4) on the Amiga, pz_boards on the MSX).
+#   skip0: not compared while the Amiga's value is 0 (a pointer not set yet).
+0b00 2 game_frame                  ; PUZL frames since its start (+ 1 at $171FA)
+0b02 2 anim                        ; + 3 a frame ($171F6): the lights' and the button's blinking
+0b04 1 sfx                         ; the next frame's effect: 3 chip, 4 move, 5 next board, 6 end
+0b06 4 grid ptr=table:table        ; the board's cells: table + 6 + 94 x board ($1740C)
+0b0a 2 board2                      ; 2 x board: -2 at first, 8 once the fourth is done
+0b0c 2 col                         ; the cursor (the board's header, then the moves)
+0b0e 2 row
+0b10 2 reds                        ; red chips left ($177C2)
+0b12 4 spr ptr=17de8:0 skip0       ; the cursor's sprite frame ($171DE, $1777C; display; 0 at frame 0)
+0b16 1 fail                        ; stuck: MALFUNCTION ($1782E)
+0b17 1 done                        ; no red chip left ($177C6)
+0b19 1 fade                        ; the palette's fade, 0-31 ($17AF0)
+0b1a 2 endc                        ; the ending's frames (to 99; + 2 a frame once out of time)
+0b1e 1 last_joy                    ; the joystick byte last seen ($17800): a move needs a change
+0b20 1 active                      ; a board in play ($17432; 0 once it ended)
+802e 1 joy                         ; read_joystick's byte (up 1, down 2, left 4, right 8, fire 10h)
+8046 4 score                       ; BCD, + 100 a red chip ($F6A0)
+804a 1 timer_min                   ; BCD: the board's 1:00 ($F9DC), counted down by the CIA-B
+804b 1 timer_sec
+804c 1 timeout                     ; FFh below 0:00 ($101A8)
+804d 1 input_lock
+804e 1 paused
+8050 2 level                       ; the level done (1 or 2: the board table)
+boards 376 boards                  ; the 4 boards as the stage left them (a cell + 10h once visited)
