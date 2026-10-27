@@ -61,7 +61,7 @@ Then it enters supervisor mode (vector `$20` trick), stores `$100` in `($C0)` an
 | DATAL1–3 | `$28000` | 144716 / 105816 / 185356 | level data: tiles, map, BOBs **[verified]** |
 | MADEX | `$45250` | 25340 | level-2 BOBs **[inferred]** |
 | FRNG | `$1E980` | 93224 | bonus stage *Gun Calibration* **[inferred]** |
-| PUZL | `$17080`/`$17100` | 76012 / 113632 | bonus stage *Brainstorm* **[inferred]** |
+| PUZL | `$17080`/`$17100` | 76012 / 113632 | bonus stage *Brainstorm*: its code, boards, graphics and PZM (a copy of the music player with its tunes); disk 1's copy is crunched and decrunched at `$17100` by `$124A6` into the bytes of disk 2's plain copy (section 5, *Brainstorm*) **[verified]** |
 
 Static-screen format: 32 bytes of OCS palette (`$0RGB`) followed by sequential planes
 (DATAE/OAS); `PIC*` have a 128-byte header (32 colours + zeros) and the bitmap at `+$80`.
@@ -894,7 +894,8 @@ every screen in `screens/`.
   picture (10 / 0 / 0) matches `rc2front.py`'s pixel for pixel **[verified: bench]**.
 - Brainstorm (`$8382`): intro, picture, PUZL (level 1 → 2: the disk-1 copy decrunched by
   `$124A6` from `$17080` to `$17100`; level 2 → 3: disk 2's at `$17100`), `jsr $17100` → D0 =
-  0 solved (`$805E` + 1: a continue), 1 failed, 2 out of time; result text from `$840A`.
+  0 solved (`$805E` + 1: a continue), 1 failed, 2 out of time; result text from `$840A`. The
+  stage itself: *Brainstorm* below.
 - Shooting range (`$8420`): intro, picture, FRNG (decrunched from `$1E980` to `$1EA00`; `$1880`
   and `$3FF0` patched at `$1FB34`/`$1FB38`), `jsr $1EA00` → D0 dummy targets, D1 correct
   targets. Time out (`$804C`): `$8060` = `$C72E` and `$11698`. Otherwise rating = max(0, min(3,
@@ -905,6 +906,103 @@ every screen in `screens/`.
   from `$8060`'s table, indexed by its class, the word at `$BEB4` + 16 × type (0–7): SHARP
   `$C716` 0 1 1 2 3 3 4 99, GOOD `$C71E` 1 2 2 3 3 4 4 99, FAIR `$C726` 2 3 3 3 4 4 4 99, POOR
   and time out `$C72E` 3 3 3 4 4 4 5 99. Level 1 uses SHARP.
+
+### Brainstorm (PUZL at `$17100`) **[verified: REA listings of `$8382` and of PUZL's 14 routines; bench runs of the original (`tools/amigaemu.py puzl`); an executable model equal to the original in every field of 17 scenarios, 20,280 passes]**
+
+The port's design and the full spec (pseudo-code of the loop and the step): `docs/BRAINSTORM.md`
+2. Names: `analysis/puzl_17100.sym`.
+
+- **The image for REA.** PUZL lies at `$17100-$32CDF` (disk 2's plain `PUZL_25`, 113,632 bytes;
+  disk 1's crunched copy at `$17080` decrunches to the same bytes). REA opens the level-1 RAM with
+  PUZL over that range: `python3 -I tools/ramimage.py build/extracted build/ram/puzl RB1 MU1
+  DATAL1 SPERMA PERMA PUZL_25` → `build/ram/puzl_full.bin` (sha256 `9c76e13f…a9431a`), raw-binary
+  m68k, entry `0x0`, with `REA_GHIDRA_SEED_FILE` = `analysis/ghidra_seeds_puzl.tsv` (the main
+  code's seeds plus `analysis/puzl_17100.sym`: `tools/ghidra_seeds.py` with the extra sym file;
+  REA applies all of them, 0 failed). The two images differ only in `$17100-$32CDF`, so main-code
+  answers hold for both; PUZL's seeds never go into `analysis/ghidra_seeds.tsv`, whose level
+  images hold MU1 and DATAL1 there.
+- **The caller.** `load_level1` `$8582`: statistics `$85D8`, Brainstorm `$8382` (D0 = 2), the
+  range `$8420` (D0 = 1), three `nop`s at `$8596` where a 6-byte call was (the disk-2 prompt
+  `$11BD2`, removed by the crack **[inferred]**), the level-2 briefing `$110F0`, PIC4, MU1, MADEX,
+  DATAL2. `load_level2` `$8524` calls `$8382` with D0 = 4. `$8382` (136 bytes): D0 kept, the intro
+  `$114AA` through `$10762`; `show_picture` `$11E06` (PIC3 / PIC5); `$10320` = `$1032E` (the VBL's
+  music call becomes an `rts`); `$8036` = `$12558`; the loader `($C0)` with "PUZL" (`$8416`), A1 =
+  0; when `$8050` < 2, `$124A6` decrunches `$17080` into `$17100`; `jsr $17100`; PZM's init and stop
+  all (`$18000`, `$18004`); D0 × 4: 0 → `$805E` + 1; `jmp $10762` with A0 = `$840A`[D0] (`$1162F`,
+  `$11667`, `$11698`). Afterwards the game reads only `$805E` and the score.
+- **Memory map.** `$17100-$17193` and `$171B4-$17281` `puzl_main`; `$17194` the cursor frame
+  offsets; `$17282` the music divider; `$17284`, `$1728E` the face masks and static shifts by
+  `$B0A`; `$17298-$17447` the face, chip and board set-up routines; `$17448-$17737` 8 boards of 94
+  bytes; `$17738-$1775F` 3 messages and a pad byte; `$17760-$17971` step, cell, stuck, glyph, LED;
+  `$17972` LED thresholds; `$1797C` timer digits; `$179B6` the LED table (+ 38 bytes nothing
+  references); `$179FC` button, light, bar; `$17ADE` light/bar rows; `$17AEE` an `rts` the fade
+  branches to; `$17AF0` the fade; `$17B5A` the copper interrupt; `$17BEA` 18 zero bytes; `$17BFC`
+  the copper list (to `$17D03`); `$17D04-$17D19` an RTE handler that acknowledges EXTER (INTREQ
+  `$2000`), referenced by nothing (no xref, its address in no byte of the image); `$17D1A` the
+  hardware init; `$17D6A`, `$17DAA` the palettes; `$17DE8` 8 cursor sprite frames of 64 bytes,
+  `$17FE8` the "hidden" frame (24 zero bytes, then `$18000`); `$18000` PZM (MU1's player code and
+  entries: `$18180` init, `$18194` stop all, `$181E8` stop tune, `$1824E` music, `$1822C` effect,
+  `$18316` tick) and its 6 tunes; `$234E0` 32 chip tiles 16 × 16 × 4 planes; `$244E0` / `$25160`
+  Murphy's / Ellen's face, 80 × 80 × 4 planes; `$25DE0` 4 static frames (a mask plane, then 4);
+  `$29C60` 10 digits 8 × 16; `$29EE0` 2 lights, `$29F20` 2 bars, `$2A020` 2 buttons; `$2A320-$32C9F`
+  the screen, 5 planes of 320 × 176, one buffer (plane 5 set only over the TV, `$1711C`).
+- **Entry** (`$17100`): PZM init; SR `$2700`; `$17D1A` (`$FE14` through `$8028`, `$B00-$B21` = 0,
+  vector `$6C` = `$17B5A`, COP1LC = `$17BFC`, INTENA `$E01C`, `$B19` = 0, `$B20` = FF); setup_timer
+  (`$8018` → `$F9DC`) with `$0059`; `$804E` = 0; plane 5 over the TV; the visit by
+  `cmpi.w #2,$8050` / `bmi` (`$17156`): the immediates `$173D4` (boards `$17448` / `$175C0`),
+  `$17B20` (palette `$17D6A` / `$17DAA`), `$1729A` (face `$244E0` / `$25160`); `$B0A` = −2.
+- **The loop.** `$17184`: D0 = `$B0A` + 2; 9 or more → D0 = 0, return; else `$173D2` with D0 / 2.
+  `$171BA` waits for `$802C` (`irq_l1` counts the SOFT request the game's copper part `$10356`
+  raises at line `$CE`: one pass a frame). A pass (`$171C2`): COLOR00 = 0, `$802C` = 0, `$B12` =
+  `$17DE8` + `$17194`[`$B00` & `$1E`], fade, face, LED, timer, step, `$B02` + 3, `$B00` + 1, the music
+  tick on 5 passes of 6 (`$17282`), decor, `message_ticker` (`$8020`), `read_joystick` (`$801C`: the
+  next pass's step reads it), `panel_update_digits` (`$8004`). End checks (`$17230`): `$B1A` not 0
+  and below 99 (signed) → loop; `$B17` or `$B16` (`$17264`): `$B04` = 6, `$B20` = 0, at fade 0 the
+  next board or return 1; `$804C` (`$17254`): `$B20` = 0, at fade 0 return 2.
+- **The rules.** A move per change of the whole joystick byte `$802E` against `$B1E` (fire
+  included), the lowest direction bit first; refused past the edge, onto an IC (type 1) or a
+  visited cell (≥ `$10`, a signed byte compare); a pass without a move attempt checks the four
+  neighbours (`$178A4`): none free with red chips left → "MALFUNCTION.", `$B16`. The cursor's cell
+  is burnt (+ `$10`) and redrawn every pass; a red chip (0) there gives 100 BCD (`$F6A0`), effect 3,
+  `$B10` − 1, `$B17` at 0. `cell` (`$178E8`) has no bounds check. The 4th board's last red chip
+  (`$B0A` = 6): `$B0A` = 8, "MEMORY RESTORED.", the face clean. A time out (`$804C`, the CIA-B
+  handler `$1015E` below 0:00, the 61st tick after a set-up) queues "TIMEOUT." every pass. End
+  sequences: after boards 0-2 a 31-pass fade-out with effect 6 every pass; after board 3 or a stuck
+  `$B1A` counts to 99 and the result comes 129 passes after the event; a time out returns 80 passes
+  after it. Every board: 1:00, tune 1; visit 1 starts at (0, 0) with 22 / 21 / 24 / 28 red chips,
+  visit 2 at (5, 3) with 23 / 21 / 24 / 28 (each count = its type-0 cells); a full visit-1 solve
+  scores 9,500. No random numbers. **[verified: REA, bench, model]**
+- **State.** PUZL reuses `$B00-$B21` (the game's camera and buffers otherwise): `$B00` passes,
+  `$B02` + 3 a pass, `$B04` the next pass's effect, `$B06` the board's cells, `$B0A` 2 × board,
+  `$B0C`/`$B0E` the cursor, `$B10` red chips left, `$B12` the cursor's sprite frame, `$B16` failed,
+  `$B17` done, `$B19` the fade level, `$B1A` the end count, `$B1E` the last joystick byte, `$B20`
+  fade in / out; and the globals `$802E`, `$8046-$8049` (score), `$804A-$804C` (timer, time out),
+  `$804E` (pause: cleared, never set), `$8050` (the visit), `$805E` (the caller). Three pointers and
+  a tune number live in instructions (self-modifying code): `$173D4`, `$17B20`, `$1729A`, `$17441`.
+- **Display.** The face shows when (`$B00` & mask) = 0 (masks 7 3 1 0 0 by board: 1 pass in 8, 4,
+  2, then always), then a static frame (`$B00` >> shift) & 3 cut over it (shifts 1 1 1 2 0); one
+  LED digit a pass; the timer as M:SS; the button, a scanning light and a board bar (rows from
+  `$17ADE`); the cursor is hardware sprite 0, its frame `$B12` placed by the copper interrupt from
+  `$B0C`/`$B0E`. PUZL's copper list ends with COPJMP2 to the game's `$10356`: the status panel shows
+  below, with its digits and messages updated every pass and the energy can still. The fade limits
+  every component of COLOR01-31 to (`$B19` >> 1) & `$1E`, 8 steps of 4 passes; at the end of every
+  fade-out `$17B14` puts the palette pointer back to `$17D6A`, so a second visit's boards 1-3 fade in
+  with the first visit's colours **[verified: bench]**.
+- **Sound.** Every set-up: stop all, then tune 1 (3,000 ticks, no loop); effect 4 a move, 3 a red
+  chip (refused in practice: effect 4 still holds channel 3 and 3 < 4, `$1822C`'s rule), 5 the start
+  of boards 1-3, 6 every pass of a fade-out after boards 0-2; nothing in the end sequences. PZM's
+  player is MU1's code (`tools/rc2music.py --verify` on PZM: 9,744 ticks, 0 differences). The text
+  screens are silent.
+- **Quirks** (kept by the port): the column `message_queue` leaves in D0 in the pass that ends the
+  4th board, from which a move in that pass starts (`$8056` & `$C`), reading up to 3 bytes past the
+  88 cells; a time out during a fade-out starts the next board with `$B1A` ≥ 99, its input ignored
+  until its own time out; "TIMEOUT." queued every pass (the 4-slot queue fills and ticks on during
+  the result screen); effect 6 on 31 passes in a row; the palette pointer reset above.
+- **[inferred]** (display hardware the bench does not emulate): the cursor covers its cell when
+  bitplane x 0 is at H `$80` (DDFSTRT `$34` with BPLCON1 `$FF` left by the panel), and the screen
+  shows bitplane x 16-319; in the end sequences the sprite DMA reads 10 lines of PZM's entries
+  through the "hidden" frame, a junk sprite on the last cell; a pass never slips a frame on a real
+  Amiga; the messages left in the queue print on the panel during the result screen.
 
 ### Game over, high scores and continues **[verified: code]**
 
@@ -961,12 +1059,14 @@ energy and level skip; section 5).
 | `tools/copper.py` | copper list decoder | stdlib |
 | `tools/m68kdis.py` | quick listing (complements Ghidra) | Capstone |
 | `tools/ghidra_seeds.py` | REA/Ghidra seeds from the jump tables | stdlib |
-| `tools/ramimage.py` | per-level RAM images to open in REA | stdlib |
+| `tools/ramimage.py` | per-level RAM images to open in REA (and Brainstorm's, with `PUZL_25`) | stdlib |
 | `tools/rea_dump_asm.sh` | bulk Ghidra assembly export through the REA CLI | REA |
 | `tools/bobcatalog.py` | BOB catalogue and sheets from the exported assembly | stdlib |
 | `tools/player.py` | RoboCop frames from the animation table | stdlib |
-| `tools/amigaemu.py` | execution bench: `game` runs a level from its RAM image with a joystick script and traces the game variables per game frame (reference for the port's logic) | Unicorn |
+| `tools/amigaemu.py` | execution bench: `game` runs a level from its RAM image with a joystick script and traces the game variables per game frame (reference for the port's logic); `puzl` runs Brainstorm along the game's path (`$8382`'s loader and decruncher, `jsr $17100`) with a drive's joystick bytes and pokes, and traces PUZL's state per pass | Unicorn |
 | `tools/tracecmp.py` | compares a bench trace with the MSX port's (`tools/openmsx_rc2.tcl` rc2_trace) | stdlib |
+| `tools/puzlsolve.py` | solves Brainstorm's boards and writes the drive that plays them on the bench (`--quirk1`: a solve that shows quirk 1) | stdlib (Unicorn for the bot's run) |
+| `tools/puzlcmp.py` | compares a bench trace of Brainstorm with the MSX port's (`rc2_pz_drive`), pass by pass (`analysis/puzl_ram.tsv`) | stdlib |
 | `tools/rc2music.py` | model of the music/sound-effect player: tunes, instruments, samples and per-tick Paula state to `build/music/*.json`; `--verify` against the original code | stdlib (Unicorn for `--verify`) |
 | `tools/rc2front.py` | front end from the RAM image: text scripts and particle texts, high-score table, bitmap and stroke fonts, logo fly-in, renders of every screen → `build/front/` | stdlib |
 
@@ -974,4 +1074,6 @@ Code analysis: **REA + Ghidra** (project rule, see `CLAUDE.md`). Targets to open
 `build/ram/level1_full.bin` (whole level-1 RAM, entry `$0` with `JMP $8000`) or
 `build/ram/level1_8000.bin`. Entries reached only through jump tables are seeded into
 Ghidra by `analysis/ghidra_seeds.tsv` (generated by `tools/ghidra_seeds.py` from
-`analysis/main_8000.sym`).
+`analysis/main_8000.sym`). Brainstorm has an image and seeds of its own: `build/ram/puzl_full.bin`
+(`tools/ramimage.py ... PUZL_25`) with `analysis/ghidra_seeds_puzl.tsv` (`tools/ghidra_seeds.py`
+with `analysis/puzl_17100.sym` after the main sym file); section 5, *Brainstorm*.

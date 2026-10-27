@@ -44,10 +44,10 @@ Outputs (OUT = the prefix, e.g. build/msx/puzl):
                   stage in plain and graded colours (with the HUD below it when OUT's folder
                   holds hud.sc5 and hud.pal, tools/msxhud.py); the Amiga against the MSX
 
-Checks (any failure stops the tool): PUZL's tables equal the plan's 2.6 and its palettes the
-gfx report's 2.3; every board's red-chip count equals its number of type-0 cells; the pieces
-neither overlap nor leave a hole; every functional element lies whole inside one piece, at the
-plan's place, on even x; the screen uses COLOR00-15 outside the TV; no face, static or cursor
+Checks (any failure stops the tool): PUZL's tables and palettes equal docs/BRAINSTORM.md 2.6;
+every board's red-chip count equals its number of type-0 cells; the pieces neither overlap nor
+leave a hole; every functional element lies whole inside one piece, at the plan's place, on even
+x; the screen uses COLOR00-15 outside the TV; no face, static or cursor
 colour takes a green or a bright red; and a render of shown states through the VRAM model (the
 blob, the sheet's and the TV pictures' coordinates, OUT.inc's places) equals the Amiga's own
 composition of the same states, pixel for pixel through the pieces.
@@ -109,7 +109,7 @@ PLAN_TIMER, PLAN_TUNE, PLAN_SCORE1 = (0x01, 0x00), 1, 9500  # 1:00 (BCD), tune 1
 PLAN_MESSAGES = [(0x17738, b"TIMEOUTe\xff", "TIMEOUT."), (0x17741, b"MALFUNCTIONe\xff", "MALFUNCTION."),
                  (0x1774E, b"MEMORY RESTOREDe\xff", "MEMORY RESTORED.")]   # 'e' = the HUD font's '.'
 PLAN_PAD = 0x08                                # $1775F
-PLAN_PALETTES = {                              # COLOR01-31 (gfx report 2.3, logic report 8)
+PLAN_PALETTES = {                              # COLOR01-31 (docs/BRAINSTORM.md 2.6)
     1: "222 444 666 888 AAA EEE 400 800 E20 020 040 480 620 A60 CA4 "
        "000 876 865 754 543 432 321 210 444 644 533 322 443 332 112 010",
     2: "222 444 666 888 AAA EEE 400 800 E20 020 040 480 620 A60 CA4 "
@@ -295,7 +295,7 @@ def amiga_palette(puzl: bytes, visit: int) -> list[int]:
 
 
 def check_tables(puzl: bytes) -> None:
-    """PUZL's tables against docs/BRAINSTORM.md 2.6, its palettes against the gfx report's 2.3."""
+    """PUZL's tables and palettes against docs/BRAINSTORM.md 2.6."""
     for addr, label, what, want in PLAN_TABLES:
         got = words(puzl, addr, len(want))
         check(got == want, f"${addr:X} ({what}): {got}, the plan's {want}")
