@@ -34,6 +34,13 @@ How the Amiga sound is mapped (the decisions and why)
   SCC's clock is Paula's NTSC clock, so N + 1 = 3579545 / (32 f) = AUDxPER x spc / 32: every
   note fits (N 188-3329) at its true octave (no PSG octave shift: FILTER-WAH plays at 34-67 Hz).
   The period is exact at key-ons; a slide (#1 only) keeps it while within PITCH_TOL cents.
+  Other tunes may go lower than the SCC's lowest note (N 4095: 27.3 Hz). There the period is
+  clamped at 4095 unless the caller asks for the octave rule (SccVoice's octave_up, which
+  tools/msxtune.py sets for the shooting range's FRM only, whose bass plays 10 notes at 25.1 Hz):
+  a note (a run of audible ticks from a key-on) whose period would pass 4095 plays the fewest
+  octaves up that fit, all its ticks alike, so the pitch class is kept (clamped, those notes
+  sounded 147 cents sharp). TITM's and PZM's notes never pass N 3,329: their streams are the
+  same either way.
 - Waveforms (one per instrument of channels 0-2, the speech excepted; numbered in instrument
   order): the sustained timbre the title makes heard. Windows of 2 cycles and FIT_SAMPLES bytes
   or more hop a cycle at a time over the sample after its first ATTACK_CYCLES (the attack); each is
@@ -274,9 +281,10 @@ def nearest_level(x: float) -> int:
 
 class SccVoice:
     """One SCC voice tick by tick: volume (0 = silent), period N, waveform number; the exact
-    level each tick wants (x, in volume units) and the key-ons."""
+    level each tick wants (x, in volume units) and the key-ons. octave_up: the octave rule for
+    notes below the SCC's range (the module docstring) instead of the clamp at N 4095."""
 
-    def __init__(self, title: ms.Title, c: int, waves: dict[int, Wave]):
+    def __init__(self, title: ms.Title, c: int, waves: dict[int, Wave], octave_up: bool = False):
         ch = title.chans[c]
         T = title.T
         self.c = c
@@ -295,11 +303,39 @@ class SccVoice:
             self.wave[t] = waves[i].number
             n = round(max(ch.per[t], ms.DMA_PERIOD) * title.pitch[i][0] / WAVE_LEN) - 1
             self.per[t] = int(min(4095, max(0, n)))
+        self.raised: list[tuple[int, int, int]] = []    # the octave rule's notes: (tick, ticks, octaves)
+        if octave_up:
+            self._octave_up(ch, title)
         self.ratio = np.array([self.amp[t] / waves[int(self.inst[t])].rms if self.inst[t] >= 0
                                else 0.0 for t in range(T)])
         self.x = np.zeros(T)
         self.vol = np.zeros(T, np.int64)
         self.dips = 0
+
+    def _octave_up(self, ch: ms.Channel, title: ms.Title) -> None:
+        """The octave rule: each note (a run of audible ticks, a key-on starting a new one) with
+        a tick whose N + 1 = AUDxPER x spc / 32 passes 4096 plays k octaves up, the fewest that
+        bring all its ticks within 4095: N = round((N + 1) / 2^k) - 1 from the exact quotient,
+        rounded once."""
+        T = self.T
+        t = 0
+        while t < T:
+            if self.inst[t] < 0:
+                t += 1
+                continue
+            e = t + 1
+            while e < T and self.inst[e] >= 0 and not self.keyon[e]:
+                e += 1
+            q = [max(ch.per[k], ms.DMA_PERIOD) * title.pitch[int(self.inst[k])][0] / WAVE_LEN
+                 for k in range(t, e)]
+            octs = 0
+            while max(round(v / 2 ** octs) - 1 for v in q) > 4095:
+                octs += 1
+            if octs:
+                for k, v in zip(range(t, e), q):
+                    self.per[k] = int(max(0, round(v / 2 ** octs) - 1))
+                self.raised.append((t, e - t, octs))
+            t = e
 
     def quantise(self, ref: float) -> None:
         """Volumes from the exact levels (15 x ratio / ref), periods held in slides, the

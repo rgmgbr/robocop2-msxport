@@ -38,6 +38,27 @@ it, --verify: 0 differences). PUZL starts tune 1 at every board (3,000 ticks, no
   32-byte pulse, 8 high, at 50.00 Hz; the PSG: a 50.00 Hz square. Their levels from the Amiga's
   (the restarted effect rendered: its AC RMS against the tune's scales), 36 ticks (its own).
 
+The shooting range (FRNG, the second bonus stage): FRNG carries its own copy of the player at
+$20000 (FRM: the same code as MU1's but for the per-file table operands). FRNG_15.bin is
+ByteKiller-crunched (tools/bytekiller.py, the game's $124A6). Decrunched at $1EA00, its bytes from
+$20000 to its end, moved to $18000 where tools/rc2music.py reads a music file, are
+build/music/FRM_00.bin: the code's absolute operands that point into $20000-$2FFFF (where MU1's
+same operands are 8000h lower), the per-file table operands (rc2music.py's signatures) and record
+0's start and loop (the one instrument record init does not fill: FRNG's own pointers to the
+22-byte sine, TITM's and PZM's record 0) moved back by 8000h. Checked: outside those operands and
+the player's RAM saved with the file ($18020-$1817F, $189D0, $18AE6, $18B0E) the code is MU1's
+byte for byte, record 0 is TITM's, and rc2music.py --verify finds 0 differences. FRNG starts tune
+1 once, before its first pass (5,999 ticks, no loop: the stage's 2:00 at 50 ticks a second), and
+effects 2 (a shot), 3 (an armed target hit) and 4 (a dummy hit) on Amiga channel 3:
+- tune 1 in the three versions as PZM's, its drums 18 SNAZ as SD and 21 TOM1 as tom; on the SCC
+  its bass's ten notes at 25.1 Hz, below the SCC's lowest note (27.3 Hz), play an octave up
+  (msxscc.py's octave rule, for FRM only);
+- effects 2-4 at the tune's reference. Effect 2 is noise only: msxsccfx gives it no SCC part, so
+  its SCC-mode stream is its noise part as msxsccfx makes it (psg_target at the tune's SCC scale,
+  gate_noise, choose_volumes), in the PSG format, flagged in its effect entry (below): with an
+  SCC, msx/tune.asm plays it on PSG voice B. Effect 5 is never requested: not converted.
+Output: build/msx/frm.bin, in pzm.bin's layout.
+
 Output: build/msx/pzm.bin for tools/mkrom.py (all offsets 24-bit little-endian from its start):
   0-32  eleven streams: the SCC version's voices 0-2 and its PSG drum stream (msxscc's formats),
         the OPLL version's channels 0-2 and its rhythm (msxfm's), the PSG version's voices A-C
@@ -49,15 +70,20 @@ Output: build/msx/pzm.bin for tools/mkrom.py (all offsets 24-bit little-endian f
   39    the effect table: per effect its length in ticks (the tick that reads its end: Amiga
         channel 3 stays busy through it for the $1822C rule, msx/tune.asm tn_go), its SCC
         stream's offset and ticks, its PSG stream's offset and ticks (9 bytes; a stream's ticks
-        are its records', the trailing silence left out: after them the channel goes back)
+        are its records', the trailing silence left out: after them the channel goes back).
+        Bit 7 of the SCC ticks byte: that stream (the SCC mode's) is in the PSG format,
+        msxsound's (an effect with no SCC part: FRM's effect 2); the ticks are bits 0-6. PZM's
+        effects never set it (their streams last under 128 ticks)
   42    W; 43: the tune's ticks (16 bits); 45: the first effect; 46: how many
   47    the data
 Every stream is decoded back and checked against what it was made from; every tune stream lasts
 the tune. --wav DIR writes previews: the Amiga's tune 1 and the three versions decoded on the
-converters' chip models (pzm_amiga.wav, pzm_scc.wav, pzm_psg.wav, pzm_fm.wav). Needs numpy (the
-project's venv). About two minutes.
+converters' chip models (pzm_amiga.wav, pzm_scc.wav, pzm_psg.wav, pzm_fm.wav; with --frm the
+frm_*.wav of the whole tune, the SCC with the OPLL's rhythm, frm_sccfm.wav, and the effects, as
+msxsccfx.py's sfx_all files: frm_fx_amiga.wav, frm_fx_scc.wav, frm_fx_psg.wav). Needs numpy (the
+project's venv). About a minute for PZM, two for FRM.
 
-usage: msxtune.py [--out build/msx] [--wav DIR]
+usage: msxtune.py [--frm] [--out build/msx] [--cache build/music] [--wav DIR]
 """
 from __future__ import annotations
 
@@ -65,12 +91,14 @@ import argparse
 import contextlib
 import json
 import math
+import struct
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bytekiller  # noqa: E402
 import msxfm as fm  # noqa: E402
 import msxscc as sc  # noqa: E402
 import msxsccfx as sx  # noqa: E402
@@ -78,8 +106,21 @@ import msxsound as ms  # noqa: E402
 import rc2music  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-PUZL = ROOT / "build" / "extracted" / "files" / "PUZL_25.bin"
+FILES = ROOT / "build" / "extracted" / "files"
+PUZL = FILES / "PUZL_25.bin"
 PZM_AT = 0xF00                          # PUZL ($17100) from $18000 on: PZM, the player and its data
+FRNG = FILES / "FRNG_15.bin"            # the shooting range, crunched (the module docstring)
+MU1 = FILES / "MU1_09.bin"              # (the player's code as the game's music files hold it)
+TITM = FILES / "TITM_04.bin"
+FRNG_AT = 0x1EA00                       # where $8420 decrunches FRNG
+FRM_AT = 0x20000                        # FRNG's copy of the player, to FRNG's end: FRM
+FRM_MOVE = FRM_AT - rc2music.LOAD       # 8000h: FRM moved to $18000
+FRM_SAVED = ((0x18020, 0x18180), (0x189D0, 0x189D2), (0x18AE6, 0x18AEA), (0x18B0E, 0x18B12))
+                                        # the player's RAM saved with a file (docs/AMIGA_ANALYSIS.md)
+FRM_TUNE = 1
+FRM_DRUMS = {18: "sd", 21: "tom"}       # SNAZ, TOM1
+FRM_FX = (2, 3, 4)                      # the effects FRNG requests ($1ECB4, $1EB0E, $1EB2A)
+FX_PSG_FLAG = 0x80                      # an effect's SCC-mode stream in the PSG format (its ticks byte)
 TITLE_BUDGET = 7680                     # the Makefile's msxsound.py --budget: the PSG title's lambda
 TITLE_LAMBDA = 1.9824777683049783       # msxsound.encode's lambda for that budget (sound.inc;
                                         # tests/test_msxtune.py finds it again)
@@ -303,13 +344,14 @@ class RoutedDrums(ms.Effects):
 
 # ---- the SCC version (msxscc's steps and scc.bin's layout) ----
 
-def scc_version(gt: RoutedTitle) -> dict:
+def scc_version(gt: RoutedTitle, octave_up: bool = False) -> dict:
     """msxscc.main's conversion on a routed tune: the waveforms, the three SCC voices against
     their REF_PCT reference, the PSG drum voice in the same scale; the blob in scc.bin's layout
-    (five 24-bit offsets: voices 0-2, the drums, the waveform table)."""
+    (five 24-bit offsets: voices 0-2, the drums, the waveform table). octave_up: msxscc's octave
+    rule for the notes below the SCC's range (FRM's), else the clamp (TITM's and PZM's)."""
     waves = sc.make_waves(gt)
     table = np.array([wv.data for wv in sorted(waves.values(), key=lambda w: w.number)])
-    voices = [sc.SccVoice(gt, c, waves) for c in range(3)]
+    voices = [sc.SccVoice(gt, c, waves, octave_up) for c in range(3)]
     ratios = np.concatenate([v.ratio[v.inst >= 0] for v in voices])
     ref = float(np.percentile(ratios, sc.REF_PCT))
     for v in voices:
@@ -334,7 +376,7 @@ def scc_version(gt: RoutedTitle) -> dict:
     blob = b"".join(sc.offset24(o) for o in offs) + b"".join(parts)
     return {"blob": blob, "waves": waves, "table": table, "ref": ref, "wants": wants,
             "srecs": srecs, "drecs": drecs, "dtarget": dtarget, "dvol": dvol,
-            "sizes": [len(p) for p in parts]}
+            "sizes": [len(p) for p in parts], "raised": [v.raised for v in voices]}
 
 
 # ---- the OPLL version (msxfm's FmTitle on the routed channels) ----
@@ -516,9 +558,14 @@ def load_pzm(cache: Path) -> tuple[dict, bytes]:
     """PZM (PUZL_25.bin from F00h: PUZL is loaded at $17100, the player at $18000) and
     tools/rc2music.py's model of it: cache/PZM_00.bin (rc2music.py --verify takes it) and
     cache/PZM.json, made when missing or stale."""
-    data = PUZL.read_bytes()[PZM_AT:]
+    return cached_model(PUZL.read_bytes()[PZM_AT:], cache, "PZM")
+
+
+def cached_model(data: bytes, cache: Path, name: str) -> tuple[dict, bytes]:
+    """A player image (loaded at $18000) as cache/NAME_00.bin and tools/rc2music.py's model of it
+    as cache/NAME.json, made when missing or stale."""
     cache.mkdir(parents=True, exist_ok=True)
-    cut, js = cache / "PZM_00.bin", cache / "PZM.json"
+    cut, js = cache / f"{name}_00.bin", cache / f"{name}.json"
     if not cut.exists() or cut.read_bytes() != data:
         cut.write_bytes(data)
         if js.exists():
@@ -548,10 +595,15 @@ def trim_silence(recs: list) -> list:
     return recs
 
 
-def scc_effects(fx: ms.Effects, gain: float) -> dict:
+def scc_effects(fx: ms.Effects, gain: float, noise: bool = False) -> dict:
     """msxsccfx.convert's SCC part at a given scale (the tune's: 1 / its SCC reference) instead
     of its choose_gain: per effect its SCC states and records (the trailing silence left out),
-    their waveforms (msxsccfx.make_waves); no noise part (checked: PZM's effects 3-5 are tones)."""
+    their waveforms (msxsccfx.make_waves); no noise part (checked: PZM's effects 3-5 are tones).
+    With `noise`, an effect with a noise part and no SCC part (FRM's effect 2) gets its noise
+    part's records ("noise") made as msxsccfx.convert makes them, at the same scale and on the
+    same plan after make_waves (psg_target, set_accents, gate_noise, set_accents,
+    choose_volumes; each step once: they change the plan's target): the effect voice plays one
+    stream, so an effect with both parts is refused."""
     plans = {n: sx.Plan(fx, n) for n in sorted(fx.chans)}
     bad = [n for n, pl in plans.items() if not pl.replica_ok]
     if bad:
@@ -560,11 +612,26 @@ def scc_effects(fx: ms.Effects, gain: float) -> dict:
     sx.make_waves(fx, plans, waves)
     out = {}
     for n, pl in plans.items():
-        if np.any(pl.amp_n > 0):
+        has_noise = bool(np.any(pl.amp_n > 0))
+        if has_noise and not noise:
             raise SystemExit("error: effect %d has a noise part (the effect voice has no PSG part)" % n)
         sst = sx.scc_states(pl, waves, gain)
         recs = trim_silence(sc.scc_records(sst))
         out[n] = {"states": sst, "recs": recs, "T": pl.T}
+        if has_noise:
+            if recs:
+                raise SystemExit("error: effect %d has an SCC part and a noise part (the effect voice "
+                                 "plays one stream)" % n)
+            sig = sc.render_scc(sx.scc_render_states(sst, pl.T), waves.table(), pl.T)
+            tg = sx.psg_target(pl, gain, sig)
+            sx.set_accents(pl, tg)
+            sx.gate_noise(fx, pl, tg, sig)
+            sx.set_accents(pl, tg)
+            vol = ms.choose_volumes(tg, sx.PSG_LAMBDA, False)
+            out[n]["noise"] = trim_silence(ms.records(tg, vol))
+            out[n]["noise_gated"] = int(getattr(pl, "gated", 0))
+            if not out[n]["noise"]:
+                raise SystemExit("error: effect %d's noise part is silent" % n)
     return {"fx": out, "table": waves.table(), "waves": waves}
 
 
@@ -656,7 +723,11 @@ def assemble(scc: dict, fmv: dict, psg: dict, fx_scc: dict, fx_psg: dict, fx_len
         fx_streams += s_b
         p_o = base + len(fx_streams)
         fx_streams += p_b
-        entries.append(bytes([fx_len[n]]) + u24(s_o) + bytes([fx_scc[n]["ticks"]]) + u24(p_o)
+        if fx_scc[n]["ticks"] >= FX_PSG_FLAG:
+            raise SystemExit("error: effect %d's SCC-mode stream lasts %d ticks: bit 7 of its ticks "
+                             "byte is the PSG-format flag" % (n, fx_scc[n]["ticks"]))
+        flag = FX_PSG_FLAG if fx_scc[n].get("psg") else 0
+        entries.append(bytes([fx_len[n]]) + u24(s_o) + bytes([fx_scc[n]["ticks"] | flag]) + u24(p_o)
                        + bytes([fx_psg[n]["ticks"]]))
     body += b"".join(entries) + fx_streams
     head = (b"".join(u24(o) for o in offs) + u24(w_off) + u24(p_off) + u24(e_off)
@@ -675,7 +746,9 @@ def parse(blob: bytes) -> dict:
            "fxn": blob[46], "effects": {}}
     for k in range(out["fxn"]):
         e = out["fx"] + 9 * k
-        out["effects"][out["fx0"] + k] = {"len": blob[e], "scc": r24(e + 1), "scc_ticks": blob[e + 4],
+        out["effects"][out["fx0"] + k] = {"len": blob[e], "scc": r24(e + 1),
+                                          "scc_ticks": blob[e + 4] & (FX_PSG_FLAG - 1),
+                                          "scc_psg": bool(blob[e + 4] & FX_PSG_FLAG),
                                           "psg": r24(e + 5), "psg_ticks": blob[e + 8]}
     return out
 
@@ -733,9 +806,16 @@ def check_blob(blob: bytes, scc: dict, fmv: dict, psg: dict, fx_scc: dict, fx_ps
     if st != psg["states"]:
         bad.append("the PSG version does not read back")
     for n, e in hd["effects"].items():
-        sst, length, _ = sx.decode_scc(blob, e["scc"], hd["W"], e["scc_ticks"])  # (raises past the table)
-        if length != e["scc_ticks"] or [s if s[0] else (0,) for s in sst] != fx_scc[n]["want"]:
-            bad.append("effect %d's SCC stream does not read back" % n)
+        if e["scc_psg"] != bool(fx_scc[n].get("psg")):
+            bad.append("effect %d's SCC-mode stream's format flag" % n)
+        elif e["scc_psg"]:                                  # (the PSG format: a noise part)
+            pst, length = sx.decode_psg(blob, e["scc"], e["scc_ticks"])
+            if length != e["scc_ticks"] or pst != fx_scc[n]["want"]:
+                bad.append("effect %d's SCC-mode stream (PSG format) does not read back" % n)
+        else:
+            sst, length, _ = sx.decode_scc(blob, e["scc"], hd["W"], e["scc_ticks"])  # (raises past the table)
+            if length != e["scc_ticks"] or [s if s[0] else (0,) for s in sst] != fx_scc[n]["want"]:
+                bad.append("effect %d's SCC stream does not read back" % n)
         pst, length = sx.decode_psg(blob, e["psg"], e["psg_ticks"])
         if length != e["psg_ticks"] or pst != fx_psg[n]["want"]:
             bad.append("effect %d's PSG stream does not read back" % n)
@@ -765,6 +845,32 @@ def per_tick_psg(recs: list) -> list[tuple]:
     return out
 
 
+def effect_streams(fsc: dict, fps: dict, nums: tuple, wave_no) -> tuple[dict, dict, dict]:
+    """Per effect its SCC-mode stream (its SCC part, the waveforms numbered by wave_no in the
+    blob's table; or, with no SCC part, its noise part in the PSG format, "psg" set: the flag),
+    its PSG-alone stream (bytes, ticks, what they play per tick: check_blob) and its length."""
+    fx_scc, fx_psg, fx_len = {}, {}, {}
+    for n in nums:
+        f = fsc["fx"][n]
+        remap = {}
+        for i, row in enumerate(fsc["table"]):
+            remap[i] = wave_no(bytes(row.astype(np.int8).tobytes()))
+        if "noise" in f:
+            q = f["noise"]
+            fx_scc[n] = {"bytes": ms.stream_bytes(q), "ticks": sum(r[0] for r in q),
+                         "want": per_tick_psg(q), "psg": True}
+        else:
+            recs = [(d, c, p, None if w is None else remap[w]) for d, c, p, w in f["recs"]]
+            fx_scc[n] = {"bytes": sc.scc_bytes(recs), "ticks": sum(r[0] for r in recs),
+                         "want": per_tick_scc(recs)}
+        p = fps[n]["recs"]
+        fx_psg[n] = {"bytes": ms.stream_bytes(p), "ticks": sum(r[0] for r in p), "want": per_tick_psg(p)}
+        fx_len[n] = fps[n]["T"]
+        if f["T"] != fps[n]["T"]:
+            raise SystemExit("error: effect %d's lengths differ between the two converters" % n)
+    return fx_scc, fx_psg, fx_len
+
+
 def convert(out: Path, cache: Path, log=print) -> dict:
     """The whole PZM conversion; writes out/pzm.bin. Returns the parts (previews, tests)."""
     rep, data = load_pzm(cache)
@@ -788,20 +894,7 @@ def convert(out: Path, cache: Path, log=print) -> dict:
         if b not in table:
             table.append(b)
         return table.index(b)
-    fx_scc, fx_psg, fx_len = {}, {}, {}
-    for n in PZM_FX:
-        f = fsc["fx"][n]
-        remap = {}
-        for i, row in enumerate(fsc["table"]):
-            remap[i] = wave_no(bytes(row.astype(np.int8).tobytes()))
-        recs = [(d, c, p, None if w is None else remap[w]) for d, c, p, w in f["recs"]]
-        fx_scc[n] = {"bytes": sc.scc_bytes(recs), "ticks": sum(r[0] for r in recs),
-                     "want": per_tick_scc(recs)}
-        p = fps[n]["recs"]
-        fx_psg[n] = {"bytes": ms.stream_bytes(p), "ticks": sum(r[0] for r in p), "want": per_tick_psg(p)}
-        fx_len[n] = fps[n]["T"]
-        if f["T"] != fps[n]["T"]:
-            raise SystemExit("error: effect %d's lengths differ between the two converters" % n)
+    fx_scc, fx_psg, fx_len = effect_streams(fsc, fps, PZM_FX, wave_no)
     T6, vol, n6 = bz["scc"]
     srec = [(T6, vol | 0x30, n6, wave_no(bytes(np.array(BUZZ_WAVE, np.int8).tobytes())))]
     fx_scc[BUZZ] = {"bytes": sc.scc_bytes(srec), "ticks": T6, "want": per_tick_scc(srec)}
@@ -842,36 +935,206 @@ def convert(out: Path, cache: Path, log=print) -> dict:
             "fx": fx, "fsc": fsc, "fps": fps, "buzz": bz, "blob": blob, "table": tab}
 
 
-def previews(res: dict, wav: Path, seconds: float = 60.0) -> None:
-    """The Amiga's tune 1 (the model rendered) and the three versions decoded from pzm.bin on the
+# ---------------------------------------------------------------------------------------------
+# The shooting range's FRM
+# ---------------------------------------------------------------------------------------------
+
+def extract_frm(frng: bytes, mu1: bytes, titm: bytes) -> bytes:
+    """FRM_00.bin (the module docstring) from FRNG decrunched (its bytes from $1EA00 on), with
+    MU1_09.bin and TITM_04.bin as the references: FRM's bytes from $20000 on with its absolute
+    operands into $20000-$2FFFF moved back by 8000h (the code's, where MU1's operand is 8000h
+    lower; the per-file table operands, found by rc2music.py's signatures; record 0's start and
+    loop). Checked: the player's code ($18000-$18B35) is MU1's but for the per-file table
+    operands and the player's saved RAM (FRM_SAVED); record 0 and its 22-byte waveform are
+    TITM's; rc2music.locate finds the tables in the image."""
+    code_len = rc2music.CODE_END - rc2music.LOAD
+    lo, hi = FRM_AT, FRM_AT + 0x10000
+
+    def rl(b, o: int) -> int:
+        return struct.unpack_from(">I", b, o)[0]
+
+    frm = bytearray(frng[FRM_AT - FRNG_AT:])
+    k = 0
+    while k + 4 <= code_len:                            # the code's absolute operands
+        v = rl(frm, k)
+        if lo <= v < hi and v - FRM_MOVE == rl(mu1, k):
+            struct.pack_into(">I", frm, k, v - FRM_MOVE)
+            k += 4
+            continue
+        k += 2
+    code = bytes(frm[:code_len])
+    masked = set()
+    for name, pat, off, size, count in rc2music.SIGNATURES:     # the per-file table operands
+        for h in rc2music._find(code, rc2music._hexwords(pat)):
+            if name in rc2music.MASKED:
+                masked.update(range(h + off, h + off + size))
+            if size == 4 and lo <= rl(frm, h + off) < hi:
+                struct.pack_into(">I", frm, h + off, rl(frm, h + off) - FRM_MOVE)
+    lay = rc2music.locate(bytes(frm))
+    rec0 = lay["instruments"] - rc2music.LOAD           # record 0 (init fills records 1 on)
+    if lay["first_record"] - lay["instruments"] != 16:
+        raise SystemExit("error: FRM's record 1 does not follow record 0")
+    for o in (rec0 + 2, rec0 + 8):                      # its start.l and loop.l
+        if not lo <= rl(frm, o) < hi:
+            raise SystemExit("error: FRM's record 0 points at $%X, not into $20000-$2FFFF" % rl(frm, o))
+        struct.pack_into(">I", frm, o, rl(frm, o) - FRM_MOVE)
+    allowed = masked | {a - rc2music.LOAD for a0, a1 in FRM_SAVED for a in range(a0, a1)}
+    diff = [i for i in range(code_len) if frm[i] != mu1[i] and i not in allowed]
+    if diff:
+        raise SystemExit("error: FRM's player differs from MU1's at %s" % ", ".join(
+            "$%05X" % (rc2music.LOAD + i) for i in diff[:8]))
+    t0 = rc2music.locate(titm)["instruments"] - rc2music.LOAD
+
+    def wave(b, r: int) -> bytes:
+        s = rl(b, r + 2) - rc2music.LOAD
+        return bytes(b[s:s + 2 * struct.unpack_from(">H", b, r + 6)[0]])
+    if frm[rec0:rec0 + 16] != titm[t0:t0 + 16] or not wave(titm, t0) or wave(frm, rec0) != wave(titm, t0):
+        raise SystemExit("error: FRM's record 0 is not TITM's sine")
+    for name in ("sample_list", "tunes", "patterns", "arpeggios", "envelopes", "silent"):
+        if not rc2music.LOAD <= lay[name] < rc2music.LOAD + len(frm):
+            raise SystemExit("error: FRM's %s table lies outside the image" % name)
+    return bytes(frm)
+
+
+def load_frm(cache: Path) -> tuple[dict, bytes]:
+    """FRM (extract_frm on FRNG_15.bin decrunched by tools/bytekiller.py, its checksum checked) and
+    tools/rc2music.py's model of it: cache/FRM_00.bin (rc2music.py --verify takes it) and
+    cache/FRM.json, made when missing or stale."""
+    frng = bytekiller.decrunch(FRNG.read_bytes())
+    return cached_model(extract_frm(frng, MU1.read_bytes(), TITM.read_bytes()), cache, "FRM")
+
+
+def convert_frm(out: Path, cache: Path, log=print) -> dict:
+    """The whole FRM conversion (the module docstring); writes out/frm.bin. Returns the parts
+    (previews, tests)."""
+    rep, data = load_frm(cache)
+    with converter_constants(-1, {}):
+        rt = Routing(rep, data, FRM_TUNE, drums=set(FRM_DRUMS), speech=set())
+        log("FRM tune %d: %s" % (FRM_TUNE, rt.summary()))
+        if rt.loop_tick or rt.stolen_notes:
+            raise SystemExit("error: FRM's tune loops or steals notes: the routing's assumptions")
+        gt = RoutedTitle(rt)
+        psg = psg_version(gt, TITLE_LAMBDA)
+        scc = scc_version(gt, octave_up=True)
+        ft, fmv = fm_version(gt, FRM_DRUMS)
+        fx = fx_effects(rep, data, FRM_FX, gt.a_ref)
+        fsc = scc_effects(fx, 1 / scc["ref"], noise=True)
+        fps = psg_effects(fx)
+    T = gt.T
+    table = [bytes(x.astype(np.int8).tobytes()) for x in scc["table"]]    # the tune's, the effects'
+    def wave_no(b: bytes) -> int:
+        if b not in table:
+            table.append(b)
+        return table.index(b)
+    fx_scc, fx_psg, fx_len = effect_streams(fsc, fps, FRM_FX, wave_no)
+    tab = np.frombuffer(b"".join(table), np.int8).reshape(-1, 32)
+    blob = assemble(scc, fmv, psg, fx_scc, fx_psg, fx_len, tab, T)
+    bad = check_blob(blob, scc, fmv, psg, fx_scc, fx_psg)
+    if b"OPLL" in blob:
+        bad.append("\"OPLL\" in the blob (tools/mkrom.py refuses it)")
+    if bad:
+        raise SystemExit("error: " + "; ".join(bad))
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "frm.bin").write_bytes(blob)
+    hd = parse(blob)
+    fb = fmv["blob"]
+    log("PSG (lambda %.4f): voices %s = %d bytes; octaves up: %s" % (
+        TITLE_LAMBDA, "+".join(str(len(s)) for s in psg["streams"]), sum(len(s) for s in psg["streams"]),
+        ", ".join("%s %d" % (gt.insts[i].name, k) for i, k in sorted(gt.octave.items()) if k) or "none"))
+    log("SCC: voices %s, drums %d, the tune's %d waveforms (%s): %d bytes; the octave rule: %s" % (
+        "+".join(map(str, scc["sizes"][:3])), scc["sizes"][3], len(scc["waves"]),
+        ", ".join(w.name for w in sorted(scc["waves"].values(), key=lambda w: w.number)), len(scc["blob"]),
+        "; ".join("voice %d: %d notes (%d ticks) %s" % (
+            v, len(r), sum(x[1] for x in r), ",".join(sorted({"+%d oct" % x[2] for x in r})))
+                  for v, r in enumerate(scc["raised"]) if r) or "no note below N 4095"))
+    log("OPLL: melodic %s, rhythm %d (%d hits), patch 14: %d bytes; %s; custom patch for %s" % (
+        "+".join(str(len(x)) for x in fmv["mel"]), len(fmv["rhy"]), len(fmv["drum_log"]), len(fb),
+        ", ".join("%s -> %s" % (ft.insts[i].name, fm.PRESET_NAMES[k]) for i, k in sorted(ft.mapping.items())),
+        ft.insts[ft.custom_for].name))
+    log("effects: %s" % "; ".join(
+        "%d: %d ticks, SCC mode %d B (%d ticks%s), PSG %d B (%d ticks)" % (
+            n, fx_len[n], len(fx_scc[n]["bytes"]), fx_scc[n]["ticks"],
+            ", PSG format, flagged; gated ticks %d" % fsc["fx"][n]["noise_gated"] if fx_scc[n].get("psg") else "",
+            len(fx_psg[n]["bytes"]), fx_psg[n]["ticks"]) for n in sorted(fx_len)))
+    log("frm.bin: %d bytes (%d banks of 8 KiB), %d SCC waveforms, every tune stream %d ticks, decoded "
+        "back: identical" % (len(blob), -(-len(blob) // 8192), hd["W"], T))
+    return {"rep": rep, "data": data, "rt": rt, "gt": gt, "psg": psg, "scc": scc, "ft": ft, "fmv": fmv,
+            "fx": fx, "fsc": fsc, "fps": fps, "blob": blob, "table": tab, "fx_scc": fx_scc,
+            "fx_psg": fx_psg, "fx_len": fx_len}
+
+
+def previews(res: dict, wav: Path, seconds: float = 60.0, name: str = "pzm") -> None:
+    """The Amiga's tune 1 (the model rendered) and the three versions decoded from the blob on the
     converters' chip models (msxscc's SCC, msxsound's PSG, msxfm's OPLL), each normalised as
-    msxsound.write_wav does, the speech-free mix."""
+    msxsound.write_wav does, the speech-free mix: NAME_amiga.wav, NAME_scc.wav, NAME_psg.wav,
+    NAME_fm.wav."""
     gt, blob = res["gt"], res["blob"]
     hd = parse(blob)
     T = min(hd["T"], int(seconds * ms.TICK_HZ))
     amiga = sum(c.render(0, T) for c in res["rt"].amiga)
-    ms.write_wav(wav / "pzm_amiga.wav", amiga)
+    ms.write_wav(wav / f"{name}_amiga.wav", amiga)
     table = np.frombuffer(blob[hd["waves"]:hd["waves"] + 32 * hd["W"]], np.int8).reshape(-1, 32)
     scc = sum(sc.render_scc(sc.decode_scc(blob, hd["streams"][v], T), table, T) for v in range(3))
     dst = ms.play_streams(blob, [(sc.DRUM_VOICE, hd["streams"][3], None)], T)
     scc = scc + ms.dc_block(ms.Psg().render(dst)[sc.DRUM_VOICE]) * sc.PSG_OVER_SCC
-    ms.write_wav(wav / "pzm_scc.wav", scc)
+    ms.write_wav(wav / f"{name}_scc.wav", scc)
     pst = ms.play_streams(blob, [(v, hd["streams"][8 + v], None) for v in range(3)], T)
-    ms.write_wav(wav / "pzm_psg.wav", ms.dc_block(ms.Psg().render(pst).sum(axis=0)))
+    ms.write_wav(wav / f"{name}_psg.wav", ms.dc_block(ms.Psg().render(pst).sum(axis=0)))
     patch = blob[hd["patch"]:hd["patch"] + 14]
     patches = [fm.Patch(patch[:8])] + fm.PRESETS[1:]
     mel = sum(fm.Melodic(fm.decode_melodic(blob, hd["streams"][4 + c], T), patches).render(T) for c in range(3))
     rhy = fm.Rhythm(fm.decode_rhythm(blob, hd["streams"][7], T), patch[8:]).render(T)
-    ms.write_wav(wav / "pzm_fm.wav", ms.dc_block(mel + rhy))
+    ms.write_wav(wav / f"{name}_fm.wav", ms.dc_block(mel + rhy))
+
+
+def frm_previews(res: dict, wav: Path) -> None:
+    """FRM's previews: previews() over the whole tune (frm_*.wav); the SCC's melody with the
+    OPLL's rhythm (frm_sccfm.wav: msx/tune.asm with an SCC and an OPLL), each part scaled back to
+    the Amiga's units by its converter's reference (an assumption: real machines set their own
+    balance); the effects as msxsccfx.py's sfx_all files, each its length + 2 ticks, then 0.4 s:
+    the Amiga's (frm_fx_amiga.wav), with an SCC (frm_fx_scc.wav: SCC channel 3, or a flagged
+    stream on PSG voice B, in the SCC's units) and the PSG alone (frm_fx_psg.wav)."""
+    blob, gt = res["blob"], res["gt"]
+    hd = parse(blob)
+    T = hd["T"]
+    previews(res, wav, T / ms.TICK_HZ, "frm")
+    table = np.frombuffer(blob[hd["waves"]:hd["waves"] + 32 * hd["W"]], np.int8).reshape(-1, 32)
+    scc = sum(sc.render_scc(sc.decode_scc(blob, hd["streams"][v], T), table, T) for v in range(3))
+    patch = blob[hd["patch"]:hd["patch"] + 14]
+    rhy = fm.Rhythm(fm.decode_rhythm(blob, hd["streams"][7], T), patch[8:]).render(T)
+    fm_to_scc = gt.a_ref * 10 ** (-res["ft"].ref / 20) / res["scc"]["ref"]
+    ms.write_wav(wav / "frm_sccfm.wav", scc + ms.dc_block(rhy) * fm_to_scc)
+    gap = np.zeros(int(0.4 * ms.FS))
+    amiga, with_scc, alone = [], [], []
+    for n, e in sorted(hd["effects"].items()):
+        L = e["len"] + 2
+        amiga.append(sum(np.pad(c.render(), (0, 2 * ms.SPT)) for c in res["fx"].chans[n]))
+        if e["scc_psg"]:
+            st = sx.psg_states(sx.decode_psg(blob, e["scc"], L)[0])
+            with_scc.append(ms.dc_block(ms.Psg().render(st)[0]) * sc.PSG_OVER_SCC)
+        else:
+            with_scc.append(sc.render_scc(sx.decode_scc(blob, e["scc"], hd["W"], L)[0], table, L))
+        alone.append(ms.dc_block(ms.Psg().render(sx.psg_states(sx.decode_psg(blob, e["psg"], L)[0]))[0]))
+    for f, outs in (("frm_fx_amiga.wav", amiga), ("frm_fx_scc.wav", with_scc), ("frm_fx_psg.wav", alone)):
+        ms.write_wav(wav / f, np.concatenate([x for o in outs for x in (o, gap)]))
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--out", type=Path, default=ROOT / "build" / "msx", help="directory of pzm.bin")
+    ap.add_argument("--frm", action="store_true",
+                    help="convert the shooting range's FRM (frm.bin) instead of Brainstorm's PZM (pzm.bin)")
+    ap.add_argument("--out", type=Path, default=ROOT / "build" / "msx", help="directory of pzm.bin or frm.bin")
     ap.add_argument("--cache", type=Path, default=ROOT / "build" / "music",
-                    help="directory of PZM_00.bin and PZM.json (rc2music.py's model)")
+                    help="directory of PZM_00.bin and PZM.json, or FRM_00.bin and FRM.json (rc2music.py's model)")
     ap.add_argument("--wav", type=Path, help="directory of the previews")
     args = ap.parse_args()
+    if args.frm:
+        res = convert_frm(args.out, args.cache)
+        print("wrote", args.out / "frm.bin")
+        if args.wav:
+            frm_previews(res, args.wav)
+            print("wrote the previews in", args.wav)
+        return 0
     res = convert(args.out, args.cache)
     print("wrote", args.out / "pzm.bin")
     if args.wav:
