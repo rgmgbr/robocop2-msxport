@@ -37,7 +37,8 @@ anything generated in `build/`.
 | 1 MiB devices (1 MiB MegaRAM, the original MegaFlashROM SCC+) | releases 0.1.x only |
 
 - Sound: always the PSG. An SCC or SCC+ (in the game's cartridge or in another slot) and
-  MSX-MUSIC / FM-PAC are used when present.
+  MSX-MUSIC / FM-PAC are used when present, by the title music, level 1's effects and Brainstorm's
+  music and effects.
 
 Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank test) and
 [docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md) (decision 2, "2 MiB").
@@ -101,7 +102,7 @@ Open `build/ram/puzl_full.bin` as above with `REA_GHIDRA_SEED_FILE` set to
 ## MSX build
 
 ```sh
-make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's graphics, tables and texts (build/msx/)
+make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's graphics, tables, texts, music and effects (build/msx/)
 make rom      # MegaROM (KonamiSCC/MegaRAM mapper) in build/msx/rc2.rom
 make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, PZ_TEST, PZ_LEVEL, TAG, ...)
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
@@ -110,8 +111,12 @@ make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TES
 ```
 
 After level 1 the game runs Brainstorm, the bonus stage (its intro, the chip puzzle, its result),
-then the title: [docs/BRAINSTORM.md](docs/BRAINSTORM.md). For now it is silent, and a second
-visit shows the first visit's face. Build options for it (`tools/mkrom.py`):
+then the title: [docs/BRAINSTORM.md](docs/BRAINSTORM.md). Its music and sound effects (the
+original's tune and four effects, by the original's rules) play on the chips the machine has, as
+the title music does: with an SCC the melody there and the drums on the PSG, or on MSX-MUSIC /
+FM-PAC's rhythm when there is one; MSX-MUSIC / FM-PAC alone; or the PSG alone (`tools/msxtune.py`
+converts them, `msx/tune.asm` plays them). A second visit still shows the first visit's face.
+Build options for it (`tools/mkrom.py`):
 
 | Option | Effect |
 |---|---|

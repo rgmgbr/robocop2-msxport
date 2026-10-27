@@ -712,6 +712,29 @@ The level's sound file (`MU1`, with its player code) is loaded at `$18000` by th
   period], per-channel runs [ticks, AUDxPER, effective volume 0-64, instrument], the sequences
   and a listing of each pattern; per file the instrument records, unique samples, envelopes,
   arpeggios and the period table. `--trace NAME:N` prints one tune tick by tick.
+- **PZM: Brainstorm's copy** (PUZL at `$17100`; the player at `$18000`, file offset F00h, to
+  PUZL's end) **[verified: REA on the level-1 image with PUZL placed at `$17100` (the 2026-10-26
+  sound report); `tools/rc2music.py --verify` on `PUZL_25.bin[F00h:]`: 6 tunes, 9,744 ticks, 0
+  differences; disk 1's copy decrunched is byte-identical]**. `$18000-$18B35` is MU1's code but
+  for the per-file table operands and the player's own RAM saved with the file (`$18020-$1817F`,
+  the IFF walker's `$18AE6`, `$18B0E`, `$189D0`: data, by their xrefs), so `rc2music.py`'s
+  "code != MU1's" warning is a false alarm there. Tables: tunes `$23270`, patterns `$232A0`,
+  envelopes `$23210`, arpeggios `$23200`; record 0 the same 22-byte two-sine waveform as TITM's.
+  Tunes: 1 channels 0-2, 3,000 ticks then every channel stops (melody: instruments 0, 16
+  PIZZICATO, 17-19; drums 20 CLUB, 21 PERCUSH2, 22 PERCUSH1, 23 SNAZ); 2 channels 0-2, 1,464
+  ticks, never started (PUZL's only `$18010` call takes the tune from the board record's byte 5,
+  1 in all 8 records); 3-6 effects on channel 3 (12, 6, 48, 36 ticks; 6 is note 0 against base
+  33: AUDxPER 54,191 read from the code word at `$18B24`). PUZL calls init (`$17100`), stop all
+  and tune 1 at every board (`$1743A`, `$17442`), the effect in `$B04` once a pass (`$17794`;
+  written at `$177BC` 3, `$17844`-`$17894` 4, `$173DC` 5, `$17264` 6) and the tick on 5 of 6
+  passes (`$17212`); its level-3 handler replaces the game's VBL hook (patched to an `rts` at
+  `$8398`). **[verified: REA and the model, 2026-10-27]** In a pass the effect's start
+  (`$171F2` → `$17760`, `$17794`) comes before the tick (`$17212`). The tick (`$18316`) runs
+  `$1839A` for each channel whose flags word is set and stores the word back; `$1839A` clears it
+  (`$1845C` `moveq #0,D7`) in the tick that reads the sequence's end. So an effect of L ticks
+  keeps `$18126` set through L + 1 ticks counted from its first (the model: effect 4's flags
+  4019h after its tick 0, 4001h after ticks 1-5, 0 after tick 6), and `$1822C` refuses a lower
+  request made 1 to L passes after it (one tick a pass).
 
 ## 5. Front end: title, text screens, high scores
 

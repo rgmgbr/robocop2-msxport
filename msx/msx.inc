@@ -99,7 +99,22 @@ cpu_chk:    equ 0xC2A8              ; 4: cpu_detect's measures on the R800, in t
 cpu_png:    equ 0xC2AC              ; R800PING builds: 2: round trips done, 2: page 0's sum before them,
                                     ;   2: after them (cold.asm cpu_ping)
 ; the title music and the game's sound effects on the SCC / OPLL (music.asm, sound.asm), in the
-; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game; C2B6h-C2C1h free)
+; gap of IM2_TABLE..IM2_JUMP (C201h-C2A5h, used for the whole game); the tunes after the title
+; (tune.asm: Brainstorm's) in C2B6h-C2C1h and C2C5h-C2D8h
+tn_left:    equ 0xC2B6              ; 2: tune.asm: the tune's ticks left + 1 (0: over, its voices silent)
+tn_mode:    equ 0xC2B8              ;   the chips it plays on (mus_mode's; no OPLL on the R800)
+tn_req:     equ 0xC2B9              ;   the effect requested (puzl.asm snd_bfx), 0: none
+tn_busy:    equ 0xC2BA              ;   the effect voice's busy ticks left ($1822C: its effect's length + 1)
+tn_last:    equ 0xC2BB              ;   the last effect started ($18023)
+tn_snd:     equ 0xC2BC              ;   the effect voice's ticks left + 1 (0: idle, 1: its channel back)
+tn_fx:      equ 0xC2BD              ; 2: the tune's effects' table (its descriptor's TD_FX on),
+tn_fx0:     equ 0xC2BF              ;   its first effect,
+tn_fxn:     equ 0xC2C0              ;   how many,
+tn_wbk:     equ 0xC2C1              ;   the bank of its SCC waveforms
+tn_wad:     equ 0xC2C5              ; 2:   and their address in the 8000h window
+tn_v:       equ 0xC2C7              ; MV_SIZE (16): tune.asm's effect voice (music.asm's voice format)
+tn_hold:    equ 0xC2D7              ; 1: the tune's tick 0 waits for the stage's next pass (tune.asm fx_tkd),
+tn_hpz:     equ 0xC2D8              ;   the pass counter's low byte (pzv_frame) when it started (tn_start)
 mus_end:    equ 0xC2B2              ; 1: the title music played to its end (music.asm mus_adv, sndplay.asm
                                     ;   sq_rec; front.asm front_fire: the game starts)
 mus_fade:   equ 0xC2B3              ; the title music fading out (sound.asm snd_fade): ticks to its next step
@@ -786,8 +801,9 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
-; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2B6h-C2C1h, C2C5h-C2FFh,
-; C68Ah-C6FEh (Brainstorm's while it runs), ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh, F1CFh, F1E2h,
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2D9h-C2FFh (C2B6h-C2C1h and
+; C2C5h-C2D8h: tune.asm's), C68Ah-C6FEh (Brainstorm's while it runs), ECF0h-ED0Fh, EDC0h-EDFFh,
+; E0FEh-E0FFh, F1CFh, F1E2h,
 ; F271h-F27Fh (below the stack), F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
 ; the BIOS's area: F380h-F43Bh so_x, so_n, F500h-F9FFh the map patches' MP_B)
