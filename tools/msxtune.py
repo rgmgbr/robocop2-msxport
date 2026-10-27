@@ -46,9 +46,10 @@ Output: build/msx/pzm.bin for tools/mkrom.py (all offsets 24-bit little-endian f
         0 in the SCC streams; 32-byte aligned, so that none crosses a bank: msx/tune.asm tn_wv)
   36    the OPLL's patch block (14 bytes: the custom instrument 00h-07h, the rhythm's pitches
         16h-18h and 26h-28h)
-  39    the effect table: per effect its length in ticks (the $1822C rule: Amiga channel 3 busy),
-        its SCC stream's offset and ticks, its PSG stream's offset and ticks (9 bytes; a stream's
-        ticks are its records', the trailing silence left out: after them the channel goes back)
+  39    the effect table: per effect its length in ticks (the tick that reads its end: Amiga
+        channel 3 stays busy through it for the $1822C rule, msx/tune.asm tn_go), its SCC
+        stream's offset and ticks, its PSG stream's offset and ticks (9 bytes; a stream's ticks
+        are its records', the trailing silence left out: after them the channel goes back)
   42    W; 43: the tune's ticks (16 bits); 45: the first effect; 46: how many
   47    the data
 Every stream is decoded back and checked against what it was made from; every tune stream lasts

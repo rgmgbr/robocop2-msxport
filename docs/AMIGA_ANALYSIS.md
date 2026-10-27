@@ -728,7 +728,13 @@ The level's sound file (`MU1`, with its player code) is loaded at `$18000` by th
   and tune 1 at every board (`$1743A`, `$17442`), the effect in `$B04` once a pass (`$17794`;
   written at `$177BC` 3, `$17844`-`$17894` 4, `$173DC` 5, `$17264` 6) and the tick on 5 of 6
   passes (`$17212`); its level-3 handler replaces the game's VBL hook (patched to an `rts` at
-  `$8398`).
+  `$8398`). **[verified: REA and the model, 2026-10-27]** In a pass the effect's start
+  (`$171F2` → `$17760`, `$17794`) comes before the tick (`$17212`). The tick (`$18316`) runs
+  `$1839A` for each channel whose flags word is set and stores the word back; `$1839A` clears it
+  (`$1845C` `moveq #0,D7`) in the tick that reads the sequence's end. So an effect of L ticks
+  keeps `$18126` set through L + 1 ticks counted from its first (the model: effect 4's flags
+  4019h after its tick 0, 4001h after ticks 1-5, 0 after tick 6), and `$1822C` refuses a lower
+  request made 1 to L passes after it (one tick a pass).
 
 ## 5. Front end: title, text screens, high scores
 

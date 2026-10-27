@@ -1254,8 +1254,11 @@ which as sprites were striped, cut or left out.
   nothing of it runs or is read with 3Fh at 9000h.
 - **The effect voice**: SCC channel 3 with an SCC, else PSG voice C, where the PSG version's
   voice 2 is muted only while an effect sounds and then written back whole. `$1822C`'s rule: a
-  lower request than the last effect is refused while that one lasts (its whole length); the
-  tune's start clears the rule's memory, as stop all clears `$18023`.
+  lower request than the last effect is refused while that one holds the voice, as on the
+  68000: channel 3's flags (`$18126`) clear only in the tick that reads the effect's end, its
+  length L after its first, and PUZL's request comes before that pass's tick (`$17794`, then
+  `$17212`), so a lower request is refused after 1 to L of its ticks (`tn_go`: busy for L + 1
+  ticks from its own). The tune's start clears the rule's memory, as stop all clears `$18023`.
 - **Ticks**: `sndplay.asm` `sq_frame`'s 50 Hz ticks while `fx_act` is set, the owner told by a
   mark in voice A's `SV_CH` (`TN_MARK`): `fx_act` is `fx_tick`'s OR of its voices' ticks left,
   any value. `sound.asm` `fx_tk`'s first instruction jumps to `sndtune.asm` `fx_tkd` (the same
@@ -1275,7 +1278,9 @@ which as sprites were striped, cut or left out.
   and PSG) are identical to `d6239ec`'s write for write, and Brainstorm's registers equal the
   streams decoded apart on every tick of the tune and its end, with effects, a board's restart,
   `snd_stop`, a stop queued before the start, 60 Hz, the R800, the interrupt rule and the SCC
-  store rule. The emulator checks still to run are listed with the branch.
+  store rule; the effect voice's refusals equal those of `tools/rc2music.py`'s 68000 model for
+  every pair of effects at 1, L - 1, L and L + 1 ticks. The emulator checks still to run are
+  listed with the branch.
 
 ## HUD
 

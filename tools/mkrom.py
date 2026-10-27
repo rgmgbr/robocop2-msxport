@@ -396,8 +396,9 @@ def scc_wave_numbers(blob: bytes, start: int) -> list[int]:
 
 def pzm_check(blob: bytes) -> None:
     """pzm.bin as msx/tune.asm reads it: every tune stream lasts the tune, every effect's streams
-    their ticks, within its length; the SCC waveforms in the table, 32-byte aligned in the blob (so
-    none crosses a bank: tune.asm tn_wv reads one in the 8000h window)."""
+    their ticks, within its length, and its length below 255 (tune.asm tn_go keeps the effect voice
+    busy for its length + 1 ticks, a byte); the SCC waveforms in the table, 32-byte aligned in the
+    blob (so none crosses a bank: tune.asm tn_wv reads one in the 8000h window)."""
     hd = pzm_parse(blob)
     if hd["streams"][0] != PZM_HEADER or not hd["fxn"] or hd["waves"] % 32:
         raise SystemExit("error: pzm.bin's header")
@@ -409,6 +410,9 @@ def pzm_check(blob: bytes) -> None:
         if (stream_ticks(blob, e["scc"], MVK_SCC), stream_ticks(blob, e["psg"], MVK_PSG)) != \
                 (e["scc_ticks"], e["psg_ticks"]) or longest > e["len"] or longest + 1 > 255:
             raise SystemExit("error: pzm.bin: an effect's streams do not last their ticks")
+        if e["len"] + 1 > 255:
+            raise SystemExit("error: pzm.bin: an effect longer than 254 ticks (tune.asm tn_go: busy for its "
+                             "length + 1, a byte)")
     used = [w for o in hd["streams"][:3] + [e["scc"] for e in hd["effects"]] for w in scc_wave_numbers(blob, o)]
     if max(used) >= hd["W"]:
         raise SystemExit("error: pzm.bin: an SCC waveform past its table")

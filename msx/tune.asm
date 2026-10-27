@@ -25,10 +25,12 @@
 ;   music leaves channel 3 to them. With an SCC on its channel 3 (the music uses 0-2), else on
 ;   PSG voice C: the PSG version's voice 2 is muted while an effect sounds, then takes C back
 ;   (its whole state written again: mo_pw), never lost. A request (snd_bfx: tn_req) starts at the
-;   next tick, before the records: $1822C's rule, refused while the voice is busy (an effect's
-;   whole length: tn_busy) with a higher effect than it (tn_last, cleared by the tune's start as
-;   stop all clears $18023). An effect sounds for its stream's ticks (its trailing silence left
-;   out), then its channel goes back.
+;   next tick, before the records: $1822C's rule, refused while the voice is busy (tn_busy) with a
+;   higher effect than it (tn_last, cleared by the tune's start as stop all clears $18023). Busy
+;   as the 68000's channel 3: until the tick that reads the effect's end (TF_LEN ticks after its
+;   first), whose request still finds it busy (PUZL asks at $17794, before that pass's tick at
+;   $17212): a lower request is refused after 1 to TF_LEN of its ticks. An effect sounds for its
+;   stream's ticks (its trailing silence left out), then its channel goes back.
 ; - Stopped by snd_stop: mus_quiet (fx_act 0) with an SCC or an OPLL; with the PSG alone mus_stop
 ;   does not run, but the PSG player's stop (SQ_STOP: sndplay.asm sq_stop) sets voice A's SV_CH,
 ;   which tn_start set to TN_MARK: sndtune.asm fx_tkd then ends the ticks (no write: sq_stop
@@ -46,7 +48,7 @@ TD_PATCH:   equ 35                  ;   14: the OPLL's custom instrument (00h-07
 TD_FX:      equ 49                  ;   2: its effects' table, 1: the first effect, 1: how many;
 TD_WAVES:   equ 53                  ;   its SCC waveforms (bank, address: 32 bytes each, none across
 TD_SIZE:    equ 56                  ;   a bank)
-TF_LEN:     equ 0                   ; an effect: its length in ticks (busy for the $1822C rule),
+TF_LEN:     equ 0                   ; an effect: its length in ticks (its end's tick: tn_go),
 TF_SCC:     equ 1                   ;   its SCC stream (bank, address), its ticks + 1,
 TF_PSG:     equ 5                   ;   its PSG stream, its ticks + 1
 TF_SIZE:    equ 9
@@ -236,7 +238,7 @@ tna_z:  ld (ix+MV_CTL),a
         ld de,MV_SIZE
         add ix,de
         djnz tna_e
-tna_f:  ld hl,tn_busy               ; the effect voice: its length counted down,
+tna_f:  ld hl,tn_busy               ; the effect voice: its busy ticks counted down,
         ld a,(hl)
         or a
         jr z,tna_b
@@ -374,8 +376,11 @@ tnw_b:  ld (BANK_8000),a
 
 ; A = the effect requested (tn_tick; the request cleared): $1822C's rule, a lower one than the
 ; last started (tn_last) refused while the voice is busy (tn_busy); else it starts from its
-; first record, its stream for this machine's chips (the SCC's, or the PSG's): busy for its
-; length, sounding for its stream's ticks.
+; first record, its stream for this machine's chips (the SCC's, or the PSG's), sounding for its
+; stream's ticks. Busy for its length + 1, counted down from this tick on (tn_tick tna_f): the
+; 68000 clears channel 3's flags ($18126) in the tick that reads the effect's end ($18450-$1845C,
+; stored at $18384), its length after its first, and PUZL's request of that pass comes before
+; its tick, so it finds the voice busy too.
 tn_go:  ld c,a
         xor a
         ld (tn_req),a
@@ -407,7 +412,8 @@ tng_s:  ld a,c
         ld hl,(tn_fx)
         add hl,de
         ld a,(hl)
-        ld (tn_busy),a              ; (TF_LEN)
+        inc a                       ; (TF_LEN + 1: below 256, tools/mkrom.py pzm_check)
+        ld (tn_busy),a
         inc hl
         ld c,MVK_SCC
         ld a,(tn_mode)

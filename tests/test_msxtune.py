@@ -94,6 +94,20 @@ class MkromTuneTests(unittest.TestCase):
         b[mkrom.pzm_parse(bytes(b))["streams"][5]] = 9      # a stream shorter than the tune
         with self.assertRaises(SystemExit):
             mkrom.pzm_check(bytes(b))
+        b = bytearray(blob())
+        b[mkrom.pzm_parse(bytes(b))["fx"]] = 254            # an effect 254 ticks long: busy for 255
+        mkrom.pzm_check(bytes(b))
+        b[mkrom.pzm_parse(bytes(b))["fx"]] = 255            # 255: busy for 256 (tn_go's byte)
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(bytes(b))
+
+    def test_the_effect_voice_is_busy_one_tick_past_its_length(self):
+        # $1822C's rule as the 68000 runs it: channel 3 stays busy until the tick that reads the
+        # effect's end (its length after its first), and PUZL's request comes before the tick
+        # (PzmTests.test_effects_hold_channel_3_one_tick_past_their_length): tn_go counts the
+        # length + 1 from its own tick
+        asm = (ROOT / "msx" / "tune.asm").read_text()
+        self.assertRegex(asm, r"\n\s+ld a,\(hl\)\n\s+inc a\b[^\n]*\n\s+ld \(tn_busy\),a")
 
     def test_tune_inc_holds_tune_asm_layout(self):
         # pz_desc's bytes up to pz_fx are TD_SIZE (tune.asm checks it at build time too), each
@@ -202,6 +216,25 @@ class PzmTests(unittest.TestCase):
         self.assertEqual(b[so:so + 6], bytes([36, 0x38, 2236 & 0xFF, 2236 >> 8, b[so + 4], 0]))
         self.assertEqual(b[w + 32 * b[so + 4]:w + 32 * b[so + 4] + 32], bytes([127] * 8 + [256 - 42] * 24))
         self.assertEqual(b[po:po + 5], bytes([36, 0x5D, 2237 & 0xFF, 2237 >> 8, 0]))
+
+    def test_effects_hold_channel_3_one_tick_past_their_length(self):
+        # tools/rc2music.py's model of PZM's player (--verify: 0 differences): started through
+        # $1822C, an effect of length L keeps channel 3's flags ($18126) set through L + 1 ticks,
+        # until the tick that reads its end; msx/tune.asm tn_go keeps the effect voice busy as long
+        import rc2music
+        data = (ROOT / "build" / "music" / "PZM_00.bin").read_bytes()
+        lay = rc2music.locate(data)
+        held = {}
+        for n in self.hd["effects"]:
+            p = rc2music.Player(data, lay)
+            p.init()
+            p.stop_all()
+            self.assertTrue(p.start_sfx(n))
+            held[n] = 0
+            while p.m.rw(lay["structs"][3]) and held[n] < 300:
+                p.play()
+                held[n] += 1
+        self.assertEqual(held, {n: x["len"] + 1 for n, x in self.hd["effects"].items()})
 
     def test_the_conversion_gives_the_blob_again(self):
         with tempfile.TemporaryDirectory() as d:
