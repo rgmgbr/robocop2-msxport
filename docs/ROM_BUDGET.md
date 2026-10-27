@@ -124,11 +124,12 @@ of fill. `rowtab.inc` stores a bank and an address for each row, so that row can
 
 ### 2.1 Added on 2026-10-27: Brainstorm
 
-M, from the product's image and label file at `14bc5ef`:
+M, from the product's image and label file at `b59a338`. The image at `14bc5ef` differed only in
+bank 78: `rs_one` without its two `nop`s, `puzl_end` at ADFCh (3,580 B used).
 
 | Banks | Content | Bytes used | Fill or free |
 |---|---|---:|---:|
-| 78 | `BANK_PUZL`: Brainstorm's code, its boards and tables, the cursor's patterns, its graded palette (`msx/puzl.asm`) | 3,580 | 4,612 |
+| 78 | `BANK_PUZL`: Brainstorm's code, its boards and tables, the cursor's patterns, its graded palette (`msx/puzl.asm`; `puzl_end` ADFEh) | 3,582 | 4,610 |
 | 79-85 | Brainstorm's graphics, raw (`tools/msxpuzl.py` `puzl_gfx.bin`: the screen and the sheet 27,904 B, visit 1's 9 TV pictures 28,800 B) | 56,704 | 640 (bank 85) |
 | 86-127 | Free | 0 | 344,064 |
 
@@ -402,7 +403,7 @@ Decision numbers are those of the port's decision list.
   - The second range differs only by its palette.
   - Leaving the second visits out saves less than half a bank.
 - **Music.** The stages' tunes are counted once, in 3.6.
-- **Brainstorm as built (2026-10-27, M).** Its code takes 3,580 B of one bank (the estimate:
+- **Brainstorm as built (2026-10-27, M).** Its code takes 3,582 B of one bank (the estimate:
   4.4-7.2 KiB, 1 bank), with the boards and tables. Its graphics are stored raw, not in ZX0 (the
   project has no decompressor): the screen re-laid out to 256 × 162 with a sheet of its blocks
   (27,904 B) and each visit's 9 TV pictures pre-composed (the face or black under each static

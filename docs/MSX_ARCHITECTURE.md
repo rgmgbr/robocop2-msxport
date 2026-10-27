@@ -880,7 +880,7 @@ built: the original's logic and graphics, silent; the second visit (after level 
   the original's call count kept.
 - **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
   places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
-  `BANK_PUZL` = 78 (3,580 B used), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw)
+  `BANK_PUZL` = 78 (3,582 B used), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw)
   from `PUZL_GFX_BANK` = 79 to 85. While the stage runs FRONT stays at 8000h; it maps the graphics
   banks only at 8000h, at its entry, and never runs an OTIR past 9FFFh. `hud_keep` (fixed) is
   `hud_frame` for banked callers: it puts both windows' banks back.
