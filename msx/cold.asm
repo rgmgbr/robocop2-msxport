@@ -631,7 +631,8 @@ cpu_detect:
 ; nothing when cpu_tr = 0. With the VDP's interrupt sources off and none pending (CHGCPU ends with
 ; EI) and page 0 on the main ROM for the call (slot 0, whose secondary register the game never
 ; writes: 0-0). The Z80 would freeze inside CHGCPU on a PAUSE flip-flop left set during R800 play,
-; so a switch to it first waits for the key again (the picture kept, the pause LED lit). The CPU
+; so a switch to it first waits for the key again (the picture kept, the pause LED lit); the same
+; wait serves front_bonus' end, on the Z80 with its hardware pause off (front.asm). The CPU
 ; that resumes gets IM 2 (the R800 has it from cpu_detect: a second guard); cpu_cur = the CPU
 ; running. Returns with the interrupts off, R#1 = display off without interrupts, IE1 off.
 cpu_set:

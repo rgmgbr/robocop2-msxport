@@ -78,9 +78,9 @@ rom: msx
 	$(PYTHON) -I tools/mkrom.py $(BUILD)/msx/level1 $(BUILD)/msx/rc2.rom $(ROMOPTS)
 
 # the ROM on the generic set-ups, headless (tools/msxmatrix.py; OMHOME: an openMSX home that has
-# the machines, default ~/.openMSX)
+# the machines, such as the MSX-AI MCP's; default $OPENMSX_HOME, else ~/.openMSX)
 matrix:
-	$(PYTHON) -I tools/msxmatrix.py $(BUILD)/msx/rc2.rom --labels $(BUILD)/msx/rc2.labels $(if $(OMHOME),--home $(OMHOME))
+	$(PYTHON) -I tools/msxmatrix.py $(BUILD)/msx/rc2.rom --labels $(BUILD)/msx/rc2.labels $(if $(OMHOME),--home "$(OMHOME)")
 
 # a 2 MiB Konami SCC bank test cartridge, not the game (docs/ROM_BUDGET.md 6.1)
 banktest:
