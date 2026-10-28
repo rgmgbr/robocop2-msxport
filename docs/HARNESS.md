@@ -91,7 +91,7 @@ The harness has two sides:
 | `frsnd/frsim.py ROOT ROM LABELS` | python (venv) | the range's sound on a ROM image in a Z80 interpreter (`frsnd/z80.py`, `frsnd/pzsim.py`: Brainstorm's), offline (5.19) |
 | `frsnd/frwavcmp.py`, `frsnd/fxalone.py` | python (venv) | recordings judged by pitch against the converter's previews (`frsnd/int_wavcmp.py`'s measures; 5.19) |
 | `l2base.sh builds W` / `check W BASE [RB]` / `base W` | shell | level 2's base and the comparison of any later build against it (5.21): `regress.sh`'s builds, the `LOCKSTEP=24` builds and the code banks' free bytes; every verdict of `regress.sh check` and of level 1's records below, then "l2base: PASS" |
-| `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 225 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 18 jobs) (5.21) |
+| `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 226 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 19 jobs) (5.21) |
 | `l2base.py banks` / `start` / `field` / `stills` | python | the code banks' free bytes (`msx/rc2.asm`'s padded windows) and the product's bank map; the verdicts of 5.21 against the base's |
 | `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21) |
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
@@ -1371,7 +1371,8 @@ VRAM 00000h (it cannot know an address set before it started): 81 false "cpu" on
 
 **The base of 2026-10-28** (`impl/base` of level 2's scratch folder): the 25 builds rebuilt byte for
 byte, the 23 of `regress.sh builds` equal to the range's step-13 builds, the product with `TAG=4`
-(and `ROM_2M=1`) equal to the delivered `ROBOCOP2_v0.1.3-test4.ROM` (`-2M`); 226 jobs without a time out;
+(and `ROM_2M=1`) equal to the delivered `ROBOCOP2_v0.1.3-test4.ROM` (`-2M`); the chain without a time out
+(the start checks and the PSG logs run again once their jobs took their final form);
 `regress.sh check` against the range's base `4a8a61d`: 45 verdicts, **regress: PASS** (the title
 from power-on identical to `4a8a61d`'s in every record); the death, game-over and end traces 0 differ;
 the start checks all 0 on the three machines (26,690 / 26,445 / 31,505 sprite entries checked); the

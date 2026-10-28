@@ -8,7 +8,7 @@
 #                                              and W/L/lock24p (NO_SCC=1), the code banks' free bytes
 #                                              (W/banks.txt); prints the Tcl line:
 #   msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; l2b_chain {W} {W/all.done}
-#                                              (225 jobs; wait for W/all.done)
+#                                              (226 jobs; wait for W/all.done)
 #   sh tools/bstest/l2base.sh check W BASE [RB] every verdict against BASE (and regress.sh's against RB,
 #                                              default BASE), then "l2base: PASS"; exit 0 on PASS
 #   sh tools/bstest/l2base.sh base W           W, once its check passed, made a base: its title from
