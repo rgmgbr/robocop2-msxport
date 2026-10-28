@@ -30,7 +30,14 @@
 ; (rg_want, msx.inc: range.inc's shown-state layout), and the renderer (rg_show at the entry, rg_feed
 ; between the passes, rg_hide at the exit) puts that on the screen, double-buffered on pages 0 and
 ; 1, the vertical lines as sprites, the HUD below as in the game; a camera over the 320-pixel street
-; follows the crosshair (rg_cam). The sound's effects go to snd_rfx (silent until step 11).
+; follows the crosshair (rg_cam).
+;
+; The sound (msx/tune.asm in BANK_MUSIC, ticked by the VBLANK interrupt 50 times a second:
+; docs/RANGE.md 3.7): FRM's tune 1 starts in the set-up (tn_frm through mus_call) and plays its tick
+; 0 after the first pass (tune.asm tn_hold: $B00 moved), 5,999 ticks, the stage's 2:00; the effects
+; (2 the shot, 3 and 4 the hit sounds) go where FRNG asks for them, through snd_rfx ($1822C's rule
+; at the next tick). Nothing in FRNG stops the tune: the result's text screen does (front.asm
+; fe_text's snd_stop, as $10768's $FE14).
 ;
 ; Its variables live in the mirror at their Amiga addresses (msx.inc frv_...: $B00-$BC5) and in
 ; fr_code (msx.inc: FRNG's code-area state), so that the trace harness compares them pass by pass
@@ -106,6 +113,10 @@ rg_v1:  ld (rg_pal),hl              ; ($1FBB4: $1F9B0 = $1FBEA, or $1FC2A from t
         call rg_init                ; (the port's own: the hit test's list, the wanted state; before
                                     ;  the timer's set-up, which the first pass follows at once)
         call rg_show                ; (the stage's screen, the palette black: msx/frngview.asm)
+        ld hl,tn_frm                ; ($1EA32: tune 1, msx/tune.asm; its stop all is the stop. Here,
+        call mus_call               ;  before the timer's set-up, which the first pass follows at
+                                    ;  once: tn_start waits for a VBLANK. Its tick 0 still comes
+                                    ;  after the first pass: tn_hold, $B00 cleared above)
         ld a,0xFF
         ld (frv_fadein),a           ; ($1FBA6: $BC1 = 0 by the clear, $BC0 = FFh: a fade in)
         xor a
@@ -433,10 +444,20 @@ rdl_d:  ld hl,(frv_ddelay)
         ld a,4
         jp snd_rfx                  ; ($1EB2A: effect 4)
 
-; FRNG's sound effects (jsr $20014): A = 2 the shot, 3 a correct hit, 4 a dummy hit. Silent until
-; docs/RANGE.md 5's step 11 (the sound). Its callers (rg_cross, rg_delays) keep nothing in AF, BC,
-; DE, HL across it; IX and IY must stay.
+; FRNG's sound effects (jsr $20014: $2022C) -> msx/tune.asm: A = 2 the shot, 3 a correct hit, 4 a
+; dummy hit, from the next tick on (tn_go: $1822C's rule there); of two requests before a tick the
+; higher one, the one the Amiga lets sound (a shot and a due hit sound in one pass: the hit sound;
+; the Amiga sounds the shot one tick first, docs/RANGE.md default 28). The ticks run again (fx_act:
+; the tune may be over). puzl.asm snd_bfx's bytes (BANK_PUZL is not mapped here); RAM only, so no
+; bank and no mirror byte: the traces are the silent stage's. Uses AF, HL (its callers, rg_cross
+; and rg_delays, keep nothing in AF, BC, DE, HL across it; IX and IY stay).
 snd_rfx:
+        ld hl,tn_req
+        cp (hl)
+        ret c
+        ld (hl),a
+        ld a,2
+        ld (fx_act),a
         ret
 
 ; $AC9A (through $8010): the ammo ($8030, BCD) minus one: LC1's shots.asm ammo_dec (LC1 is not

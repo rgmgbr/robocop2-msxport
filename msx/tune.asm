@@ -1,14 +1,16 @@
 ; The tunes after the title: Brainstorm's music and sound effects (PZM, PUZL's copy of the
 ; player at $18000: tune 1 at every board, effects 3-6 on Amiga channel 3; docs/BRAINSTORM.md,
-; tools/msxtune.py) on this machine's chips. BANK_MUSIC at A000h around every call (mus_call from
-; the main program: msx/puzl.asm's set-up, tn_pzm; sound.asm fx_tk from the VBLANK interrupt:
-; fx_tkd). Nothing of it is in the fixed area but fx_tk's operand. These routines and their
+; tools/msxtune.py) and the shooting range's (FRM, FRNG's copy at $20000: tune 1 once, effects 2-4
+; on channel 3; docs/RANGE.md 3.7, tools/msxtune.py --frm) on this machine's chips. BANK_MUSIC at
+; A000h around every call (mus_call from the main program: msx/puzl.asm's set-up, tn_pzm;
+; msx/frng.asm's, tn_frm; sound.asm fx_tk from the VBLANK interrupt: fx_tkd). Nothing of it is in
+; the fixed area but fx_tk's operand. These routines and their
 ; descriptors (tune.inc) come after the title's code and tables (music.asm, music.inc,
 ; voice.inc), which keep their places and bytes. Where they lie does not matter to the MSX Pico+
 ; (with 3Fh at 9000h it also shows the SCC at B800h-BFFFh): nothing here runs or is read while 3Fh
 ; is there (the SCC's registers through sound.asm's routines; the waveforms from RAM, scc_wv).
 ;
-; A tune's descriptor (tools/mkrom.py tune.inc: pz_desc) gives per chip set its streams (bank,
+; A tune's descriptor (tools/mkrom.py tune.inc: pz_desc, fr_desc) gives per chip set its streams (bank,
 ; address: read through the 8000h window across banks, music.asm mv_rec), its length (no loop: its
 ; voices silent after it, as the Amiga's channels stop), the OPLL's patch block, its effects'
 ; table and its SCC waveforms. tn_start plays it from its start, the stop all first ($18004, then
@@ -19,7 +21,9 @@
 ;   ticks PZM inside PUZL's pass, after that pass's request ($17794, then $17212), and the stop all
 ;   and tune 1 end a board's set-up: the first tick plays tune 1's tick 0 with the effect the next
 ;   pass asks for (5 at boards 1-3: the jingle and the tune start together), at 50 and 60 Hz
-;   whichever VBLANKs the passes' and the ticks' dividers skip.
+;   whichever VBLANKs the passes' and the ticks' dividers skip. FRNG's pass counter is $B00 too:
+;   the range's tune 1, started in its set-up, plays its tick 0 after the stage's first pass (FRNG
+;   skips its first pass's tick: docs/RANGE.md default 29).
 ; - The tune: music.asm's voices (mus_v: three melodic, the drums), readers and outputs (mv_rec,
 ;   mo_fm3, mo_rhy, mo_pv) with mus_on 0 (sound.asm spv_on then turns the SCC's channels 0-3 on);
 ;   on the SCC tn_sc1, mo_sc1's output with the waveforms from the tune's own table (tn_wv). With
@@ -30,7 +34,12 @@
 ; - The effect voice (tn_v, the fifth): the effects play over the music as on the Amiga, whose
 ;   music leaves channel 3 to them. With an SCC on its channel 3 (the music uses 0-2), else on
 ;   PSG voice C: the PSG version's voice 2 is muted while an effect sounds, then takes C back
-;   (its whole state written again: mo_pw), never lost. A request (msx/puzl.asm snd_bfx: tn_req)
+;   (its whole state written again: mo_pw), never lost. An effect with no SCC part (FRM's effect
+;   2, a noise) has an SCC-mode stream in the PSG format, flagged by bit 7 of its SCC ticks byte
+;   (tools/mkrom.py tune_inc): with an SCC it plays on PSG voice B, idle in both SCC modes (the
+;   drums on C, which shares the noise period R6, or on the OPLL's rhythm: tn_fxo); an effect of
+;   the other format that cuts it silences B first (tn_go). A request (msx/puzl.asm snd_bfx,
+;   msx/frng.asm snd_rfx: tn_req)
 ;   starts at the next tick, before the records: $1822C's rule, refused while the voice is busy
 ;   (tn_busy) with a higher effect than it (tn_last, cleared by the tune's start as stop all clears
 ;   $18023). Busy as the 68000's channel 3: until the tick that reads the effect's end (TF_LEN
@@ -61,6 +70,11 @@ TF_SIZE:    equ 9
 TN_MARK:    equ 0xFE                ; sndplay.asm voice A's SV_CH while a tune of these plays
 
         if DIAG = 0                 ; (test builds never play the game: no room, no tune)
+
+; msx/frng.asm's set-up (rg_stage, through mus_call): the shooting range's music, FRM tune 1.
+tn_frm: ld hl,fr_desc
+        ds (fr_fx - fr_desc - TD_SIZE) * 0x4000   ; (tools/mkrom.py's layout: an error if not)
+        jr tn_start
 
 ; msx/puzl.asm's set-up (bs_setup's end, through mus_call): Brainstorm's music, PZM tune 1.
 tn_pzm: ld hl,pz_desc
@@ -318,8 +332,8 @@ tna_s:  call tn_sc1
         ld a,b
         cp 3
         jr nz,tna_s
-        ld ix,tn_v                  ;   the effect voice on its channel 3
-        call tn_sc1
+        ld ix,tn_v                  ;   the effect voice on its channel 3 (or PSG B: tn_fxo)
+        call tn_fxo
 tna_q:  ld a,(tn_mode)
         and MM_FM
         call nz,mo_fm3              ; the OPLL's channels 0-2
@@ -361,6 +375,17 @@ tna_end:
         ret nz
         ld (fx_act),a               ; (no: no more ticks)
         ret
+
+; IX = the effect voice (tn_v) with an SCC: its record of this tick, if any (MV_NEW), to SCC
+; channel 3, or, when its stream is in the PSG format (MV_KIND MVK_PSG: an effect without an SCC
+; part, flagged in its table: tn_go), to PSG voice B (mo_pv), idle in both SCC modes. Uses AF, BC,
+; DE, HL; keeps IX.
+tn_fxo: ld b,3
+        ld a,(ix+MV_KIND)
+        or a                        ; (MVK_SCC)
+        jr z,tn_sc1
+        ld a,1
+        jp mo_pv
 
 ; IX = a voice on SCC channel B (0-3): its record of this tick, if any (MV_NEW), to the chip as
 ; music.asm mo_sc1 does (the waveform, the period, the volume, the channels on: sound.asm
@@ -416,7 +441,11 @@ tnw_b:  ld (BANK_8000),a
 ; A = the effect requested (tn_tick; the request cleared): $1822C's rule, a lower one than the
 ; last started (tn_last) refused while the voice is busy (tn_busy); else it starts from its
 ; first record, its stream for this machine's chips (the SCC's, or the PSG's), sounding for its
-; stream's ticks. Busy for its length + 1, counted down from this tick on (tn_tick tna_f): the
+; stream's ticks. With an SCC, bit 7 of its SCC ticks byte (tools/mkrom.py tune_inc) gives that
+; stream in the PSG format, for PSG voice B (tn_fxo); while an effect of the other format still
+; sounds, its output is silenced first (FRM: a shot on B cut by a hit sound on SCC 3; Brainstorm's
+; effects are all of one format and write what they wrote before). Busy for its length + 1,
+; counted down from this tick on (tn_tick tna_f): the
 ; 68000 clears channel 3's flags ($18126) in the tick that reads the effect's end ($18450-$1845C,
 ; stored at $18384), its length after its first, and PUZL's request of that pass comes before
 ; its tick, so it finds the voice busy too.
@@ -457,17 +486,46 @@ tng_s:  ld a,c
         ld c,MVK_SCC
         ld a,(tn_mode)
         rra
-        jr c,tng_v
-        ld de,TF_PSG - TF_SCC
+        jr nc,tng_p
+        push hl                     ; (with an SCC: its ticks + 1, bit 7 the PSG format)
+        inc hl
+        inc hl
+        inc hl
+        bit 7,(hl)
+        pop hl
+        jr z,tng_v
+        ld c,MVK_PSG
+        jr tng_v
+tng_p:  ld de,TF_PSG - TF_SCC
         add hl,de
         ld c,MVK_PSG
 tng_v:  ld ix,tn_v
-        call mst_one                ; (HL then on its ticks + 1)
+        ld a,(tn_snd)
+        or a
+        jr z,tng_m                  ; (the voice silent)
+        ld a,(ix+MV_KIND)
+        cp c
+        jr z,tng_m                  ; (the same output: the first record writes it all)
+        push bc                     ; the other output silenced first (its record of this tick:
+        push hl                     ;  volume 0, tone and noise off)
+        xor a
+        ld (ix+MV_CTL),a
+        inc a
+        ld (ix+MV_NEW),a
+        call tn_fxo
+        pop hl
+        pop bc
+tng_m:  call mst_one                ; (HL then on its ticks + 1)
+        ld a,(tn_mode)
+        rra
         ld a,(hl)
-        ld (tn_snd),a
+        jr nc,tng_t
+        and 0x7F                    ; (with an SCC: the format bit off)
+tng_t:  ld (tn_snd),a
         ret
 
         else                        ; (DIAG builds: no byte here, DIAG=2 fills BANK_MUSIC)
 tn_pzm:     equ mus_stop            ; (msx/puzl.asm's set-up: the stop all only)
 fx_tkd:     equ fx_tick             ; (sound.asm fx_tk: the in-game effects' tick, as before tune.asm)
+tn_frm:     equ mus_stop            ; (msx/frng.asm's set-up: the stop all only)
         endif

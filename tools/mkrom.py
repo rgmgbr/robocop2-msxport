@@ -28,8 +28,9 @@
         PZM_BANK; then the shooting range's code (the section after Brainstorm's, msx/frng.asm:
         STAGES, bank BANK_FRNG), its graphics (tools/msxrange.py range_gfx.bin: the street and the
         sheets, raw; msx/frng.asm streams them into VRAM through the 8000h window) from bank
-        RANGE_GFX_BANK and its hit data (range_hit.bin: the priority plane, then the masks the hit
-        test reads, from a bank's start) from bank RANGE_HIT_BANK; up to 256 banks in all
+        RANGE_GFX_BANK, its hit data (range_hit.bin: the priority plane, then the masks the hit
+        test reads, from a bank's start) from bank RANGE_HIT_BANK and its music and sound effects
+        (tools/msxtune.py --frm frm.bin, pzm.bin's layout) from bank FRM_BANK; up to 256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
         window maps must not have (b & 3Fh) = 3Fh (those select the SCC's registers at 9800h on
@@ -38,7 +39,8 @@
 Generates build/msx/gen/banks.inc, rowtab.inc, options.inc (build options, see OPTIONS),
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
 headers, the SCC's waveforms, the OPLL's patch, the voices' state after the speech), tune.inc
-(Brainstorm's tune descriptor and effects' table for msx/tune.asm, from pzm.bin), grade.inc
+(Brainstorm's and the shooting range's tune descriptors and effects' tables for msx/tune.asm, from
+pzm.bin and frm.bin), grade.inc
 (the fade's limits through the colour grade, tools/msxbright.py) and the
 original's tables the logic banks include (tools/amitab.py
 with analysis/amiga_tables.tsv, from the level's RAM image build/ram/level1_full.bin) and the
@@ -374,16 +376,21 @@ def music_inc(scc: bytes, scc_bank: int, waves_n: int, fm: bytes, fm_bank: int, 
     return "\n".join(lines) + "\n"
 
 
-# Brainstorm's music and effects (tools/msxtune.py pzm.bin, msx/tune.asm)
+# The tunes after the title, Brainstorm's and the shooting range's music and effects (tools/msxtune.py
+# pzm.bin and --frm frm.bin, one layout; msx/tune.asm)
 PZM_HEADER = 47
 PZM_KINDS = (MVK_SCC,) * 3 + (MVK_PSG,) + (MVK_FM,) * 3 + (MVK_RHY,) + (MVK_PSG,) * 3   # its streams
+FX_PSG_FLAG = 0x80                  # an effect entry's SCC ticks byte, bit 7: its SCC-mode stream is in
+                                    # the PSG format (tools/msxtune.py FX_PSG_FLAG; tune.asm tn_go plays
+                                    # it on PSG voice B: FRM's effect 2, a noise without an SCC part)
 
 
 def pzm_parse(blob: bytes) -> dict:
-    """pzm.bin's header (tools/msxtune.py): the eleven streams (the SCC version's voices 0-2 and PSG
-    drums, the OPLL's channels 0-2 and rhythm, the PSG version's voices A-C), the SCC waveform table
-    and its count W, the OPLL's patch block, the effects' table (per effect: its length, its SCC
-    stream and ticks, its PSG stream and ticks), the tune's ticks, the first effect and how many."""
+    """pzm.bin's header (tools/msxtune.py; frm.bin has the same layout): the eleven streams (the SCC
+    version's voices 0-2 and PSG drums, the OPLL's channels 0-2 and rhythm, the PSG version's voices
+    A-C), the SCC waveform table and its count W, the OPLL's patch block, the effects' table (per
+    effect: its length, its SCC-mode stream and its ticks byte, as stored: bit 7 the PSG format,
+    FX_PSG_FLAG, its PSG stream and ticks), the tune's ticks, the first effect and how many."""
     def r24(i: int) -> int:
         return blob[i] | blob[i + 1] << 8 | blob[i + 2] << 16
     out = {"streams": [r24(3 * k) for k in range(11)], "waves": r24(33), "patch": r24(36), "fx": r24(39),
@@ -407,59 +414,77 @@ def scc_wave_numbers(blob: bytes, start: int) -> list[int]:
     return out
 
 
-def pzm_check(blob: bytes) -> None:
-    """pzm.bin as msx/tune.asm reads it: every tune stream lasts the tune, every effect's streams
-    their ticks, within its length, and its length below 255 (tune.asm tn_go keeps the effect voice
-    busy for its length + 1 ticks, a byte); the SCC waveforms in the table, 32-byte aligned in the
-    blob (so none crosses a bank: tune.asm tn_wv reads one in the 8000h window)."""
+def pzm_check(blob: bytes, name: str = "pzm.bin") -> None:
+    """pzm.bin (or frm.bin: `name`) as msx/tune.asm reads it: every tune stream lasts the tune,
+    every effect's streams their ticks, within its length, and its length below 255 (tune.asm tn_go
+    keeps the effect voice busy for its length + 1 ticks, a byte); an effect's SCC-mode stream in
+    the SCC's format, or, flagged (FX_PSG_FLAG), in the PSG's, its ticks the byte's bits 0-6 and
+    below 127 (tune.inc holds them + 1, bit 7 the format: tune.asm tn_go masks it); the SCC
+    waveforms the SCC-format streams give in the table, 32-byte aligned in the blob (so none
+    crosses a bank: tune.asm tn_wv reads one in the 8000h window)."""
     hd = pzm_parse(blob)
     if hd["streams"][0] != PZM_HEADER or not hd["fxn"] or hd["waves"] % 32:
-        raise SystemExit("error: pzm.bin's header")
+        raise SystemExit(f"error: {name}'s header")
     ticks = [stream_ticks(blob, o, k) for o, k in zip(hd["streams"], PZM_KINDS)]
     if set(ticks) != {hd["T"]}:
-        raise SystemExit(f"error: pzm.bin's streams last {ticks} ticks, the tune {hd['T']}")
+        raise SystemExit(f"error: {name}'s streams last {ticks} ticks, the tune {hd['T']}")
     for e in hd["effects"]:
-        longest = max(e["scc_ticks"], e["psg_ticks"])
-        if (stream_ticks(blob, e["scc"], MVK_SCC), stream_ticks(blob, e["psg"], MVK_PSG)) != \
-                (e["scc_ticks"], e["psg_ticks"]) or longest > e["len"] or longest + 1 > 255:
-            raise SystemExit("error: pzm.bin: an effect's streams do not last their ticks")
+        st = e["scc_ticks"] & (FX_PSG_FLAG - 1)
+        kind = MVK_PSG if e["scc_ticks"] & FX_PSG_FLAG else MVK_SCC
+        longest = max(st, e["psg_ticks"])
+        if (stream_ticks(blob, e["scc"], kind), stream_ticks(blob, e["psg"], MVK_PSG)) != \
+                (st, e["psg_ticks"]) or longest > e["len"] or longest + 1 > 255:
+            raise SystemExit(f"error: {name}: an effect's streams do not last their ticks")
+        if st + 1 >= FX_PSG_FLAG:
+            raise SystemExit(f"error: {name}: an effect's SCC-mode stream of 127 ticks or more (tune.inc holds "
+                             "its ticks + 1 below bit 7, the format: tune.asm tn_go)")
         if e["len"] + 1 > 255:
-            raise SystemExit("error: pzm.bin: an effect longer than 254 ticks (tune.asm tn_go: busy for its "
+            raise SystemExit(f"error: {name}: an effect longer than 254 ticks (tune.asm tn_go: busy for its "
                              "length + 1, a byte)")
-    used = [w for o in hd["streams"][:3] + [e["scc"] for e in hd["effects"]] for w in scc_wave_numbers(blob, o)]
+    scc_streams = hd["streams"][:3] + [e["scc"] for e in hd["effects"] if not e["scc_ticks"] & FX_PSG_FLAG]
+    used = [w for o in scc_streams for w in scc_wave_numbers(blob, o)]
     if max(used) >= hd["W"]:
-        raise SystemExit("error: pzm.bin: an SCC waveform past its table")
+        raise SystemExit(f"error: {name}: an SCC waveform past its table")
 
 
-def tune_inc(blob: bytes, bank: int) -> str:
-    """tune.inc (BANK_MUSIC, after voice.inc: msx/tune.asm): Brainstorm's descriptor pz_desc
-    (tune.asm TD_...: per chip set the streams' bank and address in the 8000h window, the length,
-    the OPLL's patch block, the effects' table, the SCC waveforms' bank and address) and pz_fx (per
-    effect, TF_...: its length, its SCC stream and ticks + 1, its PSG stream and ticks + 1); the
-    streams and the waveforms stay in pzm.bin's banks, from `bank` on."""
+TUNES = {"pz": ("PZ_TICKS", "Brainstorm's music and effects (tools/msxtune.py pzm.bin", "PZM tune 1"),
+         "fr": ("FR_TICKS", "the shooting range's music and effects (tools/msxtune.py --frm frm.bin",
+                "FRM tune 1")}
+
+
+def tune_inc(blob: bytes, bank: int, tune: str = "pz") -> str:
+    """tune.inc's part for one tune (BANK_MUSIC, after voice.inc: msx/tune.asm): `tune`'s descriptor
+    (pz_desc for Brainstorm's pzm.bin, fr_desc for the range's frm.bin: tune.asm TD_...: per chip set
+    the streams' bank and address in the 8000h window, the length, the OPLL's patch block, the
+    effects' table, the SCC waveforms' bank and address) and its effects (pz_fx, fr_fx; per effect,
+    TF_...: its length, its SCC-mode stream and ticks + 1 (bit 7: the stream in the PSG format,
+    FX_PSG_FLAG), its PSG stream and ticks + 1); the streams and the waveforms stay in the blob's
+    banks, from `bank` on."""
     hd = pzm_parse(blob)
+    ticks, what, name = TUNES[tune]
     def where(off: int) -> str:
         return f"db {bank + off // BANK}\n        dw 0x{0x8000 + off % BANK:04X}"
     def db(data: bytes) -> list[str]:
         return ["        db " + ", ".join(str(b) for b in data[i:i + 16]) for i in range(0, len(data), 16)]
     names = ("the SCC's voice 0", "voice 1", "voice 2", "the drums on PSG voice C", "the OPLL's channel 0",
              "channel 1", "channel 2", "its rhythm", "the PSG alone: voice A", "voice B", "voice C")
-    lines = [f"; generated by tools/mkrom.py: Brainstorm's music and effects (tools/msxtune.py pzm.bin, from bank "
-             f"{bank} on), msx/tune.asm",
-             f"PZ_TICKS:   equ {hd['T']}              ; PZM tune 1's length (then silent)",
-             "pz_desc:                            ; its descriptor (tune.asm TD_...)"]
+    lines = [f"; generated by tools/mkrom.py: {what}, from bank {bank} on), msx/tune.asm",
+             f"{ticks}:{' ' * max(1, 11 - len(ticks))}equ {hd['T']}              ; {name}'s length (then silent)",
+             f"{tune}_desc:                            ; its descriptor (tune.asm TD_...)"]
     for o, n in zip(hd["streams"], names):
         lines.append(f"        {where(o)}{' ' * 8}; {n}")
-    lines.append("        dw PZ_TICKS")
+    lines.append(f"        dw {ticks}")
     lines.append("                                    ; the OPLL's custom instrument, the rhythm's pitches")
     lines += db(blob[hd["patch"]:hd["patch"] + 14])
-    lines.append(f"        dw pz_fx\n        db {hd['fx0']}, {hd['fxn']}")
+    lines.append(f"        dw {tune}_fx\n        db {hd['fx0']}, {hd['fxn']}")
     lines.append(f"        {where(hd['waves'])}{' ' * 8}; its {hd['W']} SCC waveforms (32 bytes each)")
-    lines.append("pz_fx:                              ; its effects (tune.asm TF_...): length, SCC stream and"
+    lines.append(f"{tune}_fx:                              ; its effects (tune.asm TF_...): length, SCC stream and"
                  " ticks + 1, PSG stream and ticks + 1")
     for k, e in enumerate(hd["effects"]):
-        lines.append(f"        db {e['len']}{' ' * 8}; effect {hd['fx0'] + k}")
-        lines.append(f"        {where(e['scc'])}\n        db {e['scc_ticks'] + 1}")
+        flag = e["scc_ticks"] & FX_PSG_FLAG
+        lines.append(f"        db {e['len']}{' ' * 8}; effect {hd['fx0'] + k}"
+                     + (" (its SCC-mode stream in the PSG format: + 128)" if flag else ""))
+        lines.append(f"        {where(e['scc'])}\n        db {((e['scc_ticks'] & (FX_PSG_FLAG - 1)) + 1) | flag}")
         lines.append(f"        {where(e['psg'])}\n        db {e['psg_ticks'] + 1}")
     return "\n".join(lines) + "\n"
 
@@ -649,7 +674,18 @@ def main(argv: list[str]) -> int:
     bank_range_gfx = bank_frng + 1
     bank_range_hit = bank_range_gfx + len(range_gfx) // BANK
     stage_bank = {"PUZL": bank_stage, "FRNG": bank_frng}
-    banks_used = bank_range_hit + len(range_hit) // BANK
+    # its music and effects (tools/msxtune.py --frm frm.bin, pzm.bin's layout: msx/tune.asm reads its
+    # streams and waveforms through the 8000h window across banks), after its hit data; test builds
+    # that never play the game (DIAG) leave it out, as pzm.bin
+    frm = b""
+    if not opts["DIAG"]:
+        if not (level.parent / "frm.bin").exists():
+            print("error: no frm.bin (tools/msxtune.py --frm)", file=sys.stderr)
+            return 1
+        frm = (level.parent / "frm.bin").read_bytes()
+        pzm_check(frm, "frm.bin")
+    bank_frm = bank_range_hit + len(range_hit) // BANK
+    banks_used = bank_frm + -(-len(frm) // BANK)
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
@@ -682,14 +718,14 @@ def main(argv: list[str]) -> int:
         f"PUZL_GFX_BANK: equ {bank_puzl_gfx}\nPUZL_GFX_BANKS: equ {len(puzl_gfx) // BANK}\n"
         f"PZM_BANK: equ {bank_pzm}\n"
         f"RANGE_GFX_BANK: equ {bank_range_gfx}\nRANGE_GFX_BANKS: equ {len(range_gfx) // BANK}\n"
-        f"RANGE_HIT_BANK: equ {bank_range_hit}\n"
+        f"RANGE_HIT_BANK: equ {bank_range_hit}\nFRM_BANK: equ {bank_frm}\n"
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
         f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
     vq = equates(level.parent / "voice.inc")
     (gen / "music.inc").write_text(music_inc(scc, bank_scc, equates(level.parent / "scc.inc")["SCC_WAVES"], fm, bank_fm,
                                              vq["VOICE_TICK"] + vq["VOICE_TICKS"], vq["VOICE_TICK"], sccfx))
-    (gen / "tune.inc").write_text(tune_inc(pzm, bank_pzm) if pzm else
+    (gen / "tune.inc").write_text(tune_inc(pzm, bank_pzm) + tune_inc(frm, bank_frm, "fr") if pzm else
                                   "; generated by tools/mkrom.py: no tunes after the title in this build (DIAG)\n")
     (gen / "options.inc").write_text("; generated by tools/mkrom.py: build options\n" + "".join(
         f"{k}: equ {v}{' ' * max(1, 12 - len(str(v)))}; {OPTIONS[k][1]}\n" for k, v in opts.items())
@@ -739,7 +775,7 @@ def main(argv: list[str]) -> int:
            + field_dyn + b"\xff" * (dyn_banks * BANK - len(field_dyn))
            + b"".join(p + b"\xff" * (-len(p) % BANK) for p in pics)
            + voice + scc + fm + sccfx + stage_code["PUZL"] + puzl_gfx + pzm + b"\xff" * (-len(pzm) % BANK)
-           + stage_code["FRNG"] + range_gfx + range_hit)
+           + stage_code["FRNG"] + range_gfx + range_hit + frm + b"\xff" * (-len(frm) % BANK))
     if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
            != stage_code[n] for n in STAGES):
         print("error: a bonus stage's code is not at its bank", file=sys.stderr)
@@ -779,7 +815,7 @@ def main(argv: list[str]) -> int:
           f"{bank_atr + 1}, level tables in {bank_atr + 2}; Brainstorm's code in {bank_stage}, its graphics in "
           f"{bank_puzl_gfx}-{bank_pzm - 1}" + (f", its music in {bank_pzm}-{bank_frng - 1}" if pzm else "")
           + f"; the range's code in {bank_frng}, its graphics in {bank_range_gfx}-{bank_range_hit - 1}, its hit "
-          f"data in {bank_range_hit}-{banks_used - 1}"
+          f"data in {bank_range_hit}-{bank_frm - 1}" + (f", its music in {bank_frm}-{banks_used - 1}" if frm else "")
           + (f"; joystick script {script}" if script else ""))
     return 0
 

@@ -61,8 +61,12 @@ def stream(ticks: int, ctl: int, extra: bytes = b"") -> bytes:
     return bytes([ticks, ctl]) + extra + b"\x00"
 
 
-def blob(T: int = 10, waves: int = 2, bad_align: bool = False, wave_no: int = 1) -> bytes:
-    """A small pzm.bin in tools/msxtune.py's layout (mkrom.pzm_parse)."""
+def blob(T: int = 10, waves: int = 2, bad_align: bool = False, wave_no: int = 1, flag: bool = False,
+         fx_wave: int = 0, scc_ticks: int = 5) -> bytes:
+    """A small pzm.bin in tools/msxtune.py's layout (mkrom.pzm_parse); flag: its effect's SCC-mode
+    stream in the PSG format (a period word and a noise period byte), bit 7 of its ticks byte set
+    (frm.bin's effect 2); fx_wave: the waveform its SCC-format stream gives; scc_ticks: that stream's
+    ticks."""
     streams = ([stream(T, 0x3F, bytes([1, 0, wave_no]))] * 3 + [stream(T, 0x0F)]
                + [stream(T, 0x0F)] * 3 + [stream(T, 0x01)] + [stream(T, 0x0F)] * 3)
     body, offs = bytearray(), []
@@ -76,8 +80,13 @@ def blob(T: int = 10, waves: int = 2, bad_align: bool = False, wave_no: int = 1)
     body += bytes(range(14))
     e_off = mkrom.PZM_HEADER + len(body)
     s_o, p_o = e_off + 9, e_off + 9 + 6
-    body += bytes([12]) + s_o.to_bytes(3, "little") + bytes([5]) + p_o.to_bytes(3, "little") + bytes([4])
-    body += stream(5, 0x38, bytes([2, 0, 0]))[:-1] + b"\x00" + stream(4, 0x0F)
+    if flag:                        # (read as the SCC's format, its period's high byte is a record of 3 ticks)
+        body += bytes([12]) + s_o.to_bytes(3, "little") + bytes([scc_ticks | 0x80]) + p_o.to_bytes(3, "little")
+        body += bytes([4]) + stream(scc_ticks, 0xEB, bytes([0x10, 0x03, 15])) + stream(4, 0x0F)
+    else:
+        body += bytes([max(12, scc_ticks)]) + s_o.to_bytes(3, "little") + bytes([scc_ticks])
+        body += p_o.to_bytes(3, "little") + bytes([4])
+        body += stream(scc_ticks, 0x38, bytes([2, 0, fx_wave])) + stream(4, 0x0F)
     head = b"".join(o.to_bytes(3, "little") for o in offs + [w_off, p_off, e_off])
     head += bytes([waves, T & 0xFF, T >> 8, 3, 1])
     return head + bytes(body)
@@ -107,6 +116,61 @@ class MkromTuneTests(unittest.TestCase):
         b[mkrom.pzm_parse(bytes(b))["fx"]] = 255            # 255: busy for 256 (tn_go's byte)
         with self.assertRaises(SystemExit):
             mkrom.pzm_check(bytes(b))
+
+    def test_a_flagged_effect_is_checked_in_the_psg_format(self):
+        # frm.bin's effect 2 (a noise, no SCC part): its SCC-mode stream in the PSG format, flagged by
+        # bit 7 of its ticks byte; the check reads it as MVK_PSG with the ticks in bits 0-6 and leaves
+        # it out of the waveform check (its bytes are no waveform numbers)
+        b = blob(flag=True)
+        e = mkrom.pzm_parse(b)["effects"][0]
+        self.assertEqual(e["scc_ticks"], 0x85)
+        mkrom.pzm_check(b, "frm.bin")                       # (no exception)
+        b = bytearray(b)
+        b[mkrom.pzm_parse(bytes(b))["fx"] + 4] = 5          # the flag cleared: read as the SCC's format
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(bytes(b))
+        mkrom.pzm_check(blob(fx_wave=1))                    # an SCC effect's waveform: in the table,
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(blob(fx_wave=2))                # past it
+
+    def test_an_scc_mode_stream_stays_below_the_format_bit(self):
+        # tune.inc holds an effect's SCC ticks + 1 with bit 7 the format (tune.asm tn_go masks it):
+        # an SCC-mode stream of 127 ticks would read as flagged
+        mkrom.pzm_check(blob(T=200, scc_ticks=126))
+        with self.assertRaises(SystemExit):
+            mkrom.pzm_check(blob(T=200, scc_ticks=127))
+
+    def test_tune_inc_for_the_range(self):
+        # fr_desc / fr_fx in tune.asm's layout after Brainstorm's, the flagged effect's SCC byte its
+        # ticks + 1 with bit 7 set; Brainstorm's part as before
+        eq = equates(ROOT / "msx" / "tune.asm")
+        text = mkrom.tune_inc(blob(flag=True), 99, "fr")
+        self.assertNotIn("pz_", text)
+        self.assertIn("FR_TICKS:   equ 10 ", text)
+        desc = text.split("fr_desc:")[1].split("fr_fx:")[0]
+        fx = text.split("fr_fx:")[1]
+        self.assertIn("dw FR_TICKS", desc)
+        self.assertIn("dw fr_fx", desc)
+        n = sum(len(x.split(";")[0].strip()[3:].split(",")) * (2 if x.strip().startswith("dw") else 1)
+                for x in fx.splitlines() if x.strip().startswith(("db ", "dw ")))
+        self.assertEqual(n, eq["TF_SIZE"])
+        self.assertIn("\n        db %d\n" % (0x80 | 6), fx)          # (5 ticks + 1, the PSG format)
+        self.assertEqual(mkrom.tune_inc(blob(), 86), mkrom.tune_inc(blob(), 86, "pz"))
+
+    def test_the_range_plays_its_tune_and_effects(self):
+        # tn_frm: fr_desc into tn_start, with tn_pzm's layout guard; the stage starts it through
+        # mus_call (BANK_FRNG at A000h), its requests through snd_rfx (snd_bfx's bytes: the higher of
+        # two requests before a tick stays); DIAG builds: the stop all only
+        tune = (ROOT / "msx" / "tune.asm").read_text()
+        self.assertRegex(tune, r"\ntn_frm: ld hl,fr_desc\n\s+ds \(fr_fx - fr_desc - TD_SIZE\) \* 0x4000[^\n]*\n"
+                               r"\s+jr tn_start\n")
+        self.assertRegex(tune, r"\nfx_tkd:\s+equ fx_tick\b[^\n]*\ntn_frm:\s+equ mus_stop\b")
+        frng = (ROOT / "msx" / "frng.asm").read_text()
+        self.assertRegex(frng, r"\n\s+ld hl,tn_frm\b[^\n]*\n\s+call mus_call\b")
+        self.assertRegex(frng, r"\nsnd_rfx:\n\s+ld hl,tn_req\n\s+cp \(hl\)\n\s+ret c\n\s+ld \(hl\),a\n"
+                               r"\s+ld a,2\n\s+ld \(fx_act\),a\n\s+ret\n")
+        for n in (2, 3, 4):
+            self.assertRegex(frng, r"\n\s+ld a,%d\n\s+(call|jp) snd_rfx\b" % n)
 
     def test_the_effect_voice_is_busy_one_tick_past_its_length(self):
         # $1822C's rule as the 68000 runs it: channel 3 stays busy until the tick that reads the
