@@ -1,8 +1,10 @@
 """The bonus stages' texts (tools/msxtext.py) and HUD messages (tools/msxhudrt.py), Brainstorm's
 and the shooting range's: the scripts as the port holds them, their counts and their place on the
 screen, the range's result for any counts, and the messages appended without moving anything of
-level 1's or renumbering Brainstorm's."""
+level 1's or renumbering Brainstorm's. Also the briefings of levels 2 and 3 and the continue offer
+(msxtext.py BRIEF, CONT), appended after the range's texts, everything before them unchanged."""
 import contextlib
+import hashlib
 import io
 import re
 import struct
@@ -25,6 +27,9 @@ FILES = ROOT / "build" / "extracted" / "files"              # tools/rc2files.py 
 HUD_INPUTS = (FILES / "PERMA_05.bin", ROOT / "build" / "extracted" / "boot" / "main_8000.bin",
               FILES / "PUZL_25.bin", FILES / "FRNG_15.bin")
 LINE = 128                                                  # SCREEN 5 bytes a line
+# text.inc up to the range's texts (level 1's statistics, Brainstorm's and the range's scripts) as
+# a969fc8 built it (build/msx/text.inc): the briefings only append to it
+TEXT_INC_A969FC8 = "3d5a464ee87ec9f66c92ea6c4034792ea7e64209230b60f9851eae4aa90f8332"
 
 
 def equates(inc: str) -> dict[str, int]:
@@ -138,6 +143,35 @@ class FsModelTests(unittest.TestCase):
         for bad in (-1, 100):
             with self.assertRaises(ValueError):
                 msxtext.tag_line(bad)
+
+    def test_negative_rows_in_8_bits(self):
+        # fs_char's line 67 + 8r in 8 bits: row FDh (-3) at line 43, row F8h (-8) at line 3
+        glyphs = [bytes([g + 1]) * 32 for g in range(rc2front.BITMAP_GLYPHS)]
+        area = msxtext.fs_render(glyphs, b"\x00\x02\xfdA\x00\x21\xf8Z\xff\x07")
+        want = bytearray(len(area))
+        for b, y, g in ((0, 43, 0), (124, 3, 25)):
+            for k in range(8):
+                want[(y + k) * LINE + b:(y + k) * LINE + b + 4] = bytes([g + 1]) * 4
+        self.assertEqual(area, bytes(want))
+        self.assertEqual([msxtext.s8(v) for v in (0, 0x7F, 0x80, 0xF8, 0xFD, 0xFF)], [0, 127, -128, -8, -3, -1])
+
+    def test_check_text(self):
+        # any order of positions, characters and waits; rows -8 to 8 (the TAG line's row 10 free)
+        ok = b"\x00\x02\xf8A\xff\x02\x01\x00\x21\x08Z\x00\x21\x08\xff\x02\x00\xff\x07"
+        msxtext.check_text("t", ok, msxtext.fs_run(ok)[1])
+        for bad in (b"\x00\x02\xf7A\xff\x07",                                       # row -9: line 251
+                    b"\x00\x02\x09A\xff\x07",                                       # row 9
+                    b"\x00\x02\x0aA\xff\x07",                                       # row 10: the TAG line
+                    b"\x00\x01\x00A\xff\x07",                                       # x -8
+                    b"\x00\x21\x00AB\xff\x07",                                      # x 256
+                    b"\x00\x02\x00A\x00\x02\x00B\xff\x07",                          # a cell written twice
+                    b"\x00\x02\x00@\xff\x07",                                       # '@': no glyph
+                    b"\x00\x02\x00A\xff\x03\xff\x07",                               # command 3
+                    b"\x00\x02\x00A\xff\x07\x00"):                                  # bytes after the end
+            with self.assertRaises(AssertionError, msg=bad):
+                msxtext.check_text("t", bad, msxtext.fs_run(bad)[1])
+        with self.assertRaises(AssertionError):
+            msxtext.check_text("t", ok, msxtext.fs_run(ok)[1] + 1)                  # not the original's calls
 
 
 @unittest.skipUnless(RAM.exists(), "level 1's RAM image not built (make ram)")
@@ -326,6 +360,7 @@ class RangeTextTests(unittest.TestCase):
         before = msxtext.level_inc(self.ram) + msxtext.bonus_inc(msxtext.bonus_scripts(self.ram))
         self.assertTrue(text.startswith(before))        # (everything before the range as before)
         rest = text[len(before):]
+        rest = rest[:rest.index("\n; The briefings")]   # (the briefings' part after the range's)
         self.assertEqual(re.findall(r"^(\w+):", rest, re.M),
                          ["TXT_RG_LEN", "TXT_RG_F1", "TXT_RG_F2", "TXT_RG_F3", "txt_rg_intro", "txt_rg_res", "txt_rg_rate"])
         self.assertEqual(equates(rest), {"TXT_RG_LEN": 104, "TXT_RG_F1": 37, "TXT_RG_F2": 63, "TXT_RG_F3": 91})
@@ -369,6 +404,118 @@ class RangeTextTests(unittest.TestCase):
                     ["0", "0", "1", "--tag", "100"]):
             with self.assertRaises(SystemExit, msg=bad), contextlib.redirect_stderr(io.StringIO()):
                 self.run_render(*bad, "-o", "/nonexistent/x.sc5")
+
+
+def signed_cells(script: bytes) -> list[tuple[int, int, int]]:
+    """(first byte, first line, character code) of each character of any script of positions,
+    characters and waits, its rows signed as $116CA reads them (the Amiga's text origin)."""
+    out, a, col, row = [], 0, 0, 0
+    while not (script[a] >= 0x80 and script[a + 1] == 7):
+        if script[a] == 0:
+            col, row = script[a + 1], struct.unpack_from("b", script, a + 2)[0]
+            a += 3
+        elif script[a] >= 0x80:
+            a += 3
+        else:
+            out.append(((8 * col - 16) // 2, 67 + 8 * row, script[a]))
+            col, a = col + 1, a + 1
+    return out
+
+
+@unittest.skipUnless(RAM.exists(), "level 1's RAM image not built (make ram)")
+class BriefTextTests(unittest.TestCase):
+    """The briefings of levels 2 and 3 and the continue offer (msxtext.py BRIEF, CONT)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ram = RAM.read_bytes()
+        cls.scripts = {label: (start, s) for label, start, s in msxtext.brief_scripts(cls.ram) + msxtext.cont_scripts(cls.ram)}
+        cls.glyphs = [msxtext.glyph_sc5(cls.ram, g) for g in range(rc2front.BITMAP_GLYPHS)]
+
+    def want_area(self, script: bytes) -> bytes:
+        """Each character's glyph in its cell (rows signed), every other byte 0 (fs_clear)."""
+        want = bytearray(msxtext.VIEW_LINES * LINE)
+        for b, y, c in signed_cells(script):
+            self.assertTrue(0 <= y <= msxtext.VIEW_LINES - 8)
+            g = self.glyphs[msxtext.fs_glyph(c)]
+            for k in range(8):
+                want[(y + k) * LINE + b:(y + k) * LINE + b + 4] = g[4 * k:4 * k + 4]
+        return bytes(want)
+
+    def test_scripts_as_the_plan(self):
+        # level 2: 00 0A FD "TOKUGAWA BREWERY" FF 02 1B, then the original's after its FF 04 30 FF 03
+        start, s = self.scripts["txt_l2_brief"]
+        self.assertEqual(self.ram[0x110F0:0x11108], b"\xff\x04\x30\xff\x03\x00\x0c\x04ARREST CAIN\xff\x02\x40\xff\x07")
+        self.assertEqual((start, s), (0x110F0, b"\x00\x0a\xfdTOKUGAWA BREWERY\xff\x02\x1b" + self.ram[0x110F5:0x11108]))
+        # level 3: 00 0C FA "CIVIC CENTRUM" FF 02 17, 00 0C FA three times, then the original's after FF 04 3C FF 03
+        start, s = self.scripts["txt_l3_brief"]
+        self.assertEqual(self.ram[0x110B4:0x110B9], b"\xff\x04\x3c\xff\x03")
+        self.assertEqual(self.ram[0x110B9:0x110F0], b"\x00\x04\x01BATTLE YOUR WAY TO THE ROOF TO\x00\x0c\x03CONFRONT CAINe"
+                                                   b"\xff\x02\x40\xff\x07")
+        self.assertEqual((start, s), (0x110B4, b"\x00\x0c\xfaCIVIC CENTRUM\xff\x02\x17" + b"\x00\x0c\xfa" * 3
+                                      + self.ram[0x110B9:0x110F0]))
+        # the continue: the original's bytes
+        self.assertEqual(self.scripts["txt_cont"], (0x11590, self.ram[0x11590:0x11590 + 57]))
+        self.assertEqual({k: len(s) for k, (_, s) in self.scripts.items()},
+                         {"txt_l2_brief": 41, "txt_l3_brief": 83, "txt_cont": 57})
+
+    def test_calls_as_the_original(self):
+        # rc2front.py's model of $116CA, the particle writer's 124 and 108 calls included: 393, 411, 304
+        for label, (start, s) in self.scripts.items():
+            elements, _ = rc2front.Interpreter(self.ram).run(start)
+            self.assertEqual(msxtext.fs_run(s)[1], sum(e["calls"] for e in elements), label)
+        self.assertEqual({k: msxtext.fs_run(s)[:2] for k, (_, s) in self.scripts.items()},
+                         {"txt_l2_brief": (29, 393), "txt_l3_brief": (63, 411), "txt_cont": (48, 304)})
+        # the typed title takes the particle part's calls: the original's lines start at the same call
+        for label, n, calls in (("txt_l2_brief", 22, 1 + 124), ("txt_l3_brief", 28, 1 + 108)):
+            self.assertEqual(msxtext.fs_run(self.scripts[label][1][:n] + b"\xff\x07")[1], calls, label)
+
+    def test_titles_centred_on_the_stroke_text(self):
+        # the particle writer leaves "TOKUGAWA BREWERY" at x 0-253 of lines 40-53 and "CIVIC CENTRUM" at
+        # x 32-237 of lines 16-29 (the port's x: the bitplane's - 32); the typed title's cells are
+        # centred on that box within half a cell
+        for label, text, calls, box in (("txt_l2_brief", b"TOKUGAWA BREWERY", 125, (0, 253, 40, 53)),
+                                        ("txt_l3_brief", b"CIVIC CENTRUM", 109, (32, 237, 16, 29))):
+            start, s = self.scripts[label]
+            self.assertEqual(msxtext.particle_title(self.ram, start), (text, calls, box), label)
+            x0, y0 = 8 * s[1] - 16, 67 + 8 * msxtext.s8(s[2])
+            self.assertEqual(s[3:3 + len(text)], text, label)
+            self.assertLessEqual(abs(2 * x0 + 8 * len(text) - 1 - box[0] - box[1]), 8, label)
+            self.assertLessEqual(abs(2 * y0 + 7 - box[2] - box[3]), 8, label)
+
+    def test_play_areas(self):
+        # fs_render (fs_char's 8-bit arithmetic) puts every cell where the Amiga's signed rows do
+        for label, (_, s) in self.scripts.items():
+            self.assertEqual(msxtext.fs_render(self.glyphs, s), self.want_area(s), label)
+            # a TAG build's TEST 5 at row 10 meets none of them
+            tag = msxtext.tag_line(5)
+            self.assertEqual(msxtext.fs_render(self.glyphs, tag + s), self.want_area(tag + s), label)
+            self.assertFalse({y for _, y, _ in signed_cells(s)} & {y for _, y, _ in signed_cells(tag + b"\xff\x07")}, label)
+        # 'T' of "TOKUGAWA BREWERY" at x 64 of lines 43-50; 'C' of "CIVIC CENTRUM" at x 80 of lines 19-26
+        for label, b, y, g in (("txt_l2_brief", 32, 43, 19), ("txt_l3_brief", 40, 19, 2)):
+            area = msxtext.fs_render(self.glyphs, self.scripts[label][1])
+            self.assertEqual(b"".join(area[(y + k) * LINE + b:(y + k) * LINE + b + 4] for k in range(8)), self.glyphs[g], label)
+
+    def test_text_inc_appends_the_briefings(self):
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            out = Path(d) / "text.inc"
+            self.assertEqual(msxtext.main(["msxtext.py", str(RAM), str(out)]), 0)
+            text = out.read_text()
+            areas = {p.stem: p.read_bytes() for p in Path(d).glob("*.sc5")}
+            pngs = {p.stem for p in Path(d).glob("*.png")}
+        before = (msxtext.level_inc(self.ram) + msxtext.bonus_inc(msxtext.bonus_scripts(self.ram))
+                  + msxtext.range_inc(msxtext.range_scripts(self.ram), msxtext.rg_names(self.ram)))
+        # level 1's, Brainstorm's and the range's part byte-identical to a969fc8's text.inc
+        self.assertEqual(hashlib.sha256(before.encode()).hexdigest(), TEXT_INC_A969FC8)
+        self.assertTrue(text.startswith(before))
+        rest = text[len(before):]
+        self.assertEqual(rest, msxtext.brief_inc(msxtext.brief_scripts(self.ram) + msxtext.cont_scripts(self.ram)))
+        self.assertEqual(re.findall(r"^(\w+):", rest, re.M), ["txt_l2_brief", "txt_l3_brief", "txt_cont"])
+        for label, (_, s) in self.scripts.items():
+            self.assertEqual(db_data(rest.split(label + ":")[1].split("\n", 1)[1]), s, label)
+            self.assertEqual(areas[label.replace("txt_", "text_")], self.want_area(s), label)
+        self.assertEqual(pngs, set(areas))
+        self.assertEqual(len(areas), 4 + 2 + len(msxtext.RG_RESULTS) + 3)
 
 
 @unittest.skipUnless(all(p.exists() for p in HUD_INPUTS), "game files not extracted (make extract)")
