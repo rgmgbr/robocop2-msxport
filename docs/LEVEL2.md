@@ -1475,7 +1475,7 @@ e65540af1e959526.
     moved; RoboCop within `AX_MIN`..`AX_MAX`; the view moving at most 2 px a tick.
 11. **The text screens**: page 0's play area equals `tools/msxtext.py`'s render, pixel for pixel:
     the level-2 briefing, the level-3 briefing, the continue; 393, 411 and 304 ticks without fire;
-    with "TEST 5" at row 10 in a `TAG=5` build. **And the screen is on**: R#1's display bit, R#0's
+    with "TEST 6" at row 10 in a `TAG=6` build. **And the screen is on**: R#1's display bit, R#0's
     line interrupt and a HUD split at every VBLANK while each screen shows, on the MSX2 and the
     MSX2+ too (page 0's VRAM alone passes with the display or the split off: the continue after
     PIC9, 3.7).
@@ -1638,16 +1638,16 @@ no common file.
 -  **Harness builds**: `l2`, `l2s`, `l2f`, `l2p`, `l2o`, `l2c` (4.1), all
   `EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2`; the product `EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1` for
   `rc2_l2_arm`.
-- **The candidates** (step 23), all with `TAG=5`, built outside `build/msx`:
+- **The candidates** (step 23), all with `TAG=6`, built outside `build/msx`:
 
 | File | Options | What it is |
 |---|---|---|
-| `ROBOCOP2_v0.1.3-test5.ROM` | `TAG=5` | the product: the title, level 1, the statistics, Brainstorm, the range, **level 2**, the statistics, both second visits, the level-3 briefing, the title |
-| `ROBOCOP2_v0.1.3-test5-cheat.ROM` | `TAG=5 CHEAT=1` | the same, F5 ends a level and F4 fills the energy: every transition in seconds |
-| `ROBOCOP2_v0.1.3-test5-l2.ROM` | `TAG=5 LV_TEST=2 CHEAT=1` | level 2 right after the BIOS (GOOD), then the product |
+| `ROBOCOP2_v0.1.3-test6.ROM` | `TAG=6` | the product: the title, level 1, the statistics, Brainstorm, the range, **level 2**, the statistics, both second visits, the level-3 briefing, the title |
+| `ROBOCOP2_v0.1.3-test6-cheat.ROM` | `TAG=6 CHEAT=1` | the same, F5 ends a level and F4 fills the energy: every transition in seconds |
+| `ROBOCOP2_v0.1.3-test6-l2.ROM` | `TAG=6 LV_TEST=2 CHEAT=1` | level 2 right after the BIOS (GOOD), then the product |
 | the `-2M` twin of each | `ROM_2M=1` | when the default image is 1 MiB; the product is 2 MiB anyway once it passes 128 banks |
-| optional: `-test5-l2-poor.ROM` | `LV_TEST=2 LV_CARRY=10050:2:0:3 CHEAT=1` | the hardest table |
-| optional: `-test5-bs2.ROM` | `PZ_TEST=1 PZ_LEVEL=2` | Brainstorm's second visit (Ellen) at power-on |
+| optional: `-test6-l2-poor.ROM` | `LV_TEST=2 LV_CARRY=10050:2:0:3 CHEAT=1` | the hardest table |
+| optional: `-test6-bs2.ROM` | `PZ_TEST=1 PZ_LEVEL=2` | Brainstorm's second visit (Ellen) at power-on |
 
 - The notes go with the files, not into the repository. They give each file's SHA-256; what is new;
   F5/F4 in cheat builds; the default ending (level 3 is not in the ROM); the open choices for the
