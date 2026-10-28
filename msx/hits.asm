@@ -604,7 +604,7 @@ cell_solid:
         inc d
         dec d
         jr nz,cs_out
-        cp MAP_ROWS
+        cp 51                       ; ($EF8E's rows: the original's constant, every level)
         jr nc,cs_out
         ld d,a
         ld a,l

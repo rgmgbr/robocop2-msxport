@@ -1,6 +1,6 @@
 ; Test build (tools/mkrom.py DIAG=1; BANK_MUSIC at A000h): what this machine showed the sound
 ; detection, on screen, then SCC test tones; no game. The detection (music.asm mus_init) ran just
-; before, at its place in rc2.asm init, its reads logged in dg_log (sound.asm scc_pat, scc_scan).
+; before, at its place in cold.asm cold_init, its reads logged in dg_log (sound.asm scc_pat, scc_scan).
 ; Written for the user's SX-2 with an MSX Pico+, whose SCC the port did not find (2026-10-22).
 ;
 ; The screen (32 x 24 characters, front.asm dg_show), every number in hex:

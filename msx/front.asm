@@ -11,6 +11,16 @@ PIC_TOP:    equ 106                 ; (the picture's centre line on the 212-line
 
 ; ----- the title -----
 
+; The title before a new game (rc2.asm title, through front_call; cold.asm cold_init at power-on):
+; TPIC with its music (front_title), the front end's end (front_done), then the level's tiles 0-255
+; again (cold.asm tiles_upload: the pictures' G7 overwrote the start of page 2). (Was rc2.asm's:
+; the fixed area's room, docs/LEVEL2.md 3.2.)
+fr_title:
+        call front_title
+        call front_done
+        ld e,4
+        jp tiles_upload
+
 ; TPIC while the music plays (the user's choices, 2026-10-25; the Amiga loops it until fire):
 ; - played to its end, the game starts (no loop);
 ; - fire pressed (after it was released): the music fades out (snd_fade), then RoboCop's speech

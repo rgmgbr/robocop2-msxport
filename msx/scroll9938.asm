@@ -32,7 +32,8 @@ ttp_count:
 ; The same arguments -> C with cmdbuf set for the tile's copy, NC when the cell falls outside the
 ; page or the map. Keeps DE.
 ttp_prep:
-        cp MAP_ROWS
+        ld hl,lv_rows               ; (the level's)
+        cp (hl)
         ret nc
         ld b,a
         ld a,e

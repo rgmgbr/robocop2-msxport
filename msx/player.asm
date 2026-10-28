@@ -635,7 +635,7 @@ pv_x:   ld de,(v_x)
         inc a
 pv_xd:  ld (dir_x),a
 pv_y:   ld hl,(gcam_y)
-        ld de,view_offy
+        ld de,lv_voffy              ; (the level's: lv_copy)
         call pv_add
         ld de,(p_y)
         ld bc,0 - AY_MAX
@@ -644,7 +644,7 @@ pv_y:   ld hl,(gcam_y)
         bit 7,h
         jr z,pv_y0
         ld hl,0
-pv_y0:  ld de,CAM_Y_MAX
+pv_y0:  ld de,(lv_camy)
         or a
         sbc hl,de
         add hl,de

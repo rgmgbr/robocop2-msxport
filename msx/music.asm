@@ -71,7 +71,7 @@ SCC_ON:     equ 0x988F              ; bits 0-4: the channels on
 
 ; ----- at power-on -----
 
-; rc2.asm init (after snd_init, through mus_call): the chips of the title music in mus_mode.
+; cold.asm cold_init (after snd_init, through mus_call): the chips of the title music in mus_mode.
 mus_init:
         di
         xor a

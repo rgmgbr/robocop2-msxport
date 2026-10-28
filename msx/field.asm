@@ -6,15 +6,16 @@
 
         include "robocop_field.inc"     ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py)
 
-; The atlas (bank FIELD_IMG_BANK: tools/msxsprites.py field_frames) into VRAM, above the caches:
-; at power-on, after the tiles (vdp.asm vdp_setup). Frame by frame, as the ROM keeps no empty part
+; The level's atlas (bank lv_fimg: tools/msxsprites.py field_frames) into VRAM, above the caches:
+; at power-on, after the tiles (vdp.asm vdp_setup), and at each level's start (cold.asm
+; lv_select). Frame by frame, as the ROM keeps no empty part
 ; of it: [atlas line, x / 2, bytes a line, lines, mirrored, the pixels' offset (2)] each; a
 ; mirrored frame is another's pixels read from the right, each byte's two pixels swapped. Keeps
 ; the 8000h window's bank.
 field_upload:
         ld a,(act_8000)
         push af
-        ld a,FIELD_IMG_BANK
+        ld a,(lv_fimg)
         call bank_8000
         ld ix,0x8001
         ld a,(0x8000)               ; frames
@@ -275,8 +276,7 @@ FB_CY:      equ 112                     ; page 3 lines 112-175: the caches (x 0-
 FB_SX:      equ 192                     ;   (x 192-255)
 FB_HMMM:    equ 0xD0
 FB_LMMMT:   equ 0x98                    ; LMMM with TIMP: colour 0 not written
-FB_MAPW:    equ MAP_COLS * 16
-FB_MAPH:    equ MAP_ROWS * 16
+FB_MAPW:    equ MAP_COLS * 16                ; (the map's height: lv_maph, the level's)
 FP_FILL:    equ 1                       ; phases: the cache's cells under the piece,
 FP_BG:      equ 2                       ;   the background from the cache,
 FP_TILE:    equ 3                       ;   the background from the tiles,
@@ -918,7 +918,7 @@ fq_y0:  ld hl,(fb_r + 2)
         ld hl,0
         ld (fb_r + 2),hl
 fq_y1:  ld hl,(fb_r + 6)
-        ld de,FB_MAPH
+        ld de,(lv_maph)
         call fb_cmp
         jr c,fq_e
         ld (fb_r + 6),de
@@ -2407,7 +2407,7 @@ fbd_x:  djnz fbd_w
         ld (fb_cmd),a               ; SX
         xor a
         ld (fb_cmd + 1),a
-        ld a,DYN_Y
+        ld a,(lv_dyn)               ; (the level's dynamic slot)
         add a,c
         jp fbb_sy
 
@@ -2505,8 +2505,12 @@ fdy_k:  ld b,a
 fdy_ln: push bc
         push de
         push hl
-        ld a,(fb_ds)                ; VRAM 18000h + (FIELD_Y0 + DYN_Y + line) * 128 + E
-        add a,FIELD_Y0 + DYN_Y
+        ld hl,lv_dyn                ; VRAM 18000h + (FIELD_Y0 + lv_dyn (DYN_Y) + line) * 128 + E
+        ld a,(fb_ds)
+        add a,(hl)
+        if FIELD_Y0
+        add a,FIELD_Y0
+        endif
         ld l,a
         srl a
         or 0x80
@@ -3402,7 +3406,8 @@ fiv_nc: djnz fiv_lp
 ; was (tools/mapcells.py rules it out). Rows past the map: nothing. Keeps DE.
 atr_new:
         ld a,d
-        cp MAP_ROWS
+        ld hl,lv_rows               ; (the level's)
+        cp (hl)
         ret nc
         add a,a
         add a,atr_rows & 0xFF

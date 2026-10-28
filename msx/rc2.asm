@@ -38,121 +38,27 @@ init:   di
         ld (BANK_8000),a
         inc a
         ld (BANK_A000),a
-        ld a,(MSXVER)
-        if DIAG
-        ld (dg_msxv),a
-        endif
-        or a
-        jr z,nm_go                  ; (an MSX1)
-        ld a,(MODE)
-        and 6
-        cp 4
-        jr nc,nm_ok                 ; (less than 128 KiB of VRAM: the tiles, the HUD and the
-nm_go:  ld hl,no_msx2               ;  sprite tables need pages 2-3: cold.asm, a message, and
-        jp front_call               ;  the machine stays on it)
-nm_ok:
-        if ROM_BANKS > 128
-        ld hl,rom_guard
-        call front_call             ; over 1 MiB: stops on a device that holds less (cold.asm)
-        endif
-        if DIAG
-        di
-        ld b,'1'
-        call dg_probe
-        endif
-        ld hl,snd_detect
-        call front_call             ; an OPLL (with the BIOS: before page 0 becomes RAM; cold.asm)
-        di
-        if DIAG
-        ld b,'2'
-        call dg_probe
-        endif
-        ld hl,vdp_setup
-        call front_call             ; SCREEN 5, VDP ID, IM 2, palette, tiles, HUD, sprite tables
-        if DIAG
-        di
-        ld b,'3'
-        call dg_probe
-        endif
-        ld hl,ram_page0
-        call front_call             ; page 0: RAM from now on (no more BIOS calls; cold.asm)
-        jp c,no_ram                 ; (cold.asm: BANK_FRONT still at 8000h)
-        if DIAG
-        ld b,'4'
-        call dg_probe
-        endif
-        call snd_init               ; the PSG (and the OPLL) silent (cold.asm: BANK_FRONT at 8000h)
-        if DIAG
-        di
-        ld b,'5'
-        call dg_probe
-        endif
-        ld hl,mus_init
-        call mus_call               ; an SCC: the title music's chips (music.asm)
-        ld hl,vm_cal
-        call mus_call               ; the speech's rate on this machine (music.asm)
-        if DIAG
-        ld hl,dg_main
-        call mus_call               ; (test build: what this machine showed, then test tones; no game)
-        endif
-        ld hl,sq_init
-        call snd_bank               ; the player idle, its queue empty (the interrupts still off)
-        ld hl,AC_VARS               ; the variables of the Amiga's code area at the power-on
-        ld bc,AC_VARS_END - AC_VARS ; (they live on across levels and games: the code is never
-        xor a                       ; loaded again: ac_mkstep $C44A...)
-        call fill
-        ld a,2                      ; (the code's values: $8C98, $F826, $F07E; pl_init sets
-        ld (ac_ridest),a            ; $B02B's)
-        ld hl,0xFFFF
-        ld (ac_flash),hl
-        ld a,l
-        ld (ac_ediv),a
-        ld hl,0
-        ld (tick_n),hl              ; (the test scripts' game frames)
-        xor a
-        ld (front_mode),a
-        if PZ_TEST
-        ld a,1
-        ld (pz_first),a             ; (test build: Brainstorm first, without the title: pz_test)
-        else
-        call title
-        endif
-        jr ng_go
+        ld hl,cold_init
+        jp front_call               ; the rest of the start, the title, then level 1 (cold.asm: FRONT
+                                    ;  code, the fixed area's room, docs/LEVEL2.md 3.2)
 
 ; A new game ($FFC4, $FFD8): level 1 from the disk's state again (the map without the last
-; game's changes), score 0, two lives; the display and the VDP's interrupts off meanwhile.
+; game's changes), score 0, two lives, SHARP; the display and the VDP's interrupts off meanwhile.
 new_game:
-        ld a,R0_IE1_OFF
-        ld b,0
-        call wrreg
-        ld a,0x02
-        ld b,1
-        call wrreg
+        call dsp_off
 ng_go:
-        if R800PING
-        ld hl,cpu_ping
-        call front_call             ; (test build: CPU round trips, cold.asm)
-        endif
-        ld hl,tiles_init
-        call front_call             ; the tile cache and the map patches; a turbo R's R800 (cold.asm)
-        call atr_load               ; the map attributes into page-0 RAM (cold.asm: BANK_FRONT at 8000h)
-        ld hl,AG + 0x8000           ; the game's globals ($8000-$80FF): level 0, score 0
-        ld bc,256
-        xor a
-        call fill
-        ld a,2
-        ld (AG + 0x8034),a          ; two lives ($FFD8; hud_init draws their heads)
-        ld hl,diff_tab
-        ld (ac_diff),hl             ; the rating's table: SHARP ($8314: $8060 = $C716; AC_VARS,
-                                    ;  which deaths and the next level keep)
-        ld hl,pl_init
-        call front_call             ; the start of the level: RoboCop, the camera, the cadence
-        ld a,BANK_L1
-        ld (lvl_bank),a
-        ld a,0xFF
-        ld (lv_fresh),a             ; (the level's lists into RAM)
+        ld hl,ng_init               ; (cold.asm: AG cleared, two lives, SHARP, then lv_select with
+        jr lv_gs                    ;  level 1's descriptor)
+
+; A = the level (0: level 1): its start (level_init $871A), the display and the VDP's interrupts
+; off: lv_select (cold.asm: the level's descriptor into lv_cur, its palette, its tiles and atlas
+; into VRAM, the tile cache, the attributes, RoboCop and the camera, its logic bank), then its
+; objects, the engines, the HUD and the display (docs/LEVEL2.md 3.1).
+lv_go:  ld c,a
+        ld hl,lv_select
+lv_gs:  call front_call
         call logic_map
-        call obj_start              ; the objects (level 1)
+        call obj_start              ; the objects (the level's bank: lv_init)
         ld a,BANK_LC2
         call bank_8000
         call ao_start               ; the map objects and their first pass over the whole map
@@ -338,12 +244,7 @@ pz_done:
 ; list's entries but type 58h's), RoboCop and the camera at the start, weapon 0; the display
 ; and the VDP's interrupts off meanwhile; the HUD as it is.
 level_restart:
-        ld a,R0_IE1_OFF
-        ld b,0
-        call wrreg
-        ld a,0x02                   ; display off, no VBLANK interrupt
-        ld b,1
-        call wrreg
+        call dsp_off
         ld hl,pl_init
         call front_call             ; (cold.asm)
         call logic_map
@@ -358,19 +259,24 @@ level_restart:
         call field_call
         jp display_on
 
-; The title (front end) before a new game; test builds with a script start the game at once.
+; The title (front end) before a new game (front.asm fr_title); test builds with a script start
+; the game at once.
 title:
         if INPUT_SCRIPT
         ret
         else
-        ld hl,front_title
-        call front_call
-        ld hl,front_done
-        call front_call
-        ld e,4
-        jp tiles_upload             ; (cold.asm, BANK_FRONT still at 8000h: the pictures' G7
-                                    ; overwrote the start of the tiles)
+        ld hl,fr_title
+        jp front_call
         endif
+
+; The display and the VDP's interrupts off (a new game, a death's restart).
+dsp_off:
+        ld a,R0_IE1_OFF
+        ld b,0
+        call wrreg
+        ld a,0x02                   ; display off, no VBLANK interrupt
+        ld b,1
+        jp wrreg
 
 ; HL = a routine of the play-field BOB module (BANK_FIELD at A000h around it; the bank that was
 ; there comes back). Keeps nothing but what the routine returns in BC, DE, HL.
@@ -479,10 +385,10 @@ fr_done:
 fr_rated:
         ret
 
-palette:
-        incbin "level1_grade.pal"   ; (the level's palette through the colour grade: tools/mkrom.py)
         include "robocop_flash.inc" ; RoboCop's palette flashes (tools/msxsprites.py)
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
+; (rowtab.inc, tools/mkrom.py: the map's rows, their banks relative to lv_mapb; the attributes'
+; rows; view_offx)
 rowtab:
         include "rowtab.inc"
 
@@ -538,6 +444,7 @@ input_end:
         include "split.asm"         ; the HUD split's code that runs from RAM (isr_init copies it)
         include "split8.asm"        ; the same on a turbo R's R800 (cold.asm cpu_set installs it)
         include "text.inc"          ; the text screens' font and the statistics (tools/msxtext.py)
+        include "levels.inc"        ; the levels' descriptors, palettes and view_offy (tools/mkrom.py)
 front_end:
         ds 0xA000 - front_end, 0xFF
 

@@ -394,6 +394,11 @@ key_tp:     equ 0xC688              ; the turbo R's PAUSE flip-flop as last seen
 sp8_cnt:    equ 0xC689              ; the R800 split's waits that timed out (split8.asm; tests: 0)
 pz_first:   equ 0xC6FF              ; PZ_TEST builds: 1 from the power-on until Brainstorm ran once
                                     ;   (rc2.asm pz_test; C68Ah-C6FEh: the stage's own, docs/BRAINSTORM.md 3.2)
+; The level's (C68Ah-C6D4h: the stages' scratch while they run; lv_copy writes them again at each
+; level's start, docs/LEVEL2.md 3.4)
+lv_pal:     equ 0xC68A              ; 32: the level's palette (logic.asm pal_fade, the flashes)
+lv_voffy:   equ 0xC6AA              ; LV_VOFFN: its view_offy (player.asm pl_view)
+LV_VOFFN:   equ 43
 ; Brainstorm (msx/puzl.asm) while it runs: its own variables (C68Ah-C6FEh; C691h on: the renderer's)
 pz_last:    equ 0xC68A              ; the tick of the last pass, or of the timer's set-up (bs_wait: wf_n)
 pz_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immediate at $17B20)
@@ -863,7 +868,33 @@ su_vrchk:   equ 0xF16C              ; spr_upload: 1 to stop at the vertical blan
 spr_dsp:    equ 0xF16D              ; R#5 of the sprite set on screen (the interrupt's: sprites.asm iv_sat)
 pcr_next:   equ 0xF16E              ; rows_sync: the SAT entry whose colour row follows the last one
                                     ;   written (FFh: none; pc_rows sets an address only otherwise)
-                                    ; (F170h-F190h and F1A0h-F1C2h: free since the alternation went)
+                                    ; (F170h-F190h: free since the alternation went)
+; The level's descriptor (tools/mkrom.py gen/levels.inc: lv_desc, LV_SIZE bytes a level, in FRONT),
+; copied here at each level's start and at power-on before vdp_setup (cold.asm lv_copy): what the
+; engine reads instead of build-time equates (docs/LEVEL2.md 3.1). F1A0h-F1C2h.
+lv_cur:     equ 0xF1A0
+lv_logic:   equ lv_cur                  ; the level's logic bank (lvl_bank, at A000h)
+lv_tiles:   equ lv_cur + 1              ; its tiles' first bank: their 64 KiB VRAM image (tiles_upload,
+                                        ;   tc_upload)
+lv_mapb:    equ lv_cur + 2              ; its map's first bank (rowtab's banks are relative to it)
+lv_rows:    equ lv_cur + 3              ; its map's rows (the display, atr_load, atr_rc, atr_new)
+lv_atr:     equ lv_cur + 4              ; its packed attributes' bank (atr_load),
+lv_atrn:    equ lv_cur + 5              ;   2: their bytes after row 47's (ATR_RAM1's)
+lv_tab:     equ lv_cur + 7              ; its tables' bank (OTILE, ATR2, BOBHASH: at 8000h)
+lv_fimg:    equ lv_cur + 8              ; its play-field atlas's bank (field.asm field_upload)
+lv_dyn:     equ lv_cur + 9              ; the play field's dynamic slot: its first atlas line
+lv_x:       equ lv_cur + 10             ; 2: RoboCop's start: x,
+lv_y:       equ lv_cur + 12             ; 2:   y,
+lv_ymax:    equ lv_cur + 14             ; 2: the game camera's lowest y (gcam_ymax)
+lv_camy:    equ lv_cur + 16             ; 2: the MSX view's lowest y (player.asm pl_view)
+lv_maph:    equ lv_cur + 18             ; 2: the map's height in pixels (field.asm)
+lv_palp:    equ lv_cur + 20             ; 2: its palette (32 bytes, the colour grade's) and
+lv_voffp:   equ lv_cur + 22             ; 2:   its view_offy (LV_VOFFN bytes), which lv_copy copies to
+                                        ;   lv_pal and lv_voffy (from FRONT, or from lv_tab's bank at A000h)
+LV_SIZE:    equ 24                      ; (34 at most: lv_vram follows)
+lv_vram:    equ 0xF1C2                  ; the level whose tiles 0-255 (page 2) and play-field atlas
+                                        ;   (page 3) VRAM holds: cold.asm lv_select uploads them
+                                        ;   only for another level (FFh: none, an upload forced)
 pq_rd:      equ 0xF1C3              ; 2: the published list's queue: where its upload goes on
 rs_held:    equ 0xF1C5              ; 2: rows_sync: the col_held of the set being prepared,
 rs_colhi:   equ 0xF1C7              ;   its colour table's high address byte (port 99h form)

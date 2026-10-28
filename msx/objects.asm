@@ -36,7 +36,7 @@ lv_tick:    equ lv_init + 3         ; jp to the level's hazard handler ($91B0 + 
 lv_hz:      equ lv_init + 6         ; dw: the level's hazard list ($915E's immediate)
 
 ; The objects' part of the level's start (level_init $871A). The rating's table ($8060: ac_diff)
-; is not set here: a new game sets SHARP (rc2.asm ng_go, load_level0's $8314), the range its
+; is not set here: a new game sets SHARP (cold.asm ng_init, load_level0's $8314), the range its
 ; rating (front.asm front_range), and a level's start, a death and a continue keep it, as the
 ; original's level_init does.
 obj_start:

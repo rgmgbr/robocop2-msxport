@@ -898,10 +898,10 @@ bf_frame:
         ret
 
 ; IX = a BOB record -> A = its frame id in the level's table (BOBHASH: A2 and D4), FFh when it is
-; not one of the level's frames, DE = that id's place in its slot; LEVEL_BANK mapped at 8000h.
-; Keeps IX.
+; not one of the level's frames, DE = that id's place in its slot; the level's tables (lv_tab)
+; mapped at 8000h. Keeps IX.
 bf_fid:
-        ld a,LEVEL_BANK             ; (obj_set maps the sprite banks)
+        ld a,(lv_tab)               ; (obj_set maps the sprite banks)
         call bank_8000
         ld a,(ix+0)                 ; the slot: the XOR of the key's 5 bytes, + 256 with A2's
         ld c,a                      ; bit 4

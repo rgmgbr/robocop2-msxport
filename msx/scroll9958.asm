@@ -20,7 +20,8 @@ dt_count:
 ; A = row, E = column (world) -> C with cmdbuf set for the tile's copy into the ring, NC outside
 ; the map. Keeps DE.
 dt_prep:
-        cp MAP_ROWS
+        ld hl,lv_rows               ; (the level's)
+        cp (hl)
         ret nc
         ld c,a
         ld a,e

@@ -321,7 +321,7 @@ scp_ok: xor a                       ; (Z)
         ret
 
         if DIAG
-; (Test build, rc2.asm init: B = a mark: 'P', the mark and what the SCC's first waveform byte
+; (Test build, cold.asm cold_init: B = a mark: 'P', the mark and what the SCC's first waveform byte
 ; gives back of 5Ah, BFh, 24h, 89h stored there (3Fh at 9000h, about 1 ms each), logged; page 2
 ; must show the cartridge. Keeps every register.)
 dg_probe:

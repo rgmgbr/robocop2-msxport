@@ -60,7 +60,8 @@ gt_rom: ld a,d
         add hl,de
         ld a,(act_a000)
         push af                     ; (the window's bank is put back: the game logic runs there)
-        ld a,(hl)
+        ld a,(lv_mapb)
+        add a,(hl)                  ; (rowtab's banks: from the level's first map bank)
         call bank_a000
         inc hl
         ld a,(hl)
@@ -84,15 +85,17 @@ gt_rom: ld a,d
         ret
 
 ; D = row, E = column (-1..160: the neighbours wrap into the rows above and below, as the
-; Amiga's linear map does) -> A = the cell's attributes (rows 51-52: the bits of the words after
-; the map, ATR2; 0 further out). Keeps BC, DE, HL
+; Amiga's linear map does) -> A = the cell's attributes (the two rows after the level's lv_rows:
+; the bits of the words after the map, ATR2; 0 further out). Keeps BC, DE, HL
 ; (and the 8000h window's bank).
 atr_rc: ld a,e
         cp MAP_COLS
         jr nc,ar_wrap
+        ld a,(lv_rows)
+        dec a
+        cp d
         ld a,d
-        cp MAP_ROWS
-        jr nc,ar_after0
+        jr c,ar_after0              ; (a row past the level's map: ar_after takes it in A)
         push hl
         add a,a                     ; the packed map in page-0 RAM (atr_load, atr_put): 4-bit codes
         add a,atr_rows & 0xFF
@@ -144,7 +147,8 @@ ar_after0:
         pop hl
         ret
 ar_after:                           ; the two rows after the map: the words that follow it
-        sub MAP_ROWS                ; in the Amiga's memory (graphics), as the game reads them
+        ld hl,lv_rows               ; in the Amiga's memory (graphics), as the game reads them
+        sub (hl)
         cp 2
         jr nc,ar_none
         push bc
@@ -158,7 +162,7 @@ ar_after:                           ; the two rows after the map: the words that
         add hl,bc
 ar_a2:  ld a,(act_8000)
         ld b,a
-        ld a,LEVEL_BANK
+        ld a,(lv_tab)
         call bank_8000
         ld c,(hl)
         ld a,b
@@ -194,7 +198,7 @@ map_write:
         add hl,de
         ld a,(act_8000)
         push af                     ; (the window's bank is put back: the game logic runs there)
-        ld a,LEVEL_BANK
+        ld a,(lv_tab)
         call bank_8000
         ld c,(hl)
         inc hl
@@ -700,7 +704,7 @@ tl_free:
         inc (hl)
         ret
 
-; BC = tile, DE = slot: the 16 lines of the tile (sheet position = tile: bank BANK_TILES +
+; BC = tile, DE = slot: the 16 lines of the tile (sheet position = tile: bank lv_tiles +
 ; tile / 64, 2048 bytes per row of 16 tiles, 128 per line) to the slot's place in VRAM
 ; (10000h + the same layout). Destroys AF, BC, DE, HL.
 tc_upload:
@@ -720,7 +724,9 @@ tc_upload:
         ld h,a
         srl a
         srl a
-        add a,BANK_TILES
+        ld b,a                      ; (B: the tile's high byte, no longer needed)
+        ld a,(lv_tiles)
+        add a,b
         call bank_8000              ; 4 tile rows per bank
         ld a,h
         and 3

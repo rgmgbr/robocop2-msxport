@@ -107,7 +107,7 @@ map_cell:
         and 0xF0
         ld l,a                      ; (y's low byte & F0h)
         ld a,d
-        cp MAP_ROWS
+        cp 51                       ; ($EF8E's rows: the original's constant, every level)
         jr nc,mc_below
         ld (ao_row),a
         ld a,(ao_col)
@@ -160,7 +160,7 @@ map_atr:
         inc d
         dec d
         jr nz,mat_r0
-        cp MAP_ROWS
+        cp 51                       ; ($EF8E's rows: the original's constant, every level)
         jr c,mat_r
 mat_r0: xor a
 mat_r:  ld d,a
@@ -382,7 +382,7 @@ prl_lp: ld a,(de)
         add a,a
         ld e,a
         ld d,0
-        ld hl,palette
+        ld hl,lv_pal                ; (the level's: lv_copy)
         add hl,de
         push hl
         ld hl,pf_pal
@@ -417,7 +417,7 @@ pal_fade:
         rlca
         rlca
         ld b,a                      ; the limit for R (bits 4-6)
-        ld hl,palette
+        ld hl,lv_pal                ; (the level's: lv_copy)
         ld de,pf_pal
 pfd_lp: ld a,(hl)
         and 0x70

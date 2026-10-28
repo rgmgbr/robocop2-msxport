@@ -140,7 +140,83 @@ spr_init:
         ld (spr_dsp),a
         ret
 
-; The tile cache and the map patches at the start of a level (tiles.asm; rc2.asm new_game):
+; ----- a level's start (docs/LEVEL2.md 3.1) -----
+
+; A new game's part (rc2.asm ng_go, through front_call; $FFC4, $FFD8, load_level0's $8314): the
+; game's globals cleared (level 0, score 0), two lives, the rating's table SHARP; then level 1's
+; start (lv_select).
+ng_init:
+        if R800PING
+        call cpu_ping               ; (test build: CPU round trips)
+        endif
+        ld hl,AG + 0x8000           ; the game's globals ($8000-$80FF): level 0, score 0
+        ld bc,256
+        xor a
+        call fill
+        ld a,2
+        ld (AG + 0x8034),a          ; two lives ($FFD8; hud_init draws their heads)
+        ld hl,diff_tab
+        ld (ac_diff),hl             ; the rating's table: SHARP ($8314: $8060 = $C716; AC_VARS,
+                                    ;  which deaths and the next level keep)
+        ld c,0                      ; (level 1)
+; C = the level (0: level 1): its start up to its objects (rc2.asm lv_go, through front_call; the
+; display and the VDP's interrupts off; level_init $871A): its descriptor, palette and view_offy
+; (lv_copy); its tiles 0-255 into page 2 and its play-field atlas into page 3 when VRAM holds
+; another level's (lv_vram: default 14's alternative, so that level 1's starts stay as they were;
+; the title, the stages and vdp_setup put back the tiles of the level lv_cur holds, and nothing
+; but vdp_setup and this writes the atlas); the tile cache and the map patches (a turbo R's R800
+; from here), the attributes, RoboCop and the camera, its logic bank, its lists into RAM.
+lv_select:
+        ld a,(lv_vram)
+        cp c
+        push af                     ; (Z: VRAM holds the level's tiles and atlas already)
+        ld a,c
+        ld (lv_vram),a
+        call lv_copy
+        pop af
+        jr z,lvs_in
+        ld e,4
+        call tiles_upload
+        ld hl,field_upload
+        call field_call             ; (field.asm)
+lvs_in: call tiles_init
+        call atr_load
+        call pl_init
+        ld a,(lv_logic)
+        ld (lvl_bank),a
+        ld a,0xFF
+        ld (lv_fresh),a             ; (the level's lists into RAM)
+        ret
+
+; C = the level: its descriptor (lv_desc, LV_SIZE bytes a level: gen/levels.inc) into lv_cur, its
+; palette into lv_pal and its view_offy into lv_voffy (from FRONT, or from its tables' bank at
+; A000h). Also at power-on, before vdp_setup (cold_init).
+lv_copy:
+        ld hl,lv_desc - LV_SIZE
+        ld de,LV_SIZE
+        inc c
+lvc_m:  add hl,de
+        dec c
+        jr nz,lvc_m
+        ld de,lv_cur
+        ld bc,LV_SIZE
+        ldir
+        ld a,(act_a000)
+        push af
+        ld a,(lv_tab)
+        call bank_a000
+        ld hl,(lv_palp)
+        ld de,lv_pal
+        ld bc,32
+        ldir
+        ld hl,(lv_voffp)
+        ld de,lv_voffy
+        ld bc,LV_VOFFN
+        ldir
+        pop af
+        jp bank_a000
+
+; The tile cache and the map patches at the start of a level (tiles.asm; lv_select):
 ; slots 0..TC_SLOTS-1 hold tiles 0..TC_SLOTS-1 (uploaded by vdp_setup), no patch, nothing to
 ; redraw.
 tiles_init:
@@ -262,13 +338,13 @@ pl_init:
         ld hl,input_script
         ld (sc_run),hl              ; (the script's first run, from game frame 0)
         endif
-        ld hl,LVL_X
+        ld hl,(lv_x)
         ld (p_x),hl
         ld (gcam_x),hl
-        ld hl,LVL_Y
+        ld hl,(lv_y)
         ld (p_y),hl
         ld (gcam_y),hl
-        ld hl,LVL_YMAX
+        ld hl,(lv_ymax)
         ld (gcam_ymax),hl
         ld a,0xFF
         ld (p_pend+1),a             ; (st $1696: its high byte)
@@ -351,7 +427,7 @@ isr_init:
         ld (spr_dsp),a
         ret
 
-; (sound.asm) At power-on, with the BIOS in page 0 (rc2.asm init, through front_call).
+; (sound.asm) At power-on, with the BIOS in page 0 (cold_init).
 ; An OPLL: every slot's page 1 is searched for "OPLL" at 401Ch after "APRL" (MSX-MUSIC) or
 ; "PAC2" (FM-PAC, whose I/O ports are then switched on: bit 0 of 7FF6h in its slot).
 ; snd_fm = 1 when found. Uses the BIOS (RDSLT, WRSLT); interrupts end up disabled.
@@ -442,8 +518,95 @@ sdt_opll:   db 0xFF - 'O', 0xFF - 'P', 0xFF - 'L', 0xFF - 'L'
 sdt_aprl:   db 0xFF - 'A', 0xFF - 'P', 0xFF - 'R', 0xFF - 'L'
 sdt_pac2:   db 0xFF - 'P', 0xFF - 'A', 0xFF - 'C', 0xFF - '2'
 
-; (vdp.asm) At power-on (rc2.asm init, through front_call): SCREEN 5, 212 lines, VDP ID, IM 2,
-; palette, tiles (pages 2-3), HUD and sprite tables. Returns with the display off and no VDP
+; ----- the start, at power-on -----
+
+; From rc2.asm init (jumped to through front_call, the interrupts off, the cartridge in pages 1 and
+; 2): the machine checked, the sound chips, the VDP, page 0's RAM, the code area's variables, then
+; the title and level 1 (rc2.asm ng_go). (The fixed area's room: docs/LEVEL2.md 3.2. Every routine
+; it calls leaves BANK_FRONT at 8000h: act_8000's bank, or FRONT's own code.)
+cold_init:
+        ld a,(MSXVER)
+        if DIAG
+        ld (dg_msxv),a
+        endif
+        or a
+        jr z,ci_nm2                 ; (an MSX1)
+        ld a,(MODE)
+        and 6
+        cp 4
+        jr nc,ci_ok                 ; (less than 128 KiB of VRAM: the tiles, the HUD and the
+ci_nm2: jp no_msx2                  ;  sprite tables need pages 2-3: a message, and the machine
+ci_ok:                              ;  stays on it)
+        if ROM_BANKS > 128
+        call rom_guard              ; over 1 MiB: stops on a device that holds less
+        endif
+        if DIAG
+        di
+        ld b,'1'
+        call dg_probe
+        endif
+        call snd_detect             ; an OPLL (with the BIOS: before page 0 becomes RAM)
+        di
+        if DIAG
+        ld b,'2'
+        call dg_probe
+        endif
+        ld c,0
+        call lv_copy                ; level 1's descriptor (vdp_setup's uploads read lv_cur), palette
+        call vdp_setup              ; SCREEN 5, VDP ID, IM 2, palette, tiles, HUD, sprite tables
+        xor a
+        ld (lv_vram),a              ; (VRAM: level 1's tiles and atlas)
+        if DIAG
+        di
+        ld b,'3'
+        call dg_probe
+        endif
+        call ram_page0              ; page 0: RAM from now on (no more BIOS calls)
+        jp c,no_ram
+        if DIAG
+        ld b,'4'
+        call dg_probe
+        endif
+        call snd_init               ; the PSG (and the OPLL) silent
+        if DIAG
+        di
+        ld b,'5'
+        call dg_probe
+        endif
+        ld hl,mus_init
+        call mus_call               ; an SCC: the title music's chips (music.asm)
+        ld hl,vm_cal
+        call mus_call               ; the speech's rate on this machine (music.asm)
+        if DIAG
+        ld hl,dg_main
+        call mus_call               ; (test build: what this machine showed, then test tones; no game)
+        endif
+        ld hl,sq_init
+        call snd_bank               ; the player idle, its queue empty (the interrupts still off)
+        ld hl,AC_VARS               ; the variables of the Amiga's code area at the power-on
+        ld bc,AC_VARS_END - AC_VARS ; (they live on across levels and games: the code is never
+        xor a                       ; loaded again: ac_mkstep $C44A...)
+        call fill
+        ld a,2                      ; (the code's values: $8C98, $F826, $F07E; pl_init sets
+        ld (ac_ridest),a            ; $B02B's)
+        ld hl,0xFFFF
+        ld (ac_flash),hl
+        ld a,l
+        ld (ac_ediv),a
+        ld hl,0
+        ld (tick_n),hl              ; (the test scripts' game frames)
+        xor a
+        ld (front_mode),a
+        if PZ_TEST
+        ld a,1
+        ld (pz_first),a             ; (test build: Brainstorm first, without the title: pz_test)
+        else
+        call title                  ; (rc2.asm: front.asm fr_title, or nothing in a script's build)
+        endif
+        jp ng_go
+
+; (vdp.asm) At power-on (cold_init): SCREEN 5, 212 lines, VDP ID, IM 2, level 1's palette
+; (lv_copy's), tiles (pages 2-3), HUD and sprite tables. Returns with the display off and no VDP
 ; interrupt enabled.
 vdp_setup:
         ld a,5
@@ -481,7 +644,7 @@ vdp_setup:
         xor a
         ld b,16
         call wrreg
-        ld hl,palette
+        ld hl,lv_pal
         ld bc,32*256 + VDP_PAL
         otir
         ld e,8
@@ -522,7 +685,7 @@ vdp_setup:
         ld (cmdbuf+14),a
         ret
 
-; No RAM in page 0 (rc2.asm init, the main RAM is not in page 3's slot): a red screen.
+; No RAM in page 0 (cold_init, the main RAM is not in page 3's slot): a red screen.
 no_ram: xor a
         ld b,16
         call wrreg                  ; palette entry 0
@@ -539,7 +702,7 @@ no_ram: xor a
         di
         halt
 
-; MSX turbo R (docs/TURBO_R.md 3.2), at the power-on (rc2.asm init, through front_call): the BIOS
+; MSX turbo R (docs/TURBO_R.md 3.2), at the power-on (cold_init): the BIOS
 ; in page 0 with its work area intact, the interrupts off. A cartridge started before this one may
 ; have left the R800 running: the Z80 again first, whatever follows. Then a round trip to the
 ; R800, which goes into IM 2 for good (it booted in IM 1 and CHGCPU carries I but not the mode,
@@ -722,7 +885,7 @@ cpu_title:
 
         if R800PING
 ; (Test build) At each new game: 100 round trips Z80 -> R800 -> Z80, page 0's sum before and after
-; them in cpu_png (rc2.asm ng_go).
+; them in cpu_png (ng_init).
 cpu_ping:
         ld hl,0
         ld (cpu_png),hl
@@ -817,7 +980,7 @@ cdr_t:  djnz cdr_t
         ret
 cd_end:
 
-; An MSX1, or an MSX2 with less than 128 KiB of VRAM (rc2.asm init, through front_call): the game
+; An MSX1, or an MSX2 with less than 128 KiB of VRAM (cold_init): the game
 ; cannot run there; a message in SCREEN 0 (the BIOS still serves page 0) and the machine stays
 ; on it.
 no_msx2:
@@ -838,7 +1001,7 @@ no2_msg:
         db 0
 
         if ROM_BANKS > 128
-; A ROM over 1 MiB (rc2.asm init, through front_call; the interrupts off): the tag mkrom.py
+; A ROM over 1 MiB (cold_init; the interrupts off): the tag mkrom.py
 ; writes at the last bank's 1FF0h, read at A000h. A device that holds less wraps, masks or
 ; ignores the higher bank numbers and shows another bank there: a message, and the machine stays
 ; on it (the BIOS still serves page 0). So does an SCC+ cartridge whose SCC+ mode an earlier
@@ -871,7 +1034,7 @@ rg_msg: db "ROBOCOP 2 needs a 2 MB Konami"
         db 0
         endif
 
-; (tiles.asm) At power-on (rc2.asm init, through front_call).
+; (tiles.asm) At power-on (cold_init).
 ; Page 0 (0000h-3FFFh) switched to the main RAM (the slot of page 3) once the BIOS is not
 ; needed any more: the game never calls it after its start and IM 2 does not use page 0.
 ; Carry on return when there is no RAM there.
@@ -926,7 +1089,7 @@ rp_none:
         scf
         ret
 
-; MSX turbo R (docs/TURBO_R.md 6), at power-on after ram_page0 (rc2.asm init, through front_call):
+; MSX turbo R (docs/TURBO_R.md 6), at power-on after ram_page0 (cold_init):
 ; the fixed area (4000h-7FFFh, banks 0-1) copied into the internal RAM's segment 4 and shown in page
 ; 1 from then on, so that both CPUs run it from RAM (the R800 fetches the cartridge at ~4-5 cycles a
 ; byte, its RAM at ~1). The mapper's registers set as the game uses them (FCh = 3: page 0, the game's
@@ -979,7 +1142,7 @@ tr_fixram:
         ei
         ret
 
-; (sound.asm) At power-on (rc2.asm init, BANK_FRONT at 8000h).
+; (sound.asm) At power-on (cold_init).
 ; Everything silent: the PSG's volumes 0 and its mixer (PSG_MIX); with an OPLL, its 9 channels
 ; keyed off at volume 15 (the quietest) and its rhythm off.
 snd_init:
@@ -1017,22 +1180,22 @@ sin_ch: ld a,0x20
         djnz sin_ch
         ret
 
-; (tiles.asm) At the level's start (rc2.asm new_game, BANK_FRONT at 8000h): the packed map
-; attributes (bank ATR_BANK, through the A000h window: 80 bytes per row, 4-bit codes, then the
-; codes' 16 values) into page-0 RAM - rows 0-47 at ATR_RAM0, the others at ATR_RAM1 (atr_rows:
-; each row's address) - and the values into atr_lut. atr_rc reads them there: no bank switching
-; for the game logic's many attribute reads.
+; (tiles.asm) At the level's start (lv_select): the packed map attributes (bank lv_atr, through
+; the A000h window: 80 bytes per row, 4-bit codes, then the codes' 16 values) into page-0 RAM -
+; rows 0-47 at ATR_RAM0, the others (lv_atrn bytes) at ATR_RAM1 (atr_rows: each row's address) -
+; and the values into atr_lut. atr_rc reads them there: no bank switching for the game logic's
+; many attribute reads.
 atr_load:
         ld a,(act_a000)
         push af
-        ld a,ATR_BANK
+        ld a,(lv_atr)
         call bank_a000
         ld hl,0xA000
         ld de,ATR_RAM0
         ld bc,48*80
         ldir
         ld de,ATR_RAM1
-        ld bc,(MAP_ROWS - 48)*80
+        ld bc,(lv_atrn)
         ldir
         ld de,atr_lut
         ld bc,16
@@ -1052,7 +1215,8 @@ tiles_upload:
         ld hl,0
         call vram_write
         pop de
-        ld d,BANK_TILES
+        ld a,(lv_tiles)             ; (the level's: lv_cur)
+        ld d,a
 ut_bank:
         ld a,d
         call bank_a000
