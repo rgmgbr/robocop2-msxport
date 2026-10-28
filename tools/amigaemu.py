@@ -49,6 +49,20 @@ hook, which would cover FRNG's own code at $1EA00-$27FFF, moves to $20000-$2001B
 random number (its $1EF6A word, from the CIA timers, has no reader). The timer (CIA-B, level 6)
 stands still unless --sec N raises it after every N-th FRNG frame.
 
+"game --level 2" plays level 2, the brewery (Level2Bench). The direct start, the default and the
+start of every level-2 reference: build/ram/level2_full.bin, $FEDA and $FFC4, then what level 1 and
+the bonus stages carry, poked (--carry SCORE:LIVES:CONTINUES:TABLE, by default 10050:2:0:good: what
+drive_end, pz_fail and fr_good leave; --pre-poke ADDR:VALUE:SIZE writes state kept in the code area
+before level_init): $8050 = $8052 = 1, so level_init takes the load table's entry [1] (the rts at
+$86DC: nothing loads, no text screen runs), then main_loop. The flow start (--flow L1:PZ:FR, three
+tools/drivejoy.py files): build/ram/level1_full.bin, level 1 played with L1 until main_loop calls
+load_level1 ($8582), then load_level1 for real: the statistics, Brainstorm played with PZ, the range
+with FR, the briefing, PIC4, MU1, MADEX and DATAL2 by the loader, level_init's rest. Either way the
+game frames then run as level 1's do, and the trace holds level 2's code-area blocks
+(CODE_BLOCKS_L2). --stop-at-end (both levels) stops at level_init once $8050 is no longer the
+played level's ($8050 = level - 1): at the level's end or, in level 2, at a game over without a
+continue ($8050 = 0).
+
 Depends on Unicorn (pip install unicorn).
 
 usage:
@@ -59,6 +73,11 @@ usage:
                    [--dump OUT.bin] (chip RAM after the last game frame: the map at $38000 ...)
      (--bobs: per game frame, every draw_bob $AB08 call: A2, D4, D0, D1, minterm, drawn)
      (--joy GAMEFRAME:COUNT:KEYS, keys among u d l r f, game frames counted from the first)
+  amigaemu.py game --level 2 [--carry 10050:2:0:good] [--pre-poke 0xC44A:13:2 ...] [--flow L1:PZ:FR]
+                   --gframes 3000 [--drive build/emu/l2_tour.drive] [--stop-at-end]
+                   [--trace OUT.jsonl] [--trace-ram] [--report OUT.json] [--bobs ...] [--dump ...]
+     (TABLE: sharp, good, fair, poor or the table's hex address, put in $8060; SCORE as hex digits,
+     BCD as $8046 keeps it; --report: JSON of the start's carried state, with --flow its phases)
   amigaemu.py puzl [--level 1] [--via-8382] --pframes 600 [--joy 0:1:r --joy 2:1:d ...]
                    [--drive FILE] [--poke F:ADDR:VALUE[:SIZE] ...] [--sec 60]
                    [--trace OUT.jsonl] [--trace-ram] [--screenshot OUT.png] [--dump OUT.bin]
@@ -499,6 +518,8 @@ def joy_value(keys: str) -> int:
 
 
 class GameBench(AmigaEmu):
+    code_blocks = CODE_BLOCKS            # the code-area state a --trace-ram row holds (Level2Bench: level 2's)
+
     def __init__(self, extracted: Path, ram: Path, *, verbose: bool = False):
         super().__init__(extracted, verbose=verbose)
         self.ram_image = ram
@@ -639,7 +660,7 @@ class GameBench(AmigaEmu):
                 if ram:
                     row["ram"] = bytes(uc.mem_read(RAM_BLOCK[0], RAM_BLOCK[1] - RAM_BLOCK[0])).hex()
                     row["glob"] = bytes(uc.mem_read(GLOB_BLOCK[0], GLOB_BLOCK[1] - GLOB_BLOCK[0])).hex()
-                    row["code"] = {f"{lo:x}": bytes(uc.mem_read(lo, hi - lo)).hex() for lo, hi in CODE_BLOCKS}
+                    row["code"] = {f"{lo:x}": bytes(uc.mem_read(lo, hi - lo)).hex() for lo, hi in self.code_blocks}
                 if sink is not None:
                     sink.write(json.dumps(row) + "\n")
                 else:
@@ -668,7 +689,18 @@ class GameBench(AmigaEmu):
         self.uc.hook_del(h)
         if hb is not None:
             self.uc.hook_del(hb)
+        self.gframes_run = count[0]     # (game frames started: rows from 'first' on, written or kept)
         return hits[:game_frames - first]
+
+    def stop_at_level_end(self, level: int):
+        """From now on play() stops at level_init's entry once $8050 is no longer level - 1: the
+        level's end, or (level 2) a game over without a continue ($8050 = 0). A death restarts the
+        level through level_init with $8050 unchanged. Returns the hook."""
+        def on_level_init(uc, address, size, user_data):
+            if self.read_word(0x8050) != level - 1:
+                self._sentinel_hit = True
+                uc.emu_stop()
+        return self.uc.hook_add(UC_HOOK_CODE, on_level_init, None, LEVEL_INIT, LEVEL_INIT + 1)
 
 
 # ---------------------------------------------------------------- Brainstorm (PUZL)
@@ -1025,6 +1057,222 @@ class FrngBench(PuzlBench):
         write_png(path, 640, 344, render(idx, pal, False, 2))
 
 
+# ---------------------------------------------------------------- level 2 (the brewery)
+LEVEL_INIT, MAIN_LOOP = 0x871A, 0x80C2      # level_init (the load table, the level's header), main_loop
+LOAD_LEVEL1 = 0x8582                        # load_level1, the load table's entry [5]: the way out of level 1
+L1_MUSIC = 0x85B6                           # load_level1's bsr $8614: the briefing and PIC4 shown, MU1 next
+DIFF_TABLES = {"sharp": 0xC716, "good": 0xC71E, "fair": 0xC726, "poor": 0xC72E}   # $8060: the range's rating
+CARRY_L2 = "10050:2:0:good"                 # what drive_end, pz_fail and fr_good carry into level 2
+RAM_IMAGES = {1: ROOT / "build" / "ram" / "level1_full.bin", 2: ROOT / "build" / "ram" / "level2_full.bin"}
+CODE_BLOCKS_L2 = (                          # state kept inside the code area during level 2 (its coverage's
+                                            # code-area writes; this order is the references' JSON order)
+    (0x97B0, 0x99E2),                       # the spawn list ($B0E = header +12): 40 x 14 bytes and the end word
+    (0xA828, 0xAA3A),                       # the object list ($9C18 = header +0): 44 x 12 bytes and the end word
+    (0x9088, 0x911E),                       # the special objects' records (list $8FE0): 5 lifts, 4 trolleys
+    (0x92DA, 0x9306),                       # the vats' bubble phases (level_tick_1 $923C, never reset)
+    (0xA4A6, 0xA4A8),                       # act_0c's look word ($9EE8 / $9EF8 by $B01 bit 2: display only)
+    (0xD1DC, 0xD1DE),                       # type 6's launch gap (written at $D1CA and $D20E)
+    (0xB2D6, 0xB2DA), (0xB2FA, 0xB2FE),     # the camera's offsets (immediates: level_init, type 2's $500)
+    (0xC44A, 0xC44C),                       # the marker scan's step
+    (0xC53C, 0xC53E),                       # the marker spawn interval (moveq immediate; header +34)
+    (0xC598, 0xC59C),                       # the marker table's last entry (header +24)
+    (0x8C98, 0x8C9A),                       # RoboCop's state on the vehicle (an immediate; level 1's)
+    (0xB02A, 0xB02C),                       # player_move's joystick mask (moveq immediate)
+    (0xF07E, 0xF080),                       # the explosions' frame divider
+    (0xF826, 0xF828),                       # the palette flash countdown
+)
+CODE_BLOCKS_BY_LEVEL = {1: CODE_BLOCKS, 2: CODE_BLOCKS_L2}
+
+
+def parse_carry(s: str) -> dict:
+    """--carry SCORE:LIVES:CONTINUES:TABLE: the score as hex digits (BCD, as $8046 keeps it), the
+    lives ($8034), the continues ($805E) and the range's hit-point table for $8060: sharp, good,
+    fair, poor or a hex address."""
+    parts = s.split(":")
+    if len(parts) != 4:
+        raise ValueError(f"carry {s!r}: SCORE:LIVES:CONTINUES:TABLE")
+    score, lives, cont, table = parts
+    t = DIFF_TABLES.get(table.lower())
+    return {"score": int(score, 16), "lives": int(lives, 0), "continues": int(cont, 0),
+            "table": int(table, 16) if t is None else t}
+
+
+def read_drive(path: Path) -> tuple[list, list, bool, list]:
+    """A tools/drivejoy.py file as the game mode plays it: the joystick script (an entry for every
+    frame with keys), the teleports (frame, x, y), god mode and the pokes (frame, address, value,
+    size)."""
+    joy_hex, tele_s, god_s, poke_s = (path.read_text().split("\n") + ["", "", "", ""])[:4]
+    script = []
+    for n, b in enumerate(bytes.fromhex(joy_hex.strip())):
+        if b:
+            script.append((n, 1, "".join(k for k, m in zip("udlrf", (1, 2, 4, 8, 16)) if b & m)))
+    tele = [tuple(int(v, 0) for v in t.split(":")) for t in tele_s.split()]
+    pokes = [tuple(int(v, 0) for v in t.split(":")) for t in poke_s.split()]
+    return script, tele, god_s.strip() == "1", pokes
+
+
+class Level2Bench(FrngBench):
+    """Level 2 on the bench (the module's docstring, "game --level 2"): FrngBench's machinery for the
+    flow start's bonus stages, the game phases run as GameBench runs them (fix_sr off, MU1's player
+    skipped; play() is GameBench's), level 2's code-area blocks in the trace."""
+    code_blocks = CODE_BLOCKS_L2
+    play = GameBench.play
+
+    def __init__(self, extracted: Path, ram: Path, *, verbose: bool = False):
+        super().__init__(extracted, ram, verbose=verbose)
+        self.fix_sr = False
+        self._music("mu1")
+
+    def _music(self, which: str) -> None:
+        """The music player the bench skips: MU1's ("mu1") or, while FRNG runs, FRM's ("frm")."""
+        self.uc.hook_del(self._music_hook)
+        lo, hi = MUSIC if which == "mu1" else FRNG_PLAYER
+        self._music_hook = self.uc.hook_add(UC_HOOK_CODE, self._on_music, None, lo, hi - 1)
+
+    def carried(self) -> dict:
+        """What carries from level to level: the score, lives, continues, $8060, the level and
+        level_loaded."""
+        return {"score": f"{self.read_long(0x8046):08x}", "lives": self.read_word(0x8034),
+                "continues": self.read_word(0x805E), "table": f"{self.read_long(0x8060):05x}",
+                "level": self.read_word(0x8050), "level_loaded": self.read_word(0x8052)}
+
+    def start_direct(self, carry: dict, pre: list = ()) -> None:
+        """The direct start: $FEDA and $FFC4, the code-area pokes pre (address, value, size), the carry
+        (parse_carry), level_init (its entry [1]: nothing loads), then main_loop."""
+        self.boot_game()
+        w = self.uc.mem_write
+        for addr, v, size in pre:
+            w(addr, (v & ((1 << 8 * size) - 1)).to_bytes(size, "big"))
+        w(0x8050, struct.pack(">H", 1))             # level 2
+        w(0x8052, struct.pack(">H", 1))             # level_loaded: level_init takes entry [1], the rts at $86DC
+        w(0x8046, struct.pack(">I", carry["score"]))
+        w(0x8034, struct.pack(">H", carry["lives"]))
+        w(0x805E, struct.pack(">H", carry["continues"]))
+        w(0x8060, struct.pack(">I", carry["table"]))
+        self.pulse_fire = True
+        self.call(LEVEL_INIT)
+        self.pulse_fire = False
+        self.fire = False
+        self.uc.reg_write(UC_M68K_REG_A7, 0x80000)
+        self.uc.reg_write(UC_M68K_REG_PC, MAIN_LOOP)
+
+    def run_until(self, addr: int, pulse: bool = True, max_frames: int = 20000) -> int:
+        """Runs bench frames (VBLs injected, fire pulsed through the text screens and pictures) until
+        the CPU reaches addr; returns the frames run."""
+        hit = [False]
+
+        def on(uc, address, size, user_data):
+            hit[0] = True
+            self._sentinel_hit = True
+            uc.emu_stop()
+
+        h = self.uc.hook_add(UC_HOOK_CODE, on, None, addr, addr + 1)
+        self.pulse_fire = pulse
+        self._sentinel_hit = False
+        n = 0
+        while not hit[0]:
+            self._run_one_frame()
+            n += 1
+            if n > max_frames:
+                raise RuntimeError(f"${addr:05x} not reached in {max_frames} frames\n{self.regs_text()}")
+        self.uc.hook_del(h)
+        self._sentinel_hit = False
+        self.pulse_fire = False
+        self.fire = False
+        return n
+
+    def start_flow(self, l1: Path, pz: Path, fr: Path, log=print) -> dict:
+        """The flow start: level 1 (this bench's RAM image, level1_full.bin) played with drive l1 until
+        main_loop calls load_level1, then load_level1 for real: the statistics, Brainstorm played with
+        drive pz, the range with drive fr, the briefing, PIC4, MU1, MADEX and DATAL2 by the loader,
+        level_init's rest. Returns what each phase ended with; the bench is left at main_loop
+        ($80C2) of level 2."""
+        out = {}
+        self.start_level()                          # level 1: $FEDA, $FFC4, level_init (briefing, PIC1)
+        script, tele, god, pokes = read_drive(l1)
+        stop = self.uc.hook_add(UC_HOOK_CODE, self._stop_here, None, LOAD_LEVEL1, LOAD_LEVEL1 + 1)
+        rows = GameBench.play(self, 100000, script, False, tele, god, 0, None, pokes)
+        self.uc.hook_del(stop)
+        out["level1"] = {"game_frames": len(rows), "pc": f"{self.uc.reg_read(UC_M68K_REG_PC):05x}"} | self.carried()
+        log("level 1 ended:", out["level1"])
+        out["stats_frames"] = self.run_until(BRAINSTORM)   # the statistics ($85D8)
+        self.fix_sr = True
+        script, _t, _g, pokes = read_drive(pz)
+        self.pulse_fire = True                      # (the intro and PIC3; PUZL's start stops the pulses)
+        PuzlBench.play(self, 3000, script, False, pokes)
+        out["brainstorm"] = {"result": self.result, "pframes": self.pframes_run}
+        log("Brainstorm:", out["brainstorm"])
+        out["bs_text_frames"] = self.run_until(RANGE)    # its result text
+        self._music("frm")
+        script, _t, _g, pokes = read_drive(fr)
+        self.pulse_fire = True
+        FrngBench.play(self, 3000, script, False, pokes)
+        out["range"] = {"returned": self.returned, "rating": self.rating, "fframes": self.fframes_run}
+        log("range:", out["range"])
+        out["range_text_frames"] = self.run_until(L1_MUSIC)  # its result text, the briefing, PIC4
+        self._music("mu1")
+        self.fix_sr = False
+        out["load_frames"] = self.run_until(MAIN_LOOP)      # MU1, MADEX, DATAL2, level_init's rest
+        out["level2_start"] = self.carried()
+        log("level 2 starts:", out["level2_start"], "loads:", [(n, f"{d:05x}", ln) for _f, n, d, ln in self.loads])
+        return out
+
+    def _stop_here(self, uc, address, size, user_data):
+        self._sentinel_hit = True
+        uc.emu_stop()
+
+
+def game_level2(a) -> int:
+    """game --level 2 (the module's docstring): the direct or the flow start, then the game frames."""
+    if a.flow:
+        if a.carry or a.pre_poke:
+            sys.exit("game --level 2 --flow: the flow carries its own state (no --carry, --pre-poke)")
+        l1, pz, fr = (Path(p) for p in a.flow.split(":"))
+        bench = Level2Bench(a.extracted, a.ram or RAM_IMAGES[1], verbose=a.verbose)
+        info = {"start": "flow"} | bench.start_flow(l1, pz, fr)
+        print("start:", json.dumps(info["level2_start"]))
+    else:
+        bench = Level2Bench(a.extracted, a.ram or RAM_IMAGES[2], verbose=a.verbose)
+        pre = [tuple(int(v, 0) for v in t.split(":")) for t in a.pre_poke]
+        bench.start_direct(parse_carry(a.carry or CARRY_L2), pre)
+        info = {"start": "direct", "carry": bench.carried()}
+        print("start:", json.dumps(info["carry"]))
+    script = [(int(f), int(c), k) for f, c, k in (j.split(":") for j in a.joy)]
+    tele = [tuple(int(v, 0) for v in t.split(":")) for t in a.tele]
+    pokes, god = [], a.god
+    if a.drive:                          # (the same input as the MSX's driven trace)
+        s2, t2, g2, pokes = read_drive(a.drive)
+        script += s2
+        tele += t2
+        god = god or g2
+    if a.stop_at_end:
+        bench.stop_at_level_end(2)
+    bobs = a.bobs.open("w") if a.bobs else None
+    if a.trace:
+        a.trace.parent.mkdir(parents=True, exist_ok=True)
+        with a.trace.open("w") as sink:
+            rows = bench.play(a.gframes, script, a.trace_ram, tele, god, a.trace_from, sink, pokes, bobs)
+    else:
+        rows = bench.play(a.gframes, script, a.trace_ram, tele, god, a.trace_from, None, pokes, bobs)
+    if bobs:
+        bobs.close()
+    for r in rows[:: max(1, len(rows) // 12)]:
+        print({k: v for k, v in r.items() if k not in ("ram", "glob", "code")})
+    end = bench.carried()
+    n = max(0, bench.gframes_run - a.trace_from)
+    print(f"VBL frames {bench.frame}, game frames {n}, $8050 {end['level']}, lives {end['lives']}, "
+          f"continues {end['continues']}, score {end['score']}")
+    info["end"] = end
+    if a.report:
+        a.report.parent.mkdir(parents=True, exist_ok=True)
+        a.report.write_text(json.dumps(info, indent=1, default=str))
+    if a.screenshot:
+        bench.screenshot(a.screenshot)
+    if a.dump:
+        bench.dump(a.dump)
+    return 0
+
+
 def parse_range(s: str) -> tuple[int, int]:
     lo, hi = s.split("-")
     return int(lo, 0), int(hi, 0)
@@ -1033,8 +1281,18 @@ def parse_range(s: str) -> tuple[int, int]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=("run", "game", "puzl", "frng"))
-    ap.add_argument("--ram", type=Path, default=ROOT / "build" / "ram" / "level1_full.bin")
-    ap.add_argument("--level", type=int, default=1, help="puzl, frng: the level done ($8050): 1 or 2")
+    ap.add_argument("--ram", type=Path, help="the RAM image (build/ram/level1_full.bin; game --level 2 "
+                    "without --flow: level2_full.bin)")
+    ap.add_argument("--level", type=int, default=1, help="game: the level played, 1 or 2; puzl, frng: the "
+                    "level done ($8050): 1 or 2")
+    ap.add_argument("--carry", help=f"game --level 2: SCORE:LIVES:CONTINUES:TABLE ({CARRY_L2})")
+    ap.add_argument("--pre-poke", action="append", default=[],
+                    help="game --level 2: ADDR:VALUE:SIZE written before level_init (state kept in the code area)")
+    ap.add_argument("--flow", help="game --level 2: L1:PZ:FR, the drives of level 1, Brainstorm and the range "
+                    "played before it (the flow start)")
+    ap.add_argument("--stop-at-end", action="store_true",
+                    help="game: stop at level_init once $8050 is no longer the played level's")
+    ap.add_argument("--report", type=Path, help="game --level 2: JSON of the start (carried state, flow phases)")
     ap.add_argument("--via-8382", action="store_true", help="puzl: run $8382 itself (intro text, picture, loader)")
     ap.add_argument("--via-8420", action="store_true", help="frng: run $8420 itself (intro text, picture, loader)")
     ap.add_argument("--fframes", type=int, default=3000, help="frng: FRNG frames to play at most")
@@ -1059,8 +1317,14 @@ def main() -> int:
     ap.add_argument("--bobs", type=Path, help="game: JSON lines of each game frame's draw_bob calls")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.cmd == "game" and a.level not in (1, 2):
+        ap.error("game --level: 1 or 2")
+    if (a.carry or a.pre_poke or a.flow or a.report) and not (a.cmd == "game" and a.level == 2):
+        ap.error("--carry, --pre-poke, --flow and --report belong to game --level 2")
+    if a.cmd == "game" and a.level == 2:
+        return game_level2(a)
     if a.cmd == "frng":
-        bench = FrngBench(a.extracted, a.ram, verbose=a.verbose)
+        bench = FrngBench(a.extracted, a.ram or RAM_IMAGES[1], verbose=a.verbose)
         bench.sec = a.sec
         bench.setup(a.level, a.via_8420)
         script = []
@@ -1090,7 +1354,7 @@ def main() -> int:
             bench.dump(a.dump)
         return 0
     if a.cmd == "puzl":
-        bench = PuzlBench(a.extracted, a.ram, verbose=a.verbose)
+        bench = PuzlBench(a.extracted, a.ram or RAM_IMAGES[1], verbose=a.verbose)
         bench.sec = a.sec
         bench.setup(a.level, a.via_8382)
         script = []
@@ -1121,8 +1385,10 @@ def main() -> int:
             bench.dump(a.dump)
         return 0
     if a.cmd == "game":
-        bench = GameBench(a.extracted, a.ram, verbose=a.verbose)
+        bench = GameBench(a.extracted, a.ram or RAM_IMAGES[1], verbose=a.verbose)
         bench.start_level()
+        if a.stop_at_end:
+            bench.stop_at_level_end(1)
         script = []
         for j in a.joy:
             f, c, k = j.split(":")

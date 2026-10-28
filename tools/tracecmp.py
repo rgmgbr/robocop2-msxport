@@ -7,10 +7,10 @@ each tick's start, msx/msx.inc). Both must play the same joystick script (amigae
 tools/mkrom.py JOY=...).
 
 usage: tracecmp.py AMIGA.jsonl MSX.txt [--show N]
-       tracecmp.py --ram AMIGA.jsonl MSX_RAM.txt [--show N]
+       tracecmp.py --ram [--fields FILE] AMIGA.jsonl MSX_RAM.txt [--show N]
        (--ram: the full game state, amigaemu.py game --trace-ram against openmsx_rc2.tcl
        rc2_trace_ram, field by field as analysis/amiga_ram.tsv lists them: the MSX mirror keeps
-       words and longs little-endian)
+       words and longs little-endian; --fields analysis/amiga_ram_l2.tsv: level 2's field set)
 """
 from __future__ import annotations
 
@@ -46,15 +46,16 @@ RAM0, GLOB0 = 0x0B00, 0x8000
 MSX_DUMPS = (0xD000, 0xDC00, 0xDD00, 0xEE00, 0xE900)     # openmsx_rc2.tcl rc2_trace_ram: one hex field each
 
 
-def fields() -> list[dict]:
-    """analysis/amiga_ram.tsv: ADDRESS SIZE NAME [msx=ADDRESS] [ptr=AMIGA_BASE:LABEL] [comment].
+def fields(path: Path | None = None) -> list[dict]:
+    """A field file, analysis/amiga_ram.tsv by default (level 2: analysis/amiga_ram_l2.tsv):
+    ADDRESS SIZE NAME [msx=ADDRESS] [ptr=AMIGA_BASE:LABEL] [comment].
     SIZE 1, 2 or 4 (a long: two little-endian words, the high one first, on the MSX), or
     rec:PATTERN:COUNT (COUNT records of b/w fields). Without msx= the MSX address is the mirror's
     (AM/AG, msx/msx.inc). The MSX dumps are read swapped back (swapped()), so msx= addresses
     follow the mirror's rule too: a byte the port keeps at M is given as M ^ 1. ptr= compares
     pointers as offsets from AMIGA_BASE and from the MSX label."""
     out = []
-    for line in FIELDS.read_text().splitlines():
+    for line in (path or FIELDS).read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         parts = line.split()
@@ -126,8 +127,8 @@ def msx_value(dumps: list[tuple[int, bytes]], addr: int, size: int) -> int:
     raise KeyError(f"{addr:04X}h is in no block of the MSX trace")
 
 
-def compare_ram(amiga: Path, msx: Path, show: int, label_file: Path = LABELS) -> int:
-    fl = fields()
+def compare_ram(amiga: Path, msx: Path, show: int, label_file: Path = LABELS, field_file: Path | None = None) -> int:
+    fl = fields(field_file)
     lab = labels(label_file)
     bad = 0
     shown = 0
@@ -167,6 +168,8 @@ def compare_ram(amiga: Path, msx: Path, show: int, label_file: Path = LABELS) ->
                 print(f"game frame {i} ({ref[i]['keys'] or '-'}): " + ", ".join(diff[:12]))
     n_ref = n + sum(1 for line in fa if line.strip())
     n_got = n + sum(1 for line in fm if line.strip())
+    fa.close()
+    fm.close()
     print(f"{n} game frames compared ({n_ref} Amiga, {n_got} MSX), {len(fl)} fields: {bad} differ")
     return 1 if bad else 0
 
@@ -179,9 +182,11 @@ def main() -> int:
     ap.add_argument("--ram", action="store_true", help="compare the full game state (field map)")
     ap.add_argument("--labels", type=Path, default=LABELS,
                     help="label file of the ROM that made the MSX trace (pointer fields)")
+    ap.add_argument("--fields", type=Path, default=FIELDS,
+                    help="--ram: the field set, analysis/amiga_ram.tsv (level 1) or analysis/amiga_ram_l2.tsv (level 2)")
     a = ap.parse_args()
     if a.ram:
-        return compare_ram(a.amiga, a.msx, a.show, a.labels)
+        return compare_ram(a.amiga, a.msx, a.show, a.labels, a.fields)
     ref = [json.loads(line) for line in a.amiga.read_text().splitlines() if line.strip()]
     got = msx_rows(a.msx)
     n = min(len(ref), len(got))
