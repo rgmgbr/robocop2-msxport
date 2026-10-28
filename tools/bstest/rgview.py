@@ -535,8 +535,8 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
     hz = 50 if data[9] & 2 else 60                  # (R#9's NT bit in the first record)
     if bench and stage:
         # the pictures a second while the camera pans (passes whose state has another s than the pass
-        # before's) and while the riser animates (another riser frame), over the VBLANKs of those
-        # passes; all: over the stage's VBLANKs
+        # before's) and while the riser animates (another riser frame: every other pass), over the
+        # VBLANKs of those passes' spans (gaps of 3 passes at most joined); all: over the stage's
         pans = {q for q in bench.cam if q - 1 in bench.cam and bench.cam[q] != bench.cam[q - 1]}
         rise = set()
         for q in bench.rows:
@@ -547,10 +547,17 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
                     rise.add(q)
         out = []
         for name, qs in (("pans", pans), ("the riser", rise)):
-            ks = [k for k, q in recpass.items() if q in qs]
+            sp = []
+            for q in sorted(qs):
+                if sp and q - sp[-1][1] <= 3:
+                    sp[-1][1] = q
+                else:
+                    sp.append([q, q])
+            ks = [k for k, q in recpass.items() if any(a <= q <= b for a, b in sp)]
             if ks:
                 npic = sum(1 for k in ks if k in newat)
-                out.append(f"{name} {hz * npic / len(ks):.1f} ({npic} pictures in {len(ks)} VBLANKs of {len(qs)} passes)")
+                out.append(f"{name} {hz * npic / len(ks):.1f} ({npic} pictures in {len(ks)} VBLANKs of {len(sp)} "
+                           f"spans, {sum(b - a + 1 for a, b in sp)} passes)")
         ks = [k for k, q in recpass.items() if 0 < q <= max(bench.rows)]
         out.append(f"all {hz * sum(1 for k in ks if k in newat) / max(len(ks), 1):.1f}")
         print(f"pictures a second: {'; '.join(out)}; {len(rebuilds)} pictures at another c than the one before")

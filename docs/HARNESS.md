@@ -1019,8 +1019,9 @@ sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
   black, and on a V9958 `split_list` + 8 92h whenever a list has R#18 != 0 and 9Bh under every
   other lit list. VBLANKs with the SATs empty and the palette black are `rg_hide`'s (counted,
   accepted: `RG_ADJ=0` builds; the others show `fe_text`'s list by then);
-- **the picture rates** (C-BIOS_MSX2, reported): pictures a second over the VBLANKs of the passes
-  whose camera moves (pans) and of those whose riser frame changes, and over the whole stage;
+- **the picture rates** (C-BIOS_MSX2, reported): pictures a second over the VBLANKs of the spans of
+  passes whose camera moves (pans) and of those whose riser frame changes (every other pass: spans
+  join gaps of 3 passes at most), and over the whole stage;
 - **the probe** (`rgview.py probe`): at every split's end of the stage R#18 = 0, at every VBLANK the
   applied list's value; on each V9958 machine shifts -7 and +8 among the frames; the three negative
   controls report the shifted HUD (the check sees the fault it is for);
@@ -1062,9 +1063,9 @@ The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdic
 - The probe: 33 runs, R#18 0 at every split's end (C-BIOS_MSX2, Expert, FS-A1FX, HB-F1XDJ,
   FS-A1GT; shifts -7 and +8 held 866-867 frames each); the negative controls report 866-867
   shifted HUD frames.
-- Picture rates on C-BIOS_MSX2: pans 10-13 a second (`armed`, `mixed`, `timeout`), the riser 7-10
-  (`armed`, `mixed`; `timeout`'s 6 riser passes fall inside a page rebuild: no picture), the whole
-  stage 20-29; 23-30 pictures a drive at another c.
+- Picture rates on C-BIOS_MSX2: pans 10-13 a second (`armed`, `mixed`, `timeout`), the riser 5-13
+  (12.7 `armed`, 7.7 `mixed`, 5.0 over `timeout`'s 10 riser passes), the whole stage 20-29; 23-30
+  pictures a drive at another c. (FS-A1FX: pans 11.0 and 10.5, the riser 15.9 and 10.2.)
 - The guard: all 0 (1,348 frames of `armed` on three machines, 779 of the sweep on the HB-F1XDJ).
   VRAM speed 0 in the cartridge.
 - The pass rate: 0 late passes; the worst pass 37,973 T-states at 60 Hz, 38,633 at 50 Hz.
