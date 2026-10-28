@@ -7,7 +7,8 @@
 ;   front_range: fe_text's page 0, no sprites): range_gfx.bin's streams into VRAM (the clean scene
 ;   in page 2, the sheets in pages 0-3), both display pages built from the clean scene at the
 ;   camera's start, the 16 line patterns, the colour rows of the line sprites in both sets, both
-;   SATs empty.
+;   SATs empty; on a V9958 the HUD split's R#27 write becomes an R#18 = 0 (split_list + 8: the
+;   V9958's list does not reset R#18, which the camera moves; docs/RANGE.md 3.3).
 ; - rg_feed, while rg_wait waits and once after each pass: Brainstorm's double buffer (msx/puzl.asm
 ;   bs_feed). The page not on screen catches up with the wanted state of the last pass, taken whole
 ;   when its build starts (rgt), so that each page shows one pass. Per element whose drawing
@@ -19,7 +20,13 @@
 ;   never waiting for it; then the page's sprite set (the crosshair's vertical line, the box's
 ;   sides: 16-line sprites of one column, at most 3 on a line) and its register list. Once that
 ;   list is on screen, the other page is next.
+; - The camera (frng.asm rg_cam: the wanted state's s): a page is built at the multiple of 16 c
+;   with c - s in -7..8 (RG_C_ROUND) and shown at s by its list's R#18 = (s - c) & 15 (level 1's
+;   sign, msx/scroll9938.asm), its sprites with it. When s leaves the back page's window, that
+;   page is built again whole at the new c; the page on screen holds meanwhile (docs/RANGE.md
+;   default 15).
 ; - rg_hide, before the stage returns: the VDP idle, the last list on screen, the play area black,
+;   then a list with R#18 = 0 and the V9958's split byte back (a time out cuts in at any R#18),
 ;   both SATs empty, page 2's tiles back (page 3 lines 88-161 hold sheet S3 over the field engine's
 ;   dynamic slot and caches: front.asm fe_text's fb_init, which the result's screen runs first,
 ;   frees them, as field.asm engines_init does before any field use).
@@ -164,6 +171,13 @@ rvs_z:  out (VDP_DATA),a            ; (its right half)
         ld (rgr_shown),a            ; (the intro's list: page 0)
         ld hl,(frv_pass)
         ld (rgr_fr),hl              ; (the first build after the first pass)
+        if RG_ADJ
+        ld a,(hud_msk)
+        or a
+        ret z                       ; (the V9938's split list sets R#18 = 0 itself)
+        ld a,0x92
+        ld (split_list + 8),a       ; V9958: the split's last write R#18 = 0 instead of R#27 = 0
+        endif                       ;   (every list here and fe_text's keeps R#27 at 0)
         ret
 
 ; HL = a set's colour table (page 3): the rows of sprites 0 to RG_SPR_MAX - 1 all RG_C_GREEN.
@@ -1492,9 +1506,11 @@ rvl_regs:
 
 ; The stage's end (above): the VDP idle (a build in progress is dropped: its page is not on screen),
 ; the last published list on screen, the play area black from the next VBLANK on (its sprites too:
-; they are colour RG_C_GREEN), then both SATs empty and page 2's tiles back (cold.asm tiles_upload:
-; the bytes vdp_setup wrote; the title uploads them again in the product). front.asm fe_text then
-; shows page 0 without sprites, R#18 = 0.
+; they are colour RG_C_GREEN), then fe_text's list (page 0, no sprites, R#18 = 0) on screen and the
+; V9958's split byte back (in this order: the HUD keeps its own colours, so it must never see an
+; R#18 != 0 that its split does not reset), both SATs empty and page 2's tiles back (cold.asm
+; tiles_upload: the bytes vdp_setup wrote; the title uploads them again in the product). front.asm
+; fe_text then shows page 0 without sprites, R#18 = 0.
 rg_hide:
         call vdp_wait
 rvh_w:  ld a,(app_seq)
@@ -1511,6 +1527,20 @@ rvh_w:  ld a,(app_seq)
 rvh_v:  ld a,(tick)
         cp b
         jr z,rvh_v
+        if RG_ADJ
+        call fs_list                ; (FRONT: page 0, R#18 = 0, the sprites off) under the black
+rvh_l:  ld a,(app_seq)              ;   palette: the cut at R#18 != 0 shows no shifted picture
+        ld b,a
+        ld a,(pub_seq)
+        cp b
+        jr nz,rvh_l
+        ld a,(hud_msk)
+        or a
+        jr z,rvh_s
+        ld a,0x9B
+        ld (split_list + 8),a       ; then the V9958's split resets R#27 again (rg_show's change)
+rvh_s:
+        endif
         ld hl,RG_SAT_A & 0xFFFF
         call rvh_sat
         ld hl,RG_SAT_B & 0xFFFF

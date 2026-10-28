@@ -29,8 +29,8 @@
 ; The display (msx/frngview.asm, docs/RANGE.md 3.3): every pass records what the original draws
 ; (rg_want, msx.inc: range.inc's shown-state layout), and the renderer (rg_show at the entry, rg_feed
 ; between the passes, rg_hide at the exit) puts that on the screen, double-buffered on pages 0 and
-; 1, the vertical lines as sprites, the HUD below as in the game; the camera stays at its start
-; (s = 32) until step 9 of docs/RANGE.md 5. The sound's effects go to snd_rfx (silent until step 11).
+; 1, the vertical lines as sprites, the HUD below as in the game; a camera over the 320-pixel street
+; follows the crosshair (rg_cam). The sound's effects go to snd_rfx (silent until step 11).
 ;
 ; Its variables live in the mirror at their Amiga addresses (msx.inc frv_...: $B00-$BC5) and in
 ; fr_code (msx.inc: FRNG's code-area state), so that the trace harness compares them pass by pass
@@ -210,8 +210,9 @@ rg_timer:
 
 ; The port's own state at the entry: the recent-blit list empty (the first blit's buffer then reads
 ; 0, as the bench's at FRNG's start), the wanted state with nothing drawn and the camera at its
-; start (docs/RANGE.md 3.3: its rule comes with step 9), and the pictures' tables (rgt_pics indices
-; of every graphic the scripts draw: the renderer's pictures, the hit test's masks).
+; start (docs/RANGE.md 3.3; rg_cam moves it from the first pass on), and the pictures' tables
+; (rgt_pics indices of every graphic the scripts draw: the renderer's pictures, the hit test's
+; masks).
 rg_init:
         ld a,rg_blits & 0xFF
         ld (rg_btop),a
@@ -324,6 +325,7 @@ fr_frame:
         call rg_targets             ; $1F0DA (and $1F3F6, the big target's draw)
         call rg_fxdraw              ; $1F83A
         call rg_cross               ; $1EB5C
+        call rg_cam                 ; (the port's camera: the view follows the crosshair)
         ld hl,(frv_pass)
         inc hl
         ld (frv_pass),hl            ; ($1EA6E: $B00 + 1)
@@ -539,6 +541,60 @@ rcr_y:  ld de,0x10
         call rg_hi                  ; ($1ED18: cmpi.w #$9E / bmi)
         ld (frv_cy),hl              ; ($1ED26)
         ld (rg_want + RG_ST_CROSS + 2),hl
+        ret
+
+; The camera (docs/RANGE.md 3.3), once a pass after the crosshair's move: s = clamp(clamp(s, cx -
+; RG_BAND_HI, cx - RG_BAND_LO), 0, RG_CAM_MAX), cx = $B9A - RG_LINE_DX (the line's x on the
+; street): s moves only while the line is in the view's outer quarters, so the line stays in view
+; (cx - s in 13-233). The renderer shows s from a page built at the multiple of 16 c with c - s in
+; -7..8, R#18 the rest (frngview.asm). RG_ADJ=0 (docs/RANGE.md 6: R#18 always 0): s is a multiple
+; of 16 that moves only when the line would leave cx - s in RG_ADJ_LO..RG_ADJ_HI (msxrange.py
+; camera_steps).
+        if RG_ADJ
+RCM_LO:     equ RG_BAND_LO
+RCM_HI:     equ RG_BAND_HI
+        else
+RCM_LO:     equ RG_ADJ_LO
+RCM_HI:     equ RG_ADJ_HI
+        endif
+rg_cam: ld a,(rg_want + RG_ST_S)
+        ld e,a
+        ld d,0                      ; (DE = s)
+        ld bc,-RG_LINE_DX - RCM_HI
+        call rcm_b
+        jp m,rcm_h                  ; (s above cx - HI)
+        if RG_ADJ = 0
+        ld bc,15
+        add hl,bc                   ; (the next multiple of 16)
+        endif
+        call rcm_s                  ; s = cx - HI
+rcm_h:  ld bc,-RG_LINE_DX - RCM_LO
+        call rcm_b
+        call m,rcm_s                ; (s above cx - LO: s = cx - LO)
+        ld a,e
+        bit 7,d
+        jr z,rcm_0
+        xor a                       ; (below 0)
+rcm_0:  cp RG_CAM_MAX + 1
+        jr c,rcm_w
+        ld a,RG_CAM_MAX
+rcm_w:  ld (rg_want + RG_ST_S),a
+        ret
+; BC = -(RG_LINE_DX + a band's bound) -> HL = cx - that bound, the sign flag HL - DE's
+rcm_b:  ld hl,(frv_cx)
+        add hl,bc
+        or a
+        sbc hl,de
+        add hl,de                   ; (S kept: add hl,rr leaves it)
+        ret
+; DE = HL (RG_ADJ=0: its multiple of 16 at or below)
+rcm_s:
+        if RG_ADJ = 0
+        ld a,l
+        and 0xF0
+        ld l,a
+        endif
+        ex de,hl
         ret
 
 ; HL = HL - DE < 0 (the 16-bit difference's sign, cmpi.w / bpl) ? DE : HL. Keeps BC, DE.

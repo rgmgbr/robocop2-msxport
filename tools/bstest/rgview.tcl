@@ -1,4 +1,4 @@
-# rgview.tcl: the shooting range's display checks (docs/RANGE.md 4.2 checks 2, 3, 5, 6 and 10;
+# rgview.tcl: the shooting range's display checks (docs/RANGE.md 4.2 checks 2-6 and 10;
 # docs/HARNESS.md 5.18), for the MSX-AI MCP's openMSX: source load.tcl (it sources this file after
 # hz.tcl and hz7.tcl), start one hz_chain, poll "list $::hz_state $::hz_msgs" with short
 # msx_local_cmd calls. Never vwait.
@@ -7,16 +7,20 @@
 # tools/openmsx_rc2.tcl rc2_fr_drive with build/emu/fr_DRIVE.drive from the power-on (level 1's
 # set-up, the range's intro, the stage); its trace goes to OUT/tr/NAME.txt (tools/frngcmp.py).
 #
-#   rgv_job NAME MACHINE ROM LABELS DRIVE OUT ?PASSES? ?REC? ?RFROM? ?TAIL?
+#   rgv_job NAME MACHINE ROM LABELS DRIVE OUT ?PASSES? ?REC? ?RFROM? ?TAIL? ?POKES? ?PROBE?
 #       snapshots at the passes ($B00 at fr_tick: between two passes) in PASSES:
 #       OUT/st/NAME/pNNNN.bin (hz7.tcl hz7_snap's layout: VRAM, RAM C000h-FFFFh, the VDP registers,
 #       the palette); with REC > 0 a record of REC VBLANKs at most from pass RFROM on, and TAIL more
 #       past the drive's end (fr_rated: the result's or OUT OF TIME.'s screen next):
-#       OUT/st/NAME/rec.bin, rgv_pic's layout (tools/bstest/rgview.py still / rec)
-#   rgv_guard_job NAME MACHINE ROM LABELS DRIVE OUT FROM SECS NL
+#       OUT/st/NAME/rec.bin, rgv_pic's layout (tools/bstest/rgview.py still / rec); POKES {P S ...}:
+#       the camera s set to S once a pass has made $B00 = P (rgv_poke_arm: OUT/st/NAME/campoke.txt,
+#       rgview.py --campoke); PROBE 1: the HUD's register probe (rgv_probe_arm:
+#       OUT/st/NAME/probe.txt, rgview.py probe), 2: the same with split_list + 8 put back to 9Bh at
+#       the first pass (the negative control on a V9958)
+#   rgv_guard_job NAME MACHINE ROM LABELS DRIVE OUT FROM SECS NL ?POKES?
 #       the display guard (rc2_guard, tear counting on) for SECS emulated seconds from pass FROM,
 #       NL lines a frame (262 at 60 Hz, 313 at 50 Hz): OUT/flow/NAME.txt; the drive then runs on
-#       to its end
+#       to its end; POKES as rgv_job's
 #   rgv_fast_job NAME MACHINE ROM LABELS DRIVE OUT FREQ
 #       the VRAM accesses lost to a too fast CPU (rc2_count_too_fast, the Z80 at FREQ Hz; ft.tcl's
 #       ft_clock and ft_classify) from the power-on (the BIOS, level 1's set-up, the range's intro,
@@ -43,12 +47,12 @@ proc rgv_tickcond {labels} {
 
 # ----- snapshots and the record
 
-proc rgv_job {name m rom labels drive out {passes {}} {rec 0} {rfrom 0} {tail 0}} {
-	set setup "rgv_drive {$rom} {$labels} {$out} {$name} {$drive}; rgv_arm {$out/st/$name} {$labels} {$passes} $rec $rfrom $tail"
+proc rgv_job {name m rom labels drive out {passes {}} {rec 0} {rfrom 0} {tail 0} {pokes {}} {probe 0}} {
+	set setup "rgv_drive {$rom} {$labels} {$out} {$name} {$drive}; rgv_arm {$out/st/$name} {$labels} {$passes} $rec $rfrom $tail {$pokes} $probe"
 	return [list $name $m [list eval $setup] {[rgv_done]} 900]
 }
 
-proc rgv_arm {dir labels passes {rec 0} {rfrom 0} {tail 0}} {
+proc rgv_arm {dir labels passes {rec 0} {rfrom 0} {tail 0} {pokes {}} {probe 0}} {
 	file mkdir $dir
 	set ::rv_dir $dir
 	set ::rv_passes $passes
@@ -62,6 +66,9 @@ proc rgv_arm {dir labels passes {rec 0} {rfrom 0} {tail 0}} {
 	lassign [rgv_tickcond $labels] a cond
 	set ::rv_bp [debug set_bp $a $cond rgv_tick]
 	set ::rv_rbp ""
+	rgv_poke_arm $dir $labels $pokes
+	set ::rvp_on -1
+	if {$probe} { rgv_probe_arm $dir $labels [expr {$probe == 2}] }
 	return "armed"
 }
 
@@ -128,14 +135,121 @@ proc rgv_done {} {
 	}
 	catch {debug remove_bp $::rv_bp}
 	rgv_recend
+	rgv_poke_end
+	rgv_p_end
 	return 1
+}
+
+# ----- the camera's pokes (docs/RANGE.md 4.2 checks 2 and 4: s = 7, s = 8, a sweep of 0-64)
+
+# POKES {P S ...}: once a pass has made $B00 = P (fr_tick + 3: fr_frame returned, rg_feed next, so
+# the builds of that pass's state take it), the wanted state's camera (rg_want + RG_ST_S) = S; with
+# DIR, DIR/campoke.txt "P:S,..." for rgview.py --campoke. The crosshair held in the view's middle
+# band keeps that s (msx/frng.asm rg_cam).
+proc rgv_poke_arm {dir labels pokes} {
+	set ::rvk_pokes $pokes
+	set ::rvk_bp ""
+	if {![llength $pokes]} return
+	set ::rvk_addr [expr {[rc2_label $labels rg_want] + [rc2_label $labels RG_ST_S]}]
+	lassign [rgv_tickcond $labels] a cond
+	set ::rvk_bp [debug set_bp [expr {$a + 3}] $cond rgv_k_hit]
+	if {$dir ne ""} {
+		set l {}
+		foreach {q s} $pokes { lappend l "$q:$s" }
+		set f [open "$dir/campoke.txt" w]
+		catch {puts $f [join $l ,]}
+		close $f
+	}
+}
+
+proc rgv_k_hit {} {
+	set f [rc2_w 0xD000]
+	foreach {q s} $::rvk_pokes {
+		if {$q == $f} { poke $::rvk_addr $s }
+	}
+}
+
+proc rgv_poke_end {} {
+	if {[info exists ::rvk_bp] && $::rvk_bp ne ""} { catch {debug remove_bp $::rvk_bp} }
+	set ::rvk_bp ""
+}
+
+# ----- the HUD under R#18 (docs/RANGE.md 4.2 check 4)
+
+# From the stage's first pass to the job's end: at the HUD split's end (sp_r19, after its timed
+# writes) R#18 must be 0 (the V9938's split list writes it; on a V9958 split_list + 8 makes its last
+# write R#18's: msx/frngview.asm rg_show); at each VBLANK once its list is in (iv_late) R#18 must be
+# the applied list's. A shift is a register's effect that no VRAM snapshot shows, so the probe reads
+# the register. NEG 1 (the negative control): split_list + 8 put back to 9Bh (R#27) at the first
+# pass, so that a V9958 must report the shifted HUD. DIR/probe.txt at the end (rgview.py probe).
+proc rgv_probe_arm {dir labels neg} {
+	set ::rvp_file "$dir/probe.txt"
+	set ::rvp_neg $neg
+	set ::rvp_on 0
+	foreach k {frames shifted hud late splits vblanks} { set ::rvp_n($k) 0 }
+	array unset ::rvp_sh
+	set ::rvp_lv 0
+	set ::rvp_sl [rc2_label $labels split_list]
+	set ::rvp_msk [rc2_label $labels hud_msk]
+	lassign [rgv_tickcond $labels] a cond
+	set ::rvp_tbp [debug set_bp $a $cond rgv_p_tick]
+	set ::rvp_bps [list [debug set_bp [rc2_label $labels sp_r19] {} rgv_p_split] \
+		[debug set_bp [rc2_label $labels iv_late] {} rgv_p_vbl]]
+}
+
+proc rgv_p_tick {} {
+	if {$::rvp_on} return
+	set ::rvp_on 1
+	if {$::rvp_neg} { poke [expr {$::rvp_sl + 8}] 0x9B }
+	catch {debug remove_bp $::rvp_tbp}
+}
+
+proc rgv_p_vbl {} {
+	if {$::rvp_on != 1} return
+	incr ::rvp_n(vblanks)
+	set lp [rc2_w 0xC003]
+	set n [peek [expr {$lp + 1}]]
+	set lv 0
+	for {set i 0} {$i < $n} {incr i 2} {
+		if {([peek [expr {$lp + 3 + $i}]] & 0x3F) == 18} { set lv [peek [expr {$lp + 2 + $i}]] }
+	}
+	set ::rvp_lv $lv
+	if {[debug read "VDP regs" 18] != $lv} { incr ::rvp_n(late) }
+}
+
+proc rgv_p_split {} {
+	if {$::rvp_on != 1} return
+	incr ::rvp_n(splits)
+	incr ::rvp_n(frames)
+	if {$::rvp_lv} {
+		incr ::rvp_n(shifted)
+		if {[info exists ::rvp_sh($::rvp_lv)]} { incr ::rvp_sh($::rvp_lv) } else { set ::rvp_sh($::rvp_lv) 1 }
+	}
+	if {[debug read "VDP regs" 18]} { incr ::rvp_n(hud) }
+}
+
+proc rgv_p_end {} {
+	if {![info exists ::rvp_on] || $::rvp_on < 0} return
+	foreach b $::rvp_bps { catch {debug remove_bp $b} }
+	catch {debug remove_bp $::rvp_tbp}
+	set sh {}
+	foreach k [lsort -integer [array names ::rvp_sh]] { lappend sh "[format %02X $k]h:$::rvp_sh($k)" }
+	set f [open $::rvp_file w]
+	catch {
+		foreach k {frames shifted hud late splits vblanks} { puts $f "$k $::rvp_n($k)" }
+		puts $f "msk [peek $::rvp_msk]"
+		puts $f "shifts [join $sh { }]"
+		puts $f "neg $::rvp_neg"
+	}
+	close $f
+	set ::rvp_on -1
 }
 
 # ----- the display guard
 
-proc rgv_guard_job {name m rom labels drive out from secs nl} {
+proc rgv_guard_job {name m rom labels drive out from secs nl {pokes {}}} {
 	file mkdir "$out/flow"
-	set setup "rgv_drive {$rom} {$labels} {$out} {$name} {$drive}; rgv_guard_arm {$labels} $from $secs $nl {$out/flow/$name.txt}"
+	set setup "rgv_drive {$rom} {$labels} {$out} {$name} {$drive}; rgv_guard_arm {$labels} $from $secs $nl {$out/flow/$name.txt}; rgv_poke_arm {} {$labels} {$pokes}"
 	return [list $name $m [list eval $setup] {$::rc2_trace_done} 900]
 }
 
@@ -327,23 +441,34 @@ proc rgva_rt {} {
 # ----- the whole set
 
 # rgv_suite W: the jobs of docs/HARNESS.md 5.18 on the builds of "rgview.sh builds W" (W/fr2:
-# EXTJOY=1 PZ_TEST=2; W/fr2v2: + PZ_LEVEL=2; W/ext: EXTJOY=1), outputs into W/O (tr/, st/, flow/):
-#   - armed, mixed, edge, timeout and armed2 with their snapshots and whole records (3,000 VBLANKs at
-#     most, 150 more past the end) on C-BIOS_MSX2 (_m2), the Panasonic FS-A1FX (_fx) and FS-A1GT (_tr);
-#   - the display guard over armed's passes 5 to about 1,130 on the three (guard_...);
+# EXTJOY=1 PZ_TEST=2; W/fr2v2: + PZ_LEVEL=2; W/fr2n: + RG_ADJ=0; W/ext: EXTJOY=1), outputs into W/O
+# (tr/, st/, flow/):
+#   - armed, mixed, edge, timeout and armed2 with their snapshots, whole records (3,000 VBLANKs at
+#     most, 150 more past the end) and the HUD's register probe on C-BIOS_MSX2 (_m2), the Panasonic
+#     FS-A1FX (_fx) and FS-A1GT (_tr);
+#   - the camera held at s = 7 and s = 8 (hold7_, hold8_: shifts -7 and +8, R#18's ends) and swept
+#     over s = 0-64 (sweep_), on the hold drive (the crosshair still) with the camera poked: snapshots,
+#     records and the probe on the three; the probe alone on armed, hold7 and hold8 on the Gradiente
+#     Expert 2.0 (_ex) and the Sony HB-F1XDJ (_xd, its 128K Lite set-up); its negative control
+#     (split_list + 8 back to 9Bh: neg8_) on the three V9958 machines (FS-A1FX, HB-F1XDJ, FS-A1GT);
+#   - the RG_ADJ=0 build (16-px camera steps, R#18 0): armed, mixed, edge, timeout with snapshots
+#     and records on C-BIOS_MSX2 and the FS-A1GT (_m2n, _trn);
+#   - the display guard over armed's passes 5 to about 1,130 on the three (guard_...), and over the
+#     sweep on the HB-F1XDJ (guard_sweep_xd);
 #   - the VRAM speed over armed from the power-on at 3.58 MHz (C-BIOS_MSX2, FS-A1GT) and 5.37 MHz
 #     (FS-A1FX, C-BIOS_MSX2+): fast_m2, fast_tr, fast_fx, fast_p2;
-#   - the pass rate of armed, mixed and edge at 60 and 50 Hz (rate_..._m2, rate_..._eu);
-#   - the other ten drives' traces on C-BIOS_MSX2 and the FS-A1GT, armed and opp on the Gradiente
-#     Expert 2.0 (_ex);
+#   - the pass rate of armed, mixed and edge at 60 and 50 Hz (rate_..._m2, rate_..._eu), armed on
+#     the FS-A1GT (rate_armed_tr);
+#   - the other ten drives' traces on C-BIOS_MSX2 and the FS-A1GT, opp on the Expert;
 #   - the restore after timeout's time out and the new game against a fresh start (after_rg_...,
 #     fresh_rg_... on C-BIOS_MSX2 and the FS-A1GT).
-# 54 jobs, a few minutes; poll "list $::hz_state [llength $::hz_msgs] [lindex $::hz_msgs end]".
+# 81 jobs, 15-25 minutes; poll "list $::hz_state [llength $::hz_msgs] [lindex $::hz_msgs end]".
 proc rgv_suite {w} {
 	set o "$w/O"
 	foreach d {tr st flow} { file mkdir "$o/$d" }
 	set r "$w/fr2/rc2.rom"; set l "$w/fr2/rc2.labels"
 	set r2 "$w/fr2v2/rc2.rom"; set l2 "$w/fr2v2/rc2.labels"
+	set rn "$w/fr2n/rc2.rom"; set ln "$w/fr2n/rc2.labels"
 	set snaps {
 		armed {4 5 6 7 8 18 20 22 26 27 28 29 30 31 32 33 34 35 36 84 86 88 90 92 128 130 132 134 136 298 300 302 700 1100 1140 1150 1155 1160 1162}
 		mixed {6 20 28 30 32 34 86 90 130 134 300 600 900 1200 1500 1800 1840 1860 1868}
@@ -354,24 +479,52 @@ proc rgv_suite {w} {
 	set jobs {}
 	foreach {tag m} {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {
 		foreach d {armed mixed edge timeout} {
-			lappend jobs [rgv_job ${d}_$tag $m $r $l $d $o [dict get $snaps $d] 3000 1 150]
+			lappend jobs [rgv_job ${d}_$tag $m $r $l $d $o [dict get $snaps $d] 3000 1 150 {} 1]
 		}
-		lappend jobs [rgv_job armed2_$tag $m $r2 $l2 armed2 $o [dict get $snaps armed2] 3000 1 150]
+		lappend jobs [rgv_job armed2_$tag $m $r2 $l2 armed2 $o [dict get $snaps armed2] 3000 1 150 {} 1]
 		lappend jobs [rgv_guard_job guard_$tag $m $r $l armed $o 5 22.5 262]
 	}
+	set hold7 {2 7}
+	set hold8 {2 8}
+	set sweep {}
+	set sweepst {}
+	for {set k 0} {$k <= 64} {incr k} {
+		lappend sweep [expr {10 + 10 * $k}] $k
+		lappend sweepst [expr {19 + 10 * $k}]
+	}
+	set holdst {20 40 60 100 200 300 500 700 728}
+	foreach {tag m} {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {
+		lappend jobs [rgv_job hold7_$tag $m $r $l hold $o $holdst 3000 1 150 $hold7 1]
+		lappend jobs [rgv_job hold8_$tag $m $r $l hold $o $holdst 3000 1 150 $hold8 1]
+		lappend jobs [rgv_job sweep_$tag $m $r $l hold $o $sweepst 3000 1 150 $sweep 1]
+	}
+	foreach {tag m} {ex Gradiente_Expert20_64K xd Sony_HB-F1XDJ_128K_Lite} {
+		lappend jobs [rgv_job armed_$tag $m $r $l armed $o {} 0 0 0 {} 1]
+		lappend jobs [rgv_job hold7_$tag $m $r $l hold $o {} 0 0 0 $hold7 1]
+		lappend jobs [rgv_job hold8_$tag $m $r $l hold $o {} 0 0 0 $hold8 1]
+	}
+	foreach {tag m} {fx Panasonic_FS-A1FX xd Sony_HB-F1XDJ_128K_Lite tr Panasonic_FS-A1GT} {
+		lappend jobs [rgv_job neg8_$tag $m $r $l hold $o {} 0 0 0 $hold8 2]
+	}
+	foreach {tag m} {m2n C-BIOS_MSX2 trn Panasonic_FS-A1GT} {
+		foreach d {armed mixed edge timeout} {
+			lappend jobs [rgv_job ${d}_$tag $m $rn $ln $d $o [dict get $snaps $d] 3000 1 150]
+		}
+	}
+	lappend jobs [rgv_guard_job guard_sweep_xd Sony_HB-F1XDJ_128K_Lite $r $l hold $o 5 13 262 $sweep]
 	foreach {tag m f} {m2 C-BIOS_MSX2 3579545 tr Panasonic_FS-A1GT 3579545 fx Panasonic_FS-A1FX 5369318 p2 C-BIOS_MSX2+ 5369318} {
 		lappend jobs [rgv_fast_job fast_$tag $m $r $l armed $o $f]
 	}
 	foreach {tag m} {m2 C-BIOS_MSX2 eu C-BIOS_MSX2_EU} {
 		foreach d {armed mixed edge} { lappend jobs [rgv_rate_job rate_${d}_$tag $m $r $l $d $o] }
 	}
+	lappend jobs [rgv_rate_job rate_armed_tr Panasonic_FS-A1GT $r $l armed $o]
 	foreach {tag m} {m2 C-BIOS_MSX2 tr Panasonic_FS-A1GT} {
 		foreach d {dummy poor fair good good_min0 late_timeout hold fuzz quirk4} {
 			lappend jobs [rgv_tjob ${d}_$tag $m $r $l $d $o 3000]
 		}
 		lappend jobs [rgv_tjob opp_$tag $m $r $l opp $o 81]
 	}
-	lappend jobs [rgv_tjob armed_ex Gradiente_Expert20_64K $r $l armed $o 3000]
 	lappend jobs [rgv_tjob opp_ex Gradiente_Expert20_64K $r $l opp $o 81]
 	foreach {tag m} {m2 C-BIOS_MSX2 tr Panasonic_FS-A1GT} {
 		lappend jobs [list after_rg_$tag $m [list rgv_after_setup "$o/flow" after_rg_$tag $r $l timeout] {$::hz_done} 600]

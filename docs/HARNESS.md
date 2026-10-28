@@ -74,9 +74,9 @@ The harness has two sides:
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
-| `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 54 jobs) |
-| `rgview.py still` / `rec` / `rate` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states; the pass rate (5.18) |
-| `rgview.sh builds W` / `check W` | shell | the range's three test builds; every verdict of 5.18, then "rgview: PASS" |
+| `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK, the camera's pokes, the HUD's register probe), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 81 jobs) |
+| `rgview.py still` / `rec` / `rate` / `probe` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18) |
+| `rgview.sh builds W` / `check W` | shell | the range's four test builds; every verdict of 5.18, then "rgview: PASS" |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -89,7 +89,8 @@ The Tcl reads these labels from a ROM's label file:
   F3h);
 - the shooting range (5.18): `fr_tick`, `fr_frame`, `fr_done`, `fr_rated`, `fr_code`, `ac_diff`,
   `diff_tab`, `rg_loop`, `tick`, `iv_late`, `txt_rg_intro`, `txt_bs_time` and the other `txt_`
-  labels (a text's span ends at the next one).
+  labels (a text's span ends at the next one); the camera's checks: `rg_want`, `RG_ST_S` (the
+  pokes), `sp_r19`, `split_list`, `hud_msk` (the probe).
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -927,7 +928,7 @@ python3 -I tools/bstest/shots.py CDIR/shots CDIR/run/solved_m2_result.bin
 Expected: "bonus check: PASS" (WELL DONE with TEST N, then the title, fire and the new game) and "6
 snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 
-### 5.18 The shooting range's display (step 8 of its plan: the camera at s = 32)
+### 5.18 The shooting range's display and its camera (steps 8 and 9 of its plan)
 
 The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; the plan's 3.3 and 4.2 are
 in the range chain's scratch notes until `docs/RANGE.md` lands) draws what the original draws in each
@@ -938,11 +939,23 @@ pass, `$B00`, as a word). Every check compares what the VDP shows with `tools/ms
 of that state (`Range.shown`: the page as built, its SAT, R#18), and that state with the one the
 bench's trace gives for its pass.
 
+The camera (`frng.asm` `rg_cam`, once a pass after the crosshair's move) keeps the crosshair's line
+in the view's middle band: s = clamp(clamp(s, cx - 191, cx - 64), 0, 64), cx = `$B9A` - 111, from
+s = 32 (`msxrange.py camera`). A page is built at the multiple of 16 c with c - s in -7..8 and shown
+at s by its list's R#18 = (s - c) & 15 (level 1's sign); when s leaves the back page's window, that
+page is built again whole while the page on screen holds. On a V9958 the HUD split's last write is
+R#18 = 0 instead of R#27 = 0 while the stage runs (`split_list` + 8 = 92h, written by `rg_show`, 9Bh
+again in `rg_hide` once a list with R#18 = 0 is on screen under the black palette). The `RG_ADJ=0`
+build keeps R#18 at 0: s moves in steps of 16 only to keep cx - s in 5..240 (`camera_steps`). The
+bench's drives never reach R#18's ends (the crosshair moves 4 pixels a pass from x 129, so s is 0,
+32, 64 or 1-2 modulo 4): the camera jobs poke s (`rgv_poke_arm`, after the pass that makes `$B00` =
+P, before that pass's builds) on the `hold` drive, whose crosshair never leaves the band.
+
 ```sh
-sh tools/bstest/rgview.sh builds W          # W/fr2, W/fr2v2, W/ext; prints the Tcl line
+sh tools/bstest/rgview.sh builds W          # W/fr2, W/fr2v2, W/fr2n, W/ext; prints the Tcl line
 ```
 ```
-msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [rgv_suite {W}]   (54 jobs; poll)
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [rgv_suite {W}]   (81 jobs; poll)
 ```
 ```sh
 sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
@@ -957,17 +970,26 @@ sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
   layout) and a record of every VBLANK from the first pass to 150 VBLANKs past the stage's end
   (`W/O/st/NAME/rec.bin`: 22,272 bytes a VBLANK, taken at `iv_late`, once the list is applied:
   the registers, the page R#2 shows, the SAT R#5 shows, `pf_pal`, the list, RAM C000h-C0FFh,
-  C600h-C6FFh, D000h-D0FFh and EE00h-EFFFh);
+  C600h-C6FFh, D000h-D0FFh and EE00h-EFFFh), and the HUD's register probe;
+- the camera: `hold7_*` and `hold8_*` (s poked to 7 and to 8 after pass 1: shifts -7 and +8, R#18
+  07h and 08h) and `sweep_*` (s = k from pass 10 + 10k on, k = 0-64: every s, every shift, every
+  c) on the three machines, with snapshots, records and the probe; the probe alone on `armed`,
+  `hold7` and `hold8` on the Gradiente Expert 2.0 (`_ex`) and the Sony HB-F1XDJ (`_xd`, its 128K
+  Lite set-up: the plain one needs a Kanji ROM the MCP's home lacks); the negative control `neg8_*`
+  (`hold8` with `split_list` + 8 put back to 9Bh at the first pass) on the FS-A1FX, the HB-F1XDJ and
+  the FS-A1GT;
+- the `RG_ADJ=0` build (`fr2n`): `armed`, `mixed`, `edge` and `timeout` with snapshots and records
+  on C-BIOS_MSX2 (`_m2n`) and the FS-A1GT (`_trn`);
 - the display guard (`rc2_guard`, tears counted) over `armed`'s passes 5 to about 1,130 on the three
-  machines (`guard_*`); the entry's uploads and builds and `rg_hide`'s SAT writes fall outside it by
-  design (the palette black there);
+  machines (`guard_*`), and over the sweep's passes 5-655 on the HB-F1XDJ (`guard_sweep_xd`); the
+  entry's uploads and builds and `rg_hide`'s SAT writes fall outside it by design (the palette black
+  there);
 - the VRAM speed over `armed` from the power-on to `fr_rated` at 3.58 MHz (C-BIOS_MSX2, FS-A1GT)
   and 5.37 MHz (FS-A1FX, C-BIOS_MSX2+): `fast_*`;
-- the pass rate of `armed`, `mixed` and `edge` at 60 Hz (C-BIOS_MSX2) and 50 Hz (C-BIOS_MSX2_EU):
-  `rate_*`, a line a pass (`tick`, the times at the loop's work, `fr_tick`, after `fr_frame` and
-  after the pass's `rg_feed`, the active CPU);
-- the other ten drives' traces on C-BIOS_MSX2 and the FS-A1GT, `armed` and `opp` on the Gradiente
-  Expert 2.0;
+- the pass rate of `armed`, `mixed` and `edge` at 60 Hz (C-BIOS_MSX2) and 50 Hz (C-BIOS_MSX2_EU),
+  `armed` on the FS-A1GT: `rate_*`, a line a pass (`tick`, the times at the loop's work, `fr_tick`,
+  after `fr_frame` and after the pass's `rg_feed`, the active CPU);
+- the other ten drives' traces on C-BIOS_MSX2 and the FS-A1GT, `opp` on the Gradiente Expert 2.0;
 - the restore (`rgv_after_setup`): `timeout`'s stage (it times out at pass 301 with the palette lit),
   OUT OF TIME., the new game's frame 50 and six pictures (`W/O/flow/after_rg_*`), against
   `hz7_fresh_setup`'s fresh start of the `ext` build (`fresh_rg_*`), on C-BIOS_MSX2 and the
@@ -975,23 +997,34 @@ sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
 
 `rgview.sh check` gives one verdict for each:
 
-- **the traces**: `tools/frngcmp.py` against `build/emu/fr_DRIVE_ram.jsonl`: 0 differ with equal
-  results and ratings (the display does not change the logic);
+- **the traces**: `tools/frngcmp.py` against `build/emu/fr_DRIVE_ram.jsonl` (the camera's jobs:
+  `hold`'s; the guard's and the VRAM speed's: `armed`'s): 0 differ with equal results and ratings
+  (the display does not change the logic);
 - **the stills** (`rgview.py still ... --ref --gen`): the page the applied list shows (lines 0-161)
   equals the render of its shown state, index 1 (the sheets' black, which a front layer puts where
   the scene is 0) counting as 0; its set's SAT equals the state's; the colour rows of its sprites are
   all 15; the picture as shown (the sprites drawn from VRAM's patterns and colour rows, R#18's
   shift) equals the render's; the list's R#18 is (s - c) & 15; the view equals the converter's model
   of the Amiga's own composition (`compare`: 0 pixels, quirk 4's apart); the state is the bench's
-  for its pass (pass 0: `rg_show`'s, nothing drawn);
+  for its pass (pass 0: `rg_show`'s, nothing drawn), its c and s included (the camera from the
+  bench's `$B9A`, the build's `RG_ADJ` from `gen/options.inc`, the job's pokes from its
+  `campoke.txt`: `--campoke`); snapshots at s = 7 (R#18 07h) and s = 8 (08h) must be among them;
 - **the records** (`rgview.py rec`): at every VBLANK showing a stage page, the page equals its
   state's render (no torn element), R#18 and the SAT are the state's (at most 31 entries, at most 3
   sprites on a line, every sprite whole in lines 0-157), no pixel outside both states' elements
-  changes between two pictures shown in a row (compared in scene coordinates, screen x + s), and
-  every picture's state is the bench's for its pass. VBLANKs with the SATs empty and the palette
-  black are `rg_hide`'s (counted, accepted). The crosshair's line off the view is counted: at a fixed
-  s = 32 it leaves the view at the street's ends (the camera, step 9, keeps it in);
-- **the guard**: reg, pal, cmd, cpu, vbl and tear 0 on all three;
+  changes between two pictures shown in a row (compared in scene coordinates, screen x + s, over the
+  page's 256 columns only: never the border R#18 uncovers), every picture's state is the bench's
+  for its pass, and the crosshair's line is in the view. The cut: no list but a stage page's with
+  its own R#18 while the palette is lit, the first other list after the stage's with the palette
+  black, and on a V9958 `split_list` + 8 92h whenever a list has R#18 != 0 and 9Bh under every
+  other lit list. VBLANKs with the SATs empty and the palette black are `rg_hide`'s (counted,
+  accepted: `RG_ADJ=0` builds; the others show `fe_text`'s list by then);
+- **the picture rates** (C-BIOS_MSX2, reported): pictures a second over the VBLANKs of the passes
+  whose camera moves (pans) and of those whose riser frame changes, and over the whole stage;
+- **the probe** (`rgview.py probe`): at every split's end of the stage R#18 = 0, at every VBLANK the
+  applied list's value; on each V9958 machine shifts -7 and +8 among the frames; the three negative
+  controls report the shifted HUD (the check sees the fault it is for);
+- **the guard**: reg, pal, cmd, cpu, vbl and tear 0 on all four runs;
 - **the VRAM speed**: 0 lost writes in the cartridge (C-BIOS_MSX2+ loses 1 in its own BIOS, at
   05B3h, before the cartridge starts);
 - **the pass rate** (`rgview.py rate`): no late pass (50 Hz: every step 1 VBLANK; 60 Hz: four 1s and
@@ -1017,6 +1050,25 @@ The run of 2026-10-27 (the commit after `3c3a735`): every verdict PASS.
   38,603 at 50 Hz.
 - The restore PASS; the HUD at `armed`'s 39 passes equal to step 7's build (`hudcheck.py
   W/O/st/armed_m2 REF/st/armed_m2`: a build of `3c3a735` in a worktree, the same `rgv_job`).
+
+The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdict PASS.
+
+- 79 traces 0 differ, with equal results and ratings.
+- 695 stills equal to the render, every R#18 value 00h-0Fh among them (30 at s = 7, 30 at s = 8, 3
+  at s = 0, 63 at s = 64); the records 0 torn, 0 SAT errors, 0 coherence errors, every state the
+  bench's at its camera, the crosshair's line always in the view; the sweeps show all 16 shifts;
+  the cut: `timeout`'s last stage list has R#18 0Ah (s = 10, c = 16), the next list comes with the
+  palette black, `split_list` + 8 9Bh again one VBLANK later (V9958).
+- The probe: 33 runs, R#18 0 at every split's end (C-BIOS_MSX2, Expert, FS-A1FX, HB-F1XDJ,
+  FS-A1GT; shifts -7 and +8 held 866-867 frames each); the negative controls report 866-867
+  shifted HUD frames.
+- Picture rates on C-BIOS_MSX2: pans 10-13 a second (`armed`, `mixed`, `timeout`), the riser 7-10
+  (`armed`, `mixed`; `timeout`'s 6 riser passes fall inside a page rebuild: no picture), the whole
+  stage 20-29; 23-30 pictures a drive at another c.
+- The guard: all 0 (1,348 frames of `armed` on three machines, 779 of the sweep on the HB-F1XDJ).
+  VRAM speed 0 in the cartridge.
+- The pass rate: 0 late passes; the worst pass 37,973 T-states at 60 Hz, 38,633 at 50 Hz.
+- The restore PASS; the HUD at `armed`'s 39 passes equal to step 8's build.
 
 ## 6. The whole suite in order
 

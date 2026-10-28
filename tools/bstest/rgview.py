@@ -11,8 +11,10 @@ usage:
       patterns and colour rows, then R#18's shift); the list's R#18 is the state's (s - c) & 15; the
       view equals the converter's model of the Amiga's own composition (msxrange.py compare: 0
       pixels, quirk 4's apart). With --ref (the bench's trace of the drive, tools/amigaemu.py frng
-      --trace-ram) and --gen (the build's gen folder: range.inc, range_tab.inc), the state is what
-      the original drew in the pass before the one it was taken at (pass 0: rg_show's, nothing drawn).
+      --trace-ram) and --gen (the build's gen folder: range.inc, range_tab.inc, options.inc), the
+      state is what the original drew in the pass before the one it was taken at (pass 0: rg_show's,
+      nothing drawn), at the camera msx/frng.asm rg_cam gives (msxrange.py camera, or camera_steps
+      in an RG_ADJ=0 build; --campoke P:S,... : the harness set s to S after pass P - 1, rgview.tcl).
       --png writes each snapshot's whole screen, 2 x 2 (the play area as shown, the HUD below)
   rgview.py rec REC.bin [--ref BENCH.jsonl --gen GEN] [--png DIR] [--pngmax N]
       every recorded VBLANK whose list shows a stage page: the page equals the render of its shown
@@ -20,15 +22,24 @@ usage:
       is the state's (s - c) & 15, the SAT is the
       state's (at most 31 entries, at most 3 sprites on a line, every sprite whole in lines
       0-157), no pixel outside the elements of two pictures shown in a row changes (frame-to-frame
-      coherence, compared in scene coordinates), with --ref each picture's state is the bench's for
-      its pass; reports the pictures, their passes and the crosshair's line outside the view (the
-      camera's job, docs/RANGE.md step 9). --png writes the first N pictures (graded palette from
-      the record's pf_pal; black ones in the plain palette)
+      coherence, compared in scene coordinates: only the page's 256 columns, never the border R#18
+      uncovers), with --ref each picture's state is the bench's for its pass, the crosshair's line
+      in the view; the cut (docs/RANGE.md 4.2 check 3): no list but a stage page's with its own
+      R#18 while the palette is lit, the first other list with the palette black, and on a V9958
+      (hud_msk) split_list + 8 92h (R#18) whenever a list has R#18 != 0, 9Bh (R#27) again under
+      every other lit list; reports the shifts shown and, with --ref, the picture rates (pans, page
+      rebuilds at another c, the riser's steps, the rest). --png writes the first N pictures (graded
+      palette from the record's pf_pal; black ones in the plain palette)
   rgview.py rate RATE.txt [...] [--hz 50|60]
       rgview.tcl rgv_rate_job's log: passes a second, the VBLANK steps between passes (50 Hz: all 1;
       60 Hz: four 1s and one 2 in every 5: fs_div's skip; the rate from the file name's "_eu" when
       --hz is not given), the late passes, the T-states of each pass's work (hud_keep, sec_tick,
       fr_frame, rg_feed) and of fr_frame and rg_feed alone, the active CPU
+  rgview.py probe PROBE.txt [...]
+      rgview.tcl's register probe (docs/RANGE.md 4.2 check 4): R#18 at the HUD split's end (sp_r19)
+      0 in every frame of the stage, R#18 at the next VBLANK (iv_late) the applied list's; a probe
+      with "neg 1" is the negative control (split_list + 8 poked back to 9Bh on a V9958): it passes
+      when it reports shifted HUD frames
 Exit 0 when every check passed.
 
 A snapshot (hz7.tcl hz7_snap) is VRAM 128 KiB, RAM C000h-FFFFh, the 64 VDP registers and the
@@ -61,6 +72,8 @@ REC = [("regs", 64), ("page", 20736), ("sat", 128), ("pfpal", 32), ("list", 32),
 REC_LEN = sum(n for _, n in REC)
 NORM = bytes([0, 0] + list(range(2, 256)))      # the sheets' black (index 1) is the scene's (0)
 HZ = 3579545
+SPLIT_B8 = 0xC8                                 # msx.inc split_list + 8 in the record's C000h block
+HUD_MSK = 0x2B                                  # msx.inc hud_msk (non-zero: the V9958's split list)
 
 
 def model() -> msxrange.Range:
@@ -177,9 +190,12 @@ class Bench:
     the dissolve ($B3E: $1F8E8[$B46]'s picture, $B56, $B66), the crosshair ($B9A, $B9E), the box
     (n = $1EB4A of the row before, its centre (4 + $B9A) & FFF0h and row $B9E of the row before)."""
 
-    def __init__(self, ref: Path, gen: Path):
+    def __init__(self, ref: Path, gen: Path, pokes: dict | None = None):
         inc = (gen / "range.inc").read_text()
         tab = (gen / "range_tab.inc").read_text()
+        opt = gen / "options.inc"
+        m = re.search(r"^RG_ADJ:\s+equ\s+(\d+)", opt.read_text(), re.M) if opt.exists() else None
+        self.adj = int(m[1]) if m else 1
         eq = {m[1]: int(m[2], 0) for m in re.finditer(r"^(\w+):\s+equ\s+(-?\w+)", inc, re.M)}
         self.pic = {k[7:].lower(): v for k, v in eq.items() if re.fullmatch(r"RG_PIC_[0-9A-F]{5}", k)}
 
@@ -190,6 +206,8 @@ class Bench:
                                                           for ln in m[1].splitlines()))]
         fxg = dws("rgt_fx_gfx")
         self.fxgfx = [fxg[2 * i] << 16 | fxg[2 * i + 1] for i in range(len(fxg) // 2)]
+        rsg = dws("rgt_rise_gfx")
+        self.rise = {self.pic[f"{rsg[2 * i] << 16 | rsg[2 * i + 1]:05x}"] for i in range(len(rsg) // 2)}
         self.kinds = dws("rgt_kind")
         self.descofs = [None if x == 0xFFFF else x - eq["RG_FC_1F60E"] for x in dws("rgt_desc")]
         self.rows = {}
@@ -197,6 +215,16 @@ class Bench:
             if line.startswith('{"frame"'):
                 r = json.loads(line)
                 self.rows[r["frame"]] = r
+        # the camera s in the state stamped k: rg_cam's after pass k - 1 (from RG_CAM_START at the
+        # entry), then the harness's pokes
+        rule = msxrange.camera if self.adj else msxrange.camera_steps
+        pokes = pokes or {}
+        self.cam = {0: pokes.get(0, msxrange.CAM_START)}
+        for k in range(1, max(self.rows, default=0) + 1):
+            if k not in self.rows:
+                break
+            v = bytes.fromhex(self.rows[k]["vars"])
+            self.cam[k] = pokes.get(k, rule(self.cam[k - 1], v[0x9A] << 8 | v[0x9B]))
 
     def state(self, k: int) -> bytes | None:
         """The wanted state (RG_ST_LEN bytes, the camera at its start) at pass k's start."""
@@ -232,14 +260,15 @@ class Bench:
         fx = (self.pic[f"{self.fxgfx[v[V(0xB46)]]:05x}"], w16(v, V(0xB56)), w16(v, V(0xB66))) if v[V(0xB3E)] else None
         n = msxrange.s16(w16(codep[0x1EB46], 4))
         box = (n, (4 + w16(vp, V(0xB9A))) & 0xFFF0, w16(vp, V(0xB9E))) if n > 0 else None
-        st = msxrange.State(msxrange.CAM_START, msxrange.CAM_START, pops, big, fx, (w16(v, V(0xB9A)), w16(v, V(0xB9E))), box)
+        s = self.cam[k]
+        st = msxrange.State(msxrange.page_c(s), s, pops, big, fx, (w16(v, V(0xB9A)), w16(v, V(0xB9E))), box)
         return st.to_bytes()
 
 
 def same_state(a: bytes, b: bytes) -> bool:
-    """Two shown states that draw the same: the box's n 0 and RG_NONE both mean none; C and S apart."""
+    """Two shown states that draw the same: the box's n 0 and RG_NONE both mean none."""
     sa, sb = msxrange.State.from_bytes(a), msxrange.State.from_bytes(b)
-    return all(getattr(sa, f) == getattr(sb, f) for f in ("pops", "big", "fx", "cross", "box"))
+    return all(getattr(sa, f) == getattr(sb, f) for f in ("c", "s", "pops", "big", "fx", "cross", "box"))
 
 
 # ----- stills
@@ -395,6 +424,11 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
     torn = satbad = outside = benchbad = stage = hidden = regbad = 0
     pics, passes, lastseq, prev, outview, shown_from = 0, [], None, None, 0, None
     bad_lines = []
+    cutlit = hudbyte = firstlit = restore = 0       # (the cut and the V9958's split byte)
+    after_stage = False                             # (a stage list was on screen: the next other list
+    shifts, v58 = Counter(), False                  #  is the cut's)
+    recpass, newat, rebuilds, lastst = {}, set(), [], None   # (for the picture rates)
+    last_r18, cut_k, cut_black = None, None, None               # (the stage's last list, the cut)
     for k in range(n):
         b = data[k * REC_LEN:(k + 1) * REC_LEN]
         parts, o = {}, 0
@@ -404,10 +438,32 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         lregs, gframe = parse_list(parts["list"])
         seq = parts["list"][0]
         page = R2_PAGE.get(lregs.get(2))
+        r18 = lregs.get(18, 0)
+        recpass[k] = parts["d0"][0] | parts["d0"][1] << 8          # ($B00 at this VBLANK)
+        lit = any(parts["pfpal"][2:])
+        b8, msk = parts["c0"][SPLIT_B8], parts["c0"][HUD_MSK]
+        v58 |= bool(msk)
+        if msk and r18 and b8 != 0x92:
+            hudbyte += 1                                # (the HUD would show R#18's shift: V9958)
+            bad_lines.append(f"record {k} (list {seq}): R#18 {r18:02X}h with split_list + 8 {b8:02X}h")
         if page is None or lregs.get(8) != R8_SPR_ON:
+            if r18 and lit:
+                cutlit += 1
+                bad_lines.append(f"record {k} (list {seq}): another list's R#18 {r18:02X}h, the palette lit")
+            if after_stage:
+                cut_k, cut_black = k, not lit
+            if after_stage and lit:
+                firstlit += 1
+                bad_lines.append(f"record {k} (list {seq}): the first list after the stage's, the palette lit")
+            if lit and msk and b8 != 0x9B:
+                restore += 1
+                bad_lines.append(f"record {k} (list {seq}): split_list + 8 {b8:02X}h under a lit list not the stage's")
+            after_stage = False
             prev = None                                 # (fe_text's list: not a stage picture)
             lastseq = seq
             continue
+        after_stage = True
+        last_r18 = r18
         stage += 1
         newpic = seq != lastseq
         lastseq = seq
@@ -420,7 +476,8 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         want_pic, want_page = renders[key]
         img = page_rows(parts["page"])
         msg = []
-        r18 = lregs.get(18, 0)
+        if lit:
+            shifts[st.c - st.s] += 1
         if r18 != (st.s - st.c) & 15:
             regbad += 1
             msg.append(f"R#18 {r18:02X}h for c {st.c} s {st.s}")
@@ -436,8 +493,9 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         elif ents != want_sat(rg, st) or sp:
             satbad += 1
             msg.append(f"SAT: {'; '.join(sp) or 'not the state'}'s")
-        if st.cross and not 0 <= st.cross[0] - msxrange.LINE_DX - st.s < W:
-            outview += newpic
+        if st.cross and not 0 <= st.cross[0] - msxrange.LINE_DX - st.s < W and newpic:
+            outview += 1
+            msg.append(f"the crosshair's line at view x {st.cross[0] - msxrange.LINE_DX - st.s}")
         if bench and newpic:
             exp = bench.state(spass)
             if exp is None or not same_state(exp, raw[:ST_LEN]):
@@ -449,6 +507,10 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
                 outside += 1
                 msg.append(f"{nout} pixels outside the elements changed")
         if newpic:
+            newat.add(k)
+            if lastst is not None and st.c != lastst.c:
+                rebuilds.append(k)
+            lastst = st
             pics += 1
             passes.append(spass)
             prev = (st, img)
@@ -470,14 +532,42 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
                              + "; ".join(msg))
     for line in bad_lines[:12]:
         print(line)
+    hz = 50 if data[9] & 2 else 60                  # (R#9's NT bit in the first record)
+    if bench and stage:
+        # the pictures a second while the camera pans (passes whose state has another s than the pass
+        # before's) and while the riser animates (another riser frame), over the VBLANKs of those
+        # passes; all: over the stage's VBLANKs
+        pans = {q for q in bench.cam if q - 1 in bench.cam and bench.cam[q] != bench.cam[q - 1]}
+        rise = set()
+        for q in bench.rows:
+            a, b = bench.state(q), bench.state(q - 1)
+            if a and b:
+                ba, bb = msxrange.State.from_bytes(a).big, msxrange.State.from_bytes(b).big
+                if ba != bb and any(e and e[0] in bench.rise for e in (ba, bb)):
+                    rise.add(q)
+        out = []
+        for name, qs in (("pans", pans), ("the riser", rise)):
+            ks = [k for k, q in recpass.items() if q in qs]
+            if ks:
+                npic = sum(1 for k in ks if k in newat)
+                out.append(f"{name} {hz * npic / len(ks):.1f} ({npic} pictures in {len(ks)} VBLANKs of {len(qs)} passes)")
+        ks = [k for k, q in recpass.items() if 0 < q <= max(bench.rows)]
+        out.append(f"all {hz * sum(1 for k in ks if k in newat) / max(len(ks), 1):.1f}")
+        print(f"pictures a second: {'; '.join(out)}; {len(rebuilds)} pictures at another c than the one before")
     steps = Counter(b - a for a, b in zip(passes, passes[1:]))
     print(f"{n} records, {stage} with a stage list: {pics} pictures (passes {passes[:1]}..{passes[-1:]}, "
           f"pass steps {dict(sorted(steps.items()))}); torn {torn}, SAT errors {satbad}, pictures with "
           f"pixels outside the elements changed {outside}, states not the bench's {benchbad}, R#18 not the "
           f"state's (s - c) & 15 {regbad}; {hidden} VBLANKs "
-          f"with the SATs emptied and the palette black (rg_hide); "
-          f"the crosshair's line outside the view in {outview} pictures (the camera: step 9)")
-    return 1 if torn or satbad or outside or benchbad or regbad else 0
+          f"with the SATs emptied and the palette black (rg_hide); the crosshair's line outside the view "
+          f"in {outview} pictures; shifts c - s shown lit {dict(sorted(shifts.items()))}; the cut: other "
+          f"lists with R#18 != 0 lit {cutlit}, the first list after the stage's lit {firstlit} (the stage's "
+          f"last list R#18 {last_r18 if last_r18 is None else format(last_r18, '02X') + 'h'}, the next list at "
+          f"record {cut_k}{', black' if cut_black else ''})"
+          + (f", split_list + 8 not 92h under R#18 != 0 {hudbyte}, not 9Bh under another lit list {restore} (V9958)"
+             if v58 else " (V9938)"))
+    return 1 if torn or satbad or outside or benchbad or regbad or outview or cutlit or firstlit \
+        or hudbyte or restore else 0
 
 
 # ----- the pass rate
@@ -516,23 +606,60 @@ def rate(paths: list[Path], hz: int | None) -> int:
     return 1 if bad else 0
 
 
+# ----- the HUD's register probe
+
+def probe(paths: list[Path]) -> int:
+    """rgview.tcl rgv_p_* files: 'frames N', 'shifted N' (the list's R#18 != 0 at the split),
+    'hud N' (R#18 != 0 at the split's end), 'late N' (R#18 at iv_late not the list's), 'splits N',
+    'vblanks N', 'msk N', 'shifts {...}'."""
+    bad = 0
+    for path in paths:
+        v = {}
+        for line in path.read_text().splitlines():
+            k, _, rest = line.partition(" ")
+            v[k] = rest
+        try:
+            n = {k: int(v[k]) for k in ("frames", "shifted", "hud", "late", "splits", "vblanks", "msk")}
+        except (KeyError, ValueError):
+            print(f"{path}: incomplete")
+            bad += 1
+            continue
+        neg = v.get("neg", "0").strip() == "1"
+        ok = n["frames"] > 0 and abs(n["splits"] - n["vblanks"]) <= 1 and n["late"] == 0   # (a split before the
+                                                    # first VBLANK counted, when the first pass starts first)
+        if neg:
+            ok = ok and n["msk"] != 0 and n["shifted"] > 0 and n["hud"] > 0
+        else:
+            ok = ok and n["hud"] == 0
+        print(f"{path.parent.name}: {n['frames']} frames ({n['vblanks']} VBLANKs, {n['splits']} splits), "
+              f"{n['shifted']} with R#18 != 0 (shifts {v.get('shifts', '')}), R#18 != 0 at the split's end "
+              f"{n['hud']}, R#18 at iv_late not the list's {n['late']}, hud_msk {n['msk']}"
+              f"{' (the negative control: must report the shift)' if neg else ''}: {'PASS' if ok else 'FAIL'}")
+        bad += not ok
+    return 1 if bad else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=("still", "rec", "rate"))
+    ap.add_argument("mode", choices=("still", "rec", "rate", "probe"))
     ap.add_argument("files", nargs="+", type=Path)
     ap.add_argument("--ref", type=Path, help="the bench's trace of the drive (build/emu/fr_NAME_ram.jsonl)")
     ap.add_argument("--gen", type=Path, help="the build's gen folder (range.inc, range_tab.inc), with --ref")
     ap.add_argument("--png", type=Path)
     ap.add_argument("--pngmax", type=int, default=60)
     ap.add_argument("--hz", type=int, choices=(50, 60))
+    ap.add_argument("--campoke", default="", help="P:S,... the harness's pokes of the camera (rgview.tcl)")
     a = ap.parse_args()
     if a.mode == "rate":
         return rate(a.files, a.hz)
+    if a.mode == "probe":
+        return probe(a.files)
     bench = None
     if a.ref:
         if not a.gen:
             ap.error("--ref needs --gen")
-        bench = Bench(a.ref, a.gen)
+        pokes = {int(q): int(s) for q, s in (x.split(":") for x in a.campoke.replace(" ", ",").split(",") if x)}
+        bench = Bench(a.ref, a.gen, pokes)
     if a.png:
         a.png.mkdir(parents=True, exist_ok=True)
     if a.mode == "still":

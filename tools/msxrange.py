@@ -192,6 +192,7 @@ PLAN_PRIO_SET = 48077                          # of the 6th plane's 55,040 pixel
 TOP, VIEW_H, SCENE_W, VIEW_W = 10, 162, 320, 256
 CAM_MAX, CAM_START = SCENE_W - VIEW_W, 32
 BAND_LO, BAND_HI = 64, 191                     # the camera keeps cx - s in 64..191 when it can
+ADJ_LO, ADJ_HI = 5, 240                        # RG_ADJ=0 (docs/RANGE.md 6): s in 16-px steps, cx - s in 5..240
 SHIFT_MIN, SHIFT_MAX = -7, 8                   # what R#18 can show: c - s
 LINE_DX = 111                                  # the crosshair's line: bitplane x $B9A - 111, the hit column
                                                # (docs/RANGE.md default 17)
@@ -274,6 +275,17 @@ def camera(s: int, b9a: int) -> int:
     """docs/RANGE.md 3.3's rule, once a pass: the crosshair's line cx kept in the view's middle band."""
     cx = b9a - LINE_DX
     return clamp(clamp(s, cx - BAND_HI, cx - BAND_LO), 0, CAM_MAX)
+
+
+def camera_steps(s: int, b9a: int) -> int:
+    """The RG_ADJ=0 build's rule (docs/RANGE.md 6: R#18 always 0), once a pass: s a multiple of 16
+    that moves only when the crosshair's line would leave cx - s in ADJ_LO..ADJ_HI."""
+    cx = b9a - LINE_DX
+    if s < cx - ADJ_HI:
+        s = (cx - ADJ_HI + 15) & ~15
+    if s > cx - ADJ_LO:
+        s = (cx - ADJ_LO) & ~15
+    return clamp(s, 0, CAM_MAX)
 
 
 def page_c(s: int) -> int:
@@ -1075,6 +1087,8 @@ class Range:
         eq("RG_LINE_DX", LINE_DX, "cx = $B9A - RG_LINE_DX: the crosshair's line, the hit column")
         eq("RG_BAND_LO", BAND_LO, "once a pass: s = clamp(clamp(s, cx - RG_BAND_HI,")
         eq("RG_BAND_HI", BAND_HI, "  cx - RG_BAND_LO), 0, RG_CAM_MAX)")
+        eq("RG_ADJ_LO", ADJ_LO, "RG_ADJ=0 (16-px steps, R#18 0): s moves only to keep")
+        eq("RG_ADJ_HI", ADJ_HI, "  cx - s in RG_ADJ_LO..RG_ADJ_HI")
         eq("RG_C_ROUND", 8, "a page at c = (s + RG_C_ROUND) & F0h shows s:")
         eq("RG_SHIFT_MIN", SHIFT_MIN, "  c - s in RG_SHIFT_MIN..RG_SHIFT_MAX, R#18 = (s - c) & 15")
         eq("RG_SHIFT_MAX", SHIFT_MAX, "  (level 1's sign: 8 moves the picture 8 px right, 7 7 px left)")

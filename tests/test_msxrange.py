@@ -62,6 +62,16 @@ class RuleTests(unittest.TestCase):
                     self.assertEqual(s, s0)          # the middle band: the camera holds still
         self.assertEqual(msxrange.camera(32, 240), 32)
 
+    def test_camera_steps_keep_the_line_in_view(self):
+        for b9a in range(0x7C, 0x199, 4):
+            for s0 in range(0, 65, 16):
+                s = msxrange.camera_steps(s0, b9a)
+                cx = b9a - msxrange.LINE_DX
+                self.assertTrue(s % 16 == 0 and 0 <= s <= 64 and 5 <= cx - s <= 240, (b9a, s0, s))
+                if 5 <= cx - s0 <= 240:
+                    self.assertEqual(s, s0)          # the camera holds still while the line is in view
+        self.assertEqual(msxrange.camera_steps(32, 240), 32)
+
     def test_pages_and_r18(self):
         for s in range(0, 65):
             c = msxrange.page_c(s)

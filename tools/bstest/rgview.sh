@@ -1,20 +1,24 @@
 #!/bin/sh
-# rgview.sh: the shooting range's display checks at the camera's start (docs/RANGE.md 4.2 checks 2,
-# 3, 5, 6, 7 and 10; the 15 drives' traces; docs/HARNESS.md 5.18). Three commands:
+# rgview.sh: the shooting range's display checks with its camera (docs/RANGE.md 4.2 checks 2-7 and
+# 10; the 15 drives' traces; docs/HARNESS.md 5.18). Three commands:
 #
-#   sh tools/bstest/rgview.sh builds W   W/fr2 (EXTJOY=1 PZ_TEST=2), W/fr2v2 (+ PZ_LEVEL=2) and W/ext
-#                                        (EXTJOY=1), each through build.sh's checks; prints the Tcl line
+#   sh tools/bstest/rgview.sh builds W   W/fr2 (EXTJOY=1 PZ_TEST=2), W/fr2v2 (+ PZ_LEVEL=2), W/fr2n
+#                                        (+ RG_ADJ=0) and W/ext (EXTJOY=1), each through build.sh's
+#                                        checks; prints the Tcl line
 #   msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [rgv_suite {W}]
-#                                        (rgview.tcl: 54 jobs, a few minutes; poll
+#                                        (rgview.tcl: 81 jobs, 15-25 minutes; poll
 #                                        "list $::hz_state [llength $::hz_msgs] [lindex $::hz_msgs end]")
 #   sh tools/bstest/rgview.sh check W    every verdict, then "rgview: PASS" or "rgview: FAIL"
 #
-# W: a work folder outside build/msx (a session scratch folder: the records take about 1 GB).
+# W: a work folder outside build/msx (a session scratch folder: the records take about 2 GB).
 # The checks: the traces (tools/frngcmp.py: 0 differ, equal results and ratings); the stills and
-# records (rgview.py still / rec against the bench's states); the display guard (reg, pal, cmd, cpu,
-# vbl, tear 0); the VRAM speed (0 lost writes in the cartridge; the BIOS's own are listed); the pass
-# rate (rgview.py rate: no late pass); the restore and the new game (restorecheck.py --known --range,
-# tools/checkrun.py when ~/.venvs/msxports/bin/python has numpy, the lost counters 0).
+# records (rgview.py still / rec against the bench's states at rg_cam's camera, the harness's camera
+# pokes from campoke.txt; the cut and the V9958's split byte; the picture rates); the HUD's register
+# probe (rgview.py probe: R#18 0 at every split's end, the negative control reporting the shift);
+# the display guard (reg, pal, cmd, cpu, vbl, tear 0); the VRAM speed (0 lost writes in the
+# cartridge; the BIOS's own are listed); the pass rate (rgview.py rate: no late pass); the restore
+# and the new game (restorecheck.py --known --range, tools/checkrun.py when
+# ~/.venvs/msxports/bin/python has numpy, the lost counters 0).
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd -P)"
 usage() { sed -n 2,19p "$0" >&2; exit 2; }
@@ -26,7 +30,8 @@ cd "$REPO" || exit 2
 case "$cmd" in
 builds)
   bad=0
-  for spec in "fr2:EXTJOY=1 PZ_TEST=2" "fr2v2:EXTJOY=1 PZ_TEST=2 PZ_LEVEL=2" "ext:EXTJOY=1"; do
+  for spec in "fr2:EXTJOY=1 PZ_TEST=2" "fr2v2:EXTJOY=1 PZ_TEST=2 PZ_LEVEL=2" "fr2n:EXTJOY=1 PZ_TEST=2 RG_ADJ=0" \
+      "ext:EXTJOY=1"; do
     out=${spec%%:*}; opts=${spec#*:}
     # (word splitting of $opts is wanted: sh, not zsh)
     r=$(sh tools/bstest/build.sh "$W/$out/rc2.rom" $opts 2>&1); rc=$?
@@ -41,8 +46,20 @@ check)
   O="$W/O"; bad=0
   step() { echo; echo "== $1"; }
   verdict() { if [ "$1" -eq 0 ]; then echo "-> PASS"; else echo "-> FAIL"; bad=1; fi; }
-  drive_of() {   # a job's name -> its drive (NAME_TAG, rate_NAME_TAG)
-    n=${1#rate_}; echo "${n%_*}"
+  drive_of() {   # a job's name -> its drive (NAME_TAG, rate_NAME_TAG; the camera's jobs drive hold)
+    n=${1#rate_}; n=${n%_*}
+    case "$n" in hold7|hold8|sweep|neg8|guard_sweep) n=hold ;; guard|fast) n=armed ;; esac
+    echo "$n"
+  }
+  gen_of() {     # a job's name -> its build's gen folder (range.inc, range_tab.inc, options.inc)
+    case "$1" in
+      armed2_*) echo "$W/fr2v2/gen" ;;
+      *_m2n|*_trn) echo "$W/fr2n/gen" ;;
+      *) echo "$W/fr2/gen" ;;
+    esac
+  }
+  poke_of() {    # a job's folder -> rgview.py's --campoke argument (none without the harness's pokes)
+    if [ -f "$1/campoke.txt" ]; then echo "--campoke=$(cat "$1/campoke.txt")"; else echo "--campoke="; fi
   }
   step "the traces against the bench (tools/frngcmp.py)"
   n=0; nb=0
@@ -61,34 +78,57 @@ check)
     printf '  %-20s %s\n' "$(basename "$f" .txt)" "$(echo "$r" | grep 'frames compared' | head -1)"
   done
   echo "  $n trace(s), $nb failing"
-  [ "$nb" -eq 0 ] && [ "$n" -ge 45 ]; verdict $?
+  [ "$nb" -eq 0 ] && [ "$n" -ge 79 ]; verdict $?
   step "the stills: the page on screen, its sprites and R#18 against tools/msxrange.py's render (rgview.py still)"
   sb=0; sn=0
   for d in "$O"/st/*; do
     [ -d "$d" ] || continue
-    t=$(basename "$d"); dr=$(drive_of "$t")
-    g="$W/fr2/gen"; [ "$dr" = armed2 ] && g="$W/fr2v2/gen"
+    t=$(basename "$d"); dr=$(drive_of "$t"); g=$(gen_of "$t")
     ls "$d"/p*.bin >/dev/null 2>&1 || continue
-    python3 -I tools/bstest/rgview.py still "$d"/p*.bin --ref "build/emu/fr_${dr}_ram.jsonl" --gen "$g" > "$d/still.txt" 2>&1; rc=$?
+    python3 -I tools/bstest/rgview.py still "$d"/p*.bin --ref "build/emu/fr_${dr}_ram.jsonl" --gen "$g" "$(poke_of "$d")" > "$d/still.txt" 2>&1; rc=$?
     sn=$((sn + $(grep -c '^p[0-9]' "$d/still.txt")))
     [ $rc -eq 0 ] || { sb=1; grep -E 'FAIL' "$d/still.txt" | head -3 | sed "s/^/  $t: /"; }
     echo "  $t: $(tail -1 "$d/still.txt")"
   done
-  echo "  $sn snapshot(s)"
-  [ "$sb" -eq 0 ] && [ "$sn" -gt 0 ]; verdict $?
-  step "the records: no torn element, the SAT, frame-to-frame coherence, the bench's states (rgview.py rec)"
+  echo "  $sn snapshot(s); R#18 and the camera in them:"
+  cat "$O"/st/*/still.txt | grep -o -E 'c [0-9]+ s [0-9]+ R#18 [0-9A-F]+h' | awk '{print $6}' | sort | uniq -c | \
+    awk '{printf "%s %s; ", $2, $1} END {print ""}' | sed 's/^/    R#18 (snapshots): /'
+  for s in 0 7 8 64; do
+    printf '    s = %s: %s snapshot(s)\n' "$s" "$(cat "$O"/st/*/still.txt | grep -c -E " s $s R#18 ")"
+  done
+  ns7=$(cat "$O"/st/*/still.txt | grep -c -E ' s 7 R#18 07h')
+  ns8=$(cat "$O"/st/*/still.txt | grep -c -E ' s 8 R#18 08h')
+  [ "$sb" -eq 0 ] && [ "$sn" -gt 0 ] && [ "$ns7" -gt 0 ] && [ "$ns8" -gt 0 ]; verdict $?
+  step "the records: no torn element, the SAT, frame-to-frame coherence, the bench's states, the crosshair in view, the cut (rgview.py rec)"
   rb=0; rn=0
   for f in "$O"/st/*/rec.bin; do
     [ -f "$f" ] || continue
-    d=$(dirname "$f"); t=$(basename "$d"); dr=$(drive_of "$t")
-    g="$W/fr2/gen"; [ "$dr" = armed2 ] && g="$W/fr2v2/gen"
-    python3 -I tools/bstest/rgview.py rec "$f" --ref "build/emu/fr_${dr}_ram.jsonl" --gen "$g" > "$d/rec.txt" 2>&1; rc=$?
+    d=$(dirname "$f"); t=$(basename "$d"); dr=$(drive_of "$t"); g=$(gen_of "$t")
+    python3 -I tools/bstest/rgview.py rec "$f" --ref "build/emu/fr_${dr}_ram.jsonl" --gen "$g" "$(poke_of "$d")" > "$d/rec.txt" 2>&1; rc=$?
     rn=$((rn + 1))
     [ $rc -eq 0 ] || { rb=1; head -4 "$d/rec.txt" | sed "s/^/  $t: /"; }
-    echo "  $t: $(tail -1 "$d/rec.txt" | cut -c1-260)"
+    echo "  $t: $(tail -1 "$d/rec.txt" | cut -c1-200)"
+    echo "    ...$(tail -1 "$d/rec.txt" | grep -o -E 'the crosshair.*' | cut -c1-400)"
   done
-  [ "$rb" -eq 0 ] && [ "$rn" -ge 15 ]; verdict $?
-  step "the display guard over armed's passes (reg, pal, cmd, cpu, vbl, tear: 0)"
+  [ "$rb" -eq 0 ] && [ "$rn" -ge 32 ]; verdict $?
+  step "the picture rates on the V9938 (C-BIOS_MSX2): while the camera pans, while the riser animates, all"
+  for t in armed_m2 mixed_m2 edge_m2 timeout_m2 sweep_m2 armed_m2n mixed_m2n; do
+    [ -f "$O/st/$t/rec.txt" ] && echo "  $t: $(grep '^pictures a second' "$O/st/$t/rec.txt")"
+  done
+  step "the HUD under R#18: the register probe at every split's end (rgview.py probe), its negative control"
+  pr=$(python3 -I tools/bstest/rgview.py probe "$O"/st/*/probe.txt 2>&1); rc=$?
+  echo "$pr" | sed 's/^/  /' | cut -c1-260
+  pn=$(echo "$pr" | grep -c -E ': (PASS|FAIL)$')
+  ng=$(grep -l '^neg 1' "$O"/st/*/probe.txt 2>/dev/null | wc -l | tr -d ' ')
+  ends=0
+  for m in fx xd tr; do
+    grep -q -E '^shifts .*07h:[1-9]' "$O/st/hold7_$m/probe.txt" 2>/dev/null || ends=1
+    grep -q -E '^shifts .*08h:[1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null || ends=1
+    grep -q -E '^msk [1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null || ends=1
+  done
+  echo "  $pn probe(s), $ng negative control(s); shifts -7 and +8 on the three V9958s: $([ $ends -eq 0 ] && echo yes || echo NO)"
+  [ $rc -eq 0 ] && [ "$pn" -ge 33 ] && [ "$ng" -eq 3 ] && [ $ends -eq 0 ]; verdict $?
+  step "the display guard over armed's passes and the camera sweep (reg, pal, cmd, cpu, vbl, tear: 0)"
   gn=0; gb=0
   for f in "$O"/flow/guard_*.txt; do
     [ -f "$f" ] || continue
@@ -96,7 +136,7 @@ check)
     echo "  $(basename "$f" .txt): $(head -1 "$f" | cut -c1-120); $(grep -E '^(reg|pal|cmd|cpu|vbl|tear) ' "$f" | tr '\n' ' ')"
     [ "$(grep -E '^(reg|pal|cmd|cpu|vbl|tear) ' "$f" | grep -c -v ' 0$')" -eq 0 ] || { gb=1; sed -n 8,12p "$f" | sed 's/^/    /'; }
   done
-  [ "$gb" -eq 0 ] && [ "$gn" -eq 3 ]; verdict $?
+  [ "$gb" -eq 0 ] && [ "$gn" -eq 4 ]; verdict $?
   step "VRAM access speed: armed from the power-on (0 lost in the cartridge; 3.58 and 5.37 MHz)"
   fn=0; fb=0
   for f in "$O"/flow/fast_*.txt; do
