@@ -1037,8 +1037,8 @@ The port's design and the full spec (pseudo-code of the loop and the step): `doc
 ### The shooting range (FRNG at `$1EA00`) **[verified: REA listings of `$8420`, `$124A6` and FRNG's routines; bench runs of the original (`$8420`'s whole path, 9 drives); an executable model equal to the original in every compared field of 22 traces, 14,949 passes]**
 
 Sources: the range's area reports of 2026-10-27 (flow, logic, gfx, sound, bench), on the image
-below; the port's design and its full spec go into the range's own document, as Brainstorm's into
-`docs/BRAINSTORM.md`. Names: `analysis/frng_1ea00.sym`.
+below; the port's design, its full spec and what the build measured: `docs/RANGE.md` (sections 2
+and 11), as Brainstorm's are in `docs/BRAINSTORM.md`. Names: `analysis/frng_1ea00.sym`.
 
 - **The image for REA.** FRNG_15 (93,224 bytes, loaded at `$1E980`) decrunches into
   `$1EA00-$485D9` (170,970 bytes, sha256 `2ec1d6a4…b6d26f`). REA opens the level-1 RAM with those
@@ -1115,12 +1115,23 @@ below; the port's design and its full spec go into the range's own document, as 
   has sprite sides (pairs 1 and 2) and bitmap top and bottom. The fade limits each component of
   COLOR01-31 to (`$BC1` >> 1) & `$1E`, one step a pass. Quirks: restoring the old crosshair row
   wipes that row from targets drawn in the same pass; the set-up copies 10 bytes short (row 171, x
-  240-319, plane 4); a hit big target is drawn once more under its dissolve.
+  240-319, plane 4); a hit big target is drawn once more under its dissolve; **display quirk 4**
+  (found 2026-10-27 by `tools/msxrange.py`'s model of the blits, then read in REA's listing of
+  `$1EDBC`): a pop-up's blit 2 (`$1EF1C`: BLTCON0 `$FCA`, D = A·B + ¬A·C over the whole BLTSIZE)
+  writes its whole word-aligned box from the clean copy, so it wipes, for that frame, the columns
+  where its box meets another position's rectangle holding a pop-up drawn earlier in the same pass.
+  Seven descriptors do it: `$1F6A8` and `$1F6D4` (steps 0-5, over position 3, x 126-127), `$1F6EA`
+  (steps 0-4, over 1, x 58-63), `$1F716` and `$1F72C` (every step, over 5, x 236-239), `$1F7C6`
+  (step 0, over 5, x 240-254: position 6, locked, never shows it), `$1F7F2` (step 0, over 3, x
+  144-152). The port does not reproduce display quirks 1, 2 and 4 (zero-glitch rule).
 - **Sound.** FRM is MU1's player relocated to `$20000` (entries `$20000-$20018`; its instructions
   equal MU1's but 6 per-file operands; `rc2music.py --verify` on it: 12,600 ticks, 0 differences).
-  Tune 1 starts once (channels 0-2, 5,999 ticks, no loop) and nothing in FRNG stops it (the result
-  text's `$FE14` does). Effects on channel 3: 2 a shot, 3 a correct hit (with the + 25), 4 a dummy
-  hit, under `$2022C`'s priority rule; 5 is never requested. The text screens are silent.
+  Tune 1 starts once (channels 0-2, 5,999 ticks, no loop) and nothing in FRNG stops it: the result
+  text's `$FE14` does, within microseconds of FRNG's return (`$8474` returns to the rating
+  `$847A-$8518`, which has no wait, then `$10762` → `$10768`, whose first act is `$FE14`). FRM ticks
+  only from the pass loop (`$1EB30`), so the last tick heard is the last pass's. Effects on channel
+  3: 2 a shot, 3 a correct hit (with the + 25), 4 a dummy hit, under `$2022C`'s priority rule; 5 is
+  never requested. The text screens are silent.
 - **Quirks** (kept by the port): the hit test accepts one row below a BOB, reading bytes earlier
   blits left (T1); position 6 never opens (T2); a split target's border moves with x & 15 (T3); a
   second armed hit within 10 passes loses one + 25 (T4); a time out in the NO AMMO. sequence still

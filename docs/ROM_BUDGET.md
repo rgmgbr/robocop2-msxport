@@ -41,6 +41,8 @@ Conventions:
 | Free today (banks 78-127) | 50 | 400 |
 | Used on 2026-10-27, with Brainstorm and its sound (banks 0-87) | 88 | 704 |
 | Free on 2026-10-27 (banks 88-127) | 40 | 320 |
+| Used on 2026-10-28, with the shooting range too (banks 0-103, 2.2) | 104 | 832 |
+| Free on 2026-10-28 (banks 104-127 of the 1 MiB test images) | 24 | 192 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -163,6 +165,33 @@ the product of `bs-sound-int` merged with main `a90e77a` (`puzl_end` AE12h):
     move past B800h if SCC-time code needs those 256 B again.
   - `BANK_PUZL` took the stage's two entries: the set-up's tail (`ld hl,tn_pzm` / `jp mus_call`) and
     `snd_bfx` (20 B in all).
+
+### 2.2 Added on 2026-10-27/28: the shooting range
+
+M, from the product's image and label file of the branch `range` at `4650771` (`docs/RANGE.md`
+3.12 and 11):
+
+| Banks | Content | Bytes used | Fill or free |
+|---|---|---:|---:|
+| 88 | `BANK_FRNG`: the range's code and tables, `fr_code`'s initial image, the line patterns (`msx/frng.asm`, `msx/frngview.asm`; `frng_end` BD44h) | 7,492 | 700 |
+| 89-96 | the range's graphics, raw (`tools/msxrange.py` `range_gfx.bin`: the street, the sheets of the targets and the dissolves) | 63,616 | 1,920 (bank 96) |
+| 97-98 | the hit test's masks (`range_hit.bin`: the original's 6th plane and the targets' masks) | 13,088 (11,776 read) | 3,296 (bank 98) |
+| 99-103 | the range's music and effects (`tools/msxtune.py --frm` `frm.bin`, `FRM_BANK`: FRM tune 1 for the SCC with the PSG drums, the OPLL and the PSG alone; effects 2-4; their waveforms and the OPLL patch) | 39,341 | 1,619 (bank 103) |
+| 104-127 | Free | 0 | 196,608 |
+
+- Again no earlier bank moved: `tools/mkrom.py` places FRNG's code bank after `pzm.bin`, then its
+  data. Against `4a8a61d` (test3's code) the product's image differs in bank 7 (the range's texts in
+  FRONT), bank 45 (the HUD's two new messages: 424 B free in `HUD_BANK` + 1, 447 before) and the
+  code banks where code was added:
+  - the fixed area: 2 B (`fr_done`, `fr_rated`; `code_end` 7F44h, 188 B free; `PZ_TEST=2` builds
+    a few more for `pz_test`'s branch);
+  - FRONT: `front_range`, `fb_prep`, `front_rgtest` and the range's three texts, 424 B
+    (`front_end` 96FBh, 2,309 B free);
+  - MUSIC: `tn_frm`, the PSG-B path and `tune.inc`'s FRM descriptor and effects' table, 149 B past
+    B800h (`music_end` BACDh, 1,331 B free); nothing below B800h moved.
+- Bank 90 now holds graphics: its byte at 1800h is not an SCC test value (mkrom checks every
+  build), nor bank 9's at B800h.
+- `ROM_2M=1` pads the same 104 banks to 256 with the boot guard's tag in bank 255.
 
 ## 3. What the rest of the game needs
 
@@ -430,6 +459,11 @@ Decision numbers are those of the port's decision list.
   frame, 28,800 B): 7 banks for visit 1, 11 with visit 2 (`tools/msxpuzl.py --visits 1,2`), against
   2-3 in ZX0. ZX0 stays the fallback (−8 to −9 banks). Section 4.1 counts the difference. Its
   sound (2.1): the music and effects 12,734 B, 2 banks as 3.6 counted them; the code 20 B more.
+- **The shooting range as built (2026-10-27/28, M; 2.2).** Its code and tables take 7,492 B of one
+  bank (the estimate: 7.0-10.4 KiB, 1-2 banks); its graphics are stored raw (63,616 B, 8 banks,
+  against 2-5 in ZX0), with the hit test's masks apart (13,088 B, 2 banks); its music and effects
+  39,341 B in 5 banks, as 3.6 counted them. 16 banks in all, for both visits (the second differs
+  only by its palette, which the code bank holds).
 
 ### 3.8 Total of the plan
 
@@ -522,6 +556,10 @@ its ZX0 graphics (2/2/3) of 3.7, and add visit 2's TV pictures raw (+4 banks, M:
 - **Brainstorm's sound built** (the same day, 2.1): its music and effects take banks 86-87, the 2
   banks 3.6 counts for PZM tune 1 in "the rest of the game". The image uses 88 banks, the rest
   counts 2 fewer, and every total above stands.
+- **The shooting range built** (2026-10-27/28, 2.2): 16 banks (code 1, graphics raw 8, hit data 2,
+  music 5), where scenario A with the range raw counted 16 / 16 / 18. The image uses 104 banks, and
+  that scenario's whole game comes to about **192 / 196 / 201 of 256**: 55 or more spare. ZX0 for the
+  bonus graphics stays the fallback (about −5 banks for the range, −8 to −9 for Brainstorm).
 
 ## 5. Verdict
 

@@ -37,8 +37,8 @@ anything generated in `build/`.
 | 1 MiB devices (1 MiB MegaRAM, the original MegaFlashROM SCC+) | releases 0.1.x only |
 
 - Sound: always the PSG. An SCC or SCC+ (in the game's cartridge or in another slot) and
-  MSX-MUSIC / FM-PAC are used when present, by the title music, level 1's effects and Brainstorm's
-  music and effects.
+  MSX-MUSIC / FM-PAC are used when present, by the title music, level 1's effects and the bonus
+  stages' music and effects.
 
 Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank test) and
 [docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md) (decision 2, "2 MiB").
@@ -99,31 +99,52 @@ python3 -I tools/ghidra_seeds.py build/extracted/boot/main_8000.bin analysis/mai
 Open `build/ram/puzl_full.bin` as above with `REA_GHIDRA_SEED_FILE` set to
 `analysis/ghidra_seeds_puzl.tsv`; PUZL's names live in `analysis/puzl_17100.sym`.
 
+The shooting range's code (FRNG, ByteKiller-crunched, decrunched to `$1EA00`) likewise:
+
+```sh
+python3 -I tools/ramimage.py build/extracted build/ram/frng RB1 MU1 DATAL1 SPERMA PERMA FRNG@1ea00
+python3 -I tools/ghidra_seeds.py build/extracted/boot/main_8000.bin analysis/main_8000.sym \
+    analysis/ghidra_seeds_frng.tsv analysis/frng_1ea00.sym
+```
+
+Open `build/ram/frng_full.bin` with `REA_GHIDRA_SEED_FILE` set to `analysis/ghidra_seeds_frng.tsv`
+(through the REA CLI, as the MCP server names the main seed file: `docs/AMIGA_ANALYSIS.md`, *The
+shooting range*); FRNG's names live in `analysis/frng_1ea00.sym`.
+
 ## MSX build
 
 ```sh
-make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's graphics, tables, texts, music and effects (build/msx/)
+make msx      # level 1 conversion: joint palette, RoboCop and BOB sprites, tiles, map and attributes, HUD and its run-time data, RoboCop's logic tables, Brainstorm's and the shooting range's graphics, tables, texts, music and effects (build/msx/)
 make rom      # MegaROM (KonamiSCC/MegaRAM mapper) in build/msx/rc2.rom
 make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, PZ_TEST, PZ_LEVEL, TAG, ...)
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
-make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brainstorm, then the title
+make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brainstorm, then the shooting range, then the title
 make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TEST 2 on the bonus text screens
+make rom ROMOPTS="PZ_TEST=2"        # test ROM: at power-on straight into the shooting range, then the title
 ```
 
-After level 1 the game runs Brainstorm, the bonus stage (its intro, the chip puzzle, its result),
-then the title: [docs/BRAINSTORM.md](docs/BRAINSTORM.md). Its music and sound effects (the
-original's tune and four effects, by the original's rules) play on the chips the machine has, as
-the title music does: with an SCC the melody there and the drums on the PSG, or on MSX-MUSIC /
-FM-PAC's rhythm when there is one; MSX-MUSIC / FM-PAC alone; or the PSG alone (`tools/msxtune.py`
-converts them, `msx/tune.asm` plays them). A second visit still shows the first visit's face.
-Build options for it (`tools/mkrom.py`):
+After level 1 and its statistics the game runs the two bonus stages, then the title:
+- Brainstorm (its intro, the chip puzzle, its result): [docs/BRAINSTORM.md](docs/BRAINSTORM.md). A
+  second visit still shows the first visit's face.
+- The shooting range (its intro; a crosshair over a street of targets, 25 shots and 2:00; its
+  result and rating, or OUT OF TIME.): [docs/RANGE.md](docs/RANGE.md). The 320-pixel street is
+  kept 1:1 and a 256-pixel view follows the crosshair. The rating sets the next level's enemy hit
+  points, which shows once level 2 exists.
+
+Their music and sound effects (each stage's own tune and effects, by the original's rules) play
+on the chips the machine has, as the title music does: with an SCC the melody there and the drums
+on the PSG, or on MSX-MUSIC / FM-PAC's rhythm when there is one; MSX-MUSIC / FM-PAC alone; or the
+PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build options for them
+(`tools/mkrom.py`):
 
 | Option | Effect |
 |---|---|
-| `PZ_TEST=1` | power-on without the title: level 1's set-up, then Brainstorm once, then the title and a new game |
-| `PZ_LEVEL=1` or `2` | `PZ_TEST`'s visit: after level 1 (default) or after level 2 (the second set of boards) |
-| `TAG=n` | a test candidate (1-99): the bonus text screens show TEST n below their text |
-| `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stage's timer stands still |
+| `PZ_TEST=1` | power-on without the title: level 1's set-up, then Brainstorm and the shooting range once, then the title and a new game |
+| `PZ_TEST=2` | the same with the shooting range alone |
+| `PZ_LEVEL=1` or `2` | `PZ_TEST`'s visit: after level 1 (default) or after level 2 (Brainstorm's second set of boards, the range's darker palette) |
+| `TAG=n` | a test candidate (1-99): the bonus text screens (both stages') show TEST n below their text |
+| `RG_ADJ=0` | the range's camera in 16-pixel steps without R#18 (the VDP's horizontal adjust), for a VDP that ignores R#18 |
+| `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stages' timers stand still |
 
 `make matrix` runs the ROM headless on a fixed set of generic set-ups (`tools/msxmatrix.py`):
 MSX2, MSX2+, turbo R, 50 Hz, a disk interface before the cartridge, a slot expander, an FM-PAC,
@@ -131,7 +152,7 @@ and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone. `make matrix OMHOME=DIR`
 home that has those machines, such as the MSX-AI MCP's (a leading `~/` is expanded; default:
 `$OPENMSX_HOME`, else `~/.openMSX`).
 
-The tool waits for the title on every set-up, so a `PZ_TEST=1` build, which starts without the
+The tool waits for the title on every set-up, so a `PZ_TEST` build, which starts without the
 title, FAILs under `make matrix`. Check such a build with the tool itself (add `--home DIR` for
 another openMSX home):
 
@@ -173,6 +194,12 @@ level 1), and `tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl FILE` prints "0 di
 results. `tools/msxpuzl.py render` draws a display page from its shown state in a RAM dump, to
 compare with the screen.
 
+The shooting range's logic is checked the same way: `tools/frngbot.py` makes a drive,
+`tools/amigaemu.py frng` traces the original, an `EXTJOY=1 PZ_TEST=2` build traced with
+`rc2_fr_drive` is compared with `tools/frngcmp.py`, and `tools/msxrange.py render` draws a page
+(commands: [docs/RANGE.md](docs/RANGE.md) 4.5). The whole regression of both stages, level 1 and
+the title runs from `tools/bstest/regress.sh` ([docs/HARNESS.md](docs/HARNESS.md) 5.19).
+
 Checking a run in headless openMSX (MSX-AI `msx_local_cmd`): `source tools/openmsx_rc2.tcl`,
 then `rc2_snaps DIR N SECS` (or `rc2_snaps_when` for a condition) saves VRAM, RAM and VDP
 registers; `tools/checkrun.py DIR build/msx/level1 build/msx/hud` rebuilds every frame
@@ -192,4 +219,5 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [MSX port architecture and decisions](docs/MSX_ARCHITECTURE.md)
 - [MSX turbo R support (R800)](docs/TURBO_R.md)
 - [Brainstorm, the bonus stage after level 1](docs/BRAINSTORM.md)
-- [Brainstorm's acceptance harness (`tools/bstest/`)](docs/HARNESS.md)
+- [The shooting range, the second bonus stage](docs/RANGE.md)
+- [The bonus stages' acceptance harness (`tools/bstest/`)](docs/HARNESS.md)

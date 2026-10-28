@@ -795,8 +795,9 @@ which as sprites were striped, cut or left out.
   to its end, 103.68 s: the user's choices, 2026-10-25, the original loops it until fire and
   cuts it) → level 1; game over → PIC9 for 30 seconds or until fire is
   pressed once released (the original: 128 frames; the user's choice) → title; the level's
-  end → the level's statistics → Brainstorm (its intro, the stage, its result: below) → title
-  (the shooting range and level 2 come later). Test builds with a script skip the title.
+  end → the level's statistics → Brainstorm (its intro, the stage, its result: below) → the
+  shooting range (its intro, the stage, its result or OUT OF TIME.: below) → title (level 2 comes
+  later). Test builds with a script skip the title.
 - **The level's statistics** (`front_stats`, `show_level_stats` `$85D8`: script `$1132F` through
   `$10762`): the henchmen killed (`$16C2`), the nukes collected (`$16C0`) and the hostages
   rescued (`$16BE`) typed into the play area of page 0 (a register list of its own: page 0
@@ -813,7 +814,9 @@ which as sprites were striped, cut or left out.
   last 13 of them), then the speech (`VOICE_BANK`; in the music: `VOICE_MIX_BANK`), the title
   music for the SCC (`SCC_BANK`) and for the OPLL (`FM_BANK`), the SCC effects (`SCCFX_BANK`),
   Brainstorm's code (`BANK_PUZL`, 78), its graphics (`PUZL_GFX_BANK`, 79–85) and its music and
-  effects (`PZM_BANK`, 86–87): 88 banks in all (2026-10-27); the rest is free.
+  effects (`PZM_BANK`, 86–87), then the shooting range's code (`BANK_FRNG`, 88), its graphics
+  (`RANGE_GFX_BANK`, 89–96), its hit data (`RANGE_HIT_BANK`, 97–98) and its music and effects
+  (`FRM_BANK`, 99–103): 104 banks in all (2026-10-28); the rest is free.
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
   Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
   every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
@@ -871,8 +874,8 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   and `display_on` (which measures the HUD split for the Z80, where `front_stats`' `cpu_title`
   left the game); `g_tick` = 0 (the energy can stays); the intro (`fe_text`); `BANK_PUZL` at A000h
   and `call bs_stage` → A = 0 solved, 1 failed, 2 out of time; `snd_stop`; `$805E` + 1 (a
-  continue) when solved; the result text; `jp cpu_title`. The stage ends through `pz_done` (fixed
-  code, a `ret`: the trace harness's end).
+  continue) when solved; the result text; then `call front_range` (the shooting range, below) and
+  `jp cpu_title`. The stage ends through `pz_done` (fixed code, a `ret`: the trace harness's end).
 - **Text screens.** `fe_text` is `front_stats`' screen and loop (page 0's play area, sprites off,
   the HUD below through the split, one script element a tick at 50 a second), with the script
   read in place (`txt_bs_intro`, `txt_bs_ok`, `txt_bs_fail`, `txt_bs_time`: `tools/msxtext.py`,
@@ -921,14 +924,79 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   with `game_msg` as numbers 174-176 (`HUD_MSG_17738`, `HUD_MSG_17741`, `HUD_MSG_1774E`); level 1's
   21 messages keep their numbers.
 - **Build options** (`tools/mkrom.py`): `PZ_TEST=1` starts at power-on, without the title, in
-  Brainstorm (once, after level 1's set-up), then the title and a new game; `PZ_LEVEL=1|2` its
-  visit; `TAG=n` (1-99) shows TEST n below the bonus text screens of a test candidate. The trace
+  Brainstorm (once, after level 1's set-up), then the shooting range, the title and a new game;
+  `PZ_TEST=2` the same with the range alone (below); `PZ_LEVEL=1|2` their visit; `TAG=n` (1-99) shows TEST n below the bonus text screens of a test candidate. The trace
   harness builds `EXTJOY=1 PZ_TEST=1`. The product's flow and bytes do not depend on them.
 - **Checked** (openMSX): the stage's variables equal the original's pass by pass in nine drives on
   an MSX2 and a turbo R, the full solve also on an MSX2+ and at 50 Hz (`tools/openmsx_rc2.tcl`
   `rc2_pz_drive` against `tools/amigaemu.py puzl`, `tools/puzlcmp.py`); the pictures against the
   converter's renders; the restore against a fresh start; level 1's traces, the title and its
   music unchanged. The sound offline and in openMSX (below, under Sound).
+
+### The shooting range, the second bonus stage (`front_range`, `msx/frng.asm`, 2026-10-28)
+
+The design, the original's facts, the checks and where the build departs from the plan:
+`docs/RANGE.md` (section 11: as built). The original's `$8420` without its picture (decision 5),
+and FRNG, decrunched at `$1EA00`, ported routine by routine.
+
+- **Flow.** `front_bonus` calls `front_range` after Brainstorm's result (the original's `$8590`:
+  `moveq #1,D0` / `bsr $8420`; the second visit runs the same code). `front_range` (FRONT): the
+  intro (`fe_text` `txt_rg_intro`), `BANK_FRNG` at A000h and `call rg_stage`, then the rating of
+  the counts the stage leaves in the mirror (AM `$B04` correct, `$B06` dummy; AG `$804C` the time
+  out): rating = max(0, min(3, (6 × correct − dummy − 50 − 12 × [timer minutes = 0]) div 14)),
+  POOR to SHARP; a time out gives POOR and Brainstorm's OUT OF TIME. screen (`txt_bs_time`, as
+  the original shares `$11698`), else the result (`txt_rg_res` filled in `fs_buf`). The rating
+  sets `ac_diff` = `diff_tab` + 24 − 8 × rating (the original's `$8060`: the next level's enemy hit
+  points). Level 1's `obj_start` still sets SHARP at every level start, so today the rating shows
+  nothing; level 2 must move that set to `ng_go`. The stage ends through `fr_done` and the rating
+  through `fr_rated` (fixed code, `ret`s: the trace harness's ends). `fb_prep` is the shared
+  preparation (a turbo R's Z80 hardware pause off, `display_on`, `g_tick` = 0).
+- **The stage** (`msx/frng.asm`, `msx/frngview.asm`, `BANK_FRNG` = 88 at A000h, 7,492 B): one pass
+  per 50 Hz tick on 50 and 60 Hz machines (`fs_tick`'s rule), 25 shots and the panel's 2:00 (the
+  timer counts real seconds: `sec_tick`; still in script builds); the end 130 passes after the last
+  shot ("NO AMMO.", a fade-out) or at once at the time out ("TIME OUT."). FRNG's variables live in
+  the mirror (`AM + $B00-$BC5`, `msx.inc` `frv_...`) and its code-area state in `fr_code` (526 B in
+  `MP_B`, F500h-F70Dh, copied from the bank at every entry), so the trace harness compares them
+  pass by pass with the bench (`tools/amigaemu.py frng`, `tools/frngcmp.py`). The hit test reads the
+  original's 6th-plane masks from `range_hit.bin` (banks 97-98) through a list of the pass's recent
+  blits (F70Eh-F7FFh), quirk T1 included.
+- **The screen.** SCREEN 5. The street stays 320 pixels wide in VRAM and a 256-pixel view follows
+  the crosshair (a camera: s ∈ [0, 64], moved only while the crosshair's line is in the view's outer
+  quarters, from s = 32), so every picture is 1:1 and nothing is cut; Amiga rows 10-171 fill lines
+  0-161, the HUD stays below through the split. Pages 0 and 1 are double-buffered display pages,
+  each built at a coarse offset c (a multiple of 16) with VDP copies from the clean scene in page 2
+  and shown at s through R#18 (level 1's V9938 method, on every VDP); a page whose window s leaves
+  is rebuilt whole while the other holds. On a V9958 the HUD split's last register byte
+  (`split_list` + 8) writes R#18 = 0 instead of R#27 while the range runs, so the HUD never moves.
+  `RG_ADJ=0` (a build option) keeps R#18 at 0 and moves the camera in 16-pixel steps. The
+  crosshair's vertical line and the fire box's sides are hardware sprites (at most 30, 3 to a line);
+  everything else is drawn by the VDP (`vdp_cmd` and `cmd_lock`). Each pass records what the
+  original draws (`rg_want`); `rg_feed` builds the page not shown up to that state in bounded steps
+  and publishes its register list. The palette is the visit's, graded (decision 8); visit 2's is
+  the plain 9-bit rounding of the original's darker one (`docs/RANGE.md` default 21).
+- **The exit** (`rg_end`): `snd_stop` at once (the original's `$10768` silences the channels right
+  after FRNG's return), then `rg_hide`: the VDP idle, the play area black, `fs_list` (page 0, R#18
+  = 0, no sprites), the V9958's split byte back, both SATs empty and page 2's tiles uploaded again
+  (`tiles_upload` E = 4).
+- **Texts and HUD.** The intro, the result and OUT OF TIME. go through `fe_text` (`tools/msxtext.py`
+  `txt_rg_*`, the original's call counts 304, 347 and 129; the intro's 35-character line split
+  after "CALIBRATION" over rows 5-6). The panel's "NO AMMO." and "TIME OUT." are HUD messages 177
+  and 178 (`HUD_MSG_1EB32`, `HUD_MSG_1EB3B`).
+- **RAM.** `fr_code` and the recent-blit list in `MP_B` (Brainstorm's `pz_boards` uses the same
+  bytes, never at the same time); the renderer's wanted and shown states in `objl_ram`; the stage's
+  scalars in C68Ah-C6FEh, a union with Brainstorm's; `pz_first` (C6FFh) in `PZ_TEST` builds.
+- **Build options**: `PZ_TEST=2` starts at power-on, without the title, in the range (once, after
+  level 1's set-up; `front_rgtest`: `fb_prep`, `front_range`, `jp cpu_title`), then the title and
+  a new game; `PZ_LEVEL=2` its second visit; `RG_ADJ=0` the camera without R#18. The trace harness
+  builds `EXTJOY=1 PZ_TEST=2`. The product's flow and bytes do not depend on them.
+- **Checked** (openMSX, 2026-10-27/28): the stage's variables equal the original's pass by pass in
+  15 drives (every rating, both endings, quirk T1, visit 2) on an MSX2 and a turbo R, `armed` also
+  on an MSX2+, the FS-A1FX and at 50 Hz, and after a played level 1 and Brainstorm; the wanted
+  state at every pass; the pictures against the converter's renders (stills, and records at every
+  VBLANK: no torn element, no pixel changing outside the elements, the HUD unshifted by a register
+  probe on the V9958 and its negative control); no late pass; level 1's traces, the title and its
+  music, the statistics and Brainstorm unchanged; the test candidates `v0.1.3-test4` from the
+  keyboard (`docs/HARNESS.md` 5.19, 5.20).
 
 ## Sound (`msx/sound.asm`)
 
@@ -1395,6 +1463,36 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
     (`docs/BRAINSTORM.md` 4.3). With an SCC, level 1's random choices follow another sequence
     than main's for the same input (the effects' tick takes longer: `docs/BRAINSTORM.md` 3.6).
 
+### The range's music and effects (`msx/tune.asm`, `tools/msxtune.py --frm`, 2026-10-27)
+
+- **What the original plays** (`docs/RANGE.md` 2.9): FRNG carries its own copy of the player at
+  `$20000` (FRM, MU1's code). Tune 1 starts once before the first pass: 5,999 ticks, no loop, the
+  stage's 2:00 at 50 ticks a second. Effects on channel 3 only: 2 a shot (a 6-tick noise burst), 3
+  a correct hit (a rising "ding"), 4 a dummy hit (a falling "dud"), 10 passes after the hit;
+  `$1822C`'s rule (a lower request refused while a higher one sounds). The result's `$10768`
+  silences everything right after FRNG's return.
+- **Data** (`tools/msxtune.py --frm` → `build/msx/frm.bin`, 39,341 B, `FRM_BANK` 99-103): the
+  same converters as Brainstorm's; the SCC version's bass notes below the SCC's range go an octave
+  up (FRM only: `msxscc.py`'s octave rule); effect 2 is a noise: with an SCC it plays its SCC-mode
+  stream, in the PSG format at the SCC music's scale, on PSG voice B (a flag in its entry), which
+  both SCC modes leave idle.
+- **Player**: Brainstorm's (`tune.asm`), with two additions: `tn_frm` (FRM's descriptor and
+  effects' table, after PZM's) and the PSG-B path for a flagged effect (a kind switch while sounding
+  silences B first). Brainstorm's effects write what they wrote before.
+- **The stage's calls** (`BANK_FRNG`): the tune's start (`ld hl,tn_frm` / `call mus_call`) after
+  `rg_show`, before the timer's set-up, its tick 0 after the first pass (`tn_hold`); `snd_rfx` (the
+  request, RAM only: `snd_bfx`'s bytes) at the shot and at the hit sounds' passes; `snd_stop` at
+  the entry and at the end (`rg_end`, right after the last pass, before `rg_hide`'s waits).
+- **Ticks**: the VBLANK's 50 Hz ticks, as Brainstorm's; with a shot and a hit sound in one pass the
+  higher request stays (the Amiga sounds the shot for one tick first).
+- **Checked**: offline in the Z80 interpreter (`tools/bstest/frsnd/frsim.py`: the registers equal
+  the streams decoded apart for 6,100 ticks on four chip sets at 50 and 60 Hz, the R800, the
+  refusals against the 68000 model, the stop, the title after the range), and in openMSX
+  (`frsound.tcl` and `frsnd/frregcmp.py`: 20 register logs, 0 differences; the stage's stop at most
+  one tick after its last pass, 0 measured). Open: with an OPLL the tune's last snare leaves
+  openMSX's YM2413 envelope floor (a 98 Hz tone about 40 dB down) until the stage's stop on a time
+  out (`docs/RANGE.md` 11).
+
 ## HUD
 
 The Amiga status panel (320×46, line 0 black) is rebuilt by `tools/msxhud.py` with every
@@ -1670,9 +1768,17 @@ messages (15.6 KiB, banks `HUD_BANK`–`HUD_BANK+1`, mapped at 8000h–BFFFh whi
 - Messages: `game_msg` A = n reads the n-th pointer from `HUD_MSGS` (`HUD_BANK + 1`). Level 1's 21
   are numbers 0-20 (`HUD_NMSGS`); Brainstorm's three (PUZL's `$17738`, `$17741`, `$1774E`) are a
   second table after `HUD_WEAPONS` (`HUD_PZ_MSGS`, BE14h, a pad byte for an even distance first),
-  which the same addressing reaches as numbers 174-176; 447 B of that bank stay free (2026-10-27).
+  which the same addressing reaches as numbers 174-176, and the shooting range's two (FRNG's
+  `$1EB32` "NO AMMO.", `$1EB3B` "TIME OUT.") follow them as numbers 177-178; 424 B of that bank
+  stay free (2026-10-27).
+
+  | Numbers | Messages | Source |
+  |---|---|---|
+  | 0-20 | level 1's (`HUD_MSG_...`) | the game's table |
+  | 174-176 | "TIMEOUT.", "MALFUNCTION.", "MEMORY RESTORED." | PUZL `$17738`, `$17741`, `$1774E` |
+  | 177-178 | "NO AMMO.", "TIME OUT." | FRNG `$1EB32`, `$1EB3B` |
 - Code in a banked window calls `hud_keep` instead of `hud_frame`: the banks both windows showed
-  come back (Brainstorm's stage and its text screens).
+  come back (Brainstorm's and the range's stages and their text screens).
 
 ## MSX turbo R: the R800 for the game (2026-10-25)
 
