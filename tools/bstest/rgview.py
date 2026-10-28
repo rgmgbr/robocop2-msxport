@@ -264,7 +264,8 @@ class Bench:
                 self.rows[r["frame"]] = r
         # the camera s in the state stamped k: rg_cam's after pass k - 1 (from RG_CAM_START at the
         # entry), then the harness's pokes
-        rule = msxrange.camera if self.adj else msxrange.camera_steps
+        rule = msxrange.camera_steps                # (a V9938, and every VDP in RG_ADJ=0 builds:
+                                                    #  docs/RANGE.md 11.2; a V9958's ring below)
         pokes = pokes or {}
         self.cam = {0: pokes.get(0, msxrange.CAM_START)}
         self.cam_ring = dict(self.cam)          # (a V9958's ring: msxrange.camera_ring)

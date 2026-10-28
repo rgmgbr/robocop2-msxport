@@ -955,6 +955,8 @@ hidden), places the sprites at their screen x, takes the bench's camera from
 holds s's columns; the registers' check holds c <= s <= c + 8). The HUD probe counts R#18, R#27 or
 MSK left at the split's end; its negative control holds s at 7 and, on a ring, turns the split's
 R#27 = 0 into R#18 = 0.
+The bench's camera for every other page is `msxrange.camera_steps` (`docs/RANGE.md` 11.2: the
+V9938 steps 16 columns at run time, as RG_ADJ=0 builds do on every VDP).
 
 The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; `docs/RANGE.md` 3.3 and
 4.2) draws what the original draws in each

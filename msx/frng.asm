@@ -569,37 +569,37 @@ rcr_y:  ld de,0x10
         ld (rg_want + RG_ST_CROSS + 2),hl
         ret
 
-; The camera (docs/RANGE.md 3.3), once a pass after the crosshair's move: s = clamp(clamp(s, cx -
-; RG_BAND_HI, cx - RG_BAND_LO), 0, RG_CAM_MAX), cx = $B9A - RG_LINE_DX (the line's x on the
-; street): s moves only while the line is in the view's outer quarters, so the line stays in view
-; (cx - s in 13-233). The renderer shows s from a page built at the multiple of 16 c with c - s in
-; -7..8, R#18 the rest (frngview.asm). RG_ADJ=0 (docs/RANGE.md 6: R#18 always 0): s is a multiple
-; of 16 that moves only when the line would leave cx - s in RG_ADJ_LO..RG_ADJ_HI (msxrange.py
-; camera_steps).
-        if RG_ADJ
-RCM_LO:     equ RG_BAND_LO
-RCM_HI:     equ RG_BAND_HI
-        else
-RCM_LO:     equ RG_ADJ_LO
-RCM_HI:     equ RG_ADJ_HI
-        endif
+; The camera (docs/RANGE.md 3.3, 11.1, 11.2), once a pass after the crosshair's move, cx = $B9A -
+; RG_LINE_DX (the line's x on the street):
+; - a V9958's ring (rgr_ring, frngview.asm): s = clamp(clamp(s, cx - (RG_BAND_HI - 8), cx -
+;   RG_BAND_LO), 0, RG_CAM_MAX + 8): the 248-column view follows the line smoothly;
+; - else (a V9938; every VDP in RG_ADJ=0 builds, docs/RANGE.md 6): s a multiple of 16 that moves
+;   only when the line would leave cx - s in RG_ADJ_LO..RG_ADJ_HI (msxrange.py camera_steps): the
+;   view stands still and steps 16 columns, R#18 0, so the V9938 builds its pages again only at a
+;   step (each whole-page build costs it about 90 ms a page: the user chose steps over a view that
+;   follows the line, 2026-10-28).
 rg_cam: ld a,(rg_want + RG_ST_S)
         ld e,a
         ld d,0                      ; (DE = s)
-        ld bc,-RG_LINE_DX - RCM_HI
         ld a,(rgr_ring)
         or a
-        jr z,rcm_r
-        ld bc,-RG_LINE_DX - RCM_HI + 8   ; (a V9958's ring: the 248-column view's band ends 8 sooner)
-rcm_r:  call rcm_b
+        ld bc,-RG_LINE_DX - RG_ADJ_HI
+        jr z,rcm_1
+        ld bc,-RG_LINE_DX - RG_BAND_HI + 8
+rcm_1:  call rcm_b
         jp m,rcm_h                  ; (s above cx - HI)
-        if RG_ADJ = 0
+        ld a,(rgr_ring)
+        or a
+        jr nz,rcm_2
         ld bc,15
-        add hl,bc                   ; (the next multiple of 16)
-        endif
-        call rcm_s                  ; s = cx - HI
-rcm_h:  ld bc,-RG_LINE_DX - RCM_LO
-        call rcm_b
+        add hl,bc                   ; (steps: the next multiple of 16)
+rcm_2:  call rcm_s                  ; s = cx - HI
+rcm_h:  ld a,(rgr_ring)
+        or a
+        ld bc,-RG_LINE_DX - RG_ADJ_LO
+        jr z,rcm_3
+        ld bc,-RG_LINE_DX - RG_BAND_LO
+rcm_3:  call rcm_b
         call m,rcm_s                ; (s above cx - LO: s = cx - LO)
         ld a,e
         bit 7,d
@@ -624,14 +624,14 @@ rcm_b:  ld hl,(frv_cx)
         sbc hl,de
         add hl,de                   ; (S kept: add hl,rr leaves it)
         ret
-; DE = HL (RG_ADJ=0: its multiple of 16 at or below)
-rcm_s:
-        if RG_ADJ = 0
+; DE = HL (steps: its multiple of 16 at or below)
+rcm_s:  ld a,(rgr_ring)
+        or a
+        jr nz,rcm_s1
         ld a,l
         and 0xF0
         ld l,a
-        endif
-        ex de,hl
+rcm_s1: ex de,hl
         ret
 
 ; HL = HL - DE < 0 (the 16-bit difference's sign, cmpi.w / bpl) ? DE : HL. Keeps BC, DE.
