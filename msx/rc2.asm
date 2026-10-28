@@ -142,6 +142,9 @@ ng_go:
         call fill
         ld a,2
         ld (AG + 0x8034),a          ; two lives ($FFD8; hud_init draws their heads)
+        ld hl,diff_tab
+        ld (ac_diff),hl             ; the rating's table: SHARP ($8314: $8060 = $C716; AC_VARS,
+                                    ;  which deaths and the next level keep)
         ld hl,pl_init
         call front_call             ; the start of the level: RoboCop, the camera, the cadence
         ld a,BANK_L1
