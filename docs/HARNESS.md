@@ -1550,6 +1550,14 @@ over (row 108) until the port has the continue (step 19): `hz_l2`'s `cont` job t
 instead of 1,800, and `hz.sh compare` without job names takes it as `cont:109` (the plan's milestone 1;
 step 19 removes both).
 
+At step 9 (2026-10-28): types 1, 2, 5, 6, 14, 16 and 49 and type 6's death (`level2obj.asm`) are ported
+and gone from `l2stub.py`'s table, which is now empty: the 20 jobs compare against the plain references
+(`hz.sh compare --fields analysis/amiga_ram_l2.tsv W/O/l2 W/R`, no `--refs`), 0 differ in all 1,022
+fields over every row (`cont` to row 108), on the three machines and at 50 Hz. The field set leaves the
+enemy bullets (`$C34-$D33`) and the explosions (`$D34-$D73`) out; a scratch set of their 112 fields (each
+slot's x, y, type, speeds, word +A0h and accelerations; the explosions' bytes and places) compared 0
+differ over `end`, `tour`, `fuzz`, `barrel`, `drone`, `t1left`, `vat` and `mine` too.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its

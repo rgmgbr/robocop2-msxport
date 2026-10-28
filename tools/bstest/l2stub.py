@@ -2,21 +2,22 @@
 """l2stub.py: level 2's bench references with the routines the port has not ported yet stubbed the way
 the port stubs them, so that an MSX trace of the port as it stands compares whole, every row and field
 (docs/HARNESS.md 5.22). Against the plain references (build/emu/l2_<ref>_ram.jsonl) a level-2 trace
-differs from the first frame a stubbed routine runs: type 1 from game frame 4 in every reference (at
-step 7 already from row 0: act_0c ran in level_init's map-object pass, the trolleys from frame 0).
+differs from the first frame a stubbed routine runs (at step 7 from row 0: act_0c ran in level_init's
+map-object pass, the trolleys from frame 0, type 1 from frame 4).
 
 Each reference of tools/l2drives.py (its drive, carry and frames; not the flow one) runs on the bench
-(tools/amigaemu.py game --level 2, the direct start, Unicorn: $PY or the project's venv) with these
-patches of the main code, written before level_init (--pre-poke ADDR:VALUE:SIZE):
-
-  NAME     ADDRESS  PATCH                                  THE PORT'S STUB
-  t1 ...   handler  moveq #-1,D0 / rts (the slot freed)    msx/level2obj.asm t1, t2, t5, t6, t14, t16, t49:
-                                                           ld a,FFh / ret (update_objects frees the slot)
-
+(tools/amigaemu.py game --level 2, the direct start, Unicorn: $PY or the project's venv) with the
+patches of the STUBS table, written into the main code before level_init (--pre-poke ADDR:VALUE:SIZE).
 A step that ports a routine drops its stub here (--drop NAME, or the STUBS table) and in the port.
-Ported and dropped (level 2's step 8): the trolley $8F02 (msx/special.asm sp_trolley), the vats $91BC
-(msx/level2.asm lt1) and act_0c $9EE8 (msx/mapobj.asm), whose stubs were rts, bra.w $919E (the next
-hazard record) and bra.w $9C76 (activator 0's default, the port's ao_look).
+
+Every level-2 routine is ported since level 2's step 9, so the table is empty and the references this
+script makes are the plain ones (the 20 jobs compare against build/emu directly). Dropped:
+  step 8: the trolley $8F02 (msx/special.asm sp_trolley), the vats $91BC (msx/level2.asm lt1) and act_0c
+          $9EE8 (msx/mapobj.asm), whose stubs were rts, bra.w $919E (the next hazard record) and
+          bra.w $9C76 (activator 0's default, the port's ao_look);
+  step 9: the types 1, 2, 5, 6, 14, 16 and 49 (msx/level2obj.asm), whose stubs were moveq #-1,D0 / rts
+          (70FF4E75h) at their handlers $C736, $C868, $D0E2, $D1E2, $CE0A, $CD7A and $E6C0 (the port's
+          ld a,FFh / ret: update_objects frees the slot).
 
 usage: l2stub.py OUT [--drop NAME ...] [--jobs N] [REF ...]   OUT/l2_<ref>_ram.jsonl (+ .log), every
                                                               direct reference by default
@@ -33,16 +34,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import l2drives  # noqa: E402
 
-MOVEQ_RTS = "0x70FF4E75:4"          # moveq #-1,D0 / rts
-STUBS = {                           # name: [(address, value:size), ...]
-    "t1": [(0xC736, MOVEQ_RTS)],
-    "t2": [(0xC868, MOVEQ_RTS)],
-    "t5": [(0xD0E2, MOVEQ_RTS)],
-    "t6": [(0xD1E2, MOVEQ_RTS)],
-    "t14": [(0xCE0A, MOVEQ_RTS)],
-    "t16": [(0xCD7A, MOVEQ_RTS)],
-    "t49": [(0xE6C0, MOVEQ_RTS)],
-}
+STUBS: dict[str, list[tuple[int, str]]] = {}   # name: [(address, value:size), ...]; none left (step 9)
 
 
 def main(argv: list[str]) -> int:

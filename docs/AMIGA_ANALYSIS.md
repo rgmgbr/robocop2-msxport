@@ -714,8 +714,16 @@ bench runs); the items marked *REA 10-28* were read again on 2026-10-28. Names:
   floors (in level 1 row 50 is a map row).
 - **Type 6's death** `$C33E` (*REA 10-28*): `$15F2` + 1, D5 = `$15F2` & 3; when D5 = 0 (every 4th)
   a pickup at the object through `pickup_drop` (24h, a nuke; 1Ch, energy, at the 16th); then
-  `$C35A` with explosion type D5 (0-3). Its launch gap `$D1DC` is a code-area word: kept across
-  lives, levels and games.
+  `$C35A`, which clears D5 first (`moveq #0,D5`, *REA bytes 10-28*): the explosion is always type 0.
+  `pickup_drop` leaves D1's low word 0 (`swap D1`, `clr.w D1`), so after a pickup the explosion
+  comes at y 0 **[verified: the MSX port's explosion slots equal the bench's over `barrel`'s 17
+  kills, level 2's step 9]**. Its launch gap `$D1DC` is a code-area word: kept across lives, levels
+  and games.
+- **The homing flight** `$E728` (types 38 and 49, *REA 10-28*): x and y move by half a step of
+  `homing_dx`/`homing_dy` with `ext.l`, `swap`, `asr.l #1`, so a negative step carries its sign
+  word FFFFh into the low word before the shift and moves a little less than half (-9: FFFB.FFFFh,
+  -4 - 1/65536) **[verified: the drone traces of level 2's step 9 differ in 380 of 401 rows with a
+  plain half step, 0 with this one]**.
 
 ### Music and sound effects (MU1 player) **[verified: REA listing of `$18000-$18B35` (level-1 image); `tools/rc2music.py --verify` runs that code in Unicorn and matches the model's Paula writes and player RAM on every tick of every tune of the five files (49986 ticks); the paths the data never takes (vibrato, 86h, 81h-83h in patterns, 83h in sequences, stop tune, the effect priority, effects over music) matched the same way on patched images and call scripts]**
 

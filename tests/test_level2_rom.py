@@ -94,11 +94,14 @@ class HarnessTableTests(unittest.TestCase):
 class StubTests(unittest.TestCase):
     def test_the_stubs_patch_the_routines_entries(self):
         img = RAM2.read_bytes()
-        # the type handlers: obj_desc's record + 10 + its handler offset (update_objects $C3E4)
-        for name, t in (("t1", 1), ("t2", 2), ("t5", 5), ("t6", 6), ("t14", 14), ("t16", 16), ("t49", 49)):
+        # every routine ported (step 9): no stub left
+        self.assertEqual(l2stub.STUBS, {})
+        # the type handlers the step-9 stubs patched (msx/level2obj.asm): obj_desc's record + 10 + its
+        # handler offset (update_objects $C3E4)
+        for t, entry in ((1, 0xC736), (2, 0xC868), (5, 0xD0E2), (6, 0xD1E2), (14, 0xCE0A), (16, 0xCD7A),
+                         (49, 0xE6C0)):
             rec = 0xBEA6 + 16 * t
-            handler = rec + 10 + struct.unpack_from(">H", img, rec + 10)[0]
-            self.assertEqual(l2stub.STUBS[name][0][0], handler, name)
+            self.assertEqual(rec + 10 + struct.unpack_from(">H", img, rec + 10)[0], entry, t)
         # the hazard dispatch's level-2 entry, the activators' 0Ch entry, the special handlers' 4
         self.assertEqual(img[0x91B4:0x91B6], b"\x60\x00")
         self.assertEqual(0x91B6 + struct.unpack_from(">h", img, 0x91B6)[0], 0x91BC)
