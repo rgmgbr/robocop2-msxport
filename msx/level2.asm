@@ -163,8 +163,157 @@ l2i_spe:
 
 ; ----- level_tick_1 ($91BC): a vat of level 2 -----
 
-; IX = its record (x left, y, x right, rows). Not ported yet (the plan's step 8: the phases, the
-; columns' looks for the display, the cut line, the death).
-lt1:    ret
+; IX = its record (x left, y, x right, rows: hz_update, only inside the window). Every frame: the
+; bubbling (sound 1Ah, $B2E) when the random word's low nibble is 0; RoboCop within 10h of its x
+; range and d = camera y + 98h - y in 0..4Ch: the copper's sprite cut line ($10356, vat_cut_line:
+; he sinks into the liquid) is CBh - d, and above line 90h he is under (st $169A: the energy
+; target's high byte, st $16CC: dying; sound 10h). Odd game frames: each of its (x right - x left)
+; / 16 + 1 columns takes look d = (phase k & 0Eh) + 10h when the high byte of phase k + 1 is not 0
+; (vat_phase, $92DA: one table for every vat, from column 0; the first vat in the window this frame,
+; $15F0 clear, steps phase k's low byte by 2 first). The original writes the column's rows + 2 map
+; words from three tables by d ($927A, $929A, $92BA: attributes 0, nothing the logic reads); the
+; port keeps d / 2 per column in vat_shown (the 7 vats' 103 columns in hz_l2's order: a vat's first
+; is the count of the columns of the records before it) and marks the vat changed when one of its
+; columns' looks changed (vat_chg): the display draws the vats from them (docs/LEVEL2.md 3.5,
+; default 17). Then $15F0 is set.
+lt1:    ld a,(AM + 0x0B32)          ; (the random word's low byte)
+        and 0x0F
+        jr nz,lt1_p
+        ld a,0x1A
+        ld (snd_b2e),a
+lt1_p:  ld hl,(p_x)
+        ld de,0x10
+        add hl,de                   ; D0 = x + 10h
+        ld e,(ix+0)
+        ld d,(ix+1)                 ; D2 = x left
+        or a
+        sbc hl,de
+        jp m,lt1_odd                ; (cmp.w D2,D0; bmi)
+        ld hl,(p_x)
+        ld de,-0x10
+        add hl,de                   ; D0 = x - 10h
+        ld e,(ix+4)
+        ld d,(ix+5)                 ; D4 = x right
+        or a
+        sbc hl,de
+        jp p,lt1_odd                ; (cmp.w D4,D0; bpl)
+        ld hl,(gcam_y)
+        ld de,0x98
+        add hl,de
+        ld e,(ix+2)
+        ld d,(ix+3)
+        or a
+        sbc hl,de                   ; D1 = camera y + 98h - y
+        jp m,lt1_odd
+        ld a,h
+        or a
+        jr nz,lt1_odd
+        ld a,l
+        cp 0x4D
+        jr nc,lt1_odd
+        ld a,0xCB
+        sub l                       ; D7 = CBh - D1
+        ld (vat_cut_line),a
+        cp 0x90
+        jr nc,lt1_odd
+        ld a,0xFF
+        ld (AM + (0x169A ^ 1)),a    ; (st $169A)
+        ld (AM + (0x16CC ^ 1)),a    ; (st $16CC)
+        ld a,0x10
+        ld (snd_b2e),a
+lt1_odd:
+        ld a,(g_frame)              ; (btst #0,$B01)
+        rra
+        ret nc
+        ld hl,hz_l2                 ; C = the vat's first column in vat_shown, B = its index
+        ld bc,0
+lt1_v:  push ix
+        pop de
+        or a
+        sbc hl,de
+        add hl,de
+        jr z,lt1_go
+        call lt1_n
+        inc a
+        add a,c
+        ld c,a
+        ld de,8
+        add hl,de
+        inc b
+        jr lt1_v
+lt1_go: call lt1_n
+        inc a
+        push af                     ; its columns (dbf D5: D5 + 1)
+        ld a,b
+        add a,vat_chg & 0xFF
+        ld e,a
+        ld a,0
+        adc a,vat_chg / 256
+        ld d,a
+        push de
+        pop ix                      ; IX = its changed flag
+        ld a,c
+        add a,vat_shown & 0xFF
+        ld e,a
+        ld a,0
+        adc a,vat_shown / 256
+        ld d,a                      ; DE = its first column's shown look
+        pop bc                      ; B = its columns
+        ld hl,vat_phase             ; (column k: the low byte of word k, little-endian)
+lt1_c:  ld a,(AM + (0x15F0 ^ 1))    ; (tst.b $15F0)
+        or a
+        jr nz,lt1_d
+        inc (hl)
+        inc (hl)                    ; (addq.b #2,(1,A2))
+lt1_d:  ld a,(hl)
+        and 0x0E
+        rrca
+        ld c,a                      ; (phase & 0Eh) / 2
+        inc hl
+        inc hl
+        inc hl                      ; the high byte of phase k + 1
+        ld a,(hl)
+        or a
+        ld a,c
+        jr z,lt1_s
+        add a,8                     ; (+ 10h)
+lt1_s:  dec hl                      ; the low byte of phase k + 1
+        ex de,hl
+        cp (hl)
+        jr z,lt1_k
+        ld (hl),a
+        ld (ix+0),0xFF              ; (the vat changed)
+lt1_k:  inc hl
+        ex de,hl
+        djnz lt1_c
+        ld a,0xFF
+        ld (AM + (0x15F0 ^ 1)),a    ; (st $15F0)
+        ret
+
+; HL = a hazard record -> A = (x right - x left) >> 4 (its columns - 1; lsr.w). Keeps HL, B, C.
+lt1_n:  push hl
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        inc hl
+        inc hl
+        inc hl
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        or a
+        sbc hl,de
+        srl h
+        rr l
+        srl h
+        rr l
+        srl h
+        rr l
+        srl h
+        rr l
+        ld a,l
+        pop hl
+        ret
 
         include "level2obj.asm"     ; (the types only level 2 has)

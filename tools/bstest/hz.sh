@@ -32,7 +32,9 @@
 #                            with the port's stubs, tools/bstest/l2stub.py) with its build's labels
 #                            (R/<b>/rc2_<b>.labels): exit 0 only when every trace compared has its
 #                            rows and 0 frames differ. JOB:ROWS compares the job's first ROWS rows
-#                            only; without JOBs, every job whose trace is in DIR, whole
+#                            only; without JOBs, every job whose trace is in DIR, whole, but cont
+#                            as cont:109 until the port has the continue (level 2's step 19: its
+#                            game over ends the trace at row 108, the plan's milestone 1)
 #
 # The whole level-1 regression, three steps:
 #   sh tools/bstest/hz.sh trace DIR
@@ -92,6 +94,8 @@ compare)
         [ -n "$hit" ] || continue
       elif [ ! -f "$D/l2_$n.txt" ]; then
         continue
+      elif [ "$n" = cont ]; then
+        upto=109                    # (until level 2's step 19, the continue: see the usage)
       fi
       seen=$((seen + 1))
       [ -f "$D/l2_$n.txt" ] || { echo "$n: no trace"; bad=1; continue; }

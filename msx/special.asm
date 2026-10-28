@@ -127,9 +127,121 @@ spu_veh:
 spu_nx: pop hl
         jp spu_lp
 
-; ($8F02) level 2's trolley (handler 4): not ported yet (level 2's step 8). (Only the lifts ever
-; set their rest flag, spl_rest: the shortcut above never skips a trolley's run.)
+; ----- a trolley ($8F02, level 2) -----
+
+; It shuttles 2 pixels a frame between its path's two x values (+0Ah, +0Ch; at the one its index
+; +8 names, 0 or 2, the index takes the other), whatever RoboCop does, and puts its step in the
+; table entry's dx. Seen by the camera (x in (camera x, + 1B0h], y in (camera y, + 118h]: its own
+; window, wider than sp_seen's): with RoboCop on it (its flag) in state 14 or 15 (hanging) his x is
+; its x before this frame's step, and state 14 + (his state & 1) is asked for ($1696); its flag
+; cleared; its table entry (x, x + 10h, top y + 14h: lift_check $BD72 stands him there); sound 0Ch
+; ($B2D) on even frames; its BOB ($4B95A, 32 x 47) at (x + 10h, y + 14h - 68h). draw_bob leaves
+; D7 = 47 lines x 4 = BCh for update_player's punch (sp_d7; the lifts' and the vehicle's BOBs leave
+; a multiple of 16). Not seen: nothing more, D7 stays 6 & $168C. (Only the lifts ever set their
+; rest flag, spl_rest: the shortcut above never skips a trolley's run.)
 sp_trolley:
+        call spt_pt                 ; D0 against the path's x at the index
+        jr nz,spt_st
+        ld a,(ix+SR_IDX)
+        add a,2
+        and 2
+        ld (ix+SR_IDX),a
+        ld (ix+SR_IDX+1),0          ; (addq #2 / andi #2: the other one)
+        call spt_pt
+spt_st: jr z,spt_cam
+        ld de,2
+        jp m,spt_mv                 ; (bpl: x at or right of the point: left)
+        ld de,-2
+spt_mv: ld l,(ix+SR_X)
+        ld h,(ix+SR_X+1)
+        add hl,de
+        ld (ix+SR_X),l
+        ld (ix+SR_X+1),h
+        ld (iy+8),e
+        ld (iy+9),d                 ; (8,A0): the entry's dx
+spt_cam:
+        ld hl,(sp_x)
+        ld de,(gcam_x)
+        scf
+        sbc hl,de
+        ld de,-0x1B0
+        add hl,de
+        ret c                       ; (the lift's rts $8ED0: not seen)
+        ld hl,(sp_y)
+        ld de,(gcam_y)
+        scf
+        sbc hl,de
+        ld de,-0x118
+        add hl,de
+        ret c
+        ld hl,(sp_flag)
+        ld a,(hl)
+        or a
+        jr z,spt_tab
+        ld hl,(p_state)
+        ld a,l
+        and 0xFE
+        xor 14
+        or h
+        jr nz,spt_ask               ; (state & ~1 not 14)
+        ld hl,(sp_x)
+        ld (p_x),hl                 ; ($15D0 = D0)
+spt_ask:
+        ld a,(p_state)
+        and 1
+        add a,14
+        ld l,a
+        ld h,0
+        ld (p_pend),hl              ; ($1696 = 14 + (state & 1))
+spt_tab:
+        ld hl,(sp_flag)
+        ld (hl),0
+        ld hl,(sp_y)
+        ld de,0x14
+        add hl,de
+        ld (sp_y),hl                ; (D1 + 14h: the entry's top)
+        ld hl,0x10
+        call sp_entry
+        ld a,(g_frame)
+        rra
+        jr c,spt_bob
+        ld a,0x0C
+        ld (snd_b2d),a
+spt_bob:
+        ld hl,(sp_x)
+        ld de,0x10
+        add hl,de
+        ld (bob_x),hl
+        ld hl,(sp_y)
+        ld de,-0x68
+        add hl,de
+        ld (bob_y),hl
+        ld hl,0xB95A
+        ld (bob_a2),hl
+        ld a,0x04
+        ld (bob_a2+2),a             ; $4B95A
+        ld hl,0xBC3
+        ld (bob_d4),hl
+        call bob_draw
+        ld a,0xBC                   ; (draw_bob's D7, $AB26: before any clipping exit)
+        ld (sp_d7),a
+        ret
+
+; -> the flags of D0 - the path's x at the record's index (cmp.w (0Ah,A3,D2.w),D0): Z equal, S
+; below. Keeps IX, IY.
+spt_pt: push ix
+        pop hl
+        ld e,(ix+SR_IDX)
+        ld d,(ix+SR_IDX+1)
+        add hl,de
+        ld de,SR_PATH
+        add hl,de
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        ld hl,(sp_x)
+        or a
+        sbc hl,de
         ret
 
 ; The record's x and y (D0 / D1) against the camera ($B04, $B06): carry when it is not in

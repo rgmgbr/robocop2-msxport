@@ -2,21 +2,21 @@
 """l2stub.py: level 2's bench references with the routines the port has not ported yet stubbed the way
 the port stubs them, so that an MSX trace of the port as it stands compares whole, every row and field
 (docs/HARNESS.md 5.22). Against the plain references (build/emu/l2_<ref>_ram.jsonl) a level-2 trace
-differs from its first row while a stub remains: act_0c runs in level_init's map-object pass, the
-trolleys from game frame 0, type 1 from frame 4.
+differs from the first frame a stubbed routine runs: type 1 from game frame 4 in every reference (at
+step 7 already from row 0: act_0c ran in level_init's map-object pass, the trolleys from frame 0).
 
 Each reference of tools/l2drives.py (its drive, carry and frames; not the flow one) runs on the bench
 (tools/amigaemu.py game --level 2, the direct start, Unicorn: $PY or the project's venv) with these
 patches of the main code, written before level_init (--pre-poke ADDR:VALUE:SIZE):
 
   NAME     ADDRESS  PATCH                                  THE PORT'S STUB
-  trolley  $8F02    rts                                    msx/special.asm sp_trolley: ret
-  vats     $91BC    bra.w $919E (the next hazard record)   msx/level2.asm lt1: ret (hz_update goes on)
-  mine     $9EE8    bra.w $9C76 (activator 0's default)    msx/mapobj.asm act_0c: a label on ao_look ($9C76)
   t1 ...   handler  moveq #-1,D0 / rts (the slot freed)    msx/level2obj.asm t1, t2, t5, t6, t14, t16, t49:
                                                            ld a,FFh / ret (update_objects frees the slot)
 
 A step that ports a routine drops its stub here (--drop NAME, or the STUBS table) and in the port.
+Ported and dropped (level 2's step 8): the trolley $8F02 (msx/special.asm sp_trolley), the vats $91BC
+(msx/level2.asm lt1) and act_0c $9EE8 (msx/mapobj.asm), whose stubs were rts, bra.w $919E (the next
+hazard record) and bra.w $9C76 (activator 0's default, the port's ao_look).
 
 usage: l2stub.py OUT [--drop NAME ...] [--jobs N] [REF ...]   OUT/l2_<ref>_ram.jsonl (+ .log), every
                                                               direct reference by default
@@ -35,9 +35,6 @@ import l2drives  # noqa: E402
 
 MOVEQ_RTS = "0x70FF4E75:4"          # moveq #-1,D0 / rts
 STUBS = {                           # name: [(address, value:size), ...]
-    "trolley": [(0x8F02, "0x4E75:2")],
-    "vats": [(0x91BC, "0x6000FFE0:4")],
-    "mine": [(0x9EE8, "0x6000FD8C:4")],
     "t1": [(0xC736, MOVEQ_RTS)],
     "t2": [(0xC868, MOVEQ_RTS)],
     "t5": [(0xD0E2, MOVEQ_RTS)],

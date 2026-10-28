@@ -190,6 +190,9 @@ proc hz_regress {dir rom labels {tr ""}} {
 # runs before level 2 in those builds, so tick_n is the drive's index): DIR/l2_<job>.txt, n rows
 # each (the reference's). With "tr", tour and vat on a turbo R too. ONLY: a list of job names (the
 # others skipped). Compare with "hz.sh compare --fields analysis/amiga_ram_l2.tsv DIR R".
+# (cont: since level 2's step 8 RoboCop dies in the vat, and until the port has the continue (its
+# step 19) the game over ends the trace at row 108: the job times out after 60 s instead of 1,800,
+# and "hz.sh compare" takes it as cont:109, the plan's milestone 1)
 proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
@@ -209,8 +212,9 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	set jobs {}
 	foreach {name b drive n m} $spec {
 		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
+		set tmo [expr {$name eq "cont" ? 60 : 1800}]
 		lappend jobs [list l2_$name $m [list rc2_drive_rom "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
-			"$dir/l2_$name.txt" $n 0 "$e/$drive.drive"] {$::rc2_trace_done} 1800]
+			"$dir/l2_$name.txt" $n 0 "$e/$drive.drive"] {$::rc2_trace_done} $tmo]
 	}
 	return $jobs
 }

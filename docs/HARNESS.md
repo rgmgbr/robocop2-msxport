@@ -1541,6 +1541,15 @@ equal to the render but for the HUD's timer, which shows `hud_init`'s 09:58 for 
 7:30, as level 1's first picture does with its 10:00; at game frames 50, 70 and 100 RoboCop's and the
 enemy's sprite pixels all exact (861, 808, 1,612), the only differing pixels the lift's (233-617).
 
+At step 8 (2026-10-28): the trolley (`special.asm` `sp_trolley`), the vats (`level2.asm` `lt1`) and
+`act_0c` (`mapobj.asm`) are ported and gone from `l2stub.py`'s table (the 7 types remain). Against the
+plain references every job's rows 0-4 equal the bench (row 0's `snd_b2d` included: `act_0c` runs in
+`ao_start`'s pass as in `level_init`'s), type 1's slot from row 5 on; against the stubbed references
+the 20 jobs 0 differ over every row. RoboCop now dies in the vat, so `cont`'s trace ends at its game
+over (row 108) until the port has the continue (step 19): `hz_l2`'s `cont` job times out after 60 s
+instead of 1,800, and `hz.sh compare` without job names takes it as `cont:109` (the plan's milestone 1;
+step 19 removes both).
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its

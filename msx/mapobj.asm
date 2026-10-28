@@ -143,9 +143,6 @@ ao_lp:  ld hl,(ao_cnd)
 ao_acts:                            ; per offset / 4 (offsets 0Ch, 20h: levels 2 and 3)
         dw ao_look, act_04, act_08, act_0c, act_10, act_14, act_18, act_1c, ao_look
 
-; ($9EE8, offset 0Ch: level 2's blinking mine; no level-1 entry has it) not ported yet (level 2's
-; step 8): the default meanwhile.
-act_0c:
 ; ($9C76) the default: a collision slot unless A4 is $BEC, then the look.
 ao_look:
         ld hl,(ao_a4)
@@ -904,6 +901,138 @@ a1c_end:
         call map_write_lin
         inc e
         ld hl,0xCE80
+        call map_write_lin
+        jp ao_next
+
+; $9EE8 (offset 0Ch: level 2's mines; no level-1 entry has it): the third word of its look $A4A2's
+; first row ($A4A6) blinks: E680h, or 9700h while game frame bit 2 is clear (then sound 28h, $B2D,
+; on every 8th frame). RoboCop in its cell (its y = his ((y + 8) & ~15) - 10h, its x = his (x &
+; ~15) - 20h) sets it off (hits' high byte FFh: the look animates) with four explosions (type 0)
+; at x + 10h, + 24h, + 38h, + 4Ch. Then as the floor switch ($9FAE): its look, no collision slot.
+; (The port: the looks are ROM data, so the word is written into its cell after the look, which
+; lk_cache skips when it is written there already: docs/LEVEL2.md default 23.)
+act_0c: ld a,(g_frame)
+        and 4
+        jr nz,a0c_on
+        ld a,(g_frame)
+        and 3
+        jr nz,a0c_on
+        ld a,0x28
+        ld (snd_b2d),a
+a0c_on: ld hl,(p_y)
+        ld de,8
+        add hl,de
+        ld a,l
+        and 0xF0
+        ld l,a
+        ld de,-0x10
+        add hl,de
+        ld de,(ao_y)
+        or a
+        sbc hl,de
+        jr nz,a0c_l                 ; (cmp.w D2,D1; bne)
+        ld hl,(p_x)
+        ld a,l
+        and 0xF0
+        ld l,a
+        ld de,-0x20
+        add hl,de
+        ld de,(ao_x)
+        or a
+        sbc hl,de
+        jr nz,a0c_l                 ; (cmp.w D2,D0; bne)
+        ld (iy+5),0xFF              ; (st (4,A1))
+        ld hl,(ao_x)
+        ld de,0x10
+        ld b,4
+a0c_ex: add hl,de
+        push hl
+        push bc
+        ld de,(ao_y)
+        ld bc,0
+        call expl_add
+        pop bc
+        pop hl
+        ld de,0x14
+        djnz a0c_ex
+a0c_l:  call ao_lookp               ; ($9FAE)
+        jr nc,a0c_lk
+        ld (iy+3),0xFF              ; (st (2,A1): off, no pickup)
+        jp ao_next
+a0c_lk: ld de,0xA4A2
+        or a
+        sbc hl,de
+        add hl,de
+        jp nz,ao_copy               ; (not the blinking look: as the floor switch)
+        bit 7,(iy+5)                ; ($9CD2, as ao_copy) animated: the next look from the next
+        jr z,a0c_cp                 ; frame on
+        ld a,(g_frame)
+        rra
+        jr nc,a0c_cp
+        ld e,(iy+2)
+        ld d,(iy+3)
+        inc de
+        inc de
+        inc de
+        inc de
+        ld (iy+2),e
+        ld (iy+3),d
+a0c_cp: ld hl,(ao_lkc)              ; (as ao_copy: the look written once, through lk_cache)
+        ld a,(hl)
+        cp 0xA2
+        jr nz,a0c_lw
+        inc hl
+        ld a,(hl)
+        cp 0xA4
+        jr z,a0c_wd
+        dec hl
+a0c_lw: ld (hl),0xA2
+        inc hl
+        ld (hl),0xA4
+        ld l,(iy+0)
+        ld h,0
+        ld de,obj_types + 0x110
+        add hl,de
+        ld b,(hl)                   ; width - 1
+        inc hl
+        inc hl
+        ld c,(hl)                   ; height - 1
+        ld hl,obj_looks + 0xA4A2 - 0xA1AA
+        ld a,(ao_row)
+        ld d,a
+        ld a,(ao_col)
+        ld e,a                      ; D = row, E = column
+a0c_rl: push bc
+        push de
+a0c_cl: push bc
+        push hl
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        call map_write_lin
+        pop hl
+        inc hl
+        inc hl
+        inc e
+        pop bc
+        dec b
+        jp p,a0c_cl
+        pop de
+        pop bc
+        inc d
+        dec c
+        jp p,a0c_rl
+a0c_wd: ld hl,0xE680                ; the blinking word into its cell (row 0, column 2)
+        ld a,(g_frame)
+        and 4
+        jr nz,a0c_w
+        ld hl,0x9700
+a0c_w:  ld a,(ao_row)
+        ld d,a
+        ld a,(ao_col)
+        add a,2
+        ld e,a
         call map_write_lin
         jp ao_next
 
