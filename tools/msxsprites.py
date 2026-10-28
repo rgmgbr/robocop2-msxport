@@ -71,8 +71,38 @@ FORMAT (all little-endian words; banks relative to the first sprite bank):
   banks 1..: pattern pool (32 bytes each, 256 per bank), then colour pool (16 bytes each,
              512 per bank); SPR_PAT_BANK / SPR_COL_BANK give the first bank of each.
 
+THE GLOBAL POOL (--pool POOL, the level-2 plan 3.6): after level 1's files (OUT, unchanged), level
+2's frames (tools/bobcatalog.py level2) join one pool: level 1's patterns, colour rows and records
+stay as they are (and at the same ids); level 2's new ones follow them in each sub-pool. Its frames
+that level 1 converted from the same bytes keep level 1's records (the shared frames are not
+converted again, default 32: palette C keeps the indices); its own are converted against palette C
+(--l2-pal) with level 2's Amiga colours; type 1 as joint compositions (JOINT_L2: one per legs frame,
+drawn by the legs' call, the torso's calls showing nothing: POOL_l2.json "hidden"); its play field
+(L2_FIELD_PROCS: types 2, 14 and 16's body, the trolley, the lifts, the hostage) in its own atlas
+of L2_FIELD_LINES lines with the dynamic slot on page 2 (L2_DYN_Y); the play-field ids from
+POOL_FIELD_ID0 (D0h) in both levels. The files:
+  POOL.bin       the pool (FORMAT): the index [RoboCop's][level 1's BOBs][level 2's BOBs], the
+                 compositions, patterns, colour rows (bank SPR_BASE_BANK on, as robocop.bin)
+  POOL.inc       its equates: robocop.inc's (level 1's under their names) and per level
+                 SPR_BOBS_Ln, SPR_SPARK_Ln, SPR_SIL_FLASH_Ln, SPR_SIL_BLACK_Ln, SPR_BOB_INDEX_Ln
+  POOL_l1.json, POOL_l2.json   per level its BOB frames (ids, "reuse": level 1's id, "new"),
+                 play-field frames, RoboCop's index (both levels'); level 2's: "hidden" (type 1's
+                 torso keys), "frames" (each Amiga frame and what shows it), its palette
+  POOL_l1_field.*, POOL_l2_field.*   each level's atlas (.bin), tables (.inc), VRAM image
+  POOL_fdyn.bin  the dynamic frames (both levels': the same bytes)
+  POOL_flash.inc RoboCop's palette flashes (POOL_l2_flash.inc only when level 2's differ)
+  POOL_l2_bobs.png   level 2's new sprite frames (target | full | one layer)
+  POOL_l2_or.txt the shared frames' lines on palette C's entries 9, 11, 13 against level 2's
+                 colours (the plan's check 12), level 1's figures beside them
+--l2-reconvert converts again, for level 2 only, the animations of the shared frames whose lines
+on those entries get much worse under palette C (RECONVERT): 36 frames, the same +4 banks
+(default 32's alternative, not the default).
+
 usage: msxsprites.py MAIN_8000.bin PERMA.bin DATAL.bin --rows 51 [--bobs CATALOG.json --ram RAM.bin
                     --level level1] OUT
+       msxsprites.py ... OUT --pool POOL --l2-datal DATAL2.bin --l2-bobs CATALOG_L2.json
+                    --l2-ram level2_full.bin --l2-pal level2.pal [--l2-remove msx/level2_frames.json]
+                    [--l2-drawn COV2.json] [--l2-reconvert]
 """
 from __future__ import annotations
 
@@ -134,6 +164,31 @@ FIELD_ID0 = 0xC8               # their BOBHASH ids: FIELD_ID0 + index (the sprit
                                # 200 ids, the hit spark's four last)
 FIELD_ROM = 0x2000             # the atlas in the ROM: one bank (upload table, then the frames)
 DYN_ROM = 2 * 0x2000           # the dynamic frames in the ROM: two banks (none across a bank's end)
+# --pool: one global pool for levels 1 and 2 (docs: the level-2 plan 3.6, defaults 32-40). Level 1's
+# patterns, colour rows and records stay as they are; level 2's new ones follow them in each sub-pool;
+# each level has its own BOB index, ids, BOBHASH frames, atlas and field tables
+POOL_FIELD_ID0 = 0xD0          # the play-field frames' BOBHASH ids in both levels (level 2: 204 + 35)
+L2_PAL_ADDR = 0x10036          # level 2's palette (header $868C + 36)
+L2_FIELD_PROCS = ("obj45_update", "obj02_update", "obj14_update", "obj16_update", "FUN_00008de6",
+                  "FUN_00008f02")                       # the hostage, types 2, 14, 16's body, the lifts, the trolleys
+L2_FIELD_RIDDEN = ("FUN_00008de6", "FUN_00008f02")      # the lifts and the trolleys (copied last)
+L2_FIELD_FLASH = ("obj02_update", "obj14_update", "obj16_update")  # their silhouettes as sprites: type 2's
+                                                        # blink ($AC6E), the hit flashes
+L2_FIELD_LINES = 112           # the atlas: page 3 lines 0-111 (default 35)
+L2_DYN_Y = 224                 # the dynamic slot: page 2 lines 224-247 (the tile cache keeps 224 slots)
+L2_FIELD_ROM = 2 * BANK        # the atlas in the ROM: two banks
+L2_POSES = ("obj04_update",)  # frames that are poses, not an animation's steps (type 4's torso by aim,
+                               # $CFB0): each keeps the OR layer on its own best boxes
+RECONVERT = (20.0, 5.0)        # --l2-reconvert: a shared frame whose lines on palette C's entries 9, 11, 13
+                               # pass level 1's largest dE76 by more than 20 or its mean by more than 5
+# type 1 as joint compositions (default 33): obj01_update $C736 (REA) draws its legs $3E810 +
+# $C7E0[k] (32 x 23; k < 8 facing left) at (x, y + 21) through $AC44, then its torso, $404D0 facing
+# left or $40674 right (32 x 21), at (x - 2 or x + 2, y + $C800[k & 7]) through $AC56. One
+# composition per legs frame, drawn by the legs' call (its BOBHASH key; the record placed from
+# that call: the torso's lines above it have negative dy), the torso's calls showing nothing
+JOINT_L2 = {"proc": "obj01_joint", "legs": (0x3E810, 0xC7E0, 16, 32, 23), "torso": ((0x404D0, 0x40674), 32, 21),
+            "torso_dy": 0xC800, "torso_dx": (-2, 2), "legs_y": 21, "origin": (-2, -21), "size": (44, 36)}
+SHARED_RANGES = ((0x45250, 0x4B54C), (0x4B68A, 0x5884E), (0x58850, 0x6FFA0))   # MADEX, SPERMA, PERMA
 
 
 def amiga_rgb(c12: int) -> np.ndarray:
@@ -177,21 +232,33 @@ def nearest(cols: np.ndarray, pal: np.ndarray, first: int = 0) -> np.ndarray:
     return d.argmin(-1) + first
 
 
+def amiga_palettes(main: bytes, addr: int) -> tuple[np.ndarray, np.ndarray]:
+    """A level's Amiga palette (main code at addr): background colours 0-15 and sprite colours
+    16-31 (entry 0 black), [0, 1] RGB."""
+    pal12 = [struct.unpack_from(">H", main, addr - 0x8000 + 2 * i)[0] for i in range(31)]
+    return (np.array([[0, 0, 0]] + [amiga_rgb(c) for c in pal12[:15]]),
+            np.array([[0, 0, 0]] + [amiga_rgb(c) for c in pal12[16:31]]))
+
+
+def map_counts(datal: bytes, rows: int) -> np.ndarray:
+    """Pixels per Amiga background colour over the level's whole map."""
+    words = [struct.unpack_from(">H", datal, MAP_OFFSET + 2 * i)[0] & ~0x7F for i in range(rows * COLS)]
+    uses: dict[int, int] = {}
+    for w in words:
+        uses[w] = uses.get(w, 0) + 1
+    count = np.zeros(16)
+    for off, n in uses.items():
+        for y in range(16):
+            for x in range(16):
+                v = sum(1 << p for p in range(4) if datal[off + (y * 4 + p) * 2 + (x >> 3)] & (0x80 >> (x & 7)))
+                count[v] += n
+    return count
+
+
 class Level:
     def __init__(self, main: bytes, perma: bytes, datal: bytes, rows: int):
-        pal12 = [struct.unpack_from(">H", main, 0xFFF6 - 0x8000 + 2 * i)[0] for i in range(31)]
-        self.bgpal = np.array([[0, 0, 0]] + [amiga_rgb(c) for c in pal12[:15]])
-        self.sppal = np.array([[0, 0, 0]] + [amiga_rgb(c) for c in pal12[16:31]])
-        words = [struct.unpack_from(">H", datal, MAP_OFFSET + 2 * i)[0] & ~0x7F for i in range(rows * COLS)]
-        uses: dict[int, int] = {}
-        for w in words:
-            uses[w] = uses.get(w, 0) + 1
-        self.bg_count = np.zeros(16)
-        for off, n in uses.items():
-            for y in range(16):
-                for x in range(16):
-                    v = sum(1 << p for p in range(4) if datal[off + (y * 4 + p) * 2 + (x >> 3)] & (0x80 >> (x & 7)))
-                    self.bg_count[v] += n
+        self.bgpal, self.sppal = amiga_palettes(main, 0xFFF6)
+        self.bg_count = map_counts(datal, rows)
         self.game = player.Game(main, perma)
         self.records = self.game.records()
 
@@ -1153,7 +1220,9 @@ def bob_frames(catalog: Path, level: str) -> list[dict]:
     return out
 
 
-def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict) -> dict:
+def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, procs: tuple = FIELD_PROCS,
+                 ridden: tuple = FIELD_RIDDEN, lines_max: int = FIELD_H, slot_y: int | None = None,
+                 rom_max: int = FIELD_ROM, images: dict | None = None, id0: int = FIELD_ID0) -> dict:
     """The play-field BOB frames (FIELD_PROCS, FIELD_DYN): their atlas (FIELD_H x FIELD_W
     joint-palette indices, 0 transparent: opaque black takes another black, as near[] starts at
     entry 1) and per frame its place there, the size drawn ("sw", "sh"; "w", "h" stay the game's,
@@ -1170,19 +1239,25 @@ def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict
     The dynamic frames' pixels (a line of the slot after another: its strips' lines side by side,
     as VRAM holds them; none across a bank's end) go into their own banks
     ("dyn_rom"), per frame ("dyn_tab") its bit, the frames whose place in the slot it takes,
-    its bank and its address in the 8000h window."""
+    its bank and its address in the 8000h window.
+    Per level (--pool): its FIELD_PROCS and FIELD_RIDDEN ('procs', 'ridden'), the atlas's lines
+    ('lines_max'), the dynamic slot elsewhere ('slot_y': its first line there; the atlas image then
+    holds no slot), the atlas's ROM ('rom_max'), and 'images': per frame key the pixels to take
+    instead of the RAM image's (the frames another level converted); 'id0': FIELD_ID0."""
     key = lambda f: f"{f['addr']:x}:{f['w']}:{f['h']}"      # noqa: E731
-    rank = {p: i for i, p in enumerate(FIELD_PROCS)}
-    late = min(rank[p] for p in FIELD_RIDDEN)               # (the dynamic frames before the lifts)
+    rank = {p: i for i, p in enumerate(procs)}
+    late = min(rank[p] for p in ridden)                     # (the dynamic frames before the lifts)
     frames = sorted(frames, key=lambda f: (late - 0.5 if f["addr"] in FIELD_DYN else rank[f["proc"]], f["addr"]))
     imgs = {}
     for f in frames:
         src = bob_image(ram, f["addr"], f["w"], f["h"])
         if (src >= 0).sum() and key(f) not in removed:
             imgs[key(f)] = np.where(src >= 0, near[np.clip(src, 0, 15)], 0)
+            if images and key(f) in images:
+                imgs[key(f)] = images[key(f)]
     dyn = {key(f) for f in frames if f["addr"] in FIELD_DYN and key(f) in imgs}
-    dyn_y = FIELD_H - DYN_H
-    atlas = np.zeros((FIELD_H, FIELD_W), np.uint8)
+    dyn_y = lines_max - DYN_H if slot_y is None else lines_max
+    atlas = np.zeros((lines_max, FIELD_W), np.uint8)
     place, x, y, shelf = {}, 0, 0, 0
     table, pixels, stored = [], bytearray(), {}
     for k in sorted((k for k in imgs if k not in dyn), key=lambda k: (-imgs[k].shape[0], -imgs[k].shape[1], k)):
@@ -1205,7 +1280,7 @@ def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict
     head = 1 + 7 * len(table)
     rom = bytes([len(table)]) + b"".join(struct.pack("<BBBBBH", ty, tx, bpl, h, m, head + off)
                                          for ty, tx, bpl, h, m, off in table) + bytes(pixels)
-    assert len(table) < 256 and len(rom) <= FIELD_ROM, f"the play-field atlas takes {len(rom)} bytes of the ROM"
+    assert len(table) < 256 and len(rom) <= rom_max, f"the play-field atlas takes {len(rom)} bytes of the ROM"
     dyn_list, span = [], {}                                 # the dynamic slot
     for group in DYN_GROUPS:
         x = 0
@@ -1213,8 +1288,8 @@ def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict
             k = next(k for k in dyn if int(k.split(":")[0], 16) == a)
             h, w = imgs[k].shape
             n = -(-h // DYN_H)
-            place[k], span[k] = (x, dyn_y), (x, x + n * w)
-            for s in range(n):                              # (the atlas image: the last group's)
+            place[k], span[k] = (x, dyn_y if slot_y is None else slot_y), (x, x + n * w)
+            for s in range(n if slot_y is None else 0):     # (the atlas image: the last group's)
                 strip = imgs[k][s * DYN_H:(s + 1) * DYN_H]
                 atlas[dyn_y:dyn_y + len(strip), x + s * w:x + (s + 1) * w] = strip
             x += n * w
@@ -1252,12 +1327,12 @@ def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict
     for e in out:                                           # (the frame of the look it draws: a
         e["look"] = fid[e["src"]]                           # removed frame where the frame shown is
                                                             # drawn changes nothing, msx/field.asm)
-    assert len(out) <= 0xFF - FIELD_ID0, "too many play-field frames for their BOBHASH ids"
+    assert len(out) <= 0xFF - id0, "too many play-field frames for their BOBHASH ids"
     fd = [e["fid"] for e in out if "dyn" in e]
     assert fd == list(range(fd[0], fd[-1] + 1)) if fd else True, "the dynamic frames' ids not in a row"
     used = sum(np.bincount(img.ravel(), minlength=16) for img in imgs.values())
     return {"frames": out, "atlas": atlas, "lines": lines, "rom": rom, "dyn_rom": bytes(dyn_rom),
-            "dyn_tab": dyn_tab, "dyn_y": dyn_y, "used": used}
+            "dyn_tab": dyn_tab, "dyn_y": dyn_y if slot_y is None else slot_y, "used": used}
 
 
 def bob_image(ram: bytes, addr: int, w: int, h: int) -> np.ndarray:
@@ -1303,6 +1378,525 @@ class Pool:
         return self.index[b]
 
 
+def flash_text(fidx: list[int], fpals: list) -> str:
+    """The palette flashes' include (flash_palettes)."""
+    return ("; generated by tools/msxsprites.py: RoboCop's palette flashes ($F80E) on the joint palette\n"
+            "; (through the colour grade, tools/msxbright.py, as the ROM's palette)\n"
+            f"FLASH_N: equ {len(fidx)}                  ; entries tinted (RoboCop's that the background and the play-field BOBs never use)\n"
+            "flash_idx:\n        db " + ", ".join(map(str, fidx)) + "\n"
+            "flash_pals:                         ; PAL_ENEMYHIT, PAL_SHOT, PAL_ELECTRIC, PAL_REFILL, PAL_BEAM, PAL_REVERSE\n"
+            + "".join("        db " + ", ".join(f"0x{BRIGHT[r] << 4 | BRIGHT[b]:02X}, 0x{BRIGHT[g]:02X}" for r, g, b in row) + "\n"
+                      for row in fpals))
+
+
+def read_inc(path: Path) -> dict[str, int]:
+    """NAME: equ VALUE lines of an include (a VALUE naming an earlier NAME takes its value)."""
+    out: dict[str, int] = {}
+    for line in path.read_text().splitlines():
+        if ": equ " in line:
+            k, v = line.split(": equ ")
+            v = v.split(";")[0].strip()
+            out[k.strip()] = out[v] if v in out else int(v, 0)
+    return out
+
+
+class SpriteData:
+    """A sprite blob (FORMAT: robocop.bin, or the pool's .bin with its .inc) read back: an index
+    entry's composition as the VDP shows it."""
+
+    def __init__(self, bin_path: Path, inc_path: Path):
+        self.data = bin_path.read_bytes()
+        self.inc = read_inc(inc_path)
+
+    def entry(self, n: int) -> int:
+        """Index entry n (RoboCop's from 0, the BOBs' from (SPR_BOB_INDEX - 8000h) / 3) -> its
+        composition's offset in the blob."""
+        bank, off = struct.unpack_from("<BH", self.data, 3 * n)
+        return bank * BANK + off
+
+    def bob_entry(self, level: int | None, k: int) -> int:
+        idx = self.inc[f"SPR_BOB_INDEX_L{level}" if level else "SPR_BOB_INDEX"] - 0x8000
+        return self.entry(idx // 3 + k)
+
+    def record(self, o: int) -> dict:
+        """The composition at o: its header, sprites (dy, dx, park bit, A1 bit, pattern, colour,
+        pattern A1, colour A1), bands (dy, A, B, gain) and its bands as converted layouts (per
+        band: dy, boxes with x, full and fallback looks: msxframe.py's layouts)."""
+        d = self.data
+        nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1 = struct.unpack_from("<BBBbbBBB", d, o)
+        sprites = [struct.unpack_from("<bbBBHHHH", d, o + 8 + 12 * i) for i in range(nspr)]
+        bands = [struct.unpack_from("<bBBB", d, o + 8 + 12 * nspr + 4 * j) for j in range(nb)]
+        pat0, col0 = self.inc["SPR_PAT_BANK"] * BANK, self.inc["SPR_COL_BANK"] * BANK
+
+        def bits(p: int) -> np.ndarray:
+            b = d[pat0 + 32 * p:pat0 + 32 * p + 32]
+            return np.array([[(b[16 * (x >> 3) + y] >> (7 - (x & 7))) & 1 for x in range(16)] for y in range(16)],
+                            np.uint8)
+
+        def cols(c: int) -> np.ndarray:
+            return np.frombuffer(d[col0 + 16 * c:col0 + 16 * c + 16], np.uint8)
+
+        lay: list = []
+        for i, (dy, dx, pbit, _abit, pat, col, pat1, col1) in enumerate(sprites):
+            if pbit:
+                continue                                # (a B sprite: with its A, before it)
+            a, ca = bits(pat), cols(col) & 15
+            full = a * ca[:, None]
+            if i + 1 < nspr and sprites[i + 1][2]:      # (its B: CC = 1, ORed where both are set)
+                b, cb = bits(sprites[i + 1][4]), cols(sprites[i + 1][5]) & 15
+                full = np.where(b > 0, full | cb[:, None], full).astype(np.uint8)
+            fb = bits(pat1) * (cols(col1) & 15)[:, None]
+            if not lay or lay[-1][0] != dy:
+                lay.append((dy, []))
+            lay[-1][1].append({"x": dx, "full": full.astype(np.uint8), "fallback": fb.astype(np.uint8)})
+        return {"header": (nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1), "sprites": sprites, "bands": bands,
+                "layout": lay}
+
+    def look(self, o: int, one_layer: bool = False) -> tuple[np.ndarray, int, int]:
+        """The composition at o drawn (joint palette indices, 0 transparent) -> (image, y0, x0):
+        its top left against the origin."""
+        lay = self.record(o)["layout"]
+        y0 = min(dy for dy, _ in lay)
+        x0 = min(b["x"] for _, bx in lay for b in bx)
+        h = max(dy for dy, _ in lay) + 16 - y0
+        w = max(b["x"] for _, bx in lay for b in bx) + 16 - x0
+        img = np.zeros((h, w), np.uint8)
+        for dy, boxes in lay:
+            for b in reversed(boxes):                   # (the first box of a band in front)
+                im = b["fallback"] if one_layer else b["full"]
+                reg = img[dy - y0:dy - y0 + 16, b["x"] - x0:b["x"] - x0 + 16]
+                reg[im > 0] = im[im > 0]
+        return img, y0, x0
+
+
+def pack_area(blobs: list, start: int) -> tuple[bytearray, list]:
+    """The compositions after an index of 'start' bytes, none across a bank's end -> (area, the
+    place of each blob or None)."""
+    where, area, pos = [], bytearray(start), start
+    for b in blobs:
+        if b is None:                                   # (not shown)
+            where.append(None)
+            continue
+        if pos // BANK != (pos + len(b) - 1) // BANK:
+            pos = (pos // BANK + 1) * BANK
+        where.append(pos)
+        area += b"\xff" * (pos - len(area)) + b
+        pos += len(b)
+    return area, where
+
+
+def write_field(path: Path, field: dict, lines: int, id0: int = FIELD_ID0, slot: str = "", dyn: bool = True,
+                ridden: tuple = FIELD_RIDDEN) -> None:
+    """A level's play-field files: path_field.bin (the atlas for the ROM), path_fdyn.bin (the
+    dynamic frames, when 'dyn'), path_field_vram.bin (the atlas as VRAM holds it: 'lines' lines)
+    and path_field.inc (its tables); 'slot': where the dynamic slot is, when not the atlas's end."""
+    at = field["atlas"]
+    path.with_name(path.name + "_field.bin").write_bytes(field["rom"])
+    if dyn:
+        path.with_name(path.name + "_fdyn.bin").write_bytes(field["dyn_rom"])
+    path.with_name(path.name + "_field_vram.bin").write_bytes(        # (the atlas as VRAM holds it:
+        bytes(int(at[y, x]) << 4 | int(at[y, x + 1])                  # the tools' checks)
+              for y in range(lines) for x in range(0, FIELD_W, 2)))
+    fd = [f for f in field["frames"] if "dyn" in f]
+    path.with_name(path.name + "_field.inc").write_text(
+        "; generated by tools/msxsprites.py: the play-field BOB frames (msx/field.asm)\n"
+        f"FIELD_N: equ {len(field['frames'])}\n"
+        f"FIELD_Y0: equ {FIELD_Y0}                ; their atlas: page 3 from this line (VRAM {0x18000 + FIELD_Y0 * 128:05X}h)\n"
+        f"FIELD_LINES: equ {field['lines']}\n"
+        f"FIELD_ID0: equ 0x{id0:02X}             ; their BOBHASH ids: FIELD_ID0 + index\n"
+        f"FIELD_LATE: equ {min([f['fid'] for f in field['frames'] if f['proc'] in ridden] or [len(field['frames'])])}"
+        "              ; frames from here: the lifts and the vehicle\n"
+        f"FIELD_DYN0: equ {fd[0]['fid'] if fd else 0}              ; frames from here to FIELD_DYN1 (excluded): the\n"
+        f"FIELD_DYN1: equ {fd[-1]['fid'] + 1 if fd else 0}              ;   dynamic slot's (field.asm fb_dyn)\n"
+        + (f"DYN_Y: equ {field['dyn_y']}                   ; the dynamic slot: atlas lines DYN_Y..DYN_Y + DYN_H - 1\n"
+           if not slot else f"DYN_Y: equ {field['dyn_y']}                  ; the dynamic slot: {slot}\n")
+        + f"DYN_H: equ {DYN_H}\n"
+        "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn), dx, dy\n"
+        "                                    ; (signed: the draw offset of a removed frame shown as another)\n"
+        + "".join(f"        db {f['x']}, {f['y']}, {f['sw']}, {f['sh']}, {f['ox'] & 255}, {f['oy'] & 255}"
+                  f"      ; {f['proc']} {f['addr']:05X}\n" for f in field["frames"])
+        + "field_look:                         ; per frame: the frame it looks like (a removed frame: the\n"
+          "                                    ; one shown instead; field.asm fb_wants)\n"
+        + "".join(f"        db {f['look']}      ; {f['addr']:05X}\n" for f in field["frames"])
+        + "field_dyn:                          ; per frame from FIELD_DYN0: the dynamic frame of its pixels\n"
+        + "".join(f"        db {f['dyn']}      ; {f['addr']:05X}\n" for f in fd)
+        + "dyn_tab:                            ; per dynamic frame: its bit, the frames whose place it takes\n"
+          "                                    ; (bits), bank (from FIELD_DYN_BANK), address (8000h window)\n"
+        + "".join(f"        dw 0x{bit:04X}, 0x{ev:04X}\n        db {bk}\n        dw 0x{ad:04X}\n        db 0\n"
+                  for bit, ev, bk, ad in field["dyn_tab"]))
+
+
+def msx_palette(raw: bytes) -> np.ndarray:
+    """A V9938 palette file (16 x 2 bytes) -> [0, 1] RGB."""
+    return np.array([[(raw[2 * k] >> 4) & 7, raw[2 * k + 1] & 7, raw[2 * k] & 7] for k in range(16)], float) / 7
+
+
+def frame_key(f: dict) -> str:
+    return f"{f['addr']:x}:{f['w']}:{f['h']}"
+
+
+def joint_targets(ram: bytes, main: bytes, near: np.ndarray) -> list[tuple[dict, np.ndarray]]:
+    """Type 1's joint compositions (JOINT_L2): per legs frame its frame (keyed as the legs' draw
+    call) and its target, on a canvas whose origin is JOINT_L2["origin"] from that call."""
+    legs_base, tab, n, lw, lh = JOINT_L2["legs"]
+    tops, tw, th = JOINT_L2["torso"]
+    ox, oy = JOINT_L2["origin"]
+    out = []
+    for k in range(n):
+        side = k // (n // 2)                            # (0: facing left, 1: right)
+        la = legs_base + struct.unpack_from(">H", main, tab + 2 * k - 0x8000)[0]
+        tdy = struct.unpack_from(">H", main, JOINT_L2["torso_dy"] + 2 * (k % (n // 2)) - 0x8000)[0] - JOINT_L2["legs_y"]
+        parts = [[la, lw, lh, 0, 0], [tops[side], tw, th, JOINT_L2["torso_dx"][side], tdy]]
+        canvas = np.full(JOINT_L2["size"], -1, int)
+        for addr, w, h, dx, dy in parts:                # (the torso over the legs, as drawn)
+            img = bob_image(ram, addr, w, h)
+            region = canvas[dy - oy:dy - oy + h, dx - ox:dx - ox + w]
+            region[img >= 0] = img[img >= 0]
+        fr = {"proc": JOINT_L2["proc"], "addr": la, "w": lw, "h": lh, "origin": [ox, oy], "joint": parts}
+        out.append((fr, np.where(canvas >= 0, near[np.clip(canvas, 0, 15)], 0)))
+    return out
+
+
+def or_rows(lay: list, src: np.ndarray, entries: tuple, pal: np.ndarray, amiga: np.ndarray) -> list[tuple]:
+    """The lines of a converted layout that show one of 'entries' (the full look): per line (y,
+    entries shown, pixels, mean and largest dE76 of 'pal''s colour against the Amiga colour of
+    those pixels ('src': the frame's Amiga indices, the layout's coordinates))."""
+    out = []
+    for y0, boxes in lay:
+        for b in boxes:
+            for k in range(16):
+                y = y0 + k
+                if not 0 <= y < src.shape[0]:
+                    continue
+                cols = b["full"][k]
+                hit = [i for i in range(16) if cols[i] in entries and 0 <= b["x"] + i < src.shape[1]
+                       and src[y, b["x"] + i] >= 0]
+                if hit:
+                    d = [float(np.sqrt(((lab(pal[cols[i]]) - lab(amiga[src[y, b["x"] + i]])) ** 2).sum()))
+                         for i in hit]
+                    out.append((y, sorted({int(cols[i]) for i in hit}), len(hit), sum(d) / len(d), max(d)))
+    return out
+
+
+def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, blobs: list, previews: list,
+                pats: "Pool", cols_pool: "Pool", stats: dict, l1: dict) -> int:
+    """--pool: level 2's frames into the global pool after level 1's (whose patterns, colour rows and
+    records stay as they are), its BOB index and field tables; the pool's files (see main)."""
+    main_b = a.main.read_bytes()
+    ram1, ram2 = l1["ram"], a.l2_ram.read_bytes()
+    palc = msx_palette(a.l2_pal.read_bytes())
+    bgpal2, _ = amiga_palettes(main_b, L2_PAL_ADDR)
+    near1, near2 = l1["near"], nearest(bgpal2, palc, 1)
+    shared = lambda f: (bob_image(ram1, f["addr"], f["w"], f["h"]) == bob_image(ram2, f["addr"], f["w"], f["h"])).all()  # noqa: E731
+    rem2 = json.loads(a.l2_remove.read_text()) if a.l2_remove else {}
+    if rem2.get("rc"):
+        raise SystemExit("RoboCop's frames are both levels': his removals belong in level 1's file")
+    # level 1's removals of the frames both images hold the same, and level 2's own
+    removed = {}
+    for k, v in l1["removed"].get("bob", {}).items():
+        ad, w, h = k.split(":")
+        if shared({"addr": int(ad, 16), "w": int(w), "h": int(h)}):
+            removed[k] = v
+    removed.update(rem2.get("bob", {}))
+    # level 2's frames (tools/bobcatalog.py level2), every routine that draws each one
+    frames, byk = [], {}
+    for r in json.loads(a.l2_bobs.read_text())["refs"]:
+        if not {"level2", "common"} & set((r["level"] or "").split("+")):
+            continue
+        for ad in r["frames"]:
+            k = (ad, r["width"], r["height"])
+            if k not in byk:
+                byk[k] = {"proc": r["proc_name"], "procs": [], "addr": ad, "w": r["width"], "h": r["height"]}
+                frames.append(byk[k])
+            if r["proc_name"] not in byk[k]["procs"]:
+                byk[k]["procs"].append(r["proc_name"])
+    for d in a.l2_drawn:
+        for f in json.loads(d.read_text()).get("bobs", []):
+            k = (f["addr"], f["w"], f["h"])
+            if k not in byk and f["w"] > 0 and f["h"] > 0:
+                byk[k] = {"proc": "drawn", "procs": ["drawn"], "addr": f["addr"], "w": f["w"], "h": f["h"]}
+                frames.append(byk[k])
+    amiga_keys = [frame_key(f) for f in frames]
+    frames = [f for f in frames if removed.get(frame_key(f), 0) is not None]   # (null: never drawn)
+    # the play field: the frames only FIELD_PROCS draw (a gun flash the gunners share is a sprite)
+    is_field = lambda f: f["addr"] in FIELD_DYN or all(p in L2_FIELD_PROCS for p in f["procs"])  # noqa: E731
+    flist = []
+    for f in frames:
+        if is_field(f):
+            flist.append(dict(f, proc=f["proc"] if f["addr"] in FIELD_DYN else
+                              next(p for p in f["procs"] if p in L2_FIELD_PROCS)))
+    l1_field = {frame_key(f) for f in l1["field"]["frames"]}
+    keep = {frame_key(f): np.where(bob_image(ram1, f["addr"], f["w"], f["h"]) >= 0,
+                                   near1[np.clip(bob_image(ram1, f["addr"], f["w"], f["h"]), 0, 15)], 0)
+            for f in flist if frame_key(f) in l1_field and shared(f)}    # (level 1's conversion kept)
+    field = field_frames(ram2, near2, flist, dict(removed, **FIELD_HALF), procs=L2_FIELD_PROCS,
+                         ridden=L2_FIELD_RIDDEN, lines_max=L2_FIELD_LINES, slot_y=L2_DYN_Y, rom_max=L2_FIELD_ROM,
+                         images=keep, id0=POOL_FIELD_ID0)
+    assert field["dyn_rom"] == l1["field"]["dyn_rom"], "level 2's dynamic frames differ from level 1's"
+    # the sprite frames: type 1's joint compositions in place of its legs, its torso's calls hidden
+    joints = joint_targets(ram2, main_b, near2)
+    jkeys = {frame_key(fr): (fr, t) for fr, t in joints}
+    tops, tw, th = JOINT_L2["torso"]
+    hidden = [{"addr": t, "w": tw, "h": th, "joint": JOINT_L2["proc"]} for t in tops]
+    assert set(jkeys) <= set(amiga_keys) and all(frame_key(h) in amiga_keys for h in hidden), \
+        "type 1's legs or torso missing from level 2's catalogue"
+    l1_ids = {frame_key(b): k for k, b in enumerate(l1["bobs"]) if not b.get("spark")}
+    targets, srcs = [], []                              # (frame, target, level-1 id or None)
+    for f in frames:
+        k = frame_key(f)
+        if k in {frame_key(h) for h in hidden} or f["addr"] in FIELD_DYN:
+            continue
+        if is_field(f) and not any(p in L2_FIELD_FLASH for p in f["procs"]):
+            continue
+        if k in jkeys:
+            fr, tgt = jkeys[k]
+            targets.append((fr, tgt, None))
+            srcs.append(None)
+            continue
+        fr = {"proc": f["proc"], "addr": f["addr"], "w": f["w"], "h": f["h"]}
+        if k in l1_ids and shared(f):                   # (level 1's record: not converted again)
+            targets.append((fr, l1["targets"][l1_ids[k]][1], l1_ids[k]))
+            srcs.append(bob_image(ram1, f["addr"], f["w"], f["h"]))
+            continue
+        src = bob_image(ram2, f["addr"], f["w"], f["h"])
+        if (src >= 0).sum():
+            targets.append((fr, np.where(src >= 0, near2[np.clip(src, 0, 15)], 0), None))
+            srcs.append(src)
+    # an animation's frames keep the OR layer on the same boxes (by the new frames' summed gain: a
+    # group's frames of level 1 keep their records)
+    group, last = {}, None
+    for fr, _, _ in sorted(targets, key=lambda t: (t[0]["proc"] != "drawn", t[0]["addr"])):
+        if fr["proc"] in L2_POSES:
+            group[id(fr)] = (fr["proc"], fr["addr"], fr["w"], fr["h"])
+            continue
+        if fr["proc"] != "drawn":
+            group[id(fr)] = (fr["proc"], fr["w"], fr["h"])
+            continue
+        if last is None or (last["w"], last["h"]) != (fr["w"], fr["h"]) or fr["addr"] - last["addr"] > 0x1000:
+            gid = ("drawn", fr["addr"], fr["w"], fr["h"])
+        group[id(fr)] = gid
+        last = fr
+    if a.l2_reconvert:                                  # (default 32's exception: the shared frames
+        spoilt = set()                                  # palette C spoils, their groups converted again)
+        for k, (fr, tgt, k1) in enumerate(targets):
+            rows = or_rows(l1["capped"][k1], srcs[k], (9, 11, 13), palc, bgpal2) if k1 is not None else []
+            if rows:
+                rows1 = or_rows(l1["capped"][k1], srcs[k], (9, 11, 13), pal, level.bgpal)
+                px = sum(r[2] for r in rows)
+                if (max(r[4] for r in rows) - max(r[4] for r in rows1) > RECONVERT[0] or
+                        (sum(r[3] * r[2] for r in rows) - sum(r[3] * r[2] for r in rows1)) / px > RECONVERT[1]):
+                    spoilt.add(group[id(fr)])
+        targets = [(fr, tgt, None if group[id(fr)] in spoilt else k1) for fr, tgt, k1 in targets]
+        print(f"  level 2: {sum(1 for fr, _, k1 in targets if k1 is None and frame_key(fr) in l1_ids)} shared frames "
+              f"converted again ({len(spoilt)} animations: " + ", ".join(f"{g[0]} {g[-2]}x{g[-1]}" for g in sorted(spoilt, key=str)) + ")")
+    mirrors = bob_mirrors([t for _, t, _ in targets])
+    bconv = Converter(palc, PAIRS_ALL, align="bottom")
+    cconv = Converter(palc, PAIRS_ALL, cap=BOB_CAP, align="bottom")
+    gains: dict = {}
+    for k, (fr, tgt, k1) in enumerate(targets):
+        if k in mirrors or k1 is not None:
+            continue
+        lay = bconv.composition(tgt)
+        for j, (_, boxes) in enumerate(lay):
+            for n, b in enumerate(boxes):
+                key = (group[id(fr)], len(lay) - 1 - j, len(boxes))
+                gains.setdefault(key, [0.0] * len(boxes))[n] += b["gain"]
+    capped = []
+    for k, (fr, tgt, k1) in enumerate(targets):
+        if k1 is not None:
+            capped.append(l1["capped"][k1])
+        elif k in mirrors:
+            m, dy, dx = mirrors[k]
+            capped.append(mirror_layout(capped[m], targets[m][1].shape[1], dy, dx))
+            fr["mirror"] = [m, dy, dx]
+        else:
+            gid = group[id(fr)]
+            cconv.prefer = {(band, n): sorted(range(n), key=lambda i: -g[i])
+                            for (g_id, band, n), g in gains.items() if g_id == gid}
+            capped.append(cconv.composition(tgt))
+            fr["prefer"] = [[band, n] + order for (band, n), order in sorted(cconv.prefer.items())]
+    # the frames removed (level 2's own file): each shows the one chosen instead, moved
+    keys = {frame_key(fr): k for k, (fr, _, _) in enumerate(targets)}
+    bobs, new_blobs, previews2, shown_new = [], [], [], []
+    for k, (fr, tgt, k1) in enumerate(targets):
+        if k1 is not None:
+            fr.update({"id": len(bobs), "reuse": k1, "sprites": l1["bobs"][k1]["sprites"],
+                       "fallback": l1["bobs"][k1]["fallback"], "lines": l1["bobs"][k1]["lines"],
+                       "max_line": l1["bobs"][k1]["max_line"], "max_line_fallback": l1["bobs"][k1]["max_line_fallback"]})
+            bobs.append(fr)
+            continue
+        columns = capped[k]
+        shown = removed.get(frame_key(fr))
+        if shown:
+            assert not removed.get(shown[0]), "a removed frame shows a kept one"
+            fr["repeat"] = [keys[shown[0]], shown[1], shown[2]]
+            columns = move_layout(capped[keys[shown[0]]], shown[1], shown[2])
+        enc = move_layout(columns, fr["origin"][1], fr["origin"][0]) if "origin" in fr else columns
+        if shown and shown[1:] == [0, 0]:               # (the index shows that frame's record)
+            blob, sprites, nlines = encode(enc, Pool(), Pool())
+            new_blobs.append(None)
+        else:
+            blob, sprites, nlines = encode(enc, pats, cols_pool)
+            new_blobs.append(blob)
+        fr.update({"id": len(bobs), "new": len(new_blobs) - 1, "sprites": len(sprites),
+                   "fallback": sum(1 for s in sprites if s[3]), "lines": nlines,
+                   "max_line": max_per_line(columns), "max_line_fallback": max_per_line(columns, False)})
+        bobs.append(fr)
+        previews2.append(preview(columns, tgt))
+        shown_new.append(fr)
+    l2_of = {b["reuse"]: b["id"] for b in bobs if "reuse" in b}
+    for b in bobs:                                      # (level 1's mirrors among its frames level 2 shows)
+        m = l1["bobs"][b["reuse"]].get("mirror") if "reuse" in b else None
+        if m and m[0] in l2_of:
+            b["mirror"] = [l2_of[m[0]], m[1], m[2]]
+    for k1, b in enumerate(l1["bobs"]):                 # the hit spark: level 1's records
+        if b.get("spark"):
+            bobs.append(dict(b, id=len(bobs), reuse=k1))
+    # the silhouettes' colour rows in level 2's palette
+    white = int(nearest(bgpal2[15:16], palc, 1)[0])
+    black = next(i for i in range(1, 16) if (palc[i] == 0).all())
+    sil = (cols_pool.add(bytes([white] * 16)), cols_pool.add(bytes([black] * 16)))
+    # the field frames whose hit flash shows as a sprite silhouette
+    for f in field["frames"]:
+        f["sil"] = 0xFF
+        if f["proc"] in L2_FIELD_FLASH:
+            b = next(b for b in bobs if (b["addr"], b["w"], b["h"]) == (f["addr"], f["w"], f["h"]))
+            b["field"] = f["fid"]
+            f["sil"] = b["id"]
+    assert len(bobs) <= POOL_FIELD_ID0 and len(l1["bobs"]) <= POOL_FIELD_ID0, "too many BOB frames for their ids"
+    # the pool: [RoboCop's index][level 1's BOB index][level 2's], the records, patterns, colours
+    n_rc, n1 = len(index), len(l1["bobs"])
+    area, where = pack_area(blobs + l1["bob_blobs"] + new_blobs, 3 * (n_rc + n1 + len(bobs)))
+    for k, i in enumerate(index):
+        area[3 * k:3 * k + 3] = struct.pack("<BH", where[i] // BANK, where[i] % BANK)
+
+    def l1_place(k1: int) -> int:
+        w = where[len(blobs) + k1]
+        return w if w is not None else where[len(blobs) + l1["bobs"][k1]["repeat"][0]]
+
+    for k1 in range(n1):
+        area[3 * (n_rc + k1):3 * (n_rc + k1) + 3] = struct.pack("<BH", l1_place(k1) // BANK, l1_place(k1) % BANK)
+    for k, b in enumerate(bobs):
+        if "reuse" in b:
+            w = l1_place(b["reuse"])
+        else:
+            w = where[len(blobs) + n1 + b["new"]]
+            if w is None:
+                w = where[len(blobs) + n1 + bobs[b["repeat"][0]]["new"]]
+        e = 3 * (n_rc + n1 + k)
+        area[e:e + 3] = struct.pack("<BH", w // BANK, w % BANK)
+    pad = lambda b: bytes(b) + b"\xff" * (-len(b) % BANK)  # noqa: E731
+    pat_blob, col_blob = b"".join(pats.items), b"".join(cols_pool.items)
+    comp_banks, pat_banks = len(pad(area)) // BANK, len(pad(pat_blob)) // BANK
+    data = pad(area) + pad(pat_blob) + pad(col_blob)
+    old = l1["banks"]
+    p = a.pool
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.with_suffix(".bin").write_bytes(data)
+    lines = max(stats["lines"] + [f["lines"] for f in l1["bobs"] + bobs])
+    sidx1, sidx2 = 0x8000 + 3 * n_rc, 0x8000 + 3 * (n_rc + n1)
+    spark = lambda bl: next((f["id"] for f in bl if f.get("spark")), 0)  # noqa: E731
+    p.with_suffix(".inc").write_text(
+        "; generated by tools/msxsprites.py --pool: the global sprite pool of levels 1 and 2\n"
+        f"SPR_PAT_BANK: equ {comp_banks}                 ; relative to the first sprite bank\n"
+        f"SPR_COL_BANK: equ {comp_banks + pat_banks}\n"
+        f"SPR_COMPS: equ {len(comps)}\nSPR_RECORDS: equ {len(level.records)}\n"
+        f"SPR_RC_ARM: equ {4 * len(level.records)}                ; id of the first start-of-level arm pose\n"
+        f"SPR_RC_ARMS: equ {len(player.ARM_POSES)}\n"
+        f"SPR_MAX: equ {max(stats['sprites'])}                    ; most sprites in one composition\n"
+        f"RC_CAP: equ {RC_CAP}                      ; RoboCop: the most sprites on a line (msx/sprites.asm RC_LINE)\n"
+        f"SPR_RC_ONE: equ {max(stats['one_layer'])}                 ; most sprites of RoboCop on one layer\n"
+        f"SPR_MAX_LINES: equ {lines}              ; most lines covered by one composition\n"
+        "; per level: its BOB frames (<pool>_lN.json \"bobs\"), the hit spark's 4, the silhouettes' colour\n"
+        "; rows (white, black) and the index (bank SPR_BASE_BANK at 8000h)\n"
+        + "".join(f"SPR_BOBS_L{n}: equ {len(bl)}\nSPR_SPARK_L{n}: equ {spark(bl)}\n"
+                  f"SPR_SIL_FLASH_L{n}: equ {sf}\nSPR_SIL_BLACK_L{n}: equ {sb}\nSPR_BOB_INDEX_L{n}: equ 0x{si:04X}\n"
+                  for n, bl, (sf, sb), si in ((1, l1["bobs"], l1["sil"], sidx1), (2, bobs, sil, sidx2)))
+        + "; level 1's under robocop.inc's names\n"
+        "SPR_BOBS: equ SPR_BOBS_L1\nSPR_SPARK: equ SPR_SPARK_L1\nSPR_SIL_FLASH: equ SPR_SIL_FLASH_L1\n"
+        "SPR_SIL_BLACK: equ SPR_SIL_BLACK_L1\nSPR_BOB_INDEX: equ SPR_BOB_INDEX_L1\n")
+    write_field(p.with_name(p.name + "_l1"), l1["field"], FIELD_H, POOL_FIELD_ID0)
+    write_field(p.with_name(p.name + "_l2"), field, L2_FIELD_LINES, POOL_FIELD_ID0,
+                f"page 2 lines {L2_DYN_Y}..{L2_DYN_Y + DYN_H - 1} (level 2)", dyn=False, ridden=L2_FIELD_RIDDEN)
+    p.with_name(p.name + "_l1_fdyn.bin").rename(p.with_name(p.name + "_fdyn.bin"))
+    # RoboCop's palette flashes: level 2's entries (background and play-field BOBs under palette C)
+    remap2_path = a.l2_pal.with_suffix(".remap")
+    remap2 = list(remap2_path.read_bytes()) if remap2_path.exists() else \
+        [0] + [int(i) for i in nearest(bgpal2[1:], palc)]
+    fidx2, fpals2 = flash_palettes(main_b, comps, [pv[1] for pv in previews], remap2,
+                                   map_counts(a.l2_datal.read_bytes(), a.l2_rows), field["used"])
+    flash_same = flash_text(fidx2, fpals2) == flash_text(*l1["flash"])
+    p.with_name(p.name + "_flash.inc").write_text(flash_text(*l1["flash"]))
+    if not flash_same:
+        p.with_name(p.name + "_l2_flash.inc").write_text(flash_text(fidx2, fpals2))
+    # the shared frames' lines on entries 9, 11 and 13 (palette C's own values there: the plan's
+    # check 12), per frame: dE76 of the entry's colour against level 2's Amiga colour of those pixels,
+    # and level 1's (its palette against its Amiga colours) for the same pixels
+    rep = ["# level 2: the shared frames' lines that show palette C's entries 9, 11 or 13 (level 2's values there)",
+           "# frame (addr:w:h, renderer): lines, pixels, entries; mean / largest dE76 of the colour shown to level 2's",
+           "# Amiga colour of those pixels; the same for level 1 (its palette, its Amiga colours)"]
+    worst = 0.0
+    for k, (fr, tgt, k1) in enumerate(targets):
+        if k1 is None:
+            continue
+        rows = or_rows(l1["capped"][k1], srcs[k], (9, 11, 13), palc, bgpal2)
+        if rows:
+            rows1 = or_rows(l1["capped"][k1], srcs[k], (9, 11, 13), pal, level.bgpal)
+            px = sum(r[2] for r in rows)
+            dmax, d1max = max(r[4] for r in rows), max(r[4] for r in rows1)
+            worst = max(worst, dmax - d1max)
+            rep.append(f"{frame_key(fr)} sprite: {len(rows)} lines, {px} px, entries {sorted({e for r in rows for e in r[1]})}; "
+                       f"dE {sum(r[3] * r[2] for r in rows) / px:.1f} / {dmax:.1f}; level 1 "
+                       f"{sum(r[3] * r[2] for r in rows1) / px:.1f} / {d1max:.1f}")
+    for f in field["frames"]:
+        if f["src"] in keep and f["src"] == frame_key(f):
+            img, src = keep[f["src"]], bob_image(ram2, f["addr"], f["w"], f["h"])
+            m = np.isin(img, (9, 11, 13)) & (src >= 0)
+            if m.any():
+                d = np.sqrt(((lab(palc[img[m]]) - lab(bgpal2[src[m]])) ** 2).sum(-1))
+                d1 = np.sqrt(((lab(pal[img[m]]) - lab(level.bgpal[src[m]])) ** 2).sum(-1))
+                worst = max(worst, float(d.max() - d1.max()))
+                rep.append(f"{f['src']} field: {int(m.any(1).sum())} lines, {int(m.sum())} px, entries "
+                           f"{sorted({int(e) for e in np.unique(img[m])})}; dE {d.mean():.1f} / {d.max():.1f}; "
+                           f"level 1 {d1.mean():.1f} / {d1.max():.1f}")
+    p.with_name(p.name + "_l2_or.txt").write_text("\n".join(rep) + "\n")
+    # every Amiga frame of level 2 and what the pool shows it with
+    jparts = {frame_key({"addr": a_, "w": w_, "h": h_}) for fr, _ in joints for a_, w_, h_, _, _ in fr["joint"]}
+    sprite_keys = {frame_key(b) for b in bobs if not b.get("spark")}
+    field_keys = {f["src"] for f in field["frames"]} | {frame_key(f) for f in field["frames"]}
+    renderer = {}
+    for k in amiga_keys:
+        renderer[k] = ("joint" if k in jparts else "sprite+field" if k in sprite_keys and k in field_keys else
+                       "sprite" if k in sprite_keys else "field" if k in field_keys else
+                       "never drawn" if removed.get(k, 0) is None else "none")
+    st2 = {"level": 2, "field_id0": POOL_FIELD_ID0, "palette": ["%d%d%d" % tuple(c) for c in np.round(palc * 7).astype(int)],
+           "rc_index": stats["rc_index"], "rc_moves": stats["rc_moves"], "rc_mirrors": stats["rc_mirrors"],
+           "rc_start": stats["rc_start"], "bobs": bobs, "field": field["frames"], "hidden": hidden,
+           "frames": renderer, "flash_same": flash_same, "joint": JOINT_L2["proc"]}
+    p.with_name(p.name + "_l2.json").write_text(json.dumps(st2, default=lambda o: o.tolist() if hasattr(o, "tolist") else int(o)))
+    st1 = dict(stats, level=1, field_id0=POOL_FIELD_ID0)
+    p.with_name(p.name + "_l1.json").write_text(json.dumps(st1))
+    if previews2:
+        render_sheet(p.with_name(p.name + "_l2_bobs.png"), previews2, palc)
+    # the summary
+    n_new = sum(1 for b in bobs if "new" in b)
+    joint_lines = [b["max_line"] for b in bobs if b["proc"] == JOINT_L2["proc"]]
+    kinds: dict[str, int] = {}
+    for v in renderer.values():
+        kinds[v] = kinds.get(v, 0) + 1
+    print(f"{p.with_suffix('.bin')}: {len(data) // BANK} banks (level 1's {old[0] + old[1] + old[2]}: +"
+          f"{len(data) // BANK - sum(old)}): compositions {comp_banks} ({old[0]}), patterns {pat_banks} ({old[1]}) "
+          f"{len(pats.items)}, colour rows {len(data) // BANK - comp_banks - pat_banks} ({old[2]}) {len(cols_pool.items)}")
+    print(f"  level 2: {len(amiga_keys)} Amiga frames: " + ", ".join(f"{v} {n}" for v, n in sorted(kinds.items())))
+    print(f"  level 2: {len(bobs)} BOB ids ({n_new} new records, {len(bobs) - n_new - 4} level 1's, the spark's 4), "
+          f"{len(field['frames'])} play-field frames (ids from 0x{POOL_FIELD_ID0:02X}), atlas {field['lines']} lines, "
+          f"{len(field['rom'])} B; type 1 joint: {len(joint_lines)} frames, at most {max(joint_lines)} a line")
+    print(f"  level 2's flashes {'= level 1s' if flash_same else 'DIFFER: ' + str(fidx2)}; "
+          f"shared frames on entries 9/11/13: {len(rep) - 3}, their largest dE {worst:+.1f} against level 1's "
+          f"({p.name}_l2_or.txt)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("main", type=Path)
@@ -1317,8 +1911,21 @@ def main() -> int:
     ap.add_argument("--remove", type=Path,
                     help="frames removed: JSON {\"rc\": {\"state:step\": \"state:step shown\"}, "
                          "\"bob\": {\"addr:w:h\": \"addr:w:h shown\"}} (hex address)")
+    ap.add_argument("--pool", type=Path, help="also the global pool of levels 1 and 2 (FIELD_ID0 D0h) into POOL.* "
+                                              "and POOL_l1*, POOL_l2* (OUT keeps level 1's own files)")
+    ap.add_argument("--l2-datal", type=Path, help="--pool: DATAL2 (its map: the palette flashes' check)")
+    ap.add_argument("--l2-rows", type=int, default=50)
+    ap.add_argument("--l2-bobs", type=Path, help="--pool: level 2's catalogue (tools/bobcatalog.py level2)")
+    ap.add_argument("--l2-ram", type=Path, help="--pool: level 2's composite RAM image")
+    ap.add_argument("--l2-pal", type=Path, help="--pool: level 2's MSX palette (tools/msxlvpal.py: palette C)")
+    ap.add_argument("--l2-drawn", type=Path, action="append", default=[], help="--pool: level 2's bench coverage")
+    ap.add_argument("--l2-remove", type=Path, help="--pool: level 2's frames removed (bob only)")
+    ap.add_argument("--l2-reconvert", action="store_true",
+                    help="--pool: the animations of the shared frames palette C spoils (RECONVERT) converted again")
     ap.add_argument("out", type=Path)
     a = ap.parse_args()
+    if a.pool and not (a.bobs and a.l2_datal and a.l2_bobs and a.l2_ram and a.l2_pal):
+        ap.error("--pool needs --bobs, --l2-datal, --l2-bobs, --l2-ram and --l2-pal")
     removed = json.loads(a.remove.read_text()) if a.remove else {}
     level = Level(a.main.read_bytes(), a.perma.read_bytes(), a.datal.read_bytes(), a.rows)
     comps, index = level.compositions()
@@ -1521,14 +2128,7 @@ def main() -> int:
     a.out.with_suffix(".remap").write_bytes(bytes(remap))
     fidx, fpals = flash_palettes(a.main.read_bytes(), comps, [p[1] for p in previews], remap, level.bg_count,
                                  field["used"] if field else None)
-    a.out.with_name(a.out.name + "_flash.inc").write_text(
-        "; generated by tools/msxsprites.py: RoboCop's palette flashes ($F80E) on the joint palette\n"
-        "; (through the colour grade, tools/msxbright.py, as the ROM's palette)\n"
-        f"FLASH_N: equ {len(fidx)}                  ; entries tinted (RoboCop's that the background and the play-field BOBs never use)\n"
-        "flash_idx:\n        db " + ", ".join(map(str, fidx)) + "\n"
-        "flash_pals:                         ; PAL_ENEMYHIT, PAL_SHOT, PAL_ELECTRIC, PAL_REFILL, PAL_BEAM, PAL_REVERSE\n"
-        + "".join("        db " + ", ".join(f"0x{BRIGHT[r] << 4 | BRIGHT[b]:02X}, 0x{BRIGHT[g]:02X}" for r, g, b in row) + "\n"
-                  for row in fpals))
+    a.out.with_name(a.out.name + "_flash.inc").write_text(flash_text(fidx, fpals))
     for f in field["frames"] if field else []:          # the gunners' play-field frames: their sprite
         f["sil"] = 0xFF                                 # frames show only their hit flash (BOBHASH
         if f["proc"] in FIELD_FLASH:                    # gives the play-field one, and "sil")
@@ -1539,38 +2139,7 @@ def main() -> int:
                   "colour_rows": len(cols_pool.items), "bytes": len(data), "bobs": bobs,
                   "field": field["frames"] if field else []})
     if field:                                           # the play-field BOBs: atlas and table
-        at = field["atlas"]
-        a.out.with_name(a.out.name + "_field.bin").write_bytes(field["rom"])
-        a.out.with_name(a.out.name + "_fdyn.bin").write_bytes(field["dyn_rom"])
-        a.out.with_name(a.out.name + "_field_vram.bin").write_bytes(     # (the atlas as VRAM holds it:
-            bytes(int(at[y, x]) << 4 | int(at[y, x + 1])                 # the tools' checks)
-                  for y in range(FIELD_H) for x in range(0, FIELD_W, 2)))
-        fd = [f for f in field["frames"] if "dyn" in f]
-        a.out.with_name(a.out.name + "_field.inc").write_text(
-            "; generated by tools/msxsprites.py: the play-field BOB frames (msx/field.asm)\n"
-            f"FIELD_N: equ {len(field['frames'])}\n"
-            f"FIELD_Y0: equ {FIELD_Y0}                ; their atlas: page 3 from this line (VRAM {0x18000 + FIELD_Y0 * 128:05X}h)\n"
-            f"FIELD_LINES: equ {field['lines']}\n"
-            f"FIELD_ID0: equ 0x{FIELD_ID0:02X}             ; their BOBHASH ids: FIELD_ID0 + index\n"
-            f"FIELD_LATE: equ {min([f['fid'] for f in field['frames'] if f['proc'] in FIELD_RIDDEN] or [len(field['frames'])])}"
-            "              ; frames from here: the lifts and the vehicle\n"
-            f"FIELD_DYN0: equ {fd[0]['fid'] if fd else 0}              ; frames from here to FIELD_DYN1 (excluded): the\n"
-            f"FIELD_DYN1: equ {fd[-1]['fid'] + 1 if fd else 0}              ;   dynamic slot's (field.asm fb_dyn)\n"
-            f"DYN_Y: equ {field['dyn_y']}                   ; the dynamic slot: atlas lines DYN_Y..DYN_Y + DYN_H - 1\n"
-            f"DYN_H: equ {DYN_H}\n"
-            "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn), dx, dy\n"
-            "                                    ; (signed: the draw offset of a removed frame shown as another)\n"
-            + "".join(f"        db {f['x']}, {f['y']}, {f['sw']}, {f['sh']}, {f['ox'] & 255}, {f['oy'] & 255}"
-                      f"      ; {f['proc']} {f['addr']:05X}\n" for f in field["frames"])
-            + "field_look:                         ; per frame: the frame it looks like (a removed frame: the\n"
-              "                                    ; one shown instead; field.asm fb_wants)\n"
-            + "".join(f"        db {f['look']}      ; {f['addr']:05X}\n" for f in field["frames"])
-            + "field_dyn:                          ; per frame from FIELD_DYN0: the dynamic frame of its pixels\n"
-            + "".join(f"        db {f['dyn']}      ; {f['addr']:05X}\n" for f in fd)
-            + "dyn_tab:                            ; per dynamic frame: its bit, the frames whose place it takes\n"
-              "                                    ; (bits), bank (from FIELD_DYN_BANK), address (8000h window)\n"
-            + "".join(f"        dw 0x{bit:04X}, 0x{ev:04X}\n        db {bk}\n        dw 0x{ad:04X}\n        db 0\n"
-                      for bit, ev, bk, ad in field["dyn_tab"]))
+        write_field(a.out, field, FIELD_H)
     a.out.with_suffix(".json").write_text(json.dumps(stats))
     render_sheet(a.out.with_suffix(".png"), previews, pal)
     if bob_previews:
@@ -1585,6 +2154,11 @@ def main() -> int:
               f"{min(f['fallback'] for f in bobs)}-{max(f['fallback'] for f in bobs)}; per line: full max "
               f"{max(f['max_line'] for f in bobs)}, one layer max {max(f['max_line_fallback'] for f in bobs)}")
     print("joint palette " + " ".join(stats["palette"]) + "; background remap " + " ".join(map(str, remap)))
+    if a.pool:                                          # (level 1's files written: the pools grow now)
+        l1 = {"ram": ram, "near": near, "removed": removed, "bobs": bobs, "bob_blobs": bob_blobs,
+              "targets": targets, "capped": capped, "field": field, "sil": (sil_flash, sil_black),
+              "flash": (fidx, fpals), "banks": (comp_banks, pat_banks, len(data) // BANK - comp_banks - pat_banks)}
+        return pool_level2(a, level, pal, comps, index, blobs, previews, pats, cols_pool, stats, l1)
     return 0
 
 

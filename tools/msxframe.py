@@ -26,7 +26,12 @@ tools/msxscreen.py's model (sprite mode 2 included) and compared with the expect
     nothing may write there at run time.
 Needs numpy for the sprites (tools/msxsprites.py).
 
-usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png
+Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
+tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
+index; RoboCop's is both levels'), and the silhouettes from level N's colour rows; without it they
+are level 1's, converted again from build/msx/robocop.json as tools/msxsprites.py cut them.
+
+usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N]
        (e.g. build/snap build/msx/level1 build/msx/hud build/png/frame.png)
 """
 from __future__ import annotations
@@ -88,12 +93,26 @@ def rgb9(pal: bytes) -> list[tuple[int, int, int]]:
 
 
 _conv_cache: dict = {}
+SOURCE: dict = {}                               # --sprites: {"data": msxsprites.SpriteData, "level": N}
+
+
+def use_pool(prefix: Path, level: int) -> None:
+    """The sprite looks of level N from tools/msxsprites.py --pool's files (see the docstring)."""
+    import msxsprites
+    SOURCE.update({"data": msxsprites.SpriteData(prefix.with_suffix(".bin"), prefix.with_suffix(".inc")),
+                   "level": level})
+    _conv_cache.clear()
 
 
 def converted(obj: dict, joint_pal: bytes) -> list:
     """The bands of an object's composition, as tools/msxsprites.py cuts them."""
     key = (obj["bob"], obj["id"])
     if key in _conv_cache:
+        return _conv_cache[key]
+    if SOURCE:                                  # (the pool's records, decoded)
+        sd = SOURCE["data"]
+        o = sd.bob_entry(SOURCE["level"], obj["id"]) if obj["bob"] else sd.entry(obj["id"])
+        _conv_cache[key] = sd.record(o)["layout"]
         return _conv_cache[key]
     import json
     import numpy as np
@@ -190,7 +209,12 @@ def expected_sprites(objs: list[dict], joint_pal: bytes) -> dict[tuple[int, int]
 def silhouette_colours(joint_pal: bytes) -> list[int]:
     """Per silhouette mode (msx/bob.asm BM_...) the joint palette entry it is shown in (0: none):
     tools/msxsprites.py's colour rows SPR_SIL_FLASH (the nearest to the background's colour 15)
-    and SPR_SIL_BLACK (the palette's black after entry 0)."""
+    and SPR_SIL_BLACK (the palette's black after entry 0); with --sprites, level N's colour rows."""
+    if SOURCE:
+        sd = SOURCE["data"]
+        row = lambda n: sd.data[sd.inc["SPR_COL_BANK"] * 0x2000 + 16 * n] & 15   # noqa: E731
+        lv = SOURCE["level"]
+        return [0, row(sd.inc[f"SPR_SIL_FLASH_L{lv}"]), row(sd.inc[f"SPR_SIL_BLACK_L{lv}"]), 0]
     import numpy as np
     import msxsprites
     main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
@@ -235,6 +259,9 @@ def hud_expected(ram: bytes) -> list[list[int]] | None:
 
 def main() -> int:
     snap, level, hud, out = (Path(a) for a in sys.argv[1:5])
+    if "--sprites" in sys.argv:
+        use_pool(Path(sys.argv[sys.argv.index("--sprites") + 1]),
+                 int(sys.argv[sys.argv.index("--level") + 1]) if "--level" in sys.argv else 1)
     vram = (snap / "vram.bin").read_bytes()
     ram = (snap / "ram.bin").read_bytes()
     base = [int(v) for v in (snap / "regs.txt").read_text().split()]

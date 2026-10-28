@@ -21,10 +21,15 @@ its silhouette while it flashes): an OR layer the budget dropped, a wrong patter
 row, a sprite the VDP left out show as differing pixels; across the records it counts, per
 object, the changes of the OR layers shown and the pictures it vanished for (needs numpy).
 Writes a PNG per record (2x, differing pixels in magenta on the right) and a contact sheet per
-jump, and prints the records with differences.
+jump, and prints the records with differences. With --sprites it also counts the pictures that
+show each of RoboCop's states (his object's record: state = the frame record of its index entry),
+so that a level's own poses (level 2's hanging states 14 and 15) are known to be checked.
+Per level (--pool POOL --level N): the objects' looks from tools/msxsprites.py --pool's records
+(tools/msxframe.py --sprites); LEVEL_PREFIX gives that level's map, tiles and palette.
 
-usage: recframes.py DIR LEVEL_PREFIX [--sheets] [--sprites]
-       (e.g. recframes.py build/rec build/msx/level1)
+usage: recframes.py DIR LEVEL_PREFIX [--sheets] [--sprites] [--pool POOL --level N]
+       (e.g. recframes.py build/rec build/msx/level1; recframes.py build/rec2 build/msx/level2
+       --sprites --pool build/msx/sprites --level 2)
 """
 from __future__ import annotations
 
@@ -199,13 +204,30 @@ def check(path: Path, mp: bytes, til: bytes, prev: bytes | None = None) -> tuple
     return bad, rows[:VIEW], diff
 
 
+def rc_state_table() -> list[int]:
+    """RoboCop's state per index entry (record x 4 aims, then the start-of-level arm poses: state 2)."""
+    import player
+    main = Path(__file__).resolve().parents[1] / "build/extracted/boot/main_8000.bin"
+    if not main.exists():
+        return []
+    recs = player.Game(main.read_bytes(), b"").records()
+    return [r["state"] for r in recs for _ in range(4)] + [player.ARM_STATE] * len(player.ARM_POSES)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("level", type=Path)
     ap.add_argument("--sheets", action="store_true", help="a contact sheet per jump (every frame, 1x)")
     ap.add_argument("--sprites", action="store_true", help="every object against its full look (EXTJOY records)")
+    ap.add_argument("--pool", type=Path, help="tools/msxsprites.py --pool's prefix: the level's sprite looks")
+    ap.add_argument("--level", dest="level_n", type=int, default=1, help="with --pool: the level (its BOB index)")
     a = ap.parse_args()
+    if a.pool:
+        import msxframe
+        msxframe.use_pool(a.pool, a.level_n)
+    states: dict[int, int] = {}                 # RoboCop's states shown (--sprites)
+    rc_states = rc_state_table() if a.sprites else []
     joint_pal = a.level.with_suffix(".pal").read_bytes()
     looks: dict[int, dict] = {}                 # per object: pictures, differing, OR changes, vanished
     mp = a.level.with_suffix(".map").read_bytes()
@@ -231,6 +253,9 @@ def main() -> int:
             objs, stats = sprite_look(*check.state, joint_pal)
             jump = path.stem.split("_")[0]
             ram = check.state[3]
+            if objs[0]["shown"] and not objs[0]["bob"] and objs[0]["id"] < len(rc_states):
+                st = rc_states[objs[0]["id"]]
+                states[st] = states.get(st, 0) + 1
             for k, obj in enumerate(objs):
                 tier = ram[0xCC00 - RAM_BASE + 32 * k + 25]           # msx/sprites.asm O_TIER
                 lk = looks.setdefault(k, {"pictures": 0, "differ": 0, "cut": 0, "pixels": 0, "dropped": 0,
@@ -293,6 +318,9 @@ def main() -> int:
                   f"{lk['changes']} changes of its OR layers within a frame of animation, vanished "
                   f"{lk['vanished']} times; {lk['differ']} pictures differ from its full look "
                   f"({lk['cut']} only on lines the VDP cut)" + (f"; worst {lk['worst'][1]}" if lk["differ"] else ""))
+    if a.sprites and states:
+        print("RoboCop's states shown: " + ", ".join(f"{s} ({n})" for s, n in sorted(states.items()))
+              + ("" if {14, 15} & set(states) else "; the hanging states 14/15 not among them"))
     print(f"{len(files)} pictures of {len(jumps)} jumps checked: {flagged} with background differences, "
           f"{rc_flagged} with RoboCop not drawn whole")
     return 1 if flagged or rc_flagged else 0

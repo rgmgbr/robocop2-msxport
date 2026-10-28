@@ -9,12 +9,27 @@ The level of each reference comes from the code (spawn lists, special objects, r
 PERMA/SPERMA); only references without such evidence fall back to the mask score (real
 masks have long continuous runs; non-sprite data toggles bit by bit).
 
+Level 2's catalogue (level2): the frames level 2 draws, for tools/msxsprites.py --pool. The scan
+runs in its level-2 mode: a D4 read from a word table indexed as A2's offsets ("BLTSIZE from a
+table", D4_TABLES) gives each frame its own BLTSIZE (the level-1 scan keeps the D4 of the last
+immediate there: its type 4 torso and $4ED26 as 16 x 16, never drawn so), and a table walk goes on
+past a repeated offset (it stopped there: type 6's $3D0A0). Its references are the ones of the
+routines level 2 runs (L2_TYPES' handlers, the lifts and trolleys, the shared routines), plus
+L2_HARD (REA: what the scan cannot follow) and the frames of level 1's bench coverage whose bytes
+level 2's RAM image holds too (shared code drawing MADEX, SPERMA and PERMA frames). The level-1
+catalogue (catalog) is unchanged: tools/msxsprites.py's level-1 input stays byte-identical.
+
 usage:
   bobcatalog.py catalog            -> build/sprites/catalog.json
-  bobcatalog.py sheets             -> build/sprites/<level>_<routine>.png
+  bobcatalog.py sheets [CATALOG]   -> build/sprites/<level>_<routine>.png
+  bobcatalog.py level2 [--shared COV1.json] [--drawn COV2.json] [-o OUT.json]
+                                   -> build/sprites/catalog_l2.json (COV1: level 1's bench coverage,
+                                      default build/emu/cov_level1.json; COV2: level 2's, whose
+                                      frames must all be in the catalogue)
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import struct
@@ -42,6 +57,37 @@ LEVEL_ENEMY_TYPES = {"level1": {4, 12, 23, 25, 26, 28, 32, 44, 45},
                      "level2": {1, 2, 4, 5, 6, 12, 13, 14, 45, 49},
                      "level3": {21, 22, 33, 35, 36, 38, 39, 40, 41, 42, 43, 47, 48, 50, 52}}
 OBJ_DESC = 0xBEB0
+# level 2 (REA on build/ram/level2_full.bin): the object types of its spawn list $97B0 (type at +4)
+# and of its marker spawns $C5EC; its special objects ($8FE0: 5 lifts $8DE6, 4 trolleys $8F02)
+L2_TYPES = {1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 30, 31, 45, 49}
+L2_SPECIALS = {0x8DE6, 0x8F02}
+DATAL2 = (0x28000, 0x28000 + 105816)
+# BLTSIZE tables (REA): the D4 word table -> the entries its code indexes (the A2 offsets' table is
+# the one indexed by the same register)
+D4_TABLES = {0xD096: 8,       # obj04 $CFB0: torso by aim 0-7, $57192 + $D066[aim] (32 x 32, 32 x 38)
+             0xD17C: 11,      # obj05 $D0E2: debris step 0-10, $3BFC0 + $D19A[k] (16 x 16, 32 x 16)
+             0xCB56: 6,       # obj15 $CA78: the gunman's torso by aim 0-5, $4E466 + $CB4A[aim]
+             0xCBD2: 20}      # obj03 $CB6E: type 3's torso by step 0-19, $4F1D6 + $CBAA[step]
+# Level 2's frames the scan cannot follow (REA): (proc, site, base, offsets, BLTSIZE, evidence);
+# offsets: a tuple, or ("u" | "s", table, count) (unsigned or signed words); BLTSIZE: an immediate,
+# or ("t", table) parallel to the offsets
+L2_HARD = (
+    ("obj02_update", 0xC912, 0x3D280, (0,), 0xE04,
+     "REA $C888: type 2's first body while its counter is below 46h (the scan keeps the last lea)"),
+    ("obj49_update", 0xE782, 0x41358, ("u", 0xE7B2, 16), 0x402,
+     "REA $E6C0: A2 = $41358, then obj38's body $E728 adds $E7B2[direction]"),
+    ("obj04_update", 0xD000, 0x6C620, tuple(0xA0 * k for k in range(8)), 0x402,
+     "REA $CFF0: the muzzle flash $6C620 + D3 (aim x 0A0h)"),
+    ("FUN_0000c948", 0xC992, 0x4BD06, ("s", 0xC9B4, 16), ("t", 0xC9D4),
+     "REA $C948: walker1's legs (types 15, 16), A1 = $C9B4 (offsets) and A1 + 20h (BLTSIZE)"),
+    ("FUN_0000cc4a", 0xCCC0, 0x4F1D6, ("s", 0xCBFA, 20), ("t", 0xCC22),
+     "REA $CC4A: walker2's legs (types 3, 30), A1 = $CBFA (offsets) and A1 + 28h (BLTSIZE)"),
+)
+BULLETS = (0xF4A4, 0xF500, 0xF55C)     # ebullet_add $F5BC / $F3CE: per type t (4t) its graphics (long),
+                                       # BLTSIZE (word) and animation step and limit (words)
+L2_NEVER = {(0x5397C, 32, 29), (0x53BC0, 32, 16)}   # the lift's level-3 parts ($8DE6 at $8EE8/$8EFE:
+                                       # special_lift $8EB0's, level 3; msx/level1_frames.json drops them
+                                       # too): level 2's lifts draw $4B68A only (REA, its bench coverage)
 
 
 def proc_levels(main: bytes) -> dict[int, set[str]]:
@@ -92,7 +138,10 @@ def draw_targets(procs) -> set[int]:
     return targets
 
 
-def scan(procs, targets):
+def scan(procs, targets, l2: bool = False):
+    """The draw calls' references. l2: level 2's mode: a D4 read from a word table (D4_TABLES) gives
+    the frames their BLTSIZEs, and any other write into D4 leaves it unknown (the level-1 scan keeps
+    the last immediate's: its 16 x 16 type 4 torso and $4ED26)."""
     refs = []
     for pa, (name, lines) in procs.items():
         if pa in targets:
@@ -100,6 +149,17 @@ def scan(procs, targets):
         a2 = d4 = table = ltable = None
         adj: list[int] = []
         for addr, mn, ops in lines:
+            if l2 and re.search(r", D4[bwl]?$", ops) and not (mn == "move.w" and re.fullmatch(r"#0x[0-9a-f]+, D4w", ops)):
+                m = re.fullmatch(r"\(0x([0-9a-f]+),PC,D\dw\*0x1\), D4w", ops) if mn == "move.w" else None
+                d4 = ("table", int(m.group(1), 16)) if m else ("unknown", 0)
+                continue
+            if isinstance(d4, tuple) and call_target(mn, ops) in targets:
+                if d4[0] == "table" and a2 is not None and table is not None and d4[1] in D4_TABLES:
+                    refs.append({"proc": pa, "proc_name": name, "site": addr, "base": a2, "adjust": list(adj),
+                                 "table": table, "ltable": None, "bltsize": None, "d4_table": d4[1]})
+                else:
+                    UNRESOLVED.append((pa, name, addr))
+                continue
             m = re.fullmatch(r"\(0x([0-9a-f]+)\)\.l, A2", ops) if mn.startswith("lea") else None
             if m:
                 a2, adj, table, ltable = int(m.group(1), 16), [], None, None
@@ -157,7 +217,22 @@ def hard_refs(procs) -> list[dict]:
     return out
 
 
-def frames_for(ref, main: bytes, ram_size: int) -> list[int]:
+def table_frames(main: bytes, base: int, offsets, d4) -> list[tuple[int, int]]:
+    """(frame, BLTSIZE) of L2_HARD's and D4_TABLES' forms, in the table's order, repeats dropped."""
+    def word(a: int, signed: bool) -> int:
+        return struct.unpack_from(">h" if signed else ">H", main, a - 0x8000)[0]
+    if isinstance(offsets[0], str):
+        kind, t, n = offsets
+        offs = [word(t + 2 * i, kind == "s") for i in range(n)]
+    else:
+        offs = list(offsets)
+    sizes = [word(d4[1] + 2 * i, False) for i in range(len(offs))] if isinstance(d4, tuple) else [d4] * len(offs)
+    return list(dict.fromkeys((base + o, s) for o, s in zip(offs, sizes)))
+
+
+def frames_for(ref, main: bytes, ram_size: int, dedupe: bool = False) -> list[int]:
+    """The frames of a reference. dedupe (level 2's catalogue): a table walk goes on past a repeated
+    offset (the level-1 catalogue stops there)."""
     wb, h = ((ref["bltsize"] & 63) - 1) * 2, ref["bltsize"] >> 6
     fs = 5 * wb * h
     if ref.get("ltable") is not None:
@@ -185,6 +260,8 @@ def frames_for(ref, main: bytes, ram_size: int) -> list[int]:
             if not 0x8000 <= t + 2 * i < 0x8000 + len(main) - 1:
                 break
             v = struct.unpack_from(">h", main, t + 2 * i - 0x8000)[0]
+            if dedupe and v in offs:
+                continue
             if v < 0 or v % fs or v > 40 * fs or (offs and v in offs):
                 break
             offs.append(v)
@@ -259,8 +336,105 @@ def cmd_catalog() -> int:
     return 0
 
 
-def cmd_sheets() -> int:
-    cat = json.loads((OUT / "catalog.json").read_text())
+def handlers(main: bytes, types) -> set[int]:
+    """The handlers of the object types (OBJ_DESC: the descriptor's first word, relative)."""
+    out = set()
+    for t in types:
+        d = OBJ_DESC + 16 * t
+        out.add(d + struct.unpack_from(">h", main, d - 0x8000)[0])
+    return out
+
+
+def frame_bytes(ram: bytes, addr: int, w: int, h: int) -> bytes:
+    return ram[addr:addr + 5 * (w // 8) * h]
+
+
+def cmd_level2(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="bobcatalog.py level2")
+    ap.add_argument("--shared", type=Path, action="append", default=[],
+                    help="level 1's bench coverage (default build/emu/cov_level1.json): its frames that level 2's "
+                         "image holds too")
+    ap.add_argument("--drawn", type=Path, action="append", default=[],
+                    help="level 2's bench coverage (tools/amigacov.py --level 2): every frame must be listed")
+    ap.add_argument("-o", "--out", type=Path, default=OUT / "catalog_l2.json")
+    a = ap.parse_args(argv)
+    procs = load_procs()
+    targets = draw_targets(procs)
+    main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
+    ram1 = (ROOT / LEVELS["level1"][0]).read_bytes()
+    ram2 = (ROOT / LEVELS["level2"][0]).read_bytes()
+    mine = handlers(main, L2_TYPES) | L2_SPECIALS
+    objects = handlers(main, range(1, 53)) | set(SPECIAL_LEVELS)
+    shared = lambda f, w, h: frame_bytes(ram1, f, w, h) == frame_bytes(ram2, f, w, h)  # noqa: E731
+    refs, seen = [], set()
+
+    def add(proc: int, name: str, site: int, frames: list[tuple[int, int]], evidence: str) -> None:
+        sizes: dict[int, list[int]] = {}
+        for f, d4 in frames:
+            sizes.setdefault(d4, []).append(f)
+        for d4, fs in sizes.items():
+            w, h = ((d4 & 63) - 1) * 16, d4 >> 6
+            fs = [f for f in dict.fromkeys(fs) if 0x10000 <= f <= len(ram2) - 5 * (w // 8) * h
+                  and (f, w, h) not in L2_NEVER]
+            if not fs:
+                continue
+            seen.update((f, w, h) for f in fs)
+            refs.append({"proc": proc, "proc_name": name, "site": site, "base": fs[0], "adjust": [], "table": None,
+                         "ltable": None, "bltsize": d4, "width": w, "height": h, "frames": fs, "level": "level2",
+                         "evidence": evidence})
+
+    UNRESOLVED.clear()
+    for r in scan(procs, targets, l2=True):
+        if r["proc"] not in mine and r["proc"] in objects:
+            continue                                    # (an object level 2 never spawns)
+        if r.get("d4_table"):
+            assert not r["adjust"], "a BLTSIZE table with A2 adjusts"
+            frames = table_frames(main, r["base"], ("s", r["table"], D4_TABLES[r["d4_table"]]), ("t", r["d4_table"]))
+            ev = f"scan, BLTSIZE from ${r['d4_table']:X} ({D4_TABLES[r['d4_table']]} entries, REA)"
+        else:
+            frames = [(f, r["bltsize"]) for f in frames_for(r, main, len(ram2), dedupe=True)]
+            ev = "scan"
+        if r["proc"] not in mine and not all(shared(f, ((d4 & 63) - 1) * 16, d4 >> 6) for f, d4 in frames):
+            continue                                    # (shared code drawing another level's data)
+        add(r["proc"], r["proc_name"], r["site"], frames, ev + ("" if r["proc"] in mine else "; shared code"))
+    for proc, site, d4, frames, level, evidence in HARD_REFS:
+        if "level2" in level.split("+"):
+            add(proc, procs.get(proc, (f"FUN_{proc:08x}", []))[0], site, [(f, d4) for f in frames], evidence)
+    for name, site, base, offsets, d4, evidence in L2_HARD:
+        proc = next((p for p, (n, _) in procs.items() if n == name), 0)
+        add(proc, name, site, table_frames(main, base, offsets, d4), evidence)
+    gfx, blt, anim = BULLETS
+    for t in range(1, 7):                               # (level 2's bullet types: 1-6)
+        g, d4 = struct.unpack_from(">L", main, gfx + 4 * t - 0x8000)[0], struct.unpack_from(">H", main, blt + 4 * t - 0x8000)[0]
+        step, lim = struct.unpack_from(">hh", main, anim + 4 * t - 0x8000)
+        n = 1 if step <= 0 else lim // step + 1
+        add(0xF3CE, "FUN_0000f3ce", 0xF488, [(g + k * max(step, 0), d4) for k in range(n)],
+            f"REA $F3CE: bullet type {t} ($F4A4/$F500/$F55C + {4 * t})")
+    for path in a.shared or [ROOT / "build/emu/cov_level1.json"]:
+        frames = [(b["addr"], b["bltsize"]) for b in json.loads(path.read_text())["bobs"]
+                  if (b["addr"], b["w"], b["h"]) not in seen and shared(b["addr"], b["w"], b["h"])]
+        add(0, "drawn", 0, frames, f"level 1's bench coverage ({path.name}): shared code, the same bytes in level 2")
+    missing = []
+    for path in a.drawn:
+        bobs = json.loads(path.read_text())["bobs"]
+        missing += [(b["addr"], b["bltsize"]) for b in bobs if (b["addr"], b["w"], b["h"]) not in seen]
+        add(0, "drawn", 0, missing, f"level 2's bench coverage ({path.name})")
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    a.out.write_text(json.dumps({"draw_targets": sorted(targets), "refs": refs}, indent=1))
+    own = {k for k in seen if DATAL2[0] <= k[0] < DATAL2[1]}
+    print(f"{a.out}: {len(refs)} references, {len(seen)} distinct frames ({len(own)} in DATAL2, "
+          f"{len(seen) - len(own)} shared)")
+    print(f"  {len(UNRESOLVED)} draw calls the scan does not follow (L2_HARD and the coverage give level 2's): "
+          + ", ".join(f"{hex(site)} ({name})" for _p, name, site in UNRESOLVED))
+    if missing:
+        print(f"error: {len(missing)} frames of level 2's coverage the catalogue lacked: "
+              + ", ".join(f"{f:X}:{d4:04X}" for f, d4 in missing), file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_sheets(catalog: Path | None = None) -> int:
+    cat = json.loads((catalog or OUT / "catalog.json").read_text())
     main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
     groups = defaultdict(list)
     for r in cat["refs"]:
@@ -305,4 +479,7 @@ def cmd_sheets() -> int:
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "catalog"
-    raise SystemExit(cmd_catalog() if cmd == "catalog" else cmd_sheets())
+    if cmd == "level2":
+        raise SystemExit(cmd_level2(sys.argv[2:]))
+    raise SystemExit(cmd_catalog() if cmd == "catalog" else
+                     cmd_sheets(Path(sys.argv[2]) if len(sys.argv) > 2 else None))
