@@ -390,8 +390,8 @@ def edges(root: Path, rom: bytes, lab: dict) -> tuple[list[str], int]:
 
 def title_after(rom: bytes, lab: dict, mode: int, hz50: bool) -> tuple[list[str], list[str], int]:
     """The title after the range: rg_stage's snd_stop, the tune and play (shots, hit sounds, a shot
-    cut by a hit sound), the stage's end mid-tune (no stop: FRNG has none), the result screen
-    (fe_text: snd_stop at its start and at its end, 130 ticks), then the title (snd_music) to its end
+    cut by a hit sound), the stage's end mid-tune (frng.asm rg_end's snd_stop, then rg_hide's waits),
+    the result screen (fe_text: snd_stop at its start and at its end, 130 ticks), then the title (snd_music) to its end
     and 100 VBLANKs more; against a fresh machine's title (pzsim.title_after's method). Every chip
     write VBLANK by VBLANK equal; the registers the fresh title wrote equal at the end (the others,
     left as the range left them, listed)."""
@@ -407,6 +407,9 @@ def title_after(rom: bytes, lab: dict, mode: int, hz50: bool) -> tuple[list[str]
         if k in (33, 95, 160, 210):
             request(a, 3 if k % 2 else 4)
         a.pass_()
+    a.call(lab["snd_stop"], irq=False)
+    for _ in range(2):
+        a.vblank()
     a.call(lab["snd_stop"], irq=False)
     for _ in range(130):
         a.vblank()

@@ -1,19 +1,22 @@
-"""Scratch (the range's step 12): an openMSX register log of the range's sound (s11/frs.tcl: S, P, R, T,
-X, E and Z lines) against frm.bin's streams decoded apart (frsim.py's FExpect and Check: the
+"""The range's sound (docs/RANGE.md 4.3): an openMSX register log (tools/bstest/frsound.tcl: S, P, R, T,
+Q, E, X and Z lines) against frm.bin's streams decoded apart (frsim.py's FExpect and Check: the
 converters' decoders, PSG B for a flagged effect with an SCC, the shared noise period as the last
 written; pzsim.Sched: $1822C's rule and snd_rfx's merge).
 
 - Every T line (tn_tick's entry) holds the chips as the previous tick left them: compared with that
   tick's tune tick (from tn_left: the tune's T + 1 - tn_left) and the effect voice's model state; the
-  E line (fr_done) with the last tick's. R lines are the requests, consumed at the next T line; an S
-  line restarts the model.
+  Q line (the stage's own snd_stop) with the last tick's. R lines are the requests, consumed at the
+  next T line; an S line restarts the model.
 - Tick 0: the first T line after S comes after the stage's first pass (a P line before it; at most two
   at 60 Hz, where the passes' and the ticks' dividers skip different VBLANKs).
-- The tune's end: when a T line holds tn_left 1 (its last tick), the E line's counts (sound writes
-  from 50 ms after it to fr_done) must be 0 and its chips silent.
-- The stop: snd_stop after fr_done (an X line: front.asm fe_text's), no T line after it, and at the
-  Z line (1 s on, the result's screen) the chips silent: SCC volumes 0, PSG R8-R10 0, no OPLL key or
-  rhythm key.
+- The stage's stop (msx/frng.asm rg_end, as $10768's $FE14 right after FRNG's return): a Q line
+  before fr_done, at most one T line after the stage's last pass (P) before it (none unless a pass
+  overran its frame), no T line after it, and the chips silent at fr_done (the E line).
+- The tune's end: when a T line holds tn_left 1 (its last tick), the Q line's counts (sound writes
+  from 50 ms after it to the stop) must be 0 and its chips silent.
+- The result's stop: snd_stop after fr_done (an X line: front.asm fe_text's), no T line after it,
+  and at the Z line (1 s on, the result's screen) the chips silent: SCC volumes 0, PSG R8-R10 0, no
+  OPLL key or rhythm key.
 
 usage: frregcmp.py ROOT LOG [LOG ...]   (one summary line per log; exit 1 on any difference)
        frregcmp.py --selftest ROOT ROM LABELS   (logs from the Z80 simulation, and corrupted copies)"""
@@ -78,10 +81,11 @@ def compare(root: Path, lines: list[str]) -> tuple[list[str], dict]:
     T1 = ex.T + 1
     sch = chk = None
     bad, info = [], {"ticks": 0, "starts": 0, "modes": set(), "passes_before_tick0": [], "last_left": None,
-                     "ended": False, "x": False, "z": False, "e": None}
+                     "ended": False, "x": False, "z": False, "e": None, "q": None, "q_ticks": None}
     prev = None
     t = 0
     passes = None
+    since_p = 0
     for line in lines:
         f = line.split()
         if not f or f[0].startswith("#"):
@@ -97,6 +101,7 @@ def compare(root: Path, lines: list[str]) -> tuple[list[str], dict]:
             prev, passes = None, 0
             info["starts"] += 1
         elif k == "P":
+            since_p = 0
             if passes is not None:
                 passes += 1
         elif k == "R":
@@ -117,21 +122,35 @@ def compare(root: Path, lines: list[str]) -> tuple[list[str], dict]:
                 info["ticks"] += 1
             if info["x"]:
                 bad.append("a tick (T line) after the stop (X)")
+            elif info["q"] is not None:
+                bad.append("a tick (T line) after the stage's stop (Q)")
+            since_p += 1
             t += 1
             fxs = sch.tick(t)
             prev = (T1 - left if left else None, fxs, mode)
             info["last_left"] = left
             if left == 1:
                 info["ended"] = True
-        elif k == "E":
-            info["e"] = f[1:4]
+        elif k == "Q":
+            if info["q"] is not None or info["e"] is not None:
+                bad.append("a second stop before fr_done, or one after it (Q)")
+                continue
+            info["q"], info["q_ticks"] = f[1:4], since_p
+            if since_p > 1:
+                bad.append("the stage's stop %d ticks after its last pass" % since_p)
             if prev is not None and chk is not None:
                 tune, fx, pmode = prev
                 bad += chk.tick(bus_of(f[4], f[5], f[6]), pmode, tune, fx, t)
             if info["ended"]:
-                if f[1:4] != ["0", "0", "0"]:
-                    bad.append("sound writes after the tune's end, before fr_done: PSG %s, OPLL %s, SCC %s" % tuple(f[1:4]))
-                bad += ["at fr_done after the tune's end: " + b for b in silent(f[4], f[5], f[6])]
+                if f[1:4] not in (["0", "0", "0"], ["-1", "-1", "-1"]):
+                    bad.append("sound writes after the tune's end, before the stage's stop: PSG %s, OPLL %s, SCC %s"
+                               % tuple(f[1:4]))
+                bad += ["at the stage's stop after the tune's end: " + b for b in silent(f[4], f[5], f[6])]
+        elif k == "E":
+            info["e"] = f[1:4]
+            if info["q"] is None:
+                bad.append("no stop at the stage's end (Q) before fr_done")
+            bad += ["at fr_done after the stage's stop: " + b for b in silent(f[4], f[5], f[6])]
         elif k == "X":
             info["x"] = True
         elif k == "Z":
@@ -154,9 +173,10 @@ def compare(root: Path, lines: list[str]) -> tuple[list[str], dict]:
 
 
 def simlog(rom: bytes, lab: dict, mode: int, ticks: int, reqs: dict, hz50: bool = True) -> list[str]:
-    """The log frs.tcl writes, from the Z80 simulation (frsim's machine): S at tns_go, P at each pass
+    """The log frsound.tcl writes, from the Z80 simulation (frsim's machine): S at tns_go, P at each pass
     (before $B00 + 1), R at snd_rfx's entry, T at tn_tick's (the SCC in openMSX's debuggable layout);
-    E after the last tick, then snd_stop (X) and the chips (Z)."""
+    Q after the last pass, then the stage's snd_stop and two VBLANKs (rg_hide's waits), E, the
+    result's snd_stop (X) and the chips (Z)."""
     m = frsim.setup(rom, lab, mode, hz50)
     out = []
     r = m.bus.ram
@@ -191,6 +211,10 @@ def simlog(rom: bytes, lab: dict, mode: int, ticks: int, reqs: dict, hz50: bool 
                 frsim.request(m, n)
             out.append("P %d" % m.pz_frame())
             m.pass_()
+        out.append("Q -1 -1 -1 " + chips())
+        m.call(lab["snd_stop"], irq=False)
+        for _ in range(2):
+            m.vblank()
         out.append("E -1 -1 -1 " + chips())
         m.call(lab["snd_stop"], irq=False)
         out.append("X")
@@ -215,10 +239,17 @@ def selftest(root: Path, rom: Path, labels: Path) -> int:
         psg[9 if mode & 1 else 10] ^= 1
         f[9] = psg.hex()
         bad2, _ = compare(root, log[:k] + [" ".join(f)] + log[k + 1:])
-        ok = not bad and bad2
+        # the stage's stop: left out, or two ticks late (the last tick's T line twice before Q)
+        q = next(i for i, x in enumerate(log) if x.startswith("Q"))
+        bad3, _ = compare(root, log[:q] + log[q + 1:])
+        lt = max(i for i, x in enumerate(log[:q]) if x.startswith("T"))
+        bad4, _ = compare(root, log[:q] + [log[lt], log[lt]] + log[q:])
+        late = any("ticks after its last pass" in b for b in bad4)
+        ok = not bad and bad2 and bad3 and late
         total += not ok
-        print("selftest %-18s %d lines, %d ticks compared: %s; a corrupted tick caught: %s" % (
-            name, len(log), info["ticks"], "PASS" if not bad else "FAIL %s" % bad[:3], bool(bad2)))
+        print("selftest %-18s %d lines, %d ticks compared: %s; a corrupted tick caught: %s; no stop caught: %s; "
+              "a late stop caught: %s" % (name, len(log), info["ticks"], "PASS" if not bad else "FAIL %s" % bad[:3],
+                                          bool(bad2), bool(bad3), late))
     print("selftest: %s" % ("PASS" if not total else "FAIL"))
     return 1 if total else 0
 
@@ -231,11 +262,13 @@ def main() -> int:
     for p in map(Path, sys.argv[2:]):
         bad, info = compare(root, p.read_text().splitlines())
         print("%s: %d ticks compared, %s; modes (mus_mode/tn_mode) %s; tick 0 after %s pass(es); effects started "
-              "%s %s, refused %s; R6 shared on %s ticks; the tune %s (last tn_left %s); E %s; stop %s" % (
+              "%s %s, refused %s; R6 shared on %s ticks; the tune %s (last tn_left %s); Q %s after %s tick(s) "
+              "from the last pass; E %s; stop %s" % (
                   p.name, info["ticks"], "0 differences" if not bad else "%d differences" % len(bad),
                   ",".join(sorted(info["modes"])), info["passes_before_tick0"], info.get("started"),
                   info.get("by_effect"), info.get("refused"), info.get("shared"),
-                  "ended" if info["ended"] else "still playing", info["last_left"], info["e"],
+                  "ended" if info["ended"] else "still playing", info["last_left"], info["q"], info["q_ticks"],
+                  info["e"],
                   "X, Z silent" if info["x"] and info["z"] else "missing"))
         for b in bad[:12]:
             print("   ", b)

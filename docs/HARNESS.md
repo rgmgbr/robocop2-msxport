@@ -1147,7 +1147,7 @@ FFh; `rg_none.drive`). About 8 s in all.
 | `drives` (25) | `suite_drives` | `check_all.sh`, then `cmpcheck.py` against the base's log (a torn cell accepted only under a black palette); the guard and the VRAM speed; the HUD during Brainstorm against the base's snapshots |
 | `range` (54) | `rgx_job` / `rgx_arm_job` for 5 poked results and the time out on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT (36); TAG=4 (2); level 1 traced after the range (3); the real timer (3, `pzt2` on the Expert, C-BIOS_MSX2_EU, the FS-A1GT); `tarm_m2`, `tarm_tr` (`rgx_tarm_job`); `want_*` (8 drives) | `rgcheck.py` on 41 records; the real timer's time out at 6,050 passes; level 1's traces after the range 0 differ; `tools/frngcmp.py --skip score` of `fr_mixed` after a played level 1 and Brainstorm; `rgview.py want` on 8 drives and their traces |
 | `display` (81) | `rgv_suite W/V` | `rgview.sh check W/V` (5.18) |
-| `sound` (20) | `frs_suite W` | `frsnd/frregcmp.py` on the 20 register logs (FRM's registers per tick against `frm.bin`'s streams, the modes, tick 0 after the first pass, the refusals, the tune's end and the silence, the stop); the 15 drives' traces 0 differ |
+| `sound` (20) | `frs_suite W` | `frsnd/frregcmp.py` on the 20 register logs (FRM's registers per tick against `frm.bin`'s streams, the modes, tick 0 after the first pass, the refusals, the tune's end and the silence, the stage's own stop at most one tick after its last pass (the Q line: `msx/frng.asm` `rg_end`), no tick after it, the result's stop); the 15 drives' traces 0 differ |
 
 **The range inside Brainstorm's flows.** Brainstorm's flow checks expected the title right after its
 result; the range now comes in between (`front_range`). `hz.tcl hb_step`, after Brainstorm's result,

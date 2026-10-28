@@ -36,8 +36,9 @@
 ; docs/RANGE.md 3.7): FRM's tune 1 starts in the set-up (tn_frm through mus_call) and plays its tick
 ; 0 after the first pass (tune.asm tn_hold: $B00 moved), 5,999 ticks, the stage's 2:00; the effects
 ; (2 the shot, 3 and 4 the hit sounds) go where FRNG asks for them, through snd_rfx ($1822C's rule
-; at the next tick). Nothing in FRNG stops the tune: the result's text screen does (front.asm
-; fe_text's snd_stop, as $10768's $FE14).
+; at the next tick). The stage's end stops them (rg_end's snd_stop, right after the last pass: on
+; the Amiga $8420 goes on from FRNG's rts to the result's text, whose $10768 silences the four
+; channels with $FE14 within microseconds, so FRM's last tick is that pass's).
 ;
 ; Its variables live in the mirror at their Amiga addresses (msx.inc frv_...: $B00-$BC5) and in
 ; fr_code (msx.inc: FRNG's code-area state), so that the trace harness compares them pass by pass
@@ -157,8 +158,7 @@ fr_tick:
         ld a,(frv_fade)
         or a
         jr nz,rg_loop
-        call rg_hide                ; (the display as the result's screen expects it)
-        jp fr_done                  ; ($1EAC4: the counts stay in $B04 and $B06)
+        jr rg_end                   ; ($1EAC4: rts, the counts in $B04 and $B06)
 rge_n:  ld hl,(AG + 0x8030)         ; ($1EACE: tst.w $8030)
         ld a,h
         or l
@@ -175,6 +175,11 @@ rge_t:  ld a,(AG + (0x804C ^ 1))    ; ($1EAE8: tst.b $804C)
         inc (hl)                    ; ($1EAF2: $B08 + 1)
         ld a,HUD_MSG_1EB3B
         call game_msg               ; ($1EAFA: jmp $8008, "TIME OUT.": its rts leaves FRNG at once)
+; FRNG's return, by either end: the sound stops at once ($8420 -> $10762 -> $10768's $FE14, before
+; any other tick: here the VBLANK would tick the tune through rg_hide's waits and its page-2
+; restore, about 13 ticks over the black screen), then the display as the result's screen expects
+; it (rg_hide), the counts staying in $B04 and $B06.
+rg_end: call snd_stop
         call rg_hide
         jp fr_done
 

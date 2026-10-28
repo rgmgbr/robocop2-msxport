@@ -12,11 +12,16 @@
 #   T <tn_left> <tn_snd> <tn_busy> <tn_last> <tn_req> <mus_mode> <tn_mode> <scc> <psg> <opll>
 #                     tn_tick's entry: the chips as the previous tick left them (scc: the SCC's
 #                     debuggable 00h-AFh, "-" without one; psg R0-R15; opll its 64 registers or "-")
+#   Q <psg> <opll> <scc> <scc regs> <psg regs> <opll regs>   snd_stop's entry after the tune's first
+#                     tick, before fr_done (msx/frng.asm rg_end: the stage's own stop, right after
+#                     its last pass): the sound writes counted from 50 ms after the tune's last tick
+#                     (the T line with tn_left 1) to this stop (PSG R0-R13, OPLL 7Ch/7Dh, SCC
+#                     9800h-98FFh: -1 when the tune did not end), then the chips as the last tick
+#                     left them
 #   X                 snd_stop called after fr_done (front.asm fe_text's: the result's screen)
-#   E <psg> <opll> <scc> <scc regs> <psg regs> <opll regs>   at fr_done: the sound writes counted
-#                     from 50 ms after the tune's last tick (the T line with tn_left 1) to fr_done
-#                     (PSG R0-R13, OPLL 7Ch/7Dh, SCC 9800h-98FFh: -1 when the tune did not end),
-#                     then the chips
+#   E <psg> <opll> <scc> <scc regs> <psg regs> <opll regs>   at fr_done: the counts as Q's, to
+#                     fr_done (they hold Q's stop's own writes), then the chips, which Q's stop
+#                     silenced
 #   Z <t lines after X> <scc regs> <psg regs> <opll regs>   1 emulated s after the stage's end (the
 #                     result's screen): the chips, which snd_stop silenced
 #
@@ -99,19 +104,27 @@ proc frs_psg {} {
 	}
 }
 
+proc frs_counts {} {
+	if {$::frs_cnt} { return "$::frs_np $::frs_no $::frs_ns" }
+	return "-1 -1 -1"
+}
+
 proc frs_done {} {
 	if {$::frs_e} return
 	set ::frs_e 1
-	if {$::frs_cnt} {
-		frs_put "E $::frs_np $::frs_no $::frs_ns [frs_chips]"
-	} else {
-		frs_put "E -1 -1 -1 [frs_chips]"
-	}
+	frs_put "E [frs_counts] [frs_chips]"
 	lappend ::hz_afters [after time 1.0 frs_z]
 }
 
+# snd_stop's entry once the tune has ticked: the stage's own stop before fr_done (Q), fe_text's
+# after it (X)
 proc frs_stopcall {} {
-	if {$::frs_e && !$::frs_x} {
+	if {!$::frs_e} {
+		if {!$::frs_q} {
+			set ::frs_q 1
+			frs_put "Q [frs_counts] [frs_chips]"
+		}
+	} elseif {!$::frs_x} {
 		set ::frs_x 1
 		frs_put "X"
 	}
@@ -151,6 +164,7 @@ proc frs_arm {rom labels out rec} {
 	set ::frs_nt 0
 	set ::frs_tx 0
 	set ::frs_x 0
+	set ::frs_q 0
 	set ::frs_e 0
 	set ::frs_fin 0
 	set ::frs_cnt 0
@@ -180,7 +194,7 @@ proc frs_arm {rom labels out rec} {
 	set d [rc2_label $labels fr_done]
 	lappend ::frs_bps [debug set_bp $d "\[peek $d\] == 0xC9 && \$::frs_nt > 0" frs_done]
 	set s [rc2_label $labels snd_stop]
-	lappend ::frs_bps [debug set_bp $s "\[peek $s\] == [frs_romb $rom $s] && \$::frs_e" frs_stopcall]
+	lappend ::frs_bps [debug set_bp $s "\[peek $s\] == [frs_romb $rom $s] && \$::frs_nt > 0" frs_stopcall]
 	debug set_watchpoint write_io {0xA0 0xA1} {} frs_psg
 	debug set_watchpoint write_io {0x7C 0x7D} {} {if {$::frs_cnt} { incr ::frs_no }}
 	debug set_watchpoint write_mem {0x9800 0x98FF} {} {if {$::frs_cnt} { incr ::frs_ns }}

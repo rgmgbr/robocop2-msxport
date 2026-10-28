@@ -424,7 +424,8 @@ fbp_go: xor a
 ; the next level's enemy hit points, docs/RANGE.md 3.10), and its result; a time out gives POOR and
 ; Brainstorm's OUT OF TIME. screen ($11698). The counts come from the mirror (AM $B04, $B06), where
 ; the stage leaves them ($1EAC4). fr_rated (rc2.asm, a ret) marks ac_diff set on both paths for
-; the trace harness. No snd_stop after the stage: fe_text stops the sound first, as $10768's $FE14.
+; the trace harness. No snd_stop after the stage: it stopped its sound at its end (frng.asm rg_end,
+; as $10768's $FE14 right after FRNG's return), and fe_text stops it again.
 front_range:
         ld hl,txt_rg_intro
         call fe_text                ; ($8422: $1142D through $10762)
