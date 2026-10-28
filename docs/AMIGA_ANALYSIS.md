@@ -66,7 +66,7 @@ Then it enters supervisor mode (vector `$20` trick), stores `$100` in `($C0)` an
 | SPERMA | `$4B68A` | 53700 | resident BOBs with masks **[verified]** |
 | RB1 | `$12588` | 10290 | the 8 letters of the title logo, BOBs with masks (48 px wide), flown in by `$106E2` (section 5) **[verified]** |
 | DATAL1–3 | `$28000` | 144716 / 105816 / 185356 | level data: tiles, map, BOBs **[verified]** |
-| MADEX | `$45250` | 25340 | level-2 BOBs **[inferred]** |
+| MADEX | `$45250` | 25340 | DATAL1's tail, byte for byte (`DATAL1_10.bin[1D250h:]`): the explosions, smoke, hostage and nuke that levels 1 and 2 share, loaded again before level 2 (*Level 2*, section 4) **[verified]** |
 | FRNG | `$1E980` | 93224 | the shooting range (*Gun Calibration*): its code, tables, graphics and FRM (a copy of the music player with its tune and effects), crunched; `$8420` decrunches it with `$124A6` into `$1EA00-$485D9` (170,970 bytes) on both visits (section 5, *The shooting range*) **[verified]** |
 | PUZL | `$17080`/`$17100` | 76012 / 113632 | bonus stage *Brainstorm*: its code, boards, graphics and PZM (a copy of the music player with its tunes); disk 1's copy is crunched and decrunched at `$17100` by `$124A6` into the bytes of disk 2's plain copy (section 5, *Brainstorm*) **[verified]** |
 
@@ -568,6 +568,154 @@ over (PIC9)**, called from `main_loop` when the lives counter `$8034` goes negat
 
 The level's sound file (`MU1`, with its player code) is loaded at `$18000` by the level start
 (`$8614`, then `jmp $18000`); it holds sound effects only (see below).
+
+### Level 2: the Tokugawa brewery **[verified: REA (Ghidra 12.1.4, raw-binary m68k, entry `0x0`, `analysis/ghidra_seeds.tsv`) on `build/ram/level2_full.bin`; data compares; bench runs of the original; inferences marked]**
+
+Sources: the five level-2 area reports and the level-2 plan of 2026-10-27 (REA listings, byte reads,
+bench runs); the items marked *REA 10-28* were read again on 2026-10-28. Names:
+`analysis/main_8000.sym`, whose level numbers count from 0 as `$8050` does (`spawnlist_level1`,
+`special_l1`, `level_tick_1` are level 2's).
+
+- **The image.** `make ram` builds `build/ram/level2_full.bin` (RB1, MU1, DATAL2, MADEX, SPERMA,
+  PERMA; sha256 `a039a158…0a88b09`). The main code `$8000-$125FF` is byte-identical in
+  `level1_full.bin` and `level2_full.bin` (the first difference is at `$28089`), so the main code's
+  names and seeds serve both. Seeds (116 functions, 285 labels): REA creates 115 functions, finds 1
+  present and applies the 285 labels, 0 failed (*REA 10-28*). Level 2 needs four `+entry` seeds:
+  `$C91A` (type 2's tail, reached only through a pushed return address) and `$D1CA`, `$D1D0`,
+  `$D1DE` (type 6's waiting paths, reached by branches Ghidra does not follow). Without `$C91A`,
+  REA's xrefs of `$16D0` miss the arrest; with it they are `$8158`, `$8188`, `$C29A`, `$C936`,
+  `$DFDA`, `$DFE6` (*REA 10-28*).
+- **MADEX is DATAL1's tail** **[verified: data compare, 2026-10-28]**: `MADEX_17.bin` (25,340 bytes)
+  equals `DATAL1_10.bin[1D250h:]`. DATAL1 spans `$28000-$4B54B`, so MADEX restores `$45250-$4B54B`:
+  the explosions, the smoke, the hostage and the nuke that levels 1 and 2 share. DATAL2 (105,816
+  bytes) covers `$28000-$41D57`: the tile sheet `$28000-$37FFF` (512 × 128 bytes), the map
+  `$38000-$3BE7F` (160 × 50 words) and level 2's own BOBs `$3BE80-$41D57` (type 5 `$3BFC0`, 6
+  `$3C920`, 2 `$3D280`, 14 `$3DFA0`, 1's legs `$3E810`, 16's body `$40818`, 49 `$41358`). Both are
+  in the image where the loader puts them. Why MADEX is loaded again **[inferred]**: the shooting
+  range's decrunch (`$1EA00-$485D9`, both visits) overwrote that range.
+- **The way in** (`load_level1` `$8582`) **[verified: REA listing; bench]**: `clr.b $8580`
+  (`datal1_resident`), the statistics `$85D8`, Brainstorm `$8382` (D0 = 2), the range `$8420` (D0 =
+  1), `moveq #2,D0` and three `nop`s (a removed 6-byte call **[inferred: the disk-2 prompt]**), the
+  level-2 briefing `$110F0` ("TOKUGAWA BREWERY", then "ARREST CAIN") through `text_screen_stop`
+  `$10762`, PIC4 (`$11E06`, D0 = 3), `move #$2700,SR`, `load_level_music` `$8614` (MU1: init, no
+  tune), MADEX (name `$8579`) at `$45250` and DATAL2 (name `$1012F`) at `$28000`, both PP20; the
+  last load is a tail jump into the loader, which returns into `level_init` at `$8764`. The way out
+  (`load_level2` `$8524`): the statistics, `moveq #2,D0` and three `nop`s, `clr.b $857F`
+  (`sperma_resident`: DATAL3 overwrites SPERMA), Brainstorm (D0 = 4), the range (D0 = 5), the
+  level-3 briefing `$110B4`, PIC7 (D0 = 6), MU1, DATAL3.
+- **The load table** `$86FA` (8 × `bra.w`, *REA 10-28*): 0 `$8352` `restart_level0`; **1 and 2
+  `$86DC`, an `rts`** (`restart_level12`: levels 2 and 3 again after a death or a continue: no
+  briefing, no picture, nothing reloaded, so DATAL2's map keeps every cell written since the load;
+  `level_init` resets only the object list's entries); 3 and 7 `$86DE`
+  (`level_load_3`, the game completed: script `$112C5`, `$11C54` (PICF, CMP), `high_score_entry`,
+  `bra $8090`); 4, 5, 6 `load_level0` `$82EC`, `load_level1` `$8582`, `load_level2` `$8524`.
+  `level_init` takes entry `$8050` for a restart and `$8050` + 4 for a load (then `$8052` =
+  `$8050`).
+- **The headers** `$8664` + 40 × `$8050`, copied by `level_init` `$871A` into the code and the
+  variables (*REA 10-28*, every field):
+
+| Offset | Goes to | Level 1 `$8664` | **Level 2 `$868C`** | Level 3 `$86B4` |
+|---|---|---|---|---|
+| +0 | `$9C18` object list | `$A562` | **`$A828`** | `$AA3A` |
+| +4 | `$915E` hazard list | `$9538` | **`$95B2`** | `$95EC` |
+| +8 | `$8B54` special objects | `$8FC0` | **`$8FE0`** | `$9008` |
+| +12 | `$B0E` spawn list | `$9626` | **`$97B0`** | `$99E2` |
+| +16, +18 | `$15D0`/`$B04`, `$15D4`/`$B06`: the start (RoboCop and the camera) | (144, 800) | **(352, 784)** | (1184, 784) |
+| +20, +22 | `$15D6`, `$15D8`: `obj_relocate`'s target | (996, 640) | **(192, 112)** | (224, 544) |
+| +24 | `$C598`, `$C692` marker table | `$C59C` | **`$C5EC`** | `$C624` |
+| +28 | `$B08` the camera's lowest y | 640 | **624** (50 rows × 16 − 176) | 624 |
+| +30 | `$804A` timer (BCD) | 10:00 | **7:30** | 7:30 |
+| +32 | `$16B8` spawn delay | 5Ah | **2Eh** | 3Ch |
+| +34 | `$C53D` marker mask (byte) | 7 | **7** | 3 |
+| +36 | `$F8C6`, `$F8BC` palette (the fade's source) | `$FFF6` | **`$10036`** | `$10036` |
+
+- **Level 2's lists** (in the main code: the same bytes in every image) **[verified: the reports'
+  REA reads; the bench's coverage]**:
+  - spawn list `$97B0`: 40 entries of 14 bytes (x, y, type +4, flags +7, reload +8, count +10,
+    spawned +12), the end word at `$99E0`: 10 hostages (type 45, flags 40h: once), 2 × type 1 (C0h:
+    once, at the screen's edge), 6 × 49 at y 16, 9 × 5 at y 368, one 6 at (416, 448), **the
+    suspect, type 2, at (384, 56)** on the roof, one 14 at (320, 77), then 2 × 4, 3 × 12 and 5 × 13
+    along the top corridor;
+  - object list `$A828`: 44 entries of 12 bytes: 4 mines (map type 30h, activator 0Ch `act_0c`
+    `$9EE8`), the relocation object (34h, activator 10h `obj_relocate`, to the header's (192,
+    112)), 7 shootable blocks with pickups (`$9C76`), 16 trapdoors (`$9F84`) and 16 crates that
+    explode at look 4 (`$9EA4`); together they can change 289 map cells; no conveyor, barrier or
+    beam. `act_0c` rewrites the word `$A4A6` of the mine's look every frame (E680h, or 9700h while
+    game-frame bit 2 is clear: one cell blinks); RoboCop on a mine explodes it (4 explosions of
+    type 0 that do not hurt; no pickup);
+  - special objects `$8FE0`: 9 record pointers (records `$9088-$911D`, in the code area: they keep
+    moving across deaths): 5 lifts (handler 0, `$8DE6`) and 4 trolleys (handler 4, `special_l1`
+    `$8F02`) that shuttle 2 px a frame over vats 0-3; RoboCop hangs under one in states 14/15, and
+    its BOB (`$4B95A`, 32 × 47) leaves D7 = BCh for `update_player`;
+  - markers `$C5EC`: types 3, 4, 12, 13, 14, 15, 16, 30, 31;
+  - hazards `$95B2`: the 7 vats (below).
+- **The arrest, level 2's end** **[verified: REA listings and the decompile of `$C91A` (*REA
+  10-28*); bench]**. Type 2 (`obj02_update` `$C868`), the armed suspect the briefing calls Cain,
+  stays at x 180h on the roof, queues "ARREST ARMED EMEMY." (`$DC76`) every 64th game frame, writes
+  `$B2D8` (`player_move`'s camera offset immediate) = 500h every frame, so the camera stays at x 0,
+  fires bursts of bullet type 5 from its counter's 46h on, and is drawn white 8 frames in 16
+  (`$C90E`). Its tail `obj02_arrest` `$C91A` (pushed by `pea` at `$C90A`) sets its hit points
+  (+21h) back to 4 every frame; when RoboCop touches it (+23h): "ARREST SUCESSFUL." (`$DC8A`, the
+  original's spelling), effect 21h (`$B2C`), `$16D0` set at `$C936`, `$16C4` = 40h and D0 = −1
+  (the slot freed). Then as in level 1 (`main_loop` `$8188`): the bonus count, the fade, `$8050` +
+  1 = 2 at `$81B8`, `level_init` and load-table entry 6. There is no boss fight. Five hits in one
+  frame would still kill it: `$C2D8` (energy − 30h, "SUSPECT DESTROYED.", the big explosion) and
+  no level end until its spawn entry brings it back **[inferred: the respawn]**. "CAIN
+  DESTROYED." (`$C24B`) is level 3's: type 22's death `$C25C`, which also sets `$16D0`.
+- **`$8060`, the enemies' hit-point table** (*REA 10-28*: written at `$8314`, `$8482`, `$84FC`,
+  read at `$C512`, `$C706`): `load_level0` sets SHARP (`$C716`) at `$8314`; the shooting range sets
+  POOR on a time out (`$8482`) or the rating's table (`$84FC`). `new_game_vars` `$FFC4` writes
+  `$8050` = 0, `$805E` = 0 and the score, never `$8052` or `$8060`. So every game plays level 1 with
+  SHARP and level 2 with the range's table, across deaths and continues **[verified: bench, the
+  four ratings: type 1 spawns with 2, 3, 3 or 4 hit points]**.
+- **`$805E`, the credits** (*REA 10-28*: its only references are `$83FA`, `$FFCC`, `$11FD2`,
+  `$11FEE`): + 1 per solved Brainstorm (`$83FA`), 0 at a new game (`clr.w` at `$FFCC`), − 1 by
+  `continue_offer` `$11FD2` (`subq.w #1`; still ≥ 0: `load_level_music` and `text_screen` `$11590`,
+  "YOU HAVE A GAME CREDIT."). When it went negative, `$11FE8` clears the joystick byte `$802E` and
+  **`$11FEE` `clr.b $805E` clears only the high byte: the word reads 00FFh** until the next new
+  game; nothing reads it in between (the title follows). Level 1's game over always finds 0 (the
+  first Brainstorm comes after level 1), so the offer can first appear in level 2 **[verified:
+  bench, level 2 again at row 109 with 2 lives and `$805E` = 0]**.
+- **The vats** (`level_tick_1` `$91BC`; *REA 10-28*: the records, the column loop `$9230-$9276`,
+  the tables and the copper bytes). `$9150` clears `$15F0` (`clr.w`) and sets the copper byte
+  `$10356` to CAh every frame, then runs `$91B0` + 4 × `$8050` for each record in the camera
+  window (y in [cam y − 64h, cam y + ACh), x1 ≥ cam x + 73h, x0 < cam x + 1A0h):
+
+| Vat | x | y | Rows | Cells (columns × rows + 2) | First cell (row, column) |
+|---|---|---|---|---|---|
+| 0 | 848-1024 | 640 | 7 | 12 × 9 = 108 | (40, 45) |
+| 1 | 1296-1440 | 640 | 7 | 10 × 9 = 90 | (40, 73) |
+| 2 | 1568-1712 | 640 | 7 | 10 × 9 = 90 | (40, 90) |
+| 3 | 2016-2256 | 688 | 4 | 16 × 6 = 96 | (43, 118) |
+| 4 | 1904-2240 | 288 | 2 | 22 × 4 = 88 | (18, 111) |
+| 5 | 1264-1568 | 288 | 2 | 20 × 4 = 80 | (18, 71) |
+| 6 | 608-800 | 288 | 2 | 13 × 4 = 52 | (18, 30) |
+
+  - Every frame: effect 1Ah when (random & Fh) = 0; with RoboCop's x in [x0 − 10h, x1 + 10h) and d =
+    cam y + 98h − y in [0, 4Dh), `$10356` = CBh − d: the copper's WAIT (`CA01 FFFE` at `$10356`)
+    before `MOVE 0020h,DMACON` (`$1035A`, sprite DMA off, then the eight sprites' control words
+    cleared), so RoboCop's sprites end at the liquid's surface; from d = 3Ch (line < 90h) RoboCop
+    dies (`$169A` high byte and `$16CC` set, effect 10h). The death depends on the camera's y, not
+    RoboCop's, and holds in god mode.
+  - Odd frames only: for each of the (x1 − x0) / 16 + 1 columns, when the byte `$15F0` is clear
+    (`tst.b` at `$9236`) the phase's low byte + 2 (`addq.b` at `$923C`, the phases' only writer);
+    d = (phase & 0Eh) + 10h when the next phase word's high byte is set; the column's first cell
+    gets `$927A`[d / 2], the next rows alternate `$929A`[d / 2] and `$92BA`[d / 2]; after the
+    columns `st $15F0` (`$9272`). So only the first in-window vat's phases advance.
+  - The phase words `$92DA` (48 words up to `$9339`, `level_tick_0`'s start; the vats read the first
+    23) live in the code area and are never reset. The three tables hold 16 map words each, all
+    with attributes 0: **the vats change tiles only, never anything the logic reads**. 604 cells
+    in all, at map rows 18-21 and 40-48, none shared with a map object **[verified: the map
+    report's data checks]**.
+- **`$EF8E`** (`obj_map_cell`, *REA 10-28*): `$EFA4` `cmpi.w #$66,D6` (D6 = row × 2): it looks up
+  `map_row_offsets` for rows 0-50 in every level, a constant. Level 2's map has 50 rows, so its row
+  50 is DATAL2's BOB data after the map (`$3BE80`): 35 of those 160 words have a nonzero low nibble
+  **[verified: data, 2026-10-28]**, attribute bits that `$EF8E`'s callers take for walls and
+  floors (in level 1 row 50 is a map row).
+- **Type 6's death** `$C33E` (*REA 10-28*): `$15F2` + 1, D5 = `$15F2` & 3; when D5 = 0 (every 4th)
+  a pickup at the object through `pickup_drop` (24h, a nuke; 1Ch, energy, at the 16th); then
+  `$C35A` with explosion type D5 (0-3). Its launch gap `$D1DC` is a code-area word: kept across
+  lives, levels and games.
 
 ### Music and sound effects (MU1 player) **[verified: REA listing of `$18000-$18B35` (level-1 image); `tools/rc2music.py --verify` runs that code in Unicorn and matches the model's Paula writes and player RAM on every tick of every tune of the five files (49986 ticks); the paths the data never takes (vibrato, 86h, 81h-83h in patterns, 83h in sequences, stop tune, the effect priority, effects over music) matched the same way on patched images and call scripts]**
 

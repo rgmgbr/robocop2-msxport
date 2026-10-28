@@ -28,6 +28,13 @@
 +entry fd1a
 # the return address type 25 pushes (pea) before its drawing jump table ($DBD2)
 +entry dbea
+# level 2: code reached only through a pushed return address (type 2's tail: pea at $C90A) or through
+# branches inside type 6's handler; without these Ghidra makes no function there, and REA's xrefs of
+# $16D0 miss the write at $C936
++entry c91a
++entry d1ca
++entry d1d0
++entry d1de
 8000  start            BRA to the initialisation; followed by 10 public BRA.W entries
 8050  level_number     word: current level (incremented when completed)
 802c  vbl_counter      byte: incremented by the VBL; the main loop waits for >= 2 (25 Hz)
@@ -44,18 +51,18 @@
 +data a562 ab00        per-level object lists
 871a  level_init           initialises the current level (load, camera, palette, objects)
 8664  level_headers        3 x 40 bytes: pointers patched into the code, initial camera, palette
-86fa  level_load_table     BRA.W per level: [level] restarts, [level+4] loads a new level
+86fa  level_load_table     BRA.W per level: [level] restarts, [level+4] loads a new level (0 restart_level0, 1-2 restart_level12, 3 and 7 level_load_3, 4-6 load_level0-2)
 82ec  load_level0          briefing, SPERMA (if needed) and DATAL1
-8582  load_level1          statistics, bonus stages ($8382 D0=2, $8420 D0=1), PIC4 ($11e06 D0=3), MADEX and DATAL2
-8524  load_level2          statistics, bonus stages ($8382 D0=4, $8420 D0=5), PIC7 ($11e06 D0=6) and DATAL3
+8582  load_level1          statistics, bonus stages ($8382 D0=2, $8420 D0=1), the level-2 briefing $110F0, PIC4 ($11e06 D0=3), MU1, MADEX and DATAL2
+8524  load_level2          statistics, bonus stages ($8382 D0=4, $8420 D0=5), the level-3 briefing $110B4, PIC7 ($11e06 D0=6), MU1 and DATAL3
 8352  restart_level0
 8614  load_level_music     loads MU1 at $18000 if needed and starts the player
 85d8  show_level_stats
 9c06  activate_objects     activates objects of the level list inside the camera window
 9d96  objtype_act_offsets  word per type: activator offset from $9ec4
-9ec4  objtype_act_base
+9ec4  objtype_act_base     nine BRA by activator offset: 0 $9C76, 4 $9F84, 8 $9EA4, 0Ch $9EE8, 10h $9FC4, 14h $A038, 18h $A03E, 1Ch $A0D4, 20h $9F74
 a562  objlist_level0       12-byte entries: type, ?, ?, ?, x, y (end: negative word)
-a828  objlist_level1
+a828  objlist_level1       level 2's (44 entries): 4 mines (type 30h, act_0c), the relocation (34h), 7 shootable blocks with pickups, 16 trapdoors, 16 crates that explode at look 4
 aa3a  objlist_level2
 bcca  draw_background      redraws 19x12 16x16 map tiles ($38000) into the back buffer with the blitter
 c3e4  update_objects       5 slots at $be4; dispatches through the type descriptor ($beb0 + 16*type)
@@ -81,10 +88,10 @@ be4   object_slots         5 slots; structure-of-arrays fields (x -$80, y -$20, 
 b94a  draw_player          composes RoboCop at $7e3a0 (4 planes x $248) from PERMA -> hardware sprites
 b4e2  player_anim_table    [steps-1][list offset][height][0]; frame = 16 bytes (PERMA offset, BLTSIZE, modulo, x@12, y@13)
 9626  spawnlist_level0     enemy spawning: 14 bytes (x.w @0, type.b @4, flags.b @7, reload.w @8, counter.w @10)
-97b0  spawnlist_level1
+97b0  spawnlist_level1     level 2's (40 entries, end word at $99E0): 10 hostages (45), 2 x type 1, 6 x 49, 9 x 5, one 6, the suspect (2), one 14, 2 x 4, 3 x 12, 5 x 13
 99e2  spawnlist_level2
 8de6  special_lift         special object type 0 (lifts/platforms), every level
-8f02  special_l1           special object type 4, level 2 only
+8f02  special_l1           special object type 4, level 2 only (by data): the overhead trolley, 2 px a frame between its record's two path x; seen: RoboCop on it asked into states 14/15 (hanging, $1696) and held at its x; lift-table entry (x, x + 10h, y + 14h, dx +-2); sound 0Ch every 2nd frame; BOB $4B95A ($BC3: 32x47) at (x + 10h, y - 54h), which leaves D7 = BCh
 11e06 show_picture         shows PIC('1'+D0): 0/3/6 before levels 1/2/3, 8 = game over (PIC9)
 +data b408 b4e2        player part tables (head g/x/y, arm g/x/y, flash g)
 b408  player_head_tables   head 16x14 parts: graphic offsets from $61bd0, x, y (9 words each)
@@ -133,7 +140,7 @@ fd52  weapon_ammo_table    4 words: BCD ammo per weapon (000, 500, 300, 400)
 fd5a  weapon_icon_table    4 words: icon per weapon (3, 0, 2, 1)
 af76  icon_offsets         8 words: icon offsets from $676c0 ($a0 apart)
 c222  msg_protect          "PROTECT THE INNOCENTe" + $ff ('e' = glyph 36 '.')
-dc76  msg_arrest           "ARREST ARMED EMEMYe"
+dc76  msg_arrest           "ARREST ARMED EMEMYe" (type 2 queues it every 64th game frame)
 c238  msg_suspect          "SUSPECT DESTROYEDe"
 c24b  msg_cain_destroyed   "CAIN DESTROYEDe"
 d46c  msg_chase_cain       "CHASE CAINe"
@@ -206,7 +213,7 @@ ec22  obj44_update         object type 44 (level 1, the flying vehicle's ride): 
 # --- the level's continuity, its end and the effects' draw sites (REA/Ghidra, 2026-10-21) ---
 9d0c  objtype_table        per type: +0 look table (long), +$88 flags, +$8a activator offset, +$110/+$112 size (4-byte stride)
 9ea4  act_explode_look4    activator: an explosion while the entry's look index is 4
-9ee8  act_0c               activator (levels 2-3; not analysed)
+9ee8  act_0c               activator 0Ch, level 2's mines (type 30h): act_0c_blink_word = E680h, or 9700h while game frame bit 2 is clear (one cell blinks; sound 28h every 8th frame); RoboCop on it (x + 32..47, y + 8..23): st 4(A1) and 4 explosions (type 0) at x + 10h, 24h, 38h, 4Ch; they do not hurt and drop no pickup
 9f74  act_20               activator (levels 2-3; not analysed)
 9f84  act_floor_switch     trapdoor activator: on with RoboCop on its row, x in [x - 18, x + 42)
 a038  act_conveyor_left    conveyor activator (offset 14h)
@@ -223,7 +230,7 @@ ef8e  obj_map_cell         an object's map cell: column (x >> 4) - 8, row y >> 4
 efe0  map_row_offsets      data: 51 words, each map row's offset
 f366  spawn_explosion      D5 low byte = type 0-8 (frames $F3BC/$F3C5), high byte 0: drawn by $F12A, 4: by $F266
 8052  level_loaded         flag
-8b92  special_handlers     dispatch of the special objects' list ($8B54)
+8b92  special_handlers     dispatch of the special objects' list ($8B54): three BRA.W by handler offset, 0 special_lift, 4 special_l1 (the trolley), 8 special_vehicle_l0
 80ae  level_start_entry    level_init again (after the level's end: the next level's load table entry)
 81b8  level_next           the level done: $8050 + 1
 8382  brainstorm_stage     bonus stage (D0 = 2 after level 1, 4 after level 2)
@@ -235,7 +242,7 @@ f080  effects_update       the explosions and smoke of $F366 (slots 0-5 only: th
 f266  explosion_draw       explosion $0408: parts $F292/$F2B6 (tables $F2C2-$F350)
 f3ce  ebullet_update       enemy bullets: gfx $F4A4 + 4t, BLTSIZE $F500 + 4t, steps $F55C/$F55E
 f5bc  ebullet_add          an enemy bullet of type D6
-c948  walker_legs          legs of types 15, 24, 29 (tables $C9B4/$C9D4)
+c948  walker_legs          legs of types 15, 16, 24, 29 (tables $C9A4-$CA13)
 dbea  obj25_draw           type 25 (the machine at the top): muzzle flash $3F940/$3FC10 (pea target at $DBD2)
 16cf  level_restarted      flag set at $8742, cleared by clear_game_vars before $8852 reads it (no effect)
 169e  relocate_count       frames held in state 12/13 at the cracked wall ($50: the relocation)
@@ -243,5 +250,163 @@ dbea  obj25_draw           type 25 (the machine at the top): muzzle flash $3F940
 16c0  nukes_collected
 16c2  henchmen_killed      type 32 waits for its value at its first frame + 10
 16c4  end_count            the level's end: 40h, counted down by main_loop ($8188) to the fade out
-16d0  level_done           set by type 32 after 272 frames
+16d0  level_done           set by type 32 after 272 frames (level 1), by obj02_arrest at $C936 (level 2), by death_cain (level 3)
 16d1  text_done            set by text command 7
+# --- level 2: the five area reports of 2026-10-27 (REA/Ghidra on build/ram/level2_full.bin, the level-2
+# bench), merged 2026-10-28. Level numbers count from 0 as $8050 does: _level1 / _l1 / level_tick_1 are level 2's.
++data 8fe0 9008        level 2's special objects' list (9 record pointers, -1 ends)
++data 9088 911e        level 2's special objects' records (5 lifts, 4 trolleys; changed at run time)
++data 927a 92da        level_tick_1's map words (3 x 16)
++data 92da 933a        level_tick_1's per-column phase words, 48 up to level_tick_0 (the first 23 used; changed at run time, never reset)
++data 95b2 95ec        level 2's hazard list (7 vats: x left, y, x right, rows; -1 ends)
++data 97b0 99e2        level 2's spawn list (40 x 14 bytes + the end word)
++data c5ec c624        level 2's marker table (9 x 6 bytes + the end word)
++data c7e0 c810        type 1: legs graphic offsets (16 words), torso y offsets (8 words)
++data d17c d1ca        type 5: BLTSIZE, graphic offset and x offset per frame (then 2 zero words)
++data d1dc d1de        type 6: the launch gap word (changed at run time)
++data d2da d2ea        type 6: graphic offsets (8 words)
++data e67a e6c0        type 38's launch mailbox (3 words); types 38/49's x and y steps (2 x 16 words)
++data e7b2 e7d2        types 38/49: graphic offsets per direction (16 words)
+# the levels' lists (header +4, +8, +24 of $8664 + 40 x level)
+8fc0  speclist_level0      level 1's special objects: 6 lifts, then the vehicle
+8fe0  speclist_level1      level 2's special objects: 5 lifts (sp1_lift0-4), 4 trolleys (sp1_trolley0-3)
+9008  speclist_level2      level 3's special objects
+9538  hazlist_level0       level 1's hazard list: 15 electric beams (level_tick_0)
+95b2  hazlist_level1       level 2's hazard list: 7 vats x [x left, y, x right, rows], -1: (848-1024, 640, 7) (1296-1440, 640, 7) (1568-1712, 640, 7) (2016-2256, 688, 4) (1904-2240, 288, 2) (1264-1568, 288, 2) (608-800, 288, 2)
+95ec  hazlist_level2       level 3's hazard list
+c59c  markers_level0       level 1's marker table
+c5ec  markers_level1       level 2's marker table [bands, type, y offset]: types 3, 4, 12, 13, 14, 15, 16, 30, 31
+c624  markers_level2       level 3's marker table
+868c  level_header_1       level 2's 40 bytes: objects $A828, hazards $95B2, specials $8FE0, spawns $97B0, start (352, 784), relocation (192, 112), markers $C5EC, lowest camera 624, timer 7:30, spawn delay 2Eh, marker mask 7, palette $10036
+86b4  level_header_2       level 3's 40 bytes: objects $AA3A, hazards $95EC, specials $9008, spawns $99E2, start (1184, 784), relocation (224, 544), markers $C624, lowest camera 624, timer 7:30, spawn delay 3Ch, marker mask 3, palette $10036
+# the way in and out
+86dc  restart_level12      rts: load-table entries 1 and 2, levels 2 and 3 again after a death or a continue (no briefing, no picture, nothing reloaded: the map keeps its changes)
+86de  level_load_3         load-table entries 3 and 7, the game completed: script $112C5, $11C54 (PICF, CMP), high_score_entry, bra $8090 (the title)
+8572  name_datal3          "DATAL3",0 (load_level2)
+8579  name_madex           "MADEX",0 (load_level1)
+857f  sperma_resident      byte: cleared by load_level2 before DATAL3 overwrites SPERMA; load_level0 loads SPERMA while it is 0
+8580  datal1_resident      byte: cleared by load_level1 before DATAL2 overwrites DATAL1; load_level0 loads DATAL1 and sets it while it is 0
+8656  name_mu1             "MU1",0 (load_level_music)
+10128 name_datal1          "DATAL1",0 (load_level0)
+1012f name_datal2          "DATAL2",0 (load_level1)
+1013c name_sperma          "SPERMA",0 (load_level0)
+11932 file_cache_restore   the expansion-RAM file cache: Z when the file came from the cache (off in this crack: MU1 is read from the disk before every level)
+1195e file_cache_store     A0 name, A1 address, D0 length
+fe14  stop_all_black       music stopped, palette black; falls through at $FE92 into clear_game_vars
+ffc4  new_game_vars        $8050 = 0, $805E = 0, score $8046 = 0, then init_lives; never writes $8052 or $8060
+1079a text_screen_curtain  text_screen with the 16-frame curtain, music kept (load_level0, restart_level0)
+11fd2 continue_offer       $805E - 1; still >= 0: load_level_music and text_screen $11590 ("YOU HAVE A GAME CREDIT."); else the joystick byte cleared (no continue)
+ed04  msg_man_rescued      "MAN RESCUEDe"
+dc8a  msg_arrest_ok        "ARREST SUCESSFULe" (obj02_arrest: the end of level 2; the original's spelling)
+# the special objects (update_special_objects)
+8b8c  special_dispatch     jmp ($8B92,PC,D2): D2 = the record's handler offset
+8ed0  special_rts          the lift's rts; also the trolley's exit while unseen (D7 stays 6 & $168C)
+9088  sp1_lift0            lift x 174, y 789, path y 709/789 (waits at a stop)
+9098  sp1_lift1            lift x 542, y 789, path y 629/709/789 (waits)
+90aa  sp1_lift2            lift x 2542, y 789, path y 469/709/789 (moves by itself: period 320)
+90bc  sp1_lift3            lift x 239, y 468, path y 308/468 (period 160)
+90cc  sp1_lift4            lift x 2543, y 181, path y 165/309/389 (period 224)
+90de  sp1_trolley0         trolley y 592, path x 848/1008 (over vat 0)
+90ee  sp1_trolley1         trolley y 592, path x 1304/1408 (over vat 1)
+90fe  sp1_trolley2         trolley y 592, path x 1576/1712 (over vat 2)
+910e  sp1_trolley3         trolley y 640, path x 2016/2224 (over vat 3)
+# the vats (level_tick_1)
+91b0  level_tick_table     three BRA.W by level ($9150: jmp ($91B0,PC) + 4 x level for each record in the camera window): level_tick_0 $933A, level_tick_1 $91BC, level_tick_2 $9436
+91bc  level_tick_1         level 2's hazard, a vat (x0, y, x1, rows): sound 1Ah when (random & Fh) = 0; RoboCop's x in [x0 - 10h, x1 + 10h) and d = cam y + 98h - y in [0, 4Dh): copper_sprite_cut = CBh - d, and from d = 3Ch RoboCop dies ($169A high byte, $16CC, sound 10h: the camera's y decides); odd frames: (x1 - x0) / 16 + 1 columns x (rows + 2) map words from vat_column_phases
+15f0  vats_first_done      word: cleared by $9150 every frame (clr.w); st (its high byte) at $9272 after the first in-window vat's columns on an odd frame; tst.b at $9236: only that vat's phases advance
+927a  vat_surface_words    16 map words, the vat's first row, by d = (phase & 0Eh) + 10h x variant (attributes 0)
+929a  vat_odd_words        16 map words, the vat's rows 1, 3, 5... (attributes 0)
+92ba  vat_even_words       16 map words, the vat's rows 2, 4, 6... (attributes 0)
+92da  vat_column_phases    a word per vat column (48 words up to $9339; level_tick_1 reads the first 23): low byte the phase (+2 on odd frames, written only at $923C, never reset); entry k + 1's high byte nonzero = variant 1 of column k
+10356 copper_sprite_cut    byte: the line of the in-game copper's WAIT before copper_sprites_off (CA01 FFFE): CAh from $9154 every frame; level_tick_1 lowers it to a visible vat's surface
+1035a copper_sprites_off   MOVE 0020h to DMACON (sprite DMA off), then the eight sprites' control words cleared
+# the map objects
+9fae  act_look_noslot      activators' tail: the look from the table (+ index); negative: the entry off (st 2(A1)); else $9CD2 (animation step, block copy), no collision slot
+a1f2  looks_type30         looks of the mine (type 30h): $A4A2, $A4B6, -1
+a1fe  looks_type34         looks of level 2's relocation object (type 34h: activator 10h, obj_relocate): $A4CA, $A4DA, -1
+a4a2  look_type30_0        the mine's first look, 5 x 2 words: A280 A280 [E680] A280 A280 / A901 CA81 FF81 CA81 A901
+a4a6  act_0c_blink_word    the look word act_0c rewrites every frame: E680h, or 9700h (both attributes 0)
+ea50  map_put_2x3_a        level 3: writes 2 x 3 map words from a table at A2 ((A0), (140h,A0), (280h,A0))
+eaa6  map_put_2x3_flash    level 3: obj40/obj41's, 3 looks at $EAE2 by $21(A3) and game frame bits 2 and 4
+ebb8  map_put_2x3_b        level 3: 2 x 3 map words
+# level 2's object types (handlers and deaths through objtype_descriptors)
+c736  obj01_update         type 1, the walking gunman: counter (A3) + 1; obj_fall at y + 2Ch, obj_walk 4 px; on (game frame & 2Dh) = 0 a bullet (facing right: type 6, D7 = 4, at (x + 28h, y + 12h); facing left: D6/D7 left over, D7 = 10h and D6 from obj_walk) and a muzzle flash; legs $3E810 + t1_legs_offs at y + 15h, torso $404D0 (+1A4h facing right) at (x -+ 2, y + t1_torso_dy)
+c7e0  t1_legs_offs         type 1: 16 words, legs = $3E810 + word[(counter & 0Eh) + 10h facing right] (32 x 23, $5C3)
+c800  t1_torso_dy          type 1: 8 words, the torso's bob by step (1, 1, 0, 0, 1, 1, 0, 0)
+c868  obj02_update         type 2, the armed suspect the briefing calls Cain: "ARREST ARMED EMEMY." every 64th game frame; counter -40h(A3) + 1; x = 180h; cam_dx_imm = 500h every frame; from counter 46h the shooting pose $3D910 (else $3D280; $E04: 48 x 56), bullets type 5 on (counter & 33h) = 0; returns through obj02_arrest (pea at $C90A)
+c8fe  t2_draw              type 2: D4 = $E04 (48 x 56), then t2_flash_jump
+c90e  t2_flash_jump        type 2: jmp ($C912,PC) by game frame bit 3: draw_part_last or draw_flash (white 8 frames in 16, its whole life)
+c91a  obj02_arrest         type 2's tail: hit points (+21h) back to 4 every frame; touched (+23h): msg_arrest_ok, sound 21h ($B2C), level_done set (at $C936), end_count = 40h, D0 = -1; else D0 = 0
+d0e2  obj05_update         type 5, a drip (15 x 15, 99 hit points): state (A3) 0 grows, 1 falls (vy + 8000h; on a solid cell at y + 18h, or touched: energy - 0Ah when touched, sound 12h, state 2), 2 splashes (freed at count 0Ch); drawn $3BFC0 + t5_gfx_offs at x + t5_dx - 0Ah
+d17c  t5_bltsize           type 5: BLTSIZE per frame (11 used)
+d19a  t5_gfx_offs          type 5: 11 words, frame = $3BFC0 + word (9 distinct)
+d1b0  t5_dx                type 5: 11 words of x offsets (then - 0Ah)
+d1ca  obj06_gap_count      type 6 waiting: barrel_gap - 1, then obj06_hold
+d1d0  obj06_hold           type 6 waiting: x = y = 0, D0 = 0
+d1dc  barrel_gap           word: type 6's launch gap (2 at a launch, - 1 per pass of a waiting type 6); in the code area: never reset (0 at power-on), kept across lives, levels and games
+d1de  obj06_free           type 6: D0 = -1 (the slot freed)
+d1e2  obj06_update         type 6, the rolling tyre (the port's "barrel"): waits at (0, 0) while RoboCop's y is in [1A0h, 1D1h) (else freed, also from barrels_killed 10h) until barrel_gap is 0 and (game frame & 13h) = 0; then barrel_gap = 2 and it starts at (78h, 160h), vy 1.0: rolls right 3 px a frame and bounces (-7.0, or -4.5 when game frame bit 2 was set at the launch) on a solid cell at y + 18h from x A0h (sound 19h when it was drawn); freed at x >= cam x + 1E8h
+d2da  t6_gfx_offs          type 6: 8 words, frame = $3C920 + word (5 distinct, 32 x 24, $603)
+15f2  barrels_killed       word: type 6 deaths this life (death_barrel); 10h stops the launches
+cd7a  obj16_update         type 16, the walker with a big gun: walker_legs, then counter -3Eh(A3) + 1 (to 0 from 2Eh); at counter 20h and 28h a bullet (left: type 5, D7 = 1Eh, at x - 20h; right: type 6, D7 = 16h, at x + 32h; y + 0Ch) and a muzzle flash; body $40818 (+5A0h from counter 14h, +2D0h facing right; $604: 48 x 24) at x - 9
+ce0a  obj14_update         type 14, the grenadier that stays put: faces RoboCop every frame; on (game frame & 2Fh) = 0 explosion type 1 and a lobbed bullet type 4 (D7 = 20h left / 14h right, ay = 4000h); body $3DFA0 (+438h facing right; $904: 48 x 36)
+e6c0  obj49_update         type 49, the homing drone: A2 = $41358; first frame: byte 3(A3) set, direction (A3) = 10h (down); then homing_body
+e6d6  obj38_update         type 38 (level 3: launched through obj38_mail_dir/x/y, written by level-3 types only)
+e728  homing_body          types 38/49: direction (A3) & 1Eh; x and y += homing_dx/homing_dy x 8000h; turns one step a frame towards the target -60h(A3), then a new one from RoboCop's direction ($D0A6); drawn A2 + homing_gfx_offs ($402: 16 x 16); touched: energy - 18h, explosion type 0 at (x - 8, y - 8), freed; else -40h(A3) - 1, at 0 the same (type 49 from 0: 65,536 frames)
+e67a  obj38_mail_dir       word: launch direction for the next type 38 (level 3)
+e67c  obj38_mail_x         word: launch x (0: none)
+e67e  obj38_mail_y         word: launch y
+e680  homing_dx            types 38/49: 16 words of x steps by direction (0 up, 4 right, 8 down, 0Ch left)
+e6a0  homing_dy            types 38/49: 16 words of y steps by direction
+e7b2  homing_gfx_offs      types 38/49: 16 words, frame = A2 + word (type 49: $41358, 16 directions)
+b2d8  cam_dx_imm           player_move's camera x offset immediate: 108h (level_init), 500h while type 2 runs (the camera pinned at x 0)
+# the deaths (objtype_descriptors' death word; update_objects passes D5 = the type's descriptor offset)
+c1fc  death_hostage        type 45 shot: energy - 20h, its flag, a message, then death_smoke
+c25c  death_cain           type 22's death (level 3): debris, three explosions, level_done set, end_count = 40h, "CAIN DESTROYED." ($C24B); never runs in level 2
+c2d8  death_suspect        types 2 and 25: energy - 30h, "SUSPECT DESTROYED." ($C238), then death_big
+c2ee  death_big            types 3, 14, 27-29 (and death_suspect): spawn_explosion $0408 (the big explosion of $F266) at the floor below
+c31e  death_smoke          types 1, 4, 12, 13, 15-20, 24, 26, 30-32, 35 (and death_hostage): spawn_explosion 4 (the 48 x 56 smoke) at y - 0Ch
+c33e  death_barrel         type 6: barrels_killed + 1, D5 = barrels_killed & 3; on 0 (every 4th) a pickup at the object via pickup_drop (24h nuke; 1Ch energy at the 16th); then death_expl (explosion type D5)
+c35a  death_expl           spawn_explosion with the D5 it gets: types 23, 34, 36-42, 49-52 pass their descriptor offset (type 49: 0198h, frames E6h-41h, garbage) [inferred: not run]
+# drawing (draw_bob's wrappers) and the shared tables the level-2 frames come from
+ac44  draw_part            draw_bob as a white silhouette (minterm $BFA patched at $AC16) while the object's hit flag (+22h) is set; keeps the flag
+ac56  draw_part_last       the same, and clears the hit flag: one white picture per hit
+ac6e  draw_flash           always the white silhouette (type 2's blinking)
+ac84  draw_black           the black silhouette (type 25's, level 1)
+ef42  obj_walk             x += D4 in the facing direction while the map cell ahead allows, else the facing flips
+ef72  obj_fall             gravity: y speed + 2800h while the cell below is free, else 0
+c9a4  walker_legs_dy       walker_legs: 8 words of body bob by step (returned in D1)
+c9b4  walker_legs_offs     walker_legs: 16 words, legs = $4BD06 + word (steps 0-7 left, 8-15 right)
+c9d4  walker_legs_bltsize  walker_legs: 16 BLTSIZE words ($704: 48 x 28 for steps 0, 4, 8, 12; else $703: 32 x 28)
+c9f4  walker_legs_dx       walker_legs: 16 words of the legs' x offsets
+cb12  gunman_torso_idx     types 15/30/31: torso index by aim (8 words)
+cb22  gunman_flash_idx     types 15/30/31: muzzle flash index by aim (8 words; flash = $6C620 + 50h x index)
+cb32  gunman_flash_dx      6 words
+cb3e  gunman_flash_dy      6 words
+cb4a  gunman_torso_offs    6 words: torso = $4E466 + word
+cb56  gunman_torso_bltsize 6 BLTSIZE words ($683: 32 x 26, $883: 32 x 34)
+cb62  gunman_torso_dx      6 words
+cbaa  t3_torso_offs        type 3: 20 words, torso = $4F1D6 + word (index = walker2_legs' D2)
+cbd2  t3_torso_bltsize     type 3: 20 BLTSIZE words
+cbfa  walker2_legs_offs    walker2_legs: 20 words, legs = $4F1D6 + word
+cc22  walker2_legs_bltsize walker2_legs: 20 BLTSIZE words
+cc4a  walker2_legs         legs of types 3 and 30: D2 = counter & 0Eh (+14h facing right), 10h/12h kneeling, legs $4F1D6 + walker2_legs_offs at y + 17h; with byte +3 set: legs $4BD06 ($743) at (x + 5, y + 13h)
+ccd2  walker2_legs_dx      walker2_legs: 20 words of x offsets
+ccfa  walker2_fire         walker2_legs' kneel and fire: every 32 frames ebullet_add type 1/2 (the missile), spawn_explosion 2/3 (the muzzle smoke)
+d046  t4_flash_dx          type 4: 8 words, muzzle flash = $6C620 + 50h x D3 (D3 = aim from $D0A6)
+d056  t4_flash_dy          type 4: 8 words
+d066  t4_torso_offs        type 4: 8 words, torso = $57192 + word
+d076  t4_torso_dx          type 4: 8 words
+d086  t4_torso_dy          type 4: 8 words
+d096  t4_torso_bltsize     type 4: 8 BLTSIZE words, $983 (32 x 38) for aim 0, $803 (32 x 32) for the others
+f140  expl_bltsize         effects_update: 40 BLTSIZE words of the explosion frames
+f1c6  expl_gfx             effects_update: 40 long frame addresses (0-7 32 x 32, 8-15 16 x 16, 16-23 muzzle smoke, 24-29 the 48 x 56 smoke, 30-33 DATAL addresses, 34-39 16 x 16)
+f37c  expl_sound           9 bytes: sound per explosion type
+f3bc  expl_first           9 bytes: first frame per explosion type
+f3c5  expl_last            9 bytes: last frame per explosion type
+f4a4  ebullet_gfx          ebullet_update: graphics long per bullet type (+4t)
+f500  ebullet_bltsize      ebullet_update: BLTSIZE per bullet type (+4t)
+f55c  ebullet_anim         ebullet_update: frame step and last offset per bullet type (+4t)
+f5d2  ebullet_sound        sound per bullet type
+f658  ebullet_vx           enemy bullets' x speed by direction (D7)
+f67c  ebullet_vy           enemy bullets' y speed by direction (D7)

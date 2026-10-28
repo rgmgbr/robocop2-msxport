@@ -5,7 +5,7 @@
 0x8352	function	restart_level0
 0x8524	function	load_level2
 0x8582	function	load_level1
-0x86dc	function	level_load_1
+0x86dc	function	restart_level12
 0x86de	function	level_load_3
 0x8b9a	function
 0x8b9e	function	special_vehicle_l0
@@ -23,26 +23,27 @@
 0x9ee0	function	obj_activate_58
 0x9ee4	function	obj_activate_80
 0xab08	function	draw_bob
-0xac56	function
-0xac6e	function
-0xac84	function
+0xac56	function	draw_part_last
+0xac6e	function	draw_flash
+0xac84	function	draw_black
 0xac9a	function
 0xaed2	function
 0xaf08	function
 0xaf90	function
 0xbdec	function	read_joystick
 0xc1fa	function
-0xc1fc	function
-0xc25c	function
-0xc2d8	function
-0xc2ee	function
-0xc31e	function
-0xc33e	function
-0xc35a	function
+0xc1fc	function	death_hostage
+0xc25c	function	death_cain
+0xc2d8	function	death_suspect
+0xc2ee	function	death_big
+0xc31e	function	death_smoke
+0xc33e	function	death_barrel
+0xc35a	function	death_expl
 0xc360	function
 0xc3a8	function
 0xc736	function	obj01_update
 0xc868	function	obj02_update
+0xc91a	function	obj02_arrest
 0xca14	function	obj30_update
 0xca3e	function	obj31_update
 0xca78	function	obj15_update
@@ -53,6 +54,9 @@
 0xcef8	function	obj12_update
 0xcfb0	function	obj04_update
 0xd0e2	function	obj05_update
+0xd1ca	function	obj06_gap_count
+0xd1d0	function	obj06_hold
+0xd1de	function	obj06_free
 0xd1e2	function	obj06_update
 0xd2fa	function	obj21_update
 0xd49c	function	obj22_update
@@ -104,7 +108,7 @@
 0xfd30	function	set_weapon
 0xfd76	function	message_queue
 0xfda2	function	message_ticker
-0xfe14	function
+0xfe14	function	stop_all_black
 0x1015c	function	irq_l4_audio
 0x1015e	function	irq_l6_exter
 0x101cc	function	irq_l1
@@ -137,6 +141,8 @@
 0x15e4	label	player_anim_back
 0x15e6	label	player_airborne
 0x15e8	label	player_anim_last
+0x15f0	label	vats_first_done
+0x15f2	label	barrels_killed
 0x15f4	label	effect_types
 0x1614	label	effect_dirs
 0x1634	label	effect_x
@@ -189,17 +195,46 @@
 0x81b8	label	level_next
 0x8382	label	brainstorm_stage
 0x8420	label	shooting_range_stage
+0x8572	label	name_datal3
+0x8579	label	name_madex
+0x857f	label	sperma_resident
+0x8580	label	datal1_resident
 0x85d8	label	show_level_stats
 0x8614	label	load_level_music
+0x8656	label	name_mu1
 0x865a	label	msg_timeout
 0x8664	label	level_headers
+0x868c	label	level_header_1
+0x86b4	label	level_header_2
 0x86fa	label	level_load_table
 0x871a	label	level_init
 0x88de	label	panel_draw_head
 0x896a	label	panel_draw_icon
 0x89be	label	update_energy_can
 0x8b32	label	update_special_objects
+0x8b8c	label	special_dispatch
 0x8b92	label	special_handlers
+0x8ed0	label	special_rts
+0x8fc0	label	speclist_level0
+0x8fe0	label	speclist_level1
+0x9008	label	speclist_level2
+0x9088	label	sp1_lift0
+0x9098	label	sp1_lift1
+0x90aa	label	sp1_lift2
+0x90bc	label	sp1_lift3
+0x90cc	label	sp1_lift4
+0x90de	label	sp1_trolley0
+0x90ee	label	sp1_trolley1
+0x90fe	label	sp1_trolley2
+0x910e	label	sp1_trolley3
+0x91b0	label	level_tick_table
+0x927a	label	vat_surface_words
+0x929a	label	vat_odd_words
+0x92ba	label	vat_even_words
+0x92da	label	vat_column_phases
+0x9538	label	hazlist_level0
+0x95b2	label	hazlist_level1
+0x95ec	label	hazlist_level2
 0x9626	label	spawnlist_level0
 0x96dc	label	spawn0_e13_level_end
 0x97b0	label	spawnlist_level1
@@ -213,25 +248,32 @@
 0x9ee8	label	act_0c
 0x9f74	label	act_20
 0x9f84	label	act_floor_switch
+0x9fae	label	act_look_noslot
 0x9fc4	label	obj_relocate
 0xa038	label	act_conveyor_left
 0xa03e	label	act_conveyor_right
 0xa0d4	label	act_barrier
+0xa1f2	label	looks_type30
+0xa1fe	label	looks_type34
 0xa232	label	looks_door
 0xa24a	label	looks_trapdoor
 0xa272	label	looks_cracked_wall
+0xa4a2	label	look_type30_0
+0xa4a6	label	act_0c_blink_word
 0xa562	label	objlist_level0
 0xa65e	label	objl0_e21_trapdoor
 0xa68e	label	objl0_e25_cracked_wall
 0xa742	label	objl0_e40_door
 0xa828	label	objlist_level1
 0xaa3a	label	objlist_level2
+0xac44	label	draw_part
 0xacbc	label	spawn_effect
 0xacdc	label	aim_table
 0xacec	label	update_player
 0xaf76	label	icon_offsets
 0xafae	label	punch_dx
 0xaff8	label	player_move
+0xb2d8	label	cam_dx_imm
 0xb32c	label	player_hitboxes
 0xb3ae	label	player_state_params
 0xb3f6	label	player_xstep
@@ -248,16 +290,77 @@
 0xc238	label	msg_suspect
 0xc24b	label	msg_cain_destroyed
 0xc3e4	label	update_objects
+0xc59c	label	markers_level0
+0xc5ec	label	markers_level1
+0xc624	label	markers_level2
+0xc7e0	label	t1_legs_offs
+0xc800	label	t1_torso_dy
+0xc8fe	label	t2_draw
+0xc90e	label	t2_flash_jump
 0xc948	label	walker_legs
+0xc9a4	label	walker_legs_dy
+0xc9b4	label	walker_legs_offs
+0xc9d4	label	walker_legs_bltsize
+0xc9f4	label	walker_legs_dx
+0xcb12	label	gunman_torso_idx
+0xcb22	label	gunman_flash_idx
+0xcb32	label	gunman_flash_dx
+0xcb3e	label	gunman_flash_dy
+0xcb4a	label	gunman_torso_offs
+0xcb56	label	gunman_torso_bltsize
+0xcb62	label	gunman_torso_dx
+0xcbaa	label	t3_torso_offs
+0xcbd2	label	t3_torso_bltsize
+0xcbfa	label	walker2_legs_offs
+0xcc22	label	walker2_legs_bltsize
+0xcc4a	label	walker2_legs
+0xccd2	label	walker2_legs_dx
+0xccfa	label	walker2_fire
+0xd046	label	t4_flash_dx
+0xd056	label	t4_flash_dy
+0xd066	label	t4_torso_offs
+0xd076	label	t4_torso_dx
+0xd086	label	t4_torso_dy
+0xd096	label	t4_torso_bltsize
+0xd17c	label	t5_bltsize
+0xd19a	label	t5_gfx_offs
+0xd1b0	label	t5_dx
+0xd1dc	label	barrel_gap
+0xd2da	label	t6_gfx_offs
 0xd46c	label	msg_chase_cain
 0xdc76	label	msg_arrest
+0xdc8a	label	msg_arrest_ok
+0xe67a	label	obj38_mail_dir
+0xe67c	label	obj38_mail_x
+0xe67e	label	obj38_mail_y
+0xe680	label	homing_dx
+0xe6a0	label	homing_dy
+0xe728	label	homing_body
+0xe7b2	label	homing_gfx_offs
+0xea50	label	map_put_2x3_a
+0xeaa6	label	map_put_2x3_flash
+0xebb8	label	map_put_2x3_b
+0xed04	label	msg_man_rescued
 0xed11	label	msg_extra_life
+0xef42	label	obj_walk
+0xef72	label	obj_fall
 0xef8e	label	obj_map_cell
 0xefe0	label	map_row_offsets
 0xf080	label	effects_update
+0xf140	label	expl_bltsize
+0xf1c6	label	expl_gfx
 0xf366	label	spawn_explosion
+0xf37c	label	expl_sound
+0xf3bc	label	expl_first
+0xf3c5	label	expl_last
 0xf3ce	label	ebullet_update
+0xf4a4	label	ebullet_gfx
+0xf500	label	ebullet_bltsize
+0xf55c	label	ebullet_anim
 0xf5bc	label	ebullet_add
+0xf5d2	label	ebullet_sound
+0xf658	label	ebullet_vx
+0xf67c	label	ebullet_vy
 0xf76c	label	frame_keys
 0xf80e	label	palette_flash
 0xf816	label	set_robocop_colours
@@ -273,17 +376,27 @@
 0xfd5a	label	weapon_icon_table
 0xfd92	label	message_slots
 0xfe96	label	clear_game_vars
+0xffc4	label	new_game_vars
 0xffd8	label	init_lives
 0xfff6	label	palette_level0
 0x10036	label	palette_level12
+0x10128	label	name_datal1
+0x1012f	label	name_datal2
+0x1013c	label	name_sperma
 0x10254	label	key_joy_table
+0x10356	label	copper_sprite_cut
+0x1035a	label	copper_sprites_off
 0x1049e	label	copper_game
 0x105d2	label	panel_draw_digit
 0x10620	label	panel_draw_char
 0x10762	label	text_screen_stop
 0x10768	label	text_screen
+0x1079a	label	text_screen_curtain
+0x11932	label	file_cache_restore
+0x1195e	label	file_cache_store
 0x11a20	label	game_boot
 0x11dc6	label	number_text
 0x11e06	label	show_picture
+0x11fd2	label	continue_offer
 0x12082	label	high_score_entry
 0x12352	label	copper_picture
