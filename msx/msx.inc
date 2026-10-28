@@ -453,6 +453,10 @@ rgr_full:   equ 0xC6D0              ;   1 when the whole page is dirty,
 rgr_ge:     equ 0xC6D1              ;   2: the group's first element and their count,
 rgr_go:     equ 0xC6D3              ;   its state bytes' offset,
 rgr_rt:     equ 0xC6D4              ;   2: its routine
+rgr_ring:   equ 0xC6D6              ; 1 on a V9958 (RG_ADJ builds): each page a ring of 256 columns
+                                    ;   (Amiga column & 255) that R#26/R#27 scroll (frngview.asm)
+rgr_rmk:    equ 0xC6D7              ; ring mode: 1 when the target page's c moved (every group made again)
+rgr_nx2:    equ 0xC6D8              ; ring mode: NX of a command's second part, from column 0 (0: none)
 
 ; game logic: the Amiga game's variables, mirrored at their own offsets: $0B00-$16FF -> AM +
 ; address (D000h-DBFFh), $8000-$80FF -> AG + address (DC00h-DCFFh). The mirror is the Amiga's

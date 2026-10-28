@@ -191,6 +191,9 @@ proc rgv_probe_arm {dir labels neg} {
 	set ::rvp_lv 0
 	set ::rvp_sl [rc2_label $labels split_list]
 	set ::rvp_msk [rc2_label $labels hud_msk]
+	set ::rvp_ring [rc2_label $labels rgr_ring]
+	set ::rvp_n(ring) 0
+	set ::rvp_l27 0
 	lassign [rgv_tickcond $labels] a cond
 	set ::rvp_tbp [debug set_bp $a $cond rgv_p_tick]
 	set ::rvp_bps [list [debug set_bp [rc2_label $labels sp_r19] {} rgv_p_split] \
@@ -200,7 +203,9 @@ proc rgv_probe_arm {dir labels neg} {
 proc rgv_p_tick {} {
 	if {$::rvp_on} return
 	set ::rvp_on 1
-	if {$::rvp_neg} { poke [expr {$::rvp_sl + 8}] 0x9B }
+	# (the V9958's ring keeps R#18 at 0 and scrolls by R#27: its control turns the split's R#27 = 0
+	# into R#18 = 0, so that R#27 stays the play area's)
+	if {$::rvp_neg} { poke [expr {$::rvp_sl + 8}] [expr {[peek $::rvp_ring] ? 0x92 : 0x9B}] }
 	catch {debug remove_bp $::rvp_tbp}
 }
 
@@ -210,10 +215,18 @@ proc rgv_p_vbl {} {
 	set lp [rc2_w 0xC003]
 	set n [peek [expr {$lp + 1}]]
 	set lv 0
+	set r25 0
+	set r27 0
 	for {set i 0} {$i < $n} {incr i 2} {
-		if {([peek [expr {$lp + 3 + $i}]] & 0x3F) == 18} { set lv [peek [expr {$lp + 2 + $i}]] }
+		set r [expr {[peek [expr {$lp + 3 + $i}]] & 0x3F}]
+		set v [peek [expr {$lp + 2 + $i}]]
+		if {$r == 18} { set lv $v }
+		if {$r == 25} { set r25 $v }
+		if {$r == 27} { set r27 $v }
 	}
 	set ::rvp_lv $lv
+	set ::rvp_l27 [expr {($r25 & 2) ? $r27 : 0}]
+	if {$r25 & 2} { incr ::rvp_n(ring) }
 	if {[debug read "VDP regs" 18] != $lv} { incr ::rvp_n(late) }
 }
 
@@ -221,11 +234,14 @@ proc rgv_p_split {} {
 	if {$::rvp_on != 1} return
 	incr ::rvp_n(splits)
 	incr ::rvp_n(frames)
-	if {$::rvp_lv} {
+	set sh [expr {$::rvp_lv ? $::rvp_lv : $::rvp_l27}]
+	if {$sh} {
 		incr ::rvp_n(shifted)
-		if {[info exists ::rvp_sh($::rvp_lv)]} { incr ::rvp_sh($::rvp_lv) } else { set ::rvp_sh($::rvp_lv) 1 }
+		if {[info exists ::rvp_sh($sh)]} { incr ::rvp_sh($sh) } else { set ::rvp_sh($sh) 1 }
 	}
-	if {[debug read "VDP regs" 18]} { incr ::rvp_n(hud) }
+	if {[debug read "VDP regs" 18] || [debug read "VDP regs" 27] || ([debug read "VDP regs" 25] & 2)} {
+		incr ::rvp_n(hud)
+	}
 }
 
 proc rgv_p_end {} {
@@ -240,6 +256,7 @@ proc rgv_p_end {} {
 		puts $f "msk [peek $::rvp_msk]"
 		puts $f "shifts [join $sh { }]"
 		puts $f "neg $::rvp_neg"
+		puts $f "ring $::rvp_n(ring)"
 	}
 	close $f
 	set ::rvp_on -1
@@ -504,7 +521,9 @@ proc rgv_suite {w} {
 		lappend jobs [rgv_job hold8_$tag $m $r $l hold $o {} 0 0 0 $hold8 1]
 	}
 	foreach {tag m} {fx Panasonic_FS-A1FX xd Sony_HB-F1XDJ_128K_Lite tr Panasonic_FS-A1GT} {
-		lappend jobs [rgv_job neg8_$tag $m $r $l hold $o {} 0 0 0 $hold8 2]
+		# (held at s = 7: R#18 7 on the R#18 path, R#27 1 on the V9958's ring, whose s = 8 scrolls by
+		# whole 8-column steps only)
+		lappend jobs [rgv_job neg8_$tag $m $r $l hold $o {} 0 0 0 $hold7 2]
 	}
 	foreach {tag m} {m2n C-BIOS_MSX2 trn Panasonic_FS-A1GT} {
 		foreach d {armed mixed edge timeout} {

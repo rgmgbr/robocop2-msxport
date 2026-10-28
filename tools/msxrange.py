@@ -277,6 +277,13 @@ def camera(s: int, b9a: int) -> int:
     return clamp(clamp(s, cx - BAND_HI, cx - BAND_LO), 0, CAM_MAX)
 
 
+def camera_ring(s: int, b9a: int) -> int:
+    """The V9958's ring (msx/frng.asm rg_cam with rgr_ring): the view is the 248 columns s..s + 247
+    (MSK hides screen x 0-7), so the band ends 8 columns sooner and s goes up to CAM_MAX + 8."""
+    cx = b9a - LINE_DX
+    return clamp(clamp(s, cx - (BAND_HI - 8), cx - BAND_LO), 0, CAM_MAX + 8)
+
+
 def camera_steps(s: int, b9a: int) -> int:
     """The RG_ADJ=0 build's rule (docs/RANGE.md 6: R#18 always 0), once a pass: s a multiple of 16
     that moves only when the crosshair's line would leave cx - s in ADJ_LO..ADJ_HI."""
@@ -793,7 +800,8 @@ class Range:
         """The page as the stage builds it from the state: lines 0-161, the scene at its c, then
         the elements in the original's z-order (docs/RANGE.md 3.3)."""
         c = st.c
-        check(c in range(0, CAM_MAX + 1, 16), f"a page's c is {c}, not 0, 16, 32, 48 or 64")
+        check(c in range(0, CAM_MAX + 1, 2), f"a page's c is {c}, not even in 0..64 (multiples of 16 for "
+              "R#18; any even c for the V9958's ring, msx/frngview.asm)")
         rows = [bytearray(r[c:c + VIEW_W]) for r in self.vscene]        # HMMM from page 2
         for p in st.pops:
             if p:

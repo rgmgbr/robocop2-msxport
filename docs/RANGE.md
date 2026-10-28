@@ -1803,3 +1803,35 @@ implementation's handoff log (scratch) recorded them step by step.
   title from power-on, the product from the keyboard on an MSX2, an MSX2+ and a turbo R, the range
   candidates from the keyboard with stills and records, the real 2:00), and `tools/msxmatrix.py` 10
   of 10 on each of the six files.
+
+### 11.1 The V9958's ring (2026-10-28, after the user's test of test4)
+
+The user found the range laggy while the camera pans, even on a turbo R: on every VDP a page whose
+c changed was built again whole (about 6 passes with the page on screen held, then a jump of up to
+10 passes). On a V9958 (RG_ADJ builds, the V9958's split list: `hud_msk`) the display now uses the
+chip's horizontal scroll instead (`msx/frngview.asm` `rgr_ring`):
+
+- each page is a ring: Amiga column x at page column x & 255, holding the 256 columns c..c + 255
+  (c even, 0-64); the list shows column s at screen x 8 by R#26/R#27 (X = s - 8, one page, level
+  1's rule of `msx/scroll9958.asm`), MSK hides x 0-7, R#18 stays 0, and the split's own R#27 = 0
+  (split_list + 8 keeps 9Bh) resets the scroll for the HUD;
+- the view is the 248 columns s..s + 247, so `rg_cam`'s band ends 8 columns sooner and s goes up to
+  72 (every column 0-319 still comes into view; `tools/msxrange.py` `camera_ring`);
+- a page keeps its c while s stays in c..c + 8; else its build moves c by d and draws only the d
+  columns that come in (`rvb_ring`): the elements keep their columns (their x relative to c moves
+  by -d, cut to the page), every group is made again and compared with them, and a command that
+  passes column 255 is sent in two parts (`rv_ring`, `rv_ring2`);
+- the sprites (the crosshair's line, the box's sides) are placed at their screen x (x - (s - 8)):
+  R#26/R#27 move the bitmap, not the sprites.
+
+Measured in openMSX (`tools/bstest/rgview.sh`, all 11 sections PASS; `rgview.py` and `rgview.tcl`
+model the ring: the page un-rotated by c, the picture as shown with MSK, the ring's camera, the
+HUD probe on R#18, R#27 and MSK at the split's end, its negative control at s = 7):
+
+| | Pictures a second while panning (armed, mixed, timeout) | Holds of 7-10 passes (armed) |
+|---|---|---|
+| V9938 (R#18, unchanged) | 12.2, 10.7, 12.9 | 35 |
+| V9958 (the ring: FS-A1FX, FS-A1GT) | 17.2-17.3, 15.7-16.2, 16.3-18.0 | 3 |
+
+The V9938 keeps R#18 and its whole-page builds: it has no horizontal scroll register. Only bank 88
+(`BANK_FRNG`, now 7,899 B) differs from test4's product; the logic's traces are unchanged.

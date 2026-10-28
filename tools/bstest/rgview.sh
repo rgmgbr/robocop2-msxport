@@ -122,11 +122,22 @@ check)
   ng=$(grep -l '^neg 1' "$O"/st/*/probe.txt 2>/dev/null | wc -l | tr -d ' ')
   ends=0
   for m in fx xd tr; do
-    grep -q -E '^shifts .*07h:[1-9]' "$O/st/hold7_$m/probe.txt" 2>/dev/null || ends=1
-    grep -q -E '^shifts .*08h:[1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null || ends=1
     grep -q -E '^msk [1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null || ends=1
+    if grep -q -E '^ring [1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null; then
+      # the V9958's ring (frngview.asm rgr_ring): R#18 stays 0, the sweep must show every fine scroll
+      if [ -f "$O/st/sweep_$m/probe.txt" ]; then
+        for k in 01 02 03 04 05 06 07; do
+          grep -q -E "^shifts .*${k}h:[1-9]" "$O/st/sweep_$m/probe.txt" || ends=1
+        done
+      else                                   # (the HB-F1XDJ runs no sweep: hold7's s = 7 scrolls by 1)
+        grep -q -E '^shifts .*01h:[1-9]' "$O/st/hold7_$m/probe.txt" 2>/dev/null || ends=1
+      fi
+    else
+      grep -q -E '^shifts .*07h:[1-9]' "$O/st/hold7_$m/probe.txt" 2>/dev/null || ends=1
+      grep -q -E '^shifts .*08h:[1-9]' "$O/st/hold8_$m/probe.txt" 2>/dev/null || ends=1
+    fi
   done
-  echo "  $pn probe(s), $ng negative control(s); shifts -7 and +8 on the three V9958s: $([ $ends -eq 0 ] && echo yes || echo NO)"
+  echo "  $pn probe(s), $ng negative control(s); the V9958s' shifts (R#18 -7 and +8, or the ring's R#27 1-7): $([ $ends -eq 0 ] && echo yes || echo NO)"
   [ $rc -eq 0 ] && [ "$pn" -ge 33 ] && [ "$ng" -eq 3 ] && [ $ends -eq 0 ]; verdict $?
   step "the display guard over armed's passes and the camera sweep (reg, pal, cmd, cpu, vbl, tear: 0)"
   gn=0; gb=0

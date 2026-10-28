@@ -947,6 +947,15 @@ snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 
 ### 5.18 The shooting range's display and its camera (steps 8 and 9 of its plan)
 
+(2026-10-28) On a V9958 the range scrolls its pages as rings by R#26/R#27 instead of R#18
+(`docs/RANGE.md` 11.1). `rgview.py` recognises a ring list by R#25's MSK: it un-rotates the page by
+its c before the compare, builds the picture as shown (screen x = Amiga column s - 8 + x, x 0-7
+hidden), places the sprites at their screen x, takes the bench's camera from
+`msxrange.camera_ring` and leaves c out of the bench's state (a ring page keeps its own c while it
+holds s's columns; the registers' check holds c <= s <= c + 8). The HUD probe counts R#18, R#27 or
+MSK left at the split's end; its negative control holds s at 7 and, on a ring, turns the split's
+R#27 = 0 into R#18 = 0.
+
 The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; `docs/RANGE.md` 3.3 and
 4.2) draws what the original draws in each
 pass: the wanted state `rg_want` (EE00h, `range.inc`'s `RG_ST_` layout), taken whole when a build of
