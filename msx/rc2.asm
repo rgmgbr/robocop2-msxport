@@ -5,7 +5,7 @@
 ; Build with tools/mkrom.py (z80asm 1.8).
 
         include "banks.inc"
-        include "robocop.inc"
+        include "sprites.inc"       ; the global sprite pool (tools/msxsprites.py --pool)
         include "hud_rt.inc"
         include "options.inc"       ; build options (tools/mkrom.py): FORCE_V9938, DEMO_ACTORS
         include "msx.inc"
@@ -408,7 +408,7 @@ fr_done:
 fr_rated:
         ret
 
-        include "robocop_flash.inc" ; RoboCop's palette flashes (tools/msxsprites.py)
+        include "sprites_flash.inc" ; RoboCop's palette flashes (tools/msxsprites.py)
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
 ; (rowtab.inc, tools/mkrom.py: the map's rows, their banks relative to lv_mapb; the attributes'
 ; rows; view_offx)

@@ -68,6 +68,8 @@ O_MONE:     equ 17                  ;   the same on one layer
 O_KIND:     equ 18                  ; 0 RoboCop, 1 BOB (O_KIND, O_ID as in a version record)
 O_ID:       equ 19                  ; 2 bytes: record * 4 + aim, or BOB frame
 O_BANDT:    equ 21                  ; 2 bytes: its band table (8000h window)
+O_TOPU:     equ 23                  ; the lines its picture reaches above its place (bob.asm bfs_new:
+                                    ;   the BOBHASH's; 0 but for level 2's type 1, a joint composition)
 O_TIER:     equ 25                  ; budget: 3 RoboCop (never touched), 2 the spark and the
                                     ;   explosions, 1 shots, enemy bullets, pickups, small parts,
                                     ;   0 the characters (enemies, lifts, the vehicle),
@@ -88,7 +90,7 @@ V_ID:       equ 9
 V_PAGE:     equ 11                  ;   which of the object's two entry pages holds its entries,
 V_MINDX:    equ 12                  ;   min dx, max dx,
 V_MAXDX:    equ 13
-                                    ;   (14: spare)
+V_TOPU:     equ 14                  ;   the lines its picture reaches above its place (O_TOPU),
 V_LINES:    equ 15                  ;   lines
 EC_ON:      equ 32                  ; early clock on when the leftmost sprite's x falls below this,
 EC_OFF:     equ 64                  ;   off from this (ahead of time)
@@ -300,7 +302,7 @@ os_new: ld (ix+O_KIND),a
         or a
         ld de,0x8000                ; RoboCop's index
         jr z,os_idx
-        ld de,SPR_BOB_INDEX
+        ld de,(lv_sidx)             ; (the level's BOB index: SPR_BOB_INDEX_Ln)
 os_idx: add hl,de
         ld a,SPR_BASE_BANK
         call bank_8000
@@ -2622,6 +2624,8 @@ pb_p0:  pop iy
         ld (iy+V_MAXDX),a
         ld a,(ix+O_NLINES)
         ld (iy+V_LINES),a
+        ld a,(ix+O_TOPU)
+        ld (iy+V_TOPU),a
         xor a
         ld (iy+V_N),a
         ld (pl_unl),a
@@ -3506,6 +3510,8 @@ sbo_yb: ld a,h
         or a
         jp nz,sb_parkall
         ld a,l
+        sub (iy+V_TOPU)             ; its picture's first line (level 2's joint compositions start
+        jr c,sbo_on                 ; above their place): above the top, it shows
         cp VIEW_LINES
         jp nc,sb_parkall
 sbo_on: ld hl,(sb_ox)               ; SAT x of dx = 0

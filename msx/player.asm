@@ -572,8 +572,9 @@ ps_pos: ld hl,(p_x)
         or a                        ; y ($16A4) ($BB96)
         ld a,SPARK_OBJ
         jp z,obj_hide
-        ld a,(spk_k)
-        add a,SPR_SPARK - 1
+        ld a,(lv_spark)             ; (the level's spark frames: the first - 1)
+        ld hl,spk_k
+        add a,(hl)
         ld e,a
         ld d,0
         ld a,SPARK_OBJ

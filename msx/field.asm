@@ -4,7 +4,7 @@
 ; holds the scroll engines' set-up, which runs once per level. The code here calls only fixed
 ; code: get_tile puts the A000h window's bank back, the tile cache maps 8000h only.
 
-        include "robocop_field.inc"     ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py)
+        include "sprites_l1_field.inc"  ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py --pool)
 
 ; The level's atlas (bank lv_fimg: tools/msxsprites.py field_frames) into VRAM, above the caches:
 ; at power-on, after the tiles (vdp.asm vdp_setup), and at each level's start (cold.asm

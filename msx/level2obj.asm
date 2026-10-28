@@ -92,7 +92,7 @@ t1_fire:
         call ebullet_add
         ld hl,0x403
         ld (bob_d4),hl
-        call bob_draw               ; the muzzle flash
+        call l2_flash               ; the muzzle flash
 t1_legs:
         ld a,(t_d2)
         ld e,a
@@ -250,7 +250,7 @@ t2_c:   ld l,(ix+OS_L40)
         ld (bob_a2+2),a
         ld hl,0x403
         ld (bob_d4),hl
-        call bob_draw               ; the muzzle flash
+        call l2_flash               ; the muzzle flash
         ld hl,0x180
         ld (eb_x),hl
         ld hl,(t_y)
@@ -770,7 +770,7 @@ t16_fire:
         call ebullet_add
         ld hl,0x403
         ld (bob_d4),hl
-        call bob_draw               ; the muzzle flash
+        call l2_flash               ; the muzzle flash
 t16_b:  ld hl,(t_x)
         ld de,-9
         add hl,de
@@ -811,6 +811,21 @@ t16_d:  ld (bob_a2),de
         ld hl,0x604
         ld (bob_d4),hl
         jp bob_part2                ; (the result: D0)
+
+; The muzzle flash of types 1, 2 and 16 (drawn before their other parts, on the frames they fire):
+; bob_draw as an owner of its own, bob_own + 1 (no object's address), as RoboCop's flash has one
+; (shots.asm). A BOB's identity is its owner and its place among the owner's BOBs (bob.asm), so the
+; flash drawn first would move the parts after it to other places on its frames: the legs' sprite
+; object would change hands (an older frame or nothing shown for a picture). The display's only.
+l2_flash:
+        ld hl,(bob_own)
+        inc hl
+        ld (bob_own),hl
+        call bob_draw
+        ld hl,(bob_own)
+        dec hl
+        ld (bob_own),hl
+        ret
 
 ; ----- type 49: a homing drone ($E6C0) and its flight ($E728-$E7B1, type 38's too) -----
 

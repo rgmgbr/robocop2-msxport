@@ -38,9 +38,11 @@ seeds: extract
 rea-asm: ram
 	tools/rea_dump_asm.sh "$(CURDIR)/$(BUILD)/ram/level1_full.bin" 3
 
-sprites: rea-asm
+# (level 2's catalogue takes the frames of level 1's bench coverage whose bytes level 2 holds too)
+sprites: rea-asm $(BUILD)/emu/cov_level1.json
 	$(PYTHON) -I tools/bobcatalog.py catalog
 	$(PYTHON) -I tools/bobcatalog.py sheets
+	$(PYTHON) -I tools/bobcatalog.py level2
 	$(PYTHON) -I tools/player.py $(BUILD)/sprites
 
 $(BUILD)/ram/level1_full.bin:
@@ -49,14 +51,15 @@ $(BUILD)/ram/level1_full.bin:
 $(BUILD)/ram/level2_full.bin:
 	$(MAKE) ram
 
-$(BUILD)/sprites/catalog.json:
+$(BUILD)/sprites/catalog.json $(BUILD)/sprites/catalog_l2.json:
 	$(MAKE) sprites
 
 # the BOB frames the original draws in level 1 (execution bench, long: ~20 minutes)
 $(BUILD)/emu/cov_level1.json: $(BUILD)/ram/level1_full.bin
 	$(VPYTHON) -I tools/amigacov.py --scenario level1 $@
 
-msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/sprites/catalog.json $(BUILD)/emu/cov_level1.json
+msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/sprites/catalog.json \
+		$(BUILD)/sprites/catalog_l2.json $(BUILD)/emu/cov_level1.json
 	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
 		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
 		--ram $(BUILD)/ram/level1_full.bin --level level1 --remove msx/level1_frames.json $(BUILD)/msx/robocop
@@ -72,6 +75,16 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BU
 		160 50 --level 2
 	$(PYTHON) -I tools/msxlvpal.py preview $(X)/files/DATAL2_18.bin --pal-file $(X)/boot/main_8000.bin \
 		--pal-addr 0x10036 --rows 50 --level $(BUILD)/msx/level2 -o $(BUILD)/msx/level2_amiga_vs_msx.png
+# the global sprite pool of levels 1 and 2 (the ROM's sprite data: sprites.bin, sprites.inc, sprites_l1*,
+# sprites_l2*; the level-2 plan 3.6): its level-2 frames are converted against palette C (level2.pal),
+# so it runs after the level-2 palette, with the level-1 arguments above (robocop.* written again, the
+# same bytes)
+	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
+		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
+		--ram $(BUILD)/ram/level1_full.bin --level level1 --remove msx/level1_frames.json \
+		--pool $(BUILD)/msx/sprites --l2-datal $(X)/files/DATAL2_18.bin --l2-rows 50 \
+		--l2-bobs $(BUILD)/sprites/catalog_l2.json --l2-ram $(BUILD)/ram/level2_full.bin \
+		--l2-pal $(BUILD)/msx/level2.pal --l2-remove msx/level2_frames.json $(BUILD)/msx/robocop
 	$(PYTHON) -I tools/msxhud.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(BUILD)/msx/hud --black 4
 	$(PYTHON) -I tools/msxhudrt.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(X)/files/PUZL_25.bin $(BUILD)/msx/hud_rt \
 		$(X)/files/FRNG_15.bin

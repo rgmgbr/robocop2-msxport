@@ -309,7 +309,20 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
      changes at most once.
 - **BOBs to objects** (`bob.asm` `bob_flush`): a BOB keeps the object its identity (category,
   owner, part) had in the tick shown before; its frame comes from a 512-slot hash of (A2, D4)
-  (`BOBHASH`). Objects without a record are hidden and forget their identity.
+  (`BOBHASH`, each level's own in its tables bank: slots of A2, D4, the frame id, the silhouette's
+  sprite frame, the lines the picture reaches above the draw call's place). Objects without a
+  record are hidden and forget their identity. Since level 2's step 12 the sprite data is one
+  global pool of both levels (`tools/msxsprites.py --pool`: `sprites.bin` from `SPR_BASE_BANK`,
+  27 banks; RoboCop's records, then each level's BOB index, compositions, patterns and colour
+  rows, level 1's at their old ids); the level's descriptor gives its index (`lv_sidx`) and its
+  hit spark's frames (`lv_spark`). Level 2's type 1 is one joint composition of legs and torso,
+  keyed and placed by the legs' call: its torso reaches 20-21 lines above that place and 2
+  pixels beside it, which `bf_vis` (an object while that picture is in the play area) and
+  `sb_object` (parked once its first line with pixels, `V_TOPU`, is below the play area) take
+  from the hash's last byte; the torso's own calls have id `BOB_HIDDEN` (FEh: no object). Its
+  muzzle flash, drawn before the legs, has an owner of its own (`level2obj.asm` `l2_flash`, as
+  RoboCop's has), so that the legs keep their part. Level 1's frames all have 0 there: its
+  objects decide as before.
 - **Frame structure** (main loop): wait for the last list's VBLANK; keys, seconds, HUD; after
   ticks: scroll update, `cam_mark`, RoboCop's composition, BOBs to objects, budget; without a
   tick: scroll update, `cam_follow`; then the plan (`spr_plan`: versions, queues, commits; its
@@ -386,10 +399,12 @@ stay put (types 26 and 28: 48x40, one colour a line as sprites, "almost invisibl
 truck), the explosion ($F266, up to 80x88 in two parts) and the smoke ($F080's 48x56 frames),
 which as sprites were striped, cut or left out.
 
-- **Data**: `tools/msxsprites.py` gives their frames BOBHASH ids from C8h and packs them into an
-  atlas (page 3 lines 0-87; `robocop_field.inc`: place, size and the draw offset of a frame
-  removed by the user's choices, the frame each one looks like). The ROM keeps the atlas frame by
-  frame (`robocop_field.bin`, one bank; a gunner's other facing is the mirror of the first,
+- **Data**: `tools/msxsprites.py` gives their frames BOBHASH ids from D0h (C8h before level 2's
+  sprite pool: level 2 has 204 sprite frame ids) and packs them into an atlas (page 3 lines 0-87;
+  `sprites_l1_field.inc`: place, size and the draw offset of a frame removed by the user's
+  choices, the frame each one looks like). The ROM keeps the atlas frame by frame
+  (`sprites_l1_field.bin`, one bank; level 2's own, `sprites_l2_field.bin`, is placed at
+  `L2_ATLAS` for its step 13; a gunner's other facing is the mirror of the first,
   `field_upload` mirrors it). `bob_flush` sends their records to `fb_new` (frame, x, y, owner =
   the record's object) instead of sprite objects; a gunner's hit flash also shows its sprite
   silhouette over the play field (BOBHASH's silhouette byte, `bf_frame`).

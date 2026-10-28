@@ -917,7 +917,10 @@ lv_maph:    equ lv_cur + 18             ; 2: the map's height in pixels (field.a
 lv_palp:    equ lv_cur + 20             ; 2: its palette (32 bytes, the colour grade's) and
 lv_voffp:   equ lv_cur + 22             ; 2:   its view_offy (LV_VOFFN bytes), which lv_copy copies to
                                         ;   lv_pal and lv_voffy (from FRONT, or from lv_tab's bank at A000h)
-LV_SIZE:    equ 24                      ; (34 at most: lv_vram follows)
+lv_sidx:    equ lv_cur + 24             ; 2: its BOB frames' index in the global sprite pool (sprites.asm
+                                        ;   os_new; bank SPR_BASE_BANK at 8000h: SPR_BOB_INDEX_Ln)
+lv_spark:   equ lv_cur + 26             ; its hit spark's first frame - 1 (player.asm: SPR_SPARK_Ln - 1)
+LV_SIZE:    equ 27                      ; (34 at most: lv_vram follows)
 lv_vram:    equ 0xF1C2                  ; the level whose tiles 0-255 (page 2) and play-field atlas
                                         ;   (page 3) VRAM holds: cold.asm lv_select uploads them
                                         ;   only for another level (FFh: none, an upload forced)

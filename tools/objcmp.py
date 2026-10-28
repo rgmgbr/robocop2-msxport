@@ -22,7 +22,17 @@ BOBs wholly outside the MSX play area (256 x 162, the left 8 columns masked) are
 and objects showing something the bench did not draw there are extra (wrong places: the worst).
 Objects alternating between frames (budget) count as shown.
 
-usage: objcmp.py AMI.jsonl MSX_OBJS.txt [-v]
+Level 2 (--sprites build/msx/sprites_l2.json, the global sprite pool's table of its frames, as
+mkrom's BOBHASH): type 1's joint compositions are keyed and placed as the legs' draw call, their
+picture reaching the torso's lines above it and 2 pixels either side (msx/bob.asm bf_vis); the
+torso's calls ("hidden") are no sprite object by design.
+
+--procs R,... counts only the frames of those drawing routines (the json's "proc": obj01_joint,
+obj05_update, ...): the bench's BOBs and the objects that show them. --rows N takes a record that runs
+past its drive (tools/bstest/hz.tcl hz_l2_objs_jobs): its lists from the first one of game frame 0-2
+(the level's start) while the game frame does not fall back (a new game) and is at most N + 1.
+
+usage: objcmp.py AMI.jsonl MSX_OBJS.txt [--sprites JSON] [--procs R,...] [--rows N] [-v]
 """
 from __future__ import annotations
 
@@ -37,31 +47,66 @@ MAX_OBJ = 16
 VIEW = 162
 
 
-def frame_table() -> tuple[dict[tuple[int, int], int], dict[int, tuple[int, int]], set[tuple[int, int]]]:
-    """(A2, D4) -> frame id, frame id -> size, and the (A2, D4) that are no sprite object by design
-    (the hit spark's frames, the BOBs drawn into the play field)."""
-    meta = json.loads((ROOT / "build/msx/robocop.json").read_text())
+def frame_table(path: Path = ROOT / "build/msx/robocop.json") -> tuple[dict[tuple[int, int], int],
+                                                                       dict[int, tuple[int, int]],
+                                                                       set[tuple[int, int]],
+                                                                       dict[int, tuple[int, int, int, int]]]:
+    """(A2, D4) -> frame id, frame id -> size, the (A2, D4) that are no sprite object by design
+    (the hit spark's frames, the BOBs drawn into the play field, the frames another call draws) and
+    frame id -> the box its picture covers from its place (x0, y0, x1, y1)."""
+    meta = json.loads(path.read_text())
     key = lambda f: (f["addr"], (f["h"] << 6) | (f["w"] // 16 + 1))   # noqa: E731
     bobs = meta["bobs"]
-    other = {key(f) for f in bobs if f.get("spark")} | {key(f) for f in meta.get("field", [])}
-    return ({key(f): f["id"] for f in bobs if not f.get("spark")}, {f["id"]: (f["w"], f["h"]) for f in bobs},
-            other)
+    other = {key(f) for f in bobs if f.get("spark")} | {key(f) for f in meta.get("field", [])} \
+        | {key(f) for f in meta.get("hidden", [])}
+    box = {}
+    for f in bobs:
+        up = -min((p[4] for p in f.get("joint", [])), default=0)
+        box[f["id"]] = (-2, -up, f["w"] + 2, f["h"]) if up > 0 else (0, 0, f["w"], f["h"])
+    return ({key(f): f["id"] for f in bobs if not f.get("spark")},
+            {f["id"]: (f["w"], f["h"]) for f in bobs}, other, box)
+
+
+def outside(box: tuple[int, int, int, int], x: int, y: int) -> bool:
+    """A picture at (x, y) wholly outside the MSX play area (256 x 162, the left 8 columns masked)."""
+    return x + box[2] <= 8 or x + box[0] >= 256 or y + box[3] <= 0 or y + box[1] >= VIEW
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bench", type=Path)
     ap.add_argument("msx", type=Path)
+    ap.add_argument("--sprites", type=Path, default=ROOT / "build/msx/robocop.json",
+                    help="the level's frame table (default level 1's; level 2: build/msx/sprites_l2.json)")
+    ap.add_argument("--procs", help="only the frames of these drawing routines (comma-separated)")
+    ap.add_argument("--rows", type=int, help="the drive's rows: the record cut to its game (see above)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
-    table, size, other = frame_table()
+    table, size, other, box = frame_table(a.sprites)
+    if a.procs:
+        procs = set(a.procs.split(","))
+        keep = {f["id"] for f in json.loads(a.sprites.read_text())["bobs"] if f["proc"] in procs}
+        other |= {k for k, i in table.items() if i not in keep}
+        table = {k: i for k, i in table.items() if i in keep}
     ami = {}
     for line in a.bench.read_text().splitlines():
         row = json.loads(line)
         ami[row["game_frame"]] = [b for b in row["bobs"] if b[5]]
     tot = Counter()
     shown_lists = 0
-    for line in a.msx.read_text().splitlines():
+    lines = a.msx.read_text().splitlines()
+    if a.rows is not None:
+        cut, last = [], None
+        for line in lines:
+            gf = int(line.split()[3])
+            if last is None and gf > 2:
+                continue                                    # (before the level's start)
+            if last is not None and gf < last or gf > a.rows + 1:
+                break                                       # (the drive's game is over)
+            cut.append(line)
+            last = gf
+        lines = cut
+    for line in lines:
         seq, cam_x, cam_y, gf, hexobjs = line.split()
         cam_x, cam_y, gf = int(cam_x), int(cam_y), int(gf)
         if gf - 1 not in ami:
@@ -88,8 +133,7 @@ def main() -> int:
                     res["missing, no frame"] += 1           # (a frame the sprite data lacks: never
                     problems.append(f"NO FRAME {a2:x}:{w}x{h} at ({sx},{sy})")   # shown at all)
                 continue
-            w, h = size[fid]
-            if sx + w <= 8 or sx >= 256 or sy + h <= 0 or sy >= VIEW:
+            if outside(box[fid], sx, sy):
                 continue                                    # (outside the MSX play area)
             want.append((fid, sx, sy))
         left = list(objs)
@@ -125,8 +169,7 @@ def main() -> int:
             res[kind] += 1
             problems.append(f"{kind} {fid} at ({x},{y})")
         for o in left:
-            w, h = size[o[0]]
-            if o[1] + w <= 8 or o[1] >= 256 or o[2] + h <= 0 or o[2] >= VIEW:
+            if outside(box[o[0]], o[1], o[2]) or (a.procs and o[0] not in table.values()):
                 continue                                    # (outside the play area: not seen)
             res["extra"] += 1
             problems.append(f"EXTRA {o[0]} at ({o[1]},{o[2]})")

@@ -229,6 +229,44 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	return $jobs
 }
 
+# Level 2's objects against the bench (the plan's 4.2 check 3, step 12): rc2_objs_rom (each new
+# register list's objects) on an LV_TEST=2 EXTJOY build driven by a bench drive, until the game frame
+# passes the drive's rows (its file closed, its probe gone: hz_l2_objs_done). DIR/<name>_<m2|fx|tr>.txt;
+# the record runs on a little past the drive (the poll comes once a real second): tools/objcmp.py's
+# --rows N cuts it. The bench's side: tools/amigaemu.py game --level 2 --carry 10050:2:0:good --gframes
+# G --drive build/emu/l2_<name>.drive --stop-at-end --bobs AMI.jsonl.
+proc hz_l2_objs_jobs {dir R names {machines {C-BIOS_MSX2 m2 Panasonic_FS-A1FX fx Panasonic_FS-A1GT tr}}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set rows [dict create end 259 tour 2654 lift 801 trolley 641 vat 701 barrel 901 mine 161 t1left 341 drone 401]
+	set jobs {}
+	foreach name $names {
+		set n [dict get $rows $name]
+		foreach {m tag} $machines {
+			lappend jobs [list objs_${name}_$tag $m [list hz_l2_objs "$R/l2/rc2_l2.rom" "$R/l2/rc2_l2.labels" \
+				"$dir/${name}_$tag.txt" [expr {8 * $n}] "$e/l2_$name.drive"] "\[hz_l2_objs_done $n\]" 900]
+		}
+	}
+	return $jobs
+}
+
+proc hz_l2_objs {rom labels file n drive} {
+	if {[info exists ::ro_out]} { catch {close $::ro_out}; unset ::ro_out }
+	if {[info exists ::ro_bp]} { catch {debug probe remove_bp $::ro_bp} }
+	rc2_objs_rom $rom $labels $file $n $drive
+}
+
+proc hz_l2_objs_done {rows} {
+	if {$::ro_done} { return 1 }
+	if {[rc2_w 0xCEE0] < $rows} { return 0 }
+	catch {close $::ro_out}
+	unset -nocomplain ::ro_out
+	catch {debug probe remove_bp $::ro_bp}
+	set ::ro_done 1
+	set ::pause on
+	return 1
+}
+
 proc hz_l2 {dir R {tr ""} {only ""}} {
 	hz_chain [hz_l2_jobs $dir $R $tr $only]
 }

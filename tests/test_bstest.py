@@ -156,6 +156,75 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout.splitlines(), ["sizes 16384 16384", "bank 1: 2 bytes differ, offsets 0100-0200"])
 
+    def shifted(self) -> list[Path]:
+        """Two images: a code bank 1 whose `ld a,D_BANK` and `ld a,D_BANK + 1` (3Eh nn) name the data block
+        D, moved from bank 4 to bank 6 because the block X before it grew from 2 banks to 4; their banks.inc
+        (in gen/ next to each) and labels."""
+        a, b = bytearray(b"\xff" * 8192 * 5), bytearray(b"\xff" * 8192 * 7)
+        a[8192:8192 + 4] = b"\x3e\x04\x3e\x05"
+        b[8192:8192 + 4] = b"\x3e\x06\x3e\x07"
+        a[2 * 8192:4 * 8192] = b"\x22" * 2 * 8192                  # X: 2 banks, then 4 (allowed to differ)
+        b[2 * 8192:6 * 8192] = b"\x22" * 4 * 8192
+        a[4 * 8192:5 * 8192] = b"\x11" * 8192                      # D: the same bytes at its new bank
+        b[6 * 8192:7 * 8192] = b"\x11" * 8192
+        d = {}
+        for n, rom, dd in (("a", a, 4), ("b", b, 6)):
+            (self.tmp / n / "gen").mkdir(parents=True)
+            (self.tmp / n / f"{n}.rom").write_bytes(rom)
+            (self.tmp / n / "gen" / "banks.inc").write_text(f"BANK_CODE: equ 1\nX_BANK: equ 2\nD_BANK: equ {dd}\n")
+            (self.tmp / n / f"{n}.labels").write_text(f"D_BANK:\tequ ${dd:04x}\nfoo:\tequ $4010\n")
+            d[n] = self.tmp / n
+        return [d["a"] / "a.rom", d["b"] / "b.rom", d["a"] / "a.labels", d["b"] / "b.labels"]
+
+    def test_romdiff_compares_the_blocks_at_their_banks(self):
+        a, b = self.shifted()[:2]
+        r = run([sys.executable, "-I", BST / "romdiff.py", "--blocks", a, b, "--allow", "X_BANK"])
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("D_BANK: banks 4-4 -> 6-6: identical", r.stdout)
+        self.assertIn("X_BANK: banks 2-3 -> 2-5: 2 -> 4 banks (identical over the first 2)", r.stdout)
+        self.assertIn("BANK_CODE: banks 1-1 -> 1-1: 2 bytes differ, offsets 00001-00003 (code: relocheck.py)", r.stdout)
+        self.assertIn("romdiff: PASS", r.stdout)
+        r = run([sys.executable, "-I", BST / "romdiff.py", "--blocks", a, b])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("romdiff: FAIL (X_BANK)", r.stdout)
+
+    def test_relocheck_takes_a_moved_banks_byte_operands_and_bank_pairs(self):
+        files = self.shifted()
+        r = run([sys.executable, "-I", BST / "relocheck.py", *files, "1"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("bank 1: 0 relocated label words, one-byte operands D_BANK x1, D_BANK + 1 x1", r.stdout)
+        r = run([sys.executable, "-I", BST / "relocheck.py", *files, "D_BANK", "1:1"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("bank D_BANK (4 -> 6): 0 relocated label words", r.stdout)
+        b = bytearray(files[1].read_bytes())
+        b[8192 + 3] = 8                                          # (moved by 3: no name did)
+        files[1].write_bytes(b)
+        r = run([sys.executable, "-I", BST / "relocheck.py", *files, "1"])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("bank 1 offset 0003: 05 -> 08 not a relocated label word or a changed name's byte", r.stdout)
+
+    def test_l2base_fresh_takes_the_same_sprites_in_another_sat_order(self):
+        sys.path.insert(0, str(BST))
+        import l2base
+        v = bytearray(0x20000)
+        for c in l2base.SPRITE_SETS:
+            for i in range(4):                                      # 4 entries, then y = 216
+                v[c + 0x200 + 4 * i:c + 0x200 + 4 * i + 4] = bytes([85, 140, 0xE0 + 4 * i, 0])
+                v[c + 16 * i:c + 16 * i + 16] = bytes([i + 1]) * 16
+            v[c + 0x200 + 16] = 216
+        w = bytearray(v)
+        c = l2base.SPRITE_SETS[0]
+        w[c + 0x208:c + 0x210], w[c + 0x200:c + 0x208] = v[c + 0x200:c + 0x208], v[c + 0x208:c + 0x210]
+        w[c + 32:c + 64], w[c:c + 32] = v[c:c + 32], v[c + 32:c + 64]
+        self.assertIn("the same sprites in another SAT order", l2base.sat_order(bytes(v), bytes(w)))
+        x = bytearray(w)
+        x[c + 5] = 9                                                 # (a colour row's byte)
+        self.assertIsNone(l2base.sat_order(bytes(v), bytes(x)))
+        x = bytearray(w)
+        x[0x10000] = 1                                               # (outside the sprite sets)
+        self.assertIsNone(l2base.sat_order(bytes(v), bytes(x)))
+        self.assertIsNone(l2base.sat_order(bytes(v), bytes(v)))
+
     def test_fixblank_counts_the_frames_without_the_hud(self):
         p = 0.0166833
         lines = ["# made up"] + [f"{k * p:.6f} S" for k in range(60)]

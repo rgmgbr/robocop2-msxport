@@ -481,6 +481,8 @@ bf_rec: ld a,d
 bf_fq:  call bf_fid
         cp 0xFF
         jr z,bf_ob                  ; (not one of the level's frames: hidden there)
+        cp BOB_HIDDEN               ; another record of the tick draws it (level 2's type 1: its
+        jr z,bf_nx                  ; torso, in the legs' joint composition): no object
         sub FIELD_ID0
         jr c,bf_ob
         push de
@@ -591,14 +593,38 @@ bf_hn:  inc c
 
 ; IX = a record -> C when its BOB is wholly outside the play area the MSX shows (256 x 163, the
 ; left 8 columns masked; the original's field is 288 x 177): it takes no object, which the BOBs
-; on screen need. Its size from D4: (words - 1) x 16 pixels, D4 >> 6 lines.
-bf_vis: ld l,(ix+5)
+; on screen need. Its size from D4: (words - 1) x 16 pixels, D4 >> 6 lines; a frame whose picture
+; reaches above its place (its BOBHASH slot's last byte: those lines; level 2's type 1, a joint
+; composition of legs and torso placed from the legs' call) is outside when that picture, those
+; lines higher and 2 pixels wider on either side, is. Keeps IX.
+bf_vis: ld bc,0                     ; (its place's box)
+        call bv_box
+        ret nc
+        call bf_fid                 ; outside it: does its picture reach further?
+        inc a
+        scf
+        ret z                       ; (not one of the level's frames)
+        ld a,e
+        or 7
+        ld e,a
+        ld a,(de)
+        or a
+        scf
+        ret z                       ; (no)
+        ld b,a
+        ld c,2
+; IX = a record, B = the lines above its place, C = the pixels beside it its picture reaches ->
+; C when that box is wholly outside the play area the MSX shows.
+bv_box: ld l,(ix+5)
         ld h,(ix+6)
-        ld de,-135
+        ld a,-135 & 0xFF
+        sub c
+        ld e,a
+        ld d,0xFF                   ; -135 - C
         add hl,de
         ld de,(cam_x)
         or a
-        sbc hl,de                   ; screen x
+        sbc hl,de                   ; screen x - C
         bit 7,h
         jr nz,bv_left
         ld a,h
@@ -618,8 +644,12 @@ bv_left:
         add hl,hl
         add hl,hl                   ; its width
         add hl,de
-        ld de,-9
-        add hl,de                   ; right edge - 9: negative when it ends in the masked columns
+        ld a,c
+        add a,a
+        sub 9
+        ld e,a
+        ld d,0xFF                   ; 2C - 9
+        add hl,de                   ; right edge + C - 9: negative when it ends in the masked columns
         bit 7,h
         scf
         ret nz
@@ -635,7 +665,10 @@ bv_y:   ld l,(ix+7)
         scf
         ret nz
         ld a,l
-        cp VIEW_LINES
+        sub b                       ; its picture's first line
+        jr nc,bv_bot
+        xor a                       ; (above the top, its place in the play area)
+bv_bot: cp VIEW_LINES
         ccf                         ; (C: at the play area's end or below it)
         ret
 bv_up:  ex de,hl
@@ -861,19 +894,28 @@ bfs_new:
         inc a
         jp z,bfs_none               ; not one of the level's frames
         dec a
-        push af
+        ld b,a
+        ld a,e                      ; the lines its picture reaches above its place (its BOBHASH
+        or 7                        ; slot's last byte: sprites.asm sb_object parks it by them)
+        ld e,a
+        ld a,(de)
+        ld c,a
+        push bc
         push ix
         ld a,(bf_obj)
         call obj_ix
         pop iy                      ; the record
-        pop af
-        ld l,a
+        pop bc
+        push bc
+        ld l,b
         ld h,0                      ; the frame
         ld a,(iy+9)
         and 15
         ld (os_mode),a              ; (BM_NORMAL, BM_FLASH, BM_BLACK: its silhouette)
         ld a,1                      ; (a BOB)
         call obj_set
+        pop bc
+        ld (ix+O_TOPU),c
         jp bfs_pos
 
 ; IX = a BOB record -> A = the sprite frame it shows: bf_fid's, but for a play-field frame drawn

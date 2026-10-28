@@ -20,7 +20,9 @@ calls it; stdlib only.
                                    two exact title records from power-on (regress.tcl rgr_xfresh_setup:
                                    DIR/A_*, DIR/B_*): the title's VRAM, registers and palette
                                    identical, its music identical at every tick (titlecmp2.py), the
-                                   game at exactly its tick 300: VRAM identical, RAM by ram's rules
+                                   game at exactly its tick 300: VRAM identical but the order of the
+                                   entries in each sprite set (the same entries: sat_order), RAM by
+                                   ram's rules
   l2base.py ram A.bin B.bin A.labels B.labels [ORIGIN]
                                    two RAM dumps (default D000h-DFFFh) of two builds, by name: a byte
                                    is compared at its variable's place in each build (the nearest
@@ -375,6 +377,36 @@ def cmd_ram(args: list[str]) -> int:
     return 0 if not bad else 1
 
 
+SPRITE_SETS = (0x1E000, 0x1E400)            # msx/msx.inc SPR_COL_A, SPR_COL_B: colour table, SAT + 200h
+
+
+def sat_order(x: bytes, y: bytes) -> str | None:
+    """Two game VRAM images that differ only in the order of the entries of each sprite set: in each
+    set (its 32 entries up to y = 216: SAT bytes and colour row) the same entries, the same number of
+    times -> a summary; None otherwise. Which BOB's run takes which entries moves with the CPU time
+    (two runs that both change take each other's entries, list by list: sprites.asm pc_run), so the
+    record at exactly tick 300 may catch the other order; the LOCKSTEP records (timing fixed) check
+    the order itself (level 2's step 12)."""
+    def entries(v: bytes, c: int) -> list[bytes]:
+        out = []
+        for i in range(32):
+            att = v[c + 0x200 + 4 * i:c + 0x200 + 4 * i + 4]
+            if att[0] == 216:
+                break
+            out.append(att + v[c + 16 * i:c + 16 * i + 16])
+        return out
+    d = [i for i in range(min(len(x), len(y))) if x[i] != y[i]]
+    if not d or len(x) != len(y) or any(not any(c <= i < c + 0x280 for c in SPRITE_SETS) for i in d):
+        return None
+    moved = []
+    for c in SPRITE_SETS:
+        ex, ey = entries(x, c), entries(y, c)
+        if sorted(ex) != sorted(ey):
+            return None
+        moved += [f"{c:05X}h entry {i}" for i in range(len(ex)) if ex[i] != ey[i]]
+    return f"{len(d)} bytes, the same sprites in another SAT order ({', '.join(moved)})"
+
+
 def cmd_fresh(args: list[str]) -> int:
     d, ta, tb = Path(args[0]), args[1], args[2]
     bad = []
@@ -386,8 +418,9 @@ def cmd_fresh(args: list[str]) -> int:
             continue
         x, y = fa.read_bytes(), fb.read_bytes()
         n = sum(p != q for p, q in zip(x, y)) + abs(len(x) - len(y))
-        print(f"{f}: " + ("identical" if not n else f"DIFFERENT ({n} bytes)"))
-        if n:
+        order = sat_order(x, y) if n and f == "game2_vram.bin" else None
+        print(f"{f}: " + ("identical" if not n else f"identical but {order}" if order else f"DIFFERENT ({n} bytes)"))
+        if n and not order:
             bad.append(f)
     ticks = []
     for t in (ta, tb):

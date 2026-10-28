@@ -72,8 +72,8 @@ The harness has two sides:
 | `shots.py OUT SNAP...` | python | whole-screen PNGs of snapshots (play area, blank lines, HUD; 2x) |
 | `fixblank.py FILE` | python | the HUD's blank at the turbo R's CPU switch (5.12) |
 | `frozen.py SNAP OUT.png` | python | what the VDP shows while the CPU is held (5.12) |
-| `romdiff.py A B` | python | the 8 KiB banks that differ |
-| `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words (5.15) |
+| `romdiff.py [--blocks] A B [--allow NAME,...]` | python | the 8 KiB banks that differ; `--blocks`: each block of `gen/banks.inc` at its own bank in each image (5.15) |
+| `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words and one-byte operands of changed names (`NAME + k`: bank numbers); `OLD:NEW` or a name for a code bank that moved (5.15) |
 | `variants.sh OUT` | shell | the night review's 41 option sets and level 2's 7 `LV_TEST=2` sets, built (5.15, 5.22) |
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
@@ -651,13 +651,27 @@ Copy to `build/msx` only the exact files sent.
 python3 -I tools/bstest/romdiff.py W/old/rc2.rom W/new/rc2.rom
 python3 -I tools/bstest/relocheck.py W/old/rc2.rom W/new/rc2.rom W/old/rc2.labels W/new/rc2.labels 0 78
 sh tools/bstest/variants.sh W/var
+# a layout that moves blocks (level 2's step 12: the sprite pool 4 banks larger, every later block
+# 4 banks on): the blocks by name, wherever each build put them, and the code banks that moved
+python3 -I tools/bstest/romdiff.py --blocks W/old/rc2.rom W/new/rc2.rom --allow SPR_BASE_BANK,LEVEL_BANK,L2_TAB
+python3 -I tools/bstest/relocheck.py W/old/rc2.rom W/new/rc2.rom W/old/rc2.labels W/new/rc2.labels \
+    0 1 2 3 4 5 6 7 8 9 BANK_PUZL BANK_FRNG BANK_L2
 ```
 
 - `romdiff.py` names the banks that differ. Expected: only the banks the change touched. The
   data banks 10-77 never changed during Brainstorm's milestone 1.
 - `relocheck.py` passes when a code bank's other differences are only operands of labels that
   moved ("relocheck: PASS", exit 0). For example, a `TAG` build against the `TAG=0` one in banks
-  0 and 78, or the review fix's FRONT change.
+  0 and 78, or the review fix's FRONT change. A one-byte operand passes when it is a changed byte
+  equate plus 0-63 that moved by as much (`NAME + k`: `ld a,HUD_BANK + 1`, `add a,SPR_BASE_BANK +
+  SPR_COL_BANK`, the bank numbers mkrom writes into `gen/music.inc`; the summary names the nearest
+  such equate), or a moved label's low or high byte after an instruction that takes a byte. Bytes
+  inserted into a bank (new code, a descriptor that grew) cannot pass: check them apart.
+- `romdiff.py --blocks` reads each image's `gen/banks.inc` (next to the ROM, as `build.sh` leaves
+  it): a block starts at a bank equate (`BANK_*`, `*_BANK`, `L2_TILES` ... `L2_ATLAS`; FIXED = banks
+  0-1) and runs to the next, the last to the first bank of 0FFh bytes; every data block is compared
+  with the other image's of the same name: "identical", a byte count, another size, or only in one
+  image. Exit 1 when a data block not named in `--allow` differs or is missing in the new image.
 - `variants.sh` builds the night review's 41 option sets ("NAME OK" or "NAME FAIL: the first
   error"). At `14bc5ef` all built except `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1`, which overflow the
   fixed area at `52149b0` too.
@@ -1401,7 +1415,7 @@ so that a step passes `l2base.sh check` literally:
 
 | Verdict | Before | Now |
 |---|---|---|
-| The title from power-on (`regress.sh` flows) | `hz_fresh`'s record: `hf_step` polls every 0.1 s, so the game was recorded at tick 302 instead of 300 | job `xfresh` (`regress.tcl` `rgr_xfresh_setup`: `hz_fresh_setup` with `np.tcl` `np_hf_step`): `fresh/xnew_*`, the game at exactly its tick 300 (a breakpoint at `tick_start`); `l2base.py fresh` against the base's `xbase_*`: the title's VRAM, registers and palette identical, its music identical at every tick (`titlecmp2.py`), the game's VRAM identical and its RAM D000h-DFFFh by `l2base.py ram`. A base without `xbase_*` (the range's) keeps the polled comparison; the polled record is reported |
+| The title from power-on (`regress.sh` flows) | `hz_fresh`'s record: `hf_step` polls every 0.1 s, so the game was recorded at tick 302 instead of 300 | job `xfresh` (`regress.tcl` `rgr_xfresh_setup`: `hz_fresh_setup` with `np.tcl` `np_hf_step`): `fresh/xnew_*`, the game at exactly its tick 300 (a breakpoint at `tick_start`); `l2base.py fresh` against the base's `xbase_*`: the title's VRAM, registers and palette identical, its music identical at every tick (`titlecmp2.py`), the game's VRAM identical but the order of each sprite set's entries (the same entries, the same number of times: `l2base.py sat_order`, level 2's step 12) and its RAM D000h-DFFFh by `l2base.py ram`. A base without `xbase_*` (the range's) keeps the polled comparison; the polled record is reported |
 | The titles after the flows (`tx_ex`, `tx_f1`, `tx_tr`, `kb_ex`, `kb_tr`) | the registers identical | `unseen_regs` (as `regress.sh cand`): identical but the sprite tables' R#5, R#6, R#10 and R#11 while both records have the sprites off (R#8 bit 1). R#5 differed (CF/C7: the SAT's double buffer, whose parity the frames before the title set) |
 | The field check (`fd_*`) | at most the base's pictures and pixels per window | `fieldcheck.py` prints a `CLASS` line per kind of difference in a picture (`hostage-tear` with the hostage BOBs of the shown and of the newest list, `smoke-tear`, `other`); `l2base.py field` accepts only the known classes (`TEARS`), within their bound |
 | The effects (`fx_scc`, `pw_scc`, `pw_psg`) | the logs byte-identical, write for write by VBLANK | `fxcmp.py` on `pw_K_sn.txt` (below); `fxcmp.py --starts` on `sess_fxlog.tcl`'s log (the same effects in the same order); the logs themselves reported |
@@ -1443,6 +1457,18 @@ so that a step passes `l2base.sh check` literally:
   Step 5 against the base: 803 / 802 starts the same, in the same frames, moved -1 to +1 VBLANKs
   inside them; SCC 57,475 and PSG 33,390 / 33,393 sound ticks compared, 0 differ (step 4 and the
   delays build alike: 0 differ, moves -1 to +2).
+
+**The sprite sets' order (level 2's step 12).** Which SAT entries a BOB's run takes depends on the
+CPU time: two runs that both change take each other's entries list by list (`sprites.asm` `pc_run`: a
+BOB's run goes where it fits), so at exactly tick 300 a build whose sprite code runs a little longer can
+catch the other order. Step 12's build reached tick 300 one VBLANK later than the base (123.040 s against
+123.023 s): the game's VRAM differed in 108 bytes, SAT entries 28-31 of both sprite sets (two 16 x 16
+boxes at the same place, 85/140, which the base itself swaps between its two sets), everything else
+identical, the RAM by variable equal. `l2base.py fresh` takes such a record when every differing byte lies
+in the two sprite sets (`SPRITE_SETS`: `msx.inc` `SPR_COL_A`, `SPR_COL_B`, colour tables and SATs) and each
+set holds the same entries (SAT bytes and colour row) the same number of times; any other byte, or an
+entry that is not the base's, still fails. The order itself is checked where the timing is fixed: the
+LOCKSTEP records (`dispcmp.py`, 2,998 lists 0 differ at step 12).
 
 **The base gained** (`impl/base`): `fresh/xbase_*` (the job `xfresh` on the base's product: byte for
 byte step 4's and step 5's exact base records) and `l1/fx/pw_scc_sn.txt`, `pw_psg_sn.txt` (the
@@ -1601,6 +1627,37 @@ At step 11 (2026-10-28, milestone 1's acceptance), three additions:
   two builds on the three machines); what the next picture shows is checked when its list goes in
   (`rc2_rg_vbl`), as before. It can only remove reports: Brainstorm's guard tears (16 x 16 copies into
   the play page) and the range's guard (0) are unchanged.
+
+At step 12 (2026-10-28, the global sprite pool in the ROM), **level 2's objects against the bench**
+(the plan's 4.2 check 3): `hz_l2_objs_jobs DIR R NAMES ?MACHINES?` (hz.tcl) runs `rc2_objs_rom` on
+`R/l2/rc2_l2.rom` with each named drive until the game frame passes the drive's rows
+(`hz_l2_objs_done`: the file closed, the probe gone), on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT:
+`DIR/<name>_<m2|fx|tr>.txt`. The bench's draw calls: `$PY -I tools/amigaemu.py game --level 2 --carry
+10050:2:0:good --gframes G --drive build/emu/l2_<name>.drive --stop-at-end --bobs AMI.jsonl`. Then
+`python3 -I tools/objcmp.py AMI.jsonl DIR/<name>_m2.txt --sprites build/msx/sprites_l2.json --rows N
+[--procs obj01_joint,obj05_update,...] [-v]`: `--sprites` gives level 2's frame table (the pool's: type
+1's joint compositions keyed and placed as the legs' call, their picture 20-21 lines higher and 2
+pixels wider; the torso's calls, "hidden", are no object), `--rows` cuts the record to the drive's game
+(it runs past the drive's end, sometimes into a new game), `--procs` counts only those routines'
+frames.
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [hz_l2_objs_jobs {W/O/objs} {W/R} {t1left barrel drone tour end}]
+```
+What the trace build shows besides "exact" (step 12, types 1, 5, 6, 49): "missing, left out" (the
+sprite budget: the build has `ENEMY_CAP=0`, up to five enemies on a line), "missing, loading" and
+"late" (an older frame of the same BOB for a picture; objcmp's size rule calls a growing drip, 16 x 16
+to 32 x 16, and the walkers' legs, 32 x 28 to 48 x 28, "late, other size": the same routine's frames),
+and "missing" only in lists that repeat a tick while the view moves (after `t1left`'s and `drone`'s
+teleports, or a 16-pixel step at an edge: `bf_vis` decides per tick, level 1 the same). No "extra",
+no "no frame". Two "late, other size" of other routines (type 4's 16 x 16 flash and a walker's torso,
+`tour`, `t1left` on the turbo R) are slot reuses of shared types, level 1's code.
+
+**msxframe's sprite pixels**: it puts the objects in front of each other by object number, the VDP by
+their SAT runs (a BOB's run goes where it fits): where two objects overlap, the 2-34 pixels a still
+counts as not exact (steps 9, 11, 12) all become exact with the SAT's order (every such still of
+steps 11 and 12 checked: the roof g2565 on the three machines, `t1left` g0215/g0260, `barrel` g0076,
+`drone` g0300); and on the V9938 a sprite in the right border's columns (set-adjust) is counted but
+not checked (`drone` g0050: 10 pixels). The check's limits, not the picture's.
 
 ## 6. The whole suite in order
 
