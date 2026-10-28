@@ -90,6 +90,11 @@ The harness has two sides:
 | `frsnd/frregcmp.py ROOT LOG...` | python (venv) | FRM's registers per tick in an `frsound.tcl` log against `frm.bin`'s streams decoded apart; `--selftest` (5.19) |
 | `frsnd/frsim.py ROOT ROM LABELS` | python (venv) | the range's sound on a ROM image in a Z80 interpreter (`frsnd/z80.py`, `frsnd/pzsim.py`: Brainstorm's), offline (5.19) |
 | `frsnd/frwavcmp.py`, `frsnd/fxalone.py` | python (venv) | recordings judged by pitch against the converter's previews (`frsnd/int_wavcmp.py`'s measures; 5.19) |
+| `l2base.sh builds W` / `check W BASE [RB]` / `base W` | shell | level 2's base and the comparison of any later build against it (5.21): `regress.sh`'s builds, the `LOCKSTEP=24` builds and the code banks' free bytes; every verdict of `regress.sh check` and of level 1's records below, then "l2base: PASS" |
+| `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 225 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 18 jobs) (5.21) |
+| `l2base.py banks` / `start` / `field` / `stills` | python | the code banks' free bytes (`msx/rc2.asm`'s padded windows) and the product's bank map; the verdicts of 5.21 against the base's |
+| `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21) |
+| `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -105,7 +110,11 @@ The Tcl reads these labels from a ROM's label file:
   labels (a text's span ends at the next one); the camera's checks: `rg_want`, `RG_ST_S` (the
   pokes), `sp_r19`, `split_list`, `hud_msk` (the probe); the flows (5.19): `fs_buf`, `new_game`,
   `display_on`, `txt_rg_res`, `rg_blost`; the sound: `tns_go`, `tn_tick`, `tn_left`, `snd_rfx`,
-  `snd_stop`, `BANK_MUSIC`.
+  `snd_stop`, `BANK_MUSIC`;
+- level 2's base (5.21): `spr_plan`, `SPR_BASE_BANK`, `SPR_PAT_BANK`, `SPR_COL_BANK`, `VIEW_LINES`,
+  `fx_start`, `fx_tick`; its field records copy RAM 0600h-09FFh (the play-field engine's lists:
+  `fb_dn0` 06D9h, `fb_dn1` 0712h, `fb_lost`, `fb_qn`), F240h-F27Fh (`fb_vis` F248h) and MP_B
+  F500h-F8FFh, which `fieldcheck.py` reads at those offsets.
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -1314,6 +1323,68 @@ with 0 torn, 0 SAT errors and 0 pixels outside, R#18 shown 06h at s = 6 and 00h 
 builds; the two left alone 6,050 passes, OUT OF TIME., POOR; every new game SHARP with the lost
 counters 0); the matrix 10 of 10 on all six. Negative controls of `unseen_regs`: R#8's sprite bit
 cleared, or R#2 changed, gives DIFFER.
+
+### 5.21 Level 2's base (step 0 of its plan)
+
+Level 2's plan asks every step to keep what exists unchanged: level 1's logic and picture, the title,
+`front_stats`, Brainstorm and the range, against its step 0, the base `a969fc8` (branch `level2` =
+main). `l2base.sh` runs the range's whole regression (5.19) and level 1's records that it does not
+make (`l2base.tcl`), in one chain, and compares any later build with the base:
+
+```sh
+sh tools/bstest/l2base.sh builds W         # regress.sh builds W, W/L/lock24 (EXTJOY=1 LOCKSTEP=24) and lock24p (+ NO_SCC=1), W/banks.txt
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; l2b_chain {W} {W/all.done}   (226 jobs)
+```
+```sh
+until [ -f W/all.done ]; do sleep 20; done
+sh tools/bstest/l2base.sh check W BASE     # every verdict below, then "l2base: PASS"; exit 0
+```
+
+`check W BASE [RB]` runs `regress.sh check W RB` (RB defaults to BASE: a base made by `l2base.sh base`
+holds what `regress.sh check` reads of a base, its title from power-on as `fresh/base_*`), then:
+
+| Job (`l2b_jobs`) | Records (`W/l1`) | Verdict |
+|---|---|---|
+| `tr_die`, `tr_over`, `tr_end` | `drive_die`, `drive_over`, `drive_end` (901, 1,249, 517 ticks) on the trace build, C-BIOS_MSX2 | `tools/tracecmp.py --ram` against the bench's `trace_*_ram.jsonl`: 0 differ |
+| `st_m2`, `st_fx`, `st_tr` | the product from the power-on of C-BIOS_MSX2, the FS-A1FX, the FS-A1GT: the title, SPACE, 40 s of level 1 from its tick 20 under `rc2_guard` (tears counted), `rc2_patcheck`, `rc2_sprlines`, `rc2_satcheck`; the lost counters | reg, pal, cmd, cpu, vbl, bad patterns, bad SATs, lost 0; tears and lines above 8 at most the base's (`l2base.py start`) |
+| `fd_FROM_M` | the field records: every picture of `drive_cov0` from game frame 430 (125), 860 (480), 1490 (360) on the `EXTJOY` build, C-BIOS_MSX2 and the FS-A1FX | `fieldcheck.py` (venv): every picture checked, at most the base's pictures and pixels that differ (`l2base.py field`) |
+| `sl_m2`, `sl_fx` | the stills: `rc2_snap` at the HUD split of the first new list from game frames 100, 430, 860, 1490, 2400 of `drive_cov0` on `lock24` | `tools/msxframe.py` (venv) renders each; the picture identical to the base's, its own count at most the base's (`l2base.py stills`) |
+| `lk_m2`, `lk_fx` | `rc2_disp_rom`, 3,000 lists of `drive_cov0` on `lock24` | `tools/dispcmp.py` against the base's: 0 differ |
+| `fx_scc`, `pw_scc`, `pw_psg` | 300 s of `drive_cov0` on `lock24`: `sess_fxlog.tcl` (every effect start, the SCC's and the PSG's registers at every `fx_tick`); every PSG write ("VBLANK register value") on `lock24` and `lock24p` (the effects on the PSG alone, which `sess_fxlog.tcl` does not see) | byte-identical to the base's: write for write |
+
+The code banks' free bytes (`l2base.py banks`: every `ds LIMIT - NAME_end` window of `msx/rc2.asm`)
+are listed beside the base's for every build. `l2base.sh base W` turns a checked folder into a base.
+
+Brought in from level 1's scratch folders at the base: `fieldcheck.py` (2026-10-21; the copy of
+`build/perf_2026-10-23`) and `sess_fxlog.tcl` (2026-10-22; its scratch copy was gone, its last text
+came from the session's log). Changed only where the harness's rules or the engine since required:
+`fieldcheck.py` imports without numpy or the build's files, finds the repository from its place,
+reads the map patches' two pools (`46fa12c`, 2026-10-25: the record carries MP_B F500h since, as
+`rc2_jumprec`'s), and counts a record of another length as skipped instead of passing it in
+silence (at the base it had skipped every record); `sess_fxlog.tcl` sources
+`tools/openmsx_rc2.tcl` from its place and sets `::fl_done` instead of quitting openMSX. Its
+checker `fxcheck.py` is lost (level 2's step 21 writes one). The start check starts its guard at
+`tick_start`: started inside a sprite upload (`outi32`), `rc2_guard` took the upload's writes for
+VRAM 00000h (it cannot know an address set before it started): 81 false "cpu" on the FS-A1GT.
+
+**The base of 2026-10-28** (`impl/base` of level 2's scratch folder): the 25 builds rebuilt byte for
+byte, the 23 of `regress.sh builds` equal to the range's step-13 builds, the product with `TAG=4`
+(and `ROM_2M=1`) equal to the delivered `ROBOCOP2_v0.1.3-test4.ROM` (`-2M`); 226 jobs without a time out;
+`regress.sh check` against the range's base `4a8a61d`: 45 verdicts, **regress: PASS** (the title
+from power-on identical to `4a8a61d`'s in every record); the death, game-over and end traces 0 differ;
+the start checks all 0 on the three machines (26,690 / 26,445 / 31,505 sprite entries checked); the
+field check 0 differ in every window but 860 on the MSX2: 3 pictures (`j008_f0021`-`23`, 177 pixels:
+the hostage half old, half new; 0 on the MSX2+), as level 1 had them (`0.1.1`: "3/6"); the stills'
+`msxframe.py` counts 0, 77, 37, 462 / 543, 57 (its map has no play-field BOB, patch or tile cache);
+3,000 lists, none late, on both VDPs; 800 effect starts and 7,435 SCC ticks, 19,846 and 22,217 PSG
+writes. A second run of the whole chain on a rebuild (the same 25 ROMs, byte for byte) against the
+base: **l2base: PASS**, every record identical. Negative controls (copies of the base's records, each
+must fail): `camera_x` of one trace row changed (1 differ), tear 0 → 2 and cpu 0 → 1 in a start
+check, 50 page lines zeroed in one field record (1 picture, 10,987 pixels), 16 KiB of a still's
+page zeroed (42,348 pixels), one SAT byte of a `LOCKSTEP` list (1 differ), one PSG write, one SCC
+tick: every one FAIL.
 
 ## 6. The whole suite in order
 
