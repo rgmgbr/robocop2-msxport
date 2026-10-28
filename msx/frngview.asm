@@ -25,6 +25,13 @@
 ;   sign, msx/scroll9938.asm), its sprites with it. When s leaves the back page's window, that
 ;   page is built again whole at the new c; the page on screen holds meanwhile (docs/RANGE.md
 ;   default 15).
+; - On a V9958 (RG_ADJ builds, the V9958's split list: hud_msk) each page is a ring instead: Amiga
+;   column x at page column x & 255, the page holding the 256 columns c..c + 255 (c even, 0-64);
+;   the list shows Amiga column s at screen x 8 by R#26/R#27 (X = s - 8), MSK hiding x 0-7, R#18
+;   0, so the view is the 248 columns s..s + 247 (s 0-72: frng.asm rg_cam). While s stays in
+;   c..c + 8 the page keeps its c; else the build moves c and draws only the columns that come in
+;   (rvb_ring), never the whole page. Elements keep their x relative to c (0-255) as everywhere
+;   else; rv_ring turns a command's x into its page column and cuts it at column 255.
 ; - rg_hide, before the stage returns: the VDP idle, the last list on screen, the play area black,
 ;   then a list with R#18 = 0 and the V9958's split byte back (a time out cuts in at any R#18),
 ;   both SATs empty, page 2's tiles back (page 3 lines 88-161 hold sheet S3 over the field engine's
@@ -106,6 +113,17 @@ rvs_l:  push bc
         djnz rvs_s
         ld a,BANK_FRONT
         call bank_8000              ; (FRONT at 8000h again)
+        xor a
+        ld (rgr_nx2),a
+        ld (rgr_rmk),a
+        if RG_ADJ
+        ld a,(hud_msk)              ; (the V9958's split list resets R#25-R#27 for the HUD)
+        or a
+        jr z,rvs_rg
+        ld a,1                      ; ring mode
+rvs_rg:
+        endif
+        ld (rgr_ring),a
         ld a,RG_CAM_START
         ld (rgr_c),a
         ld hl,0
@@ -117,8 +135,7 @@ rvs_pg: ld (rgr_page),a             ; both pages: the clean scene at c (the rest
         xor a
 rvs_ph: push af
         call rvo_do
-        ld hl,rgr_cmd
-        call nc,vdp_cmd
+        call nc,rv_send
         pop af
         inc a
         cp 3
@@ -172,6 +189,9 @@ rvs_z:  out (VDP_DATA),a            ; (its right half)
         ld hl,(frv_pass)
         ld (rgr_fr),hl              ; (the first build after the first pass)
         if RG_ADJ
+        ld a,(rgr_ring)
+        or a
+        ret nz                      ; (ring mode: R#18 stays 0, the split resets R#26/R#27 itself)
         ld a,(hud_msk)
         or a
         ret z                       ; (the V9938's split list sets R#18 = 0 itself)
@@ -313,8 +333,19 @@ rvf_prep:
 rvf_bld:
         call vdp_busy
         ret nz
+        ld a,(rgr_nx2)
+        or a
+        jr nz,rvf_2nd               ; (ring mode: the second part of the last command)
         call rvo_next
         jr c,rvf_fin
+        call rv_ring
+        ld (rgr_nx2),a
+        ld hl,rgr_cmd
+        jp vdp_cmd
+rvf_2nd:
+        call rv_ring2
+        xor a
+        ld (rgr_nx2),a
         ld hl,rgr_cmd
         jp vdp_cmd
 rvf_fin:
@@ -375,7 +406,15 @@ rvb_start:
         add a,RG_C_ROUND
         and 0xF0
         ld (rgt + RG_ST_C),a        ; (the multiple of 16 that R#18 shows s from)
+        ld a,(rgr_ring)
+        or a
+        jr z,rvb_nr
         ld a,(rgr_shown)
+        call rvb_spage
+        ld a,(hl)                   ; (the page on screen's c: RG_ST_C is 0)
+        call rv_ringc
+        ld (rgt + RG_ST_C),a        ; (ring mode: its own while it holds s's columns, so that a pass
+rvb_nr: ld a,(rgr_shown)            ;  that changed nothing else needs no build)
         call rvb_spage
         ld de,rgt
         ld b,RG_ST_LEN
@@ -400,9 +439,20 @@ rvb_go: ld a,(rgr_shown)
         ld (rgr_rn),a
         ld (rgr_eg),a
         ld (rgr_full),a
+        ld (rgr_rmk),a
         ld a,(rgr_page)
         call rvb_spage
-        ld a,(rgt + RG_ST_C)
+        ld a,(rgr_ring)
+        or a
+        jr z,rvb_c
+        ld a,(hl)
+        call rv_ringc               ; (ring mode: the target page's own c while it holds s's columns)
+        ld (rgt + RG_ST_C),a
+        ld (rgr_c),a
+        sub (hl)
+        jr z,rvb_nz
+        jp rvb_ring                 ; (another c: the columns that come in, the elements' x)
+rvb_c:  ld a,(rgt + RG_ST_C)
         cp (hl)                     ; (the page's c: RG_ST_C is 0)
         jr z,rvb_nz
         ld a,1
@@ -412,6 +462,155 @@ rvb_go: ld a,(rgr_shown)
         call rvd_add
 rvb_nz: or 1
         ret
+
+; Ring mode: A = a page's c -> A = the c it shows the target's s from: its own while s is in c..c + 8
+; (the 248 columns s..s + 247 among the 256 it holds), else the nearest even one that holds them,
+; 0-64 (B, C clobbered).
+rv_ringc:
+        ld b,a
+        ld a,(rgt + RG_ST_S)
+        ld c,a
+        sub b
+        jr c,rvr_lt                 ; (s below c)
+        cp 9
+        ld a,b
+        ret c                       ; (s in c..c + 8: its own)
+        ld a,c                      ; (moving right: c = s, even, at most 64)
+        and 0xFE
+        cp RG_CAM_MAX + 1
+        ret c
+        ld a,RG_CAM_MAX
+        ret
+rvr_lt: ld a,c                      ; (moving left: c = s - 8 or s - 7, even, at least 0)
+        sub 7
+        jr nc,rvr_ev
+        xor a
+rvr_ev: and 0xFE
+        ret
+
+; Ring mode, the target page's c moving by A = d (even, -64..64; HL = its shown state, DE = its
+; elements): its elements keep their columns, so their x (relative to c) moves by -d, cut to 0-255
+; (the source moving along) or gone; the columns that come in are dirty (d > 0: x 256 - d..255; d
+; below 0: x 0..-d - 1); every group is made again (rgr_rmk) and compared with them -> NZ.
+rvb_ring:
+        ld c,a
+        push de
+        pop ix
+        ld e,a
+        ld d,0
+        bit 7,a
+        jr z,rvr_d
+        dec d                       ; (DE = d, signed)
+rvr_d:  ld b,RGE_N
+rvr_el: ld a,(ix + 4)
+        or a
+        jr z,rvr_nx                 ; (nothing of it shows)
+        ld l,(ix + 2)
+        ld h,0
+        or a
+        sbc hl,de                   ; (x1 - d)
+        bit 7,h
+        jr nz,rvr_go                ; (left of the page: gone)
+        ld a,h
+        or a
+        jr z,rvr_x1
+        ld l,255
+rvr_x1: ld (ix + 2),l
+        ld l,(ix + 0)
+        ld h,0
+        or a
+        sbc hl,de                   ; (x0 - d)
+        ld a,h
+        or a
+        jr z,rvr_x0
+        bit 7,h
+        jr z,rvr_go                 ; (right of the page: gone)
+        ld a,l
+        neg                         ; (the cut, 1-64)
+        add a,(ix + 5)
+        ld (ix + 5),a
+        ld l,0
+rvr_x0: ld (ix + 0),l
+        jr rvr_nx
+rvr_go: ld (ix + 4),0
+rvr_nx: push de
+        ld de,RGE_LEN
+        add ix,de
+        pop de
+        djnz rvr_el
+        ld a,c
+        bit 7,a
+        jr nz,rvr_l
+        neg
+        ld b,a                      ; (x0 = 256 - d,
+        ld d,255                    ;  x1 = 255)
+        jr rvr_r
+rvr_l:  neg
+        dec a
+        ld d,a                      ; (x1 = -d - 1,
+        ld b,0                      ;  x0 = 0)
+rvr_r:  ld c,0
+        ld e,RG_VIEW_H - 1
+        call rvd_add
+        ld a,1
+        ld (rgr_rmk),a
+        or a                        ; (NZ)
+        ret
+
+; Ring mode: rgr_cmd's DX (x relative to the page's c, rgr_c) becomes its page column (x + c) & 255;
+; a command past column 255 is cut there -> A = the NX of its second part (0: none), rgr_cmd its
+; first; else A = 0, rgr_cmd as it was.
+rv_ring:
+        ld a,(rgr_ring)
+        or a
+        ret z
+        ld a,(rgr_c)
+        ld hl,rgr_cmd + 4
+        add a,(hl)
+        ld (hl),a                   ; (DX: its page column)
+        ld e,a
+        ld d,0
+        ld hl,(rgr_cmd + 8)
+        add hl,de
+        dec hl                      ; (its last column, 0-510)
+        ld a,h
+        or a
+        ret z                       ; (A = 0: within the page)
+        ld a,l
+        inc a
+        push af                     ; (the second part's NX: the columns past 255)
+        ld a,e
+        neg
+        ld (rgr_cmd + 8),a          ; (the first part's NX: 256 - DX; its high byte is 0 already
+        xor a                       ;  unless NX was 256)
+        ld (rgr_cmd + 9),a
+        pop af
+        ret
+; rgr_cmd the first part just sent, A = the second part's NX -> rgr_cmd the second part: from page
+; column 0, its source that many columns on (HMMV ignores SX).
+rv_ring2:
+        push af
+        ld a,(rgr_cmd + 8)
+        ld hl,(rgr_cmd + 0)
+        call rv_addh
+        ld (rgr_cmd + 0),hl
+        xor a
+        ld (rgr_cmd + 4),a
+        pop af
+        ld (rgr_cmd + 8),a
+        ret
+; rgr_cmd sent and waited for (the entry's builds), in its ring parts when it has two.
+rv_send:
+        call rv_ring
+        push af
+        ld hl,rgr_cmd
+        call vdp_cmd
+        pop af
+        or a
+        ret z
+        call rv_ring2
+        ld hl,rgr_cmd
+        jp vdp_cmd
 
 ; The target's elements, a group at a time (rvg_tab: each pop-up and its front layer, the big target,
 ; the dissolve, the box's edges, the crosshair's row): a group whose state bytes the target page
@@ -451,6 +650,9 @@ rvb_group:
         ld a,(rgr_full)
         or a
         jr nz,rvg_make
+        ld a,(rgr_rmk)
+        or a
+        jr nz,rvg_make              ; (ring mode, the page's c moved: made again and compared)
         ld a,(rgr_page)
         call rvb_spage
         push de                     ; (the page's elements)
@@ -1397,11 +1599,21 @@ rva_end:
         out (VDP_DATA),a
         jp vram_done
 
-; HL = a bitplane x -> C = its page x (x - c) and NC; carry when it is off the page.
-rva_x:  ld a,(rgt + RG_ST_C)
+; HL = a bitplane x -> C = its page x (x - c) and NC; carry when it is off the page. Ring mode: its
+; screen x (x - (s - 8): R#26/R#27 move the bitmap, not the sprites).
+rva_x:  ld a,(rgr_ring)
+        or a
+        jr nz,rva_xr
+        ld a,(rgt + RG_ST_C)
         ld e,a
         ld d,0
-        or a
+        jr rva_xs
+rva_xr: ld a,(rgt + RG_ST_S)
+        sub 8
+        ld e,a
+        sbc a,a
+        ld d,a                      ; (DE = s - 8, signed)
+rva_xs: or a
         sbc hl,de
         jp m,rva_no
         ld a,h
@@ -1466,12 +1678,16 @@ rvl_a:  ld (hl),b
         inc hl
         ld (hl),0x82
         inc hl
+        ld a,(rgr_ring)
+        or a
+        ld a,0
+        jr nz,rvl_18                ; (ring mode: R#26/R#27 scroll, R#18 stays 0)
         ld a,(rgt + RG_ST_C)
         ld e,a
         ld a,(rgt + RG_ST_S)
         sub e
         and 15
-        ld (hl),a                   ; R#18
+rvl_18: ld (hl),a                   ; R#18
         inc hl
         ld (hl),0x92
         inc hl
@@ -1487,15 +1703,44 @@ rvl_a:  ld (hl),b
         ld (hl),20
         dec hl
         ex (sp),hl
-        ld b,3
-        ld a,0x99
-rvl_58: ld (hl),0                   ; V9958: R#25-R#27 = 0 (one page, unscrolled)
+        call rv_hscr                ; V9958: R#25-R#27 (one page; ring mode: MSK and the scroll)
+        ld (hl),d
         inc hl
-        ld (hl),a
+        ld (hl),0x99
         inc hl
-        inc a
-        djnz rvl_58
+        ld (hl),e
+        inc hl
+        ld (hl),0x9A
+        inc hl
+        ld (hl),c
+        inc hl
+        ld (hl),0x9B
+        inc hl
         jp list_tail
+; -> D = R#25, E = R#26, C = R#27: 0, 0, 0 (unscrolled); ring mode MSK (x 0-7 hidden) and the scroll
+; X = (s - 8) & 255, the page column at screen x 0 (Amiga column s at x 8): R#26 = (X + 7) >> 3,
+; R#27 = -X & 7 (msx/scroll9958.asm's rule, one page).
+rv_hscr:
+        ld de,0
+        ld c,e
+        ld a,(rgr_ring)
+        or a
+        ret z
+        ld d,2
+        ld a,(rgt + RG_ST_S)
+        sub 8
+        ld b,a
+        neg
+        and 7
+        ld c,a
+        ld a,b
+        add a,7
+        rrca
+        rrca
+        rrca
+        and 0x1F
+        ld e,a
+        ret
 rvl_regs:
         db 0, 0x97                  ; R#23 first (isr.asm iv_list: the split's R#19 from it)
         db SPLIT_LINE, 0x93         ; R#19: the HUD's split

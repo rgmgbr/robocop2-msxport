@@ -587,7 +587,11 @@ rg_cam: ld a,(rg_want + RG_ST_S)
         ld e,a
         ld d,0                      ; (DE = s)
         ld bc,-RG_LINE_DX - RCM_HI
-        call rcm_b
+        ld a,(rgr_ring)
+        or a
+        jr z,rcm_r
+        ld bc,-RG_LINE_DX - RCM_HI + 8   ; (a V9958's ring: the 248-column view's band ends 8 sooner)
+rcm_r:  call rcm_b
         jp m,rcm_h                  ; (s above cx - HI)
         if RG_ADJ = 0
         ld bc,15
@@ -601,9 +605,16 @@ rcm_h:  ld bc,-RG_LINE_DX - RCM_LO
         bit 7,d
         jr z,rcm_0
         xor a                       ; (below 0)
-rcm_0:  cp RG_CAM_MAX + 1
+rcm_0:  ld b,a
+        ld c,RG_CAM_MAX
+        ld a,(rgr_ring)
+        or a
+        jr z,rcm_m
+        ld c,RG_CAM_MAX + 8         ; (the ring's view s..s + 247: s up to 72 for column 319)
+rcm_m:  ld a,b
+        cp c
         jr c,rcm_w
-        ld a,RG_CAM_MAX
+        ld a,c
 rcm_w:  ld (rg_want + RG_ST_S),a
         ret
 ; BC = -(RG_LINE_DX + a band's bound) -> HL = cx - that bound, the sign flag HL - DE's

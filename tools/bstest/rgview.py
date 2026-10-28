@@ -115,8 +115,50 @@ def sat_entries(sat: bytes) -> list[tuple[int, int, int, int]]:
     return out
 
 
-def want_sat(rg: msxrange.Range, st: msxrange.State) -> list[tuple[int, int, int, int]]:
-    return [(y, x, 4 * k, 0) for y, x, k in rg.sat(st)]
+def want_sat(rg: msxrange.Range, st: msxrange.State, ring: bool = False) -> list[tuple[int, int, int, int]]:
+    return [(y, x, 4 * k, 0) for y, x, k in (ring_sat(st) if ring else rg.sat(st))]
+
+
+# ----- the V9958's ring (msx/frngview.asm rgr_ring): a page holds Amiga column x at page column
+# x & 255 (the 256 columns c..c + 255, c even), the list scrolls it by R#26/R#27 so that column s
+# shows at screen x 8 (X = s - 8: the page column at screen x 0), MSK hides x 0-7, R#18 stays 0.
+
+def ring_x(lregs: dict) -> int | None:
+    """The page column at screen x 0 when the list scrolls a ring (R#25 MSK), else None."""
+    if not lregs.get(25, 0) & 2:
+        return None
+    return (8 * lregs.get(26, 0) - lregs.get(27, 0)) & 255
+
+
+def unring(rows: list, c: int) -> list:
+    """A ring page's lines as x relative to c (the stage's page coordinates)."""
+    return [bytes(r[c:]) + bytes(r[:c]) for r in rows]
+
+
+def ring_sat(st: msxrange.State) -> list[tuple[int, int, int]]:
+    """msxrange.Range.sat with the sprites at their screen x (x - (s - 8)), as rva_x writes them in
+    ring mode (R#26/R#27 move the bitmap, not the sprites)."""
+    out, o = [], st.s - 8
+    if st.cross:
+        x = st.cross[0] - msxrange.LINE_DX - o
+        if 0 <= x < 256:
+            out += msxrange.column(x, 0, msxrange.SPR_LINES)
+    if st.box:
+        n, cb, yb = st.box
+        top = yb - 16 * n
+        if top >= msxrange.SIDE_TOP:
+            for h in (cb - 16 * n, cb + 16 * n):
+                x = h - msxrange.SIDE_DX - o
+                if 0 <= x < 256:
+                    out += msxrange.column(x, top - msxrange.TOP, 32 * n)
+    return out
+
+
+def ring_screen(page: list, st: msxrange.State) -> list[bytearray]:
+    """The picture a ring page shows (lines in x relative to c): screen x shows Amiga column s - 8 + x,
+    x 0-7 hidden (colour 0)."""
+    sh = st.c - st.s + 8
+    return [bytearray(8) + bytearray(r[8 - sh:W - sh]) for r in page]
 
 
 def sat_problems(ents: list) -> list[str]:
@@ -225,14 +267,18 @@ class Bench:
         rule = msxrange.camera if self.adj else msxrange.camera_steps
         pokes = pokes or {}
         self.cam = {0: pokes.get(0, msxrange.CAM_START)}
+        self.cam_ring = dict(self.cam)          # (a V9958's ring: msxrange.camera_ring)
         for k in range(1, max(self.rows, default=0) + 1):
             if k not in self.rows:
                 break
             v = bytes.fromhex(self.rows[k]["vars"])
             self.cam[k] = pokes.get(k, rule(self.cam[k - 1], v[0x9A] << 8 | v[0x9B]))
+            self.cam_ring[k] = pokes.get(k, msxrange.camera_ring(self.cam_ring[k - 1], v[0x9A] << 8 | v[0x9B])
+                                         if self.adj else self.cam[k])
 
-    def state(self, k: int) -> bytes | None:
-        """The wanted state (RG_ST_LEN bytes, the camera at its start) at pass k's start."""
+    def state(self, k: int, ring: bool = False) -> bytes | None:
+        """The wanted state (RG_ST_LEN bytes, the camera at its start) at pass k's start; ring: the
+        V9958 ring's camera (its c is the page's own, see same_state)."""
         if k not in self.rows or k - 1 not in self.rows:
             return None
         r, p = self.rows[k], self.rows[k - 1]
@@ -265,15 +311,19 @@ class Bench:
         fx = (self.pic[f"{self.fxgfx[v[V(0xB46)]]:05x}"], w16(v, V(0xB56)), w16(v, V(0xB66))) if v[V(0xB3E)] else None
         n = msxrange.s16(w16(codep[0x1EB46], 4))
         box = (n, (4 + w16(vp, V(0xB9A))) & 0xFFF0, w16(vp, V(0xB9E))) if n > 0 else None
-        s = self.cam[k]
-        st = msxrange.State(msxrange.page_c(s), s, pops, big, fx, (w16(v, V(0xB9A)), w16(v, V(0xB9E))), box)
+        s = (self.cam_ring if ring else self.cam)[k]
+        st = msxrange.State(msxrange.page_c(min(s, msxrange.CAM_MAX)), s, pops, big, fx,
+                            (w16(v, V(0xB9A)), w16(v, V(0xB9E))), box)
         return st.to_bytes()
 
 
-def same_state(a: bytes, b: bytes) -> bool:
-    """Two shown states that draw the same: the box's n 0 and RG_NONE both mean none."""
+def same_state(a: bytes, b: bytes, ring: bool = False) -> bool:
+    """Two shown states that draw the same: the box's n 0 and RG_NONE both mean none. Ring mode
+    leaves c out: a ring page keeps its own c while it holds s's columns (the registers' check
+    holds c <= s <= c + 8)."""
     sa, sb = msxrange.State.from_bytes(a), msxrange.State.from_bytes(b)
-    return all(getattr(sa, f) == getattr(sb, f) for f in ("c", "s", "pops", "big", "fx", "cross", "box"))
+    return all(getattr(sa, f) == getattr(sb, f) for f in ("s", "pops", "big", "fx", "cross", "box")
+               + (() if ring else ("c",)))
 
 
 # ----- stills
@@ -315,48 +365,72 @@ def still(paths: list[Path], bench: Bench | None, png: Path | None = None) -> in
         st = msxrange.State.from_bytes(raw[:ST_LEN])
         spass = raw[ST_LEN] | raw[ST_LEN + 1] << 8
         msg = []
-        if (r18 & 15) != ((st.s - st.c) & 15) or r18 >> 4:
-            msg.append(f"R#18 {r18:02X}h for c {st.c} s {st.s}")
-        want_pic, want_page = rg.shown(st)
-        got_page = page_rows(vram[page * 0x8000:page * 0x8000 + 20736])
+        rx = ring_x(lregs)
+        if rx is not None:
+            if r18 or rx != (st.s - 8) & 255 or st.c & 1 or not st.c <= st.s <= st.c + 8:
+                msg.append(f"ring: R#18 {r18:02X}h, X {rx} for c {st.c} s {st.s}")
+            want_page = rg.page_rows(st)
+            want_pic = ring_screen(want_page, st)
+            got_page = unring(page_rows(vram[page * 0x8000:page * 0x8000 + 20736]), st.c)
+        else:
+            if (r18 & 15) != ((st.s - st.c) & 15) or r18 >> 4:
+                msg.append(f"R#18 {r18:02X}h for c {st.c} s {st.s}")
+            want_pic, want_page = rg.shown(st)
+            got_page = page_rows(vram[page * 0x8000:page * 0x8000 + 20736])
         dp = ndiff([bytearray(r) for r in got_page], want_page)
         if dp:
             msg.append(f"the page: {len(dp)} pixels differ, first {dp[:4]}")
         sprites = r8 == R8_SPR_ON
         sat_addr = ((vregs[11] & 3) << 15) | ((r5 & 0xFC) << 7)
         ents = sat_entries(vram[sat_addr:sat_addr + 128])
+        ring = rx is not None
         if sprites:
-            if ents != want_sat(rg, st):
-                msg.append(f"the SAT {ents[:3]}... ({len(ents)}), the state's {want_sat(rg, st)[:3]}... "
-                           f"({len(want_sat(rg, st))})")
+            if ents != want_sat(rg, st, ring):
+                msg.append(f"the SAT {ents[:3]}... ({len(ents)}), the state's {want_sat(rg, st, ring)[:3]}... "
+                           f"({len(want_sat(rg, st, ring))})")
             msg += sat_problems(ents)
-        pic = [bytearray(r) for r in got_page]
-        if sprites:
-            msg += compose(pic, vram, sat_addr, ents)
-            ref_pic = want_pic
+        if ring:
+            pic = ring_screen(got_page, st)
+            ref_pic = [bytearray(r) for r in want_pic]
+            if sprites:
+                msg += compose(pic, vram, sat_addr, ents)
+                compose(ref_pic, vram, sat_addr, [(y, x, 4 * k, 0) for y, x, k in ring_sat(st)])
+            for r in pic + ref_pic:
+                r[:8] = bytes(8)                            # (MSK: sprites hidden there too)
         else:
-            ref_pic = [bytearray(r) for r in want_page]   # (the intro's list: no sprites, R#18 0)
-        pic = shift_rows(pic, msxrange.r18_shift(r18))
+            pic = [bytearray(r) for r in got_page]
+            if sprites:
+                msg += compose(pic, vram, sat_addr, ents)
+                ref_pic = want_pic
+            else:
+                ref_pic = [bytearray(r) for r in want_page]   # (the intro's list: no sprites, R#18 0)
+            pic = shift_rows(pic, msxrange.r18_shift(r18))
         ds = ndiff(pic, ref_pic)
         if ds:
             msg.append(f"the picture: {len(ds)} pixels differ, first {ds[:4]}")
-        amiga, quirk = rg.compare(st)
+        if ring:                                        # (the composition, at a camera R#18 can show)
+            s18 = min(st.s, msxrange.CAM_MAX)
+            amiga, quirk = rg.compare(msxrange.State(msxrange.page_c(s18), s18, st.pops, st.big, st.fx,
+                                                     st.cross, st.box))
+        else:
+            amiga, quirk = rg.compare(st)
         if amiga:
             msg.append(f"the view: {amiga} pixels differ from the Amiga's composition")
         if bench and spass == 0:
             if any((st.pops[0], st.pops[1], st.big, st.fx, st.cross, st.box)):
                 msg.append("the entry's state (pass 0) has something drawn")
         elif bench:
-            exp = bench.state(spass)
+            exp = bench.state(spass, ring)
             if exp is None:
                 msg.append(f"no bench rows for pass {spass}")
-            elif not same_state(exp, raw[:ST_LEN]):
+            elif not same_state(exp, raw[:ST_LEN], ring):
                 msg.append(f"the state is not the bench's for pass {spass}: {msxrange.State.from_bytes(exp).__dict__}")
         drawn = [k for k, v in (("pop-up 0", st.pops[0]), ("pop-up 1", st.pops[1]), ("big", st.big),
                                 ("dissolve", st.fx), ("crosshair", st.cross), ("box", st.box)) if v]
         pal0 = all(v == 0 for v in ram[0xEA40 - 0xC000 + 2:0xEA40 - 0xC000 + 32])
         print(f"{path.name}: $B00 {ram[0x1000] | ram[0x1001] << 8}, page {page} (the state of pass {spass}), "
-              f"c {st.c} s {st.s} R#18 {r18:02X}h, {len(ents) if sprites else 'no'} sprites, "
+              f"c {st.c} s {st.s} {'ring X %d' % rx if ring else 'R#18 %02Xh' % r18}, "
+              f"{len(ents) if sprites else 'no'} sprites, "
               f"{', '.join(drawn) or 'nothing'} drawn{', quirk 4: %d' % quirk if quirk else ''}"
               f"{' (palette black)' if pal0 else ''}{'' if sprites else ' (the intro list)'}: "
               + ("equal to the render" if not msg else "FAIL: " + "; ".join(msg)))
@@ -387,7 +461,7 @@ def element_mask(rg: msxrange.Range, st: msxrange.State) -> list[tuple[int, int,
     return out
 
 
-def coherence(rg, sa, ia, sb, ib) -> int:
+def coherence(rg, sa, ia, sb, ib, ring: bool = False) -> int:
     """Pixels of two pictures shown in a row (states sa, sb; their pages' lines ia, ib) that differ
     outside both states' elements, compared in scene coordinates (screen x + s) as shown (R#18's
     shift applied); the columns the shift uncovers are left out."""
@@ -395,18 +469,19 @@ def coherence(rg, sa, ia, sb, ib) -> int:
     for x0, y0, x1, y1 in element_mask(rg, sa) + element_mask(rg, sb):
         for y in range(max(y0 - msxrange.TOP, 0), min(y1 - msxrange.TOP, H)):
             m[y][max(x0, 0):max(min(x1, msxrange.AW), 0)] = b"\1" * (max(min(x1, msxrange.AW), 0) - max(x0, 0))
-    va = shift_rows([bytearray(r) for r in ia], sa.c - sa.s)
-    vb = shift_rows([bytearray(r) for r in ib], sb.c - sb.s)
-    lo_a, hi_a = max(0, sa.c - sa.s), min(W, W + sa.c - sa.s)
-    lo_b, hi_b = max(0, sb.c - sb.s), min(W, W + sb.c - sb.s)
+    oa, ob = (sa.s - 8, sb.s - 8) if ring else (sa.s, sb.s)     # (the Amiga column at screen x 0)
+    va = shift_rows([bytearray(r) for r in ia], sa.c - oa)
+    vb = shift_rows([bytearray(r) for r in ib], sb.c - ob)
+    lo_a, hi_a = max(8 if ring else 0, sa.c - oa), min(W, W + sa.c - oa)
+    lo_b, hi_b = max(8 if ring else 0, sb.c - ob), min(W, W + sb.c - ob)
     n = 0
     for y in range(H):
         ra, rb = bytes(va[y]).translate(NORM), bytes(vb[y]).translate(NORM)
         if ra == rb and sa.s == sb.s:
             continue
         for x in range(lo_b, hi_b):
-            sx = x + sb.s
-            xa = sx - sa.s
+            sx = x + ob
+            xa = sx - oa
             if lo_a <= xa < hi_a and not m[y][sx] and ra[xa] != rb[x]:
                 n += 1
     return n
@@ -475,15 +550,26 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         raw = parts["ee"][RGS[page] - 0xEE00:RGS[page] - 0xEE00 + RGS_LEN]
         st = msxrange.State.from_bytes(raw[:ST_LEN])
         spass = raw[ST_LEN] | raw[ST_LEN + 1] << 8
-        key = bytes(raw[:ST_LEN])
+        rx = ring_x(lregs)
+        ring = rx is not None
+        key = bytes(raw[:ST_LEN]) + bytes([ring])
         if key not in renders:
-            renders[key] = rg.shown(st)
+            renders[key] = (None, rg.page_rows(st)) if ring else rg.shown(st)
         want_pic, want_page = renders[key]
         img = page_rows(parts["page"])
+        if ring:
+            img = unring(img, st.c)
         msg = []
         if lit:
             shifts[st.c - st.s] += 1
-        if r18 != (st.s - st.c) & 15:
+        if ring:
+            if r18 or rx != (st.s - 8) & 255 or st.c & 1 or not st.c <= st.s <= st.c + 8:
+                regbad += 1
+                msg.append(f"ring: R#18 {r18:02X}h, X {rx} for c {st.c} s {st.s}")
+            if b8 != 0x9B:
+                hudbyte += 1                            # (the HUD would show the ring's scroll)
+                msg.append(f"ring: split_list + 8 {b8:02X}h, not R#27's 9Bh")
+        elif r18 != (st.s - st.c) & 15:
             regbad += 1
             msg.append(f"R#18 {r18:02X}h for c {st.c} s {st.s}")
         dp = ndiff([bytearray(r) for r in img], want_page)
@@ -493,21 +579,21 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         ents = sat_entries(parts["sat"])
         sp = sat_problems(ents)
         black = not any(parts["pfpal"][2:])
-        if not ents and black and ents != want_sat(rg, st):
+        if not ents and black and ents != want_sat(rg, st, ring):
             hidden += 1                                 # (rg_hide: the SATs emptied, the palette black)
-        elif ents != want_sat(rg, st) or sp:
+        elif ents != want_sat(rg, st, ring) or sp:
             satbad += 1
             msg.append(f"SAT: {'; '.join(sp) or 'not the state'}'s")
-        if st.cross and not 0 <= st.cross[0] - msxrange.LINE_DX - st.s < W and newpic:
+        if st.cross and not 0 <= st.cross[0] - msxrange.LINE_DX - st.s < (W - 8 if ring else W) and newpic:
             outview += 1
             msg.append(f"the crosshair's line at view x {st.cross[0] - msxrange.LINE_DX - st.s}")
         if bench and newpic:
-            exp = bench.state(spass)
-            if exp is None or not same_state(exp, raw[:ST_LEN]):
+            exp = bench.state(spass, ring)
+            if exp is None or not same_state(exp, raw[:ST_LEN], ring):
                 benchbad += 1
                 msg.append(f"the state is not the bench's for pass {spass}")
         if prev is not None and newpic:
-            nout = coherence(rg, prev[0], prev[1], st, img)
+            nout = coherence(rg, prev[0], prev[1], st, img, ring)
             if nout:
                 outside += 1
                 msg.append(f"{nout} pixels outside the elements changed")
@@ -527,9 +613,13 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
                         for i in range(16)]
                 if all(c == bytes(3) for c in cols[1:]):
                     cols = [bytes(msxrange.rgb24(c, True)) for c in rg.pal[1]]
-                pic = [bytearray(r) for r in img]
-                draw_lines(pic, ents)
-                pic = shift_rows(pic, msxrange.r18_shift(lregs.get(18, 0)))
+                pic = ring_screen(img, st) if ring else [bytearray(r) for r in img]
+                draw_lines(pic, ents)               # (ring mode: the sprites at their screen x)
+                if ring:
+                    for r in pic:
+                        r[:8] = bytes(8)
+                else:
+                    pic = shift_rows(pic, msxrange.r18_shift(lregs.get(18, 0)))
                 write_png(png / f"pic{pics:04d}_p{spass:04d}.png", W * 2, H * 2,
                           [b"".join(cols[v] * 2 for v in r) for r in pic for _ in range(2)])
         if msg:
@@ -542,7 +632,8 @@ def rec(path: Path, bench: Bench | None, png: Path | None, pngmax: int) -> int:
         # the pictures a second while the camera pans (passes whose state has another s than the pass
         # before's) and while the riser animates (another riser frame: every other pass), over the
         # VBLANKs of those passes' spans (gaps of 3 passes at most joined); all: over the stage's
-        pans = {q for q in bench.cam if q - 1 in bench.cam and bench.cam[q] != bench.cam[q - 1]}
+        cam = bench.cam_ring if v58 else bench.cam                  # (the V9958's records: its ring)
+        pans = {q for q in cam if q - 1 in cam and cam[q] != cam[q - 1]}
         rise = set()
         for q in bench.rows:
             a, b = bench.state(q), bench.state(q - 1)
@@ -621,9 +712,10 @@ def rate(paths: list[Path], hz: int | None) -> int:
 # ----- the HUD's register probe
 
 def probe(paths: list[Path]) -> int:
-    """rgview.tcl rgv_p_* files: 'frames N', 'shifted N' (the list's R#18 != 0 at the split),
-    'hud N' (R#18 != 0 at the split's end), 'late N' (R#18 at iv_late not the list's), 'splits N',
-    'vblanks N', 'msk N', 'shifts {...}'."""
+    """rgview.tcl rgv_p_* files: 'frames N', 'shifted N' (the list's R#18 != 0 at the split, or the
+    V9958 ring's R#27 != 0), 'hud N' (R#18, R#27 != 0 or MSK at the split's end), 'late N' (R#18 at
+    iv_late not the list's), 'splits N', 'vblanks N', 'msk N', 'shifts {...}', 'ring N' (lists with
+    MSK: the ring)."""
     bad = 0
     for path in paths:
         v = {}
@@ -643,9 +735,12 @@ def probe(paths: list[Path]) -> int:
             ok = ok and n["msk"] != 0 and n["shifted"] > 0 and n["hud"] > 0
         else:
             ok = ok and n["hud"] == 0
+        ring = int(v.get("ring", "0") or 0)
+        what = "R#27 != 0 (the ring's fine scroll" if ring else "R#18 != 0 (shifts"
         print(f"{path.parent.name}: {n['frames']} frames ({n['vblanks']} VBLANKs, {n['splits']} splits), "
-              f"{n['shifted']} with R#18 != 0 (shifts {v.get('shifts', '')}), R#18 != 0 at the split's end "
+              f"{n['shifted']} with {what} {v.get('shifts', '')}), R#18 or R#27 != 0 or MSK at the split's end "
               f"{n['hud']}, R#18 at iv_late not the list's {n['late']}, hud_msk {n['msk']}"
+              f"{', ring lists %d' % ring if ring else ''}"
               f"{' (the negative control: must report the shift)' if neg else ''}: {'PASS' if ok else 'FAIL'}")
         bad += not ok
     return 1 if bad else 0
@@ -656,16 +751,19 @@ def want(paths: list[Path], bench: Bench) -> int:
     for path in paths:
         n = bad = 0
         seen = Counter()
+        ring = None                                     # (a V9958's ring: its camera rule)
         for line in path.read_text().splitlines():
             p = line.split()
             if len(p) != 3:
                 continue
             k, lost = int(p[0]), int(p[2])
-            exp = bench.state(k)
+            sa = msxrange.State.from_bytes(bytes.fromhex(p[1])[:msxrange.ST_LEN])
+            if ring is None and k in bench.cam and bench.cam[k] != bench.cam_ring.get(k):
+                ring = sa.s == bench.cam_ring[k]        # (the first pass the rules part: the file's)
+            exp = bench.state(k, bool(ring))
             if exp is None:
                 continue
             n += 1
-            sa = msxrange.State.from_bytes(bytes.fromhex(p[1])[:msxrange.ST_LEN])
             sb = msxrange.State.from_bytes(exp)
             diff = [f"{f} {getattr(sa, f)} / {getattr(sb, f)}" for f in ("s", "pops", "big", "fx", "cross", "box")
                     if getattr(sa, f) != getattr(sb, f)]
