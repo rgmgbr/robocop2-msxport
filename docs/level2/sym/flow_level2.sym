@@ -1,0 +1,31 @@
+# Symbols found by the level-2 "flow" area (2026-10-27), in the format of analysis/*.sym:
+# ADDRESS NAME [comment]. Main code at $8000, read with REA (Ghidra provider, raw-binary m68k,
+# entry 0x0) on build/ram/level2_full.bin with analysis/ghidra_seeds.tsv; $c91a needed an extra
+# function seed (rea/seeds_flow.tsv: the project's seeds plus "0xc91a function", REA CLI 6.7.0).
+# Names already in analysis/main_8000.sym are not repeated (level_headers, level_load_table,
+# load_level0/1/2, restart_level0, load_level_music, show_level_stats, init_lives, text_screen,
+# text_screen_stop, show_picture, clear_game_vars, msg_arrest, msg_chase_cain, msg_extra_life,
+# high_score_entry, level_start_entry, level_next, brainstorm_stage, shooting_range_stage).
++entry c91a
+86dc  restart_level12      rts: level_load_table entries [1] and [2], the restart of levels 2 and 3 (a death or a continue: no briefing, no picture, no load)
+86de  level_load_3         entries [3] and [7]: script $112C5, $11C54 (PICF, CMP), high_score_entry, bra $8090 (the title)
+8572  name_datal3          "DATAL3",0 (load_level2 $855E: lea (12h,PC),A0)
+8579  name_madex           "MADEX",0 (load_level1 $85B8: lea (-41h,PC),A0)
+857f  sperma_resident      byte: cleared by load_level2 ($8530) before DATAL3 overwrites SPERMA; load_level0 ($831E) loads SPERMA while it is 0
+8580  datal1_resident      byte: cleared by load_level1 ($8582) before DATAL2 overwrites DATAL1; load_level0 ($8334) loads DATAL1 and sets it while it is 0
+8656  name_mu1             "MU1",0 (load_level_music: lea (40h,PC) at $8614, (2Ch,PC) at $8628, (1Ch,PC) at $8638)
+868c  level_header_1       level 2's 40 bytes: objects $A828, hazards $95B2, specials $8FE0, spawns $97B0, start (160h, 310h), relocation (C0h, 70h), markers $C5EC, lowest camera 270h, timer 07:30, spawn delay 2Eh, marker mask 7, palette $10036
+86b4  level_header_2       level 3's 40 bytes: objects $AA3A, hazards $95EC, specials $9008, spawns $99E2, start (4A0h, 310h), relocation (E0h, 220h), markers $C624, lowest camera 270h, timer 07:30, spawn delay 3Ch, marker mask 3, palette $10036
+c25c  obj22_death          type 22's death routine (level 3): debris, three explosions, $16D0 set, $16C4 = 40h, message $C24B "CAIN DESTROYED."
+c91a  obj02_arrest_tail    type 2 (Cain, level 2) after its draw (pea at $C90A): hit points (+21h) = 4 every frame; touched (+23h): message $DC8A, effect 21h ($B2C), $16D0 set, $16C4 = 40h, D0 = -1 (slot freed); else D0 = 0
+dc8a  msg_arrest_ok        "ARREST SUCESSFULe" + $ff (the original's spelling; 'e' = '.')
+ed04  msg_man_rescued      "MAN RESCUEDe" + $ff
+ffc4  new_game_vars        $8050 = 0, $805E = 0, score $8046 = 0, then init_lives ($FFD8); never writes $8052 or $8060
+fe14  stop_all_black       music stopped, palette black; falls through at $FE92 into clear_game_vars
+1079a text_screen_curtain  $10768 with the 16-frame curtain, music kept (load_level0, restart_level0)
+11fd2 continue_offer       $805E - 1; >= 0: load_level_music and text_screen $11590 ("YOU HAVE A GAME CREDIT."); else the joystick byte cleared (no continue)
+1012f name_datal2          "DATAL2",0 (load_level1 $85C4: lea (7B69h,PC),A0, then jmp to the loader)
+10128 name_datal1          "DATAL1",0 (load_level0 $8342)
+1013c name_sperma          "SPERMA",0 (load_level0 $8326)
+11932 file_cache_restore   the expansion-RAM file cache: Z when the file came from the cache (load_level_music $8624 then skips the disk); off in this crack ($803A never holds its magic), so MU1 is read from the disk before every level
+1195e file_cache_store     A0 name, A1 address, D0 length (MU1: F6EDh bytes, $8642)

@@ -1,0 +1,51 @@
+# Symbols of level 2's play field (area "map", 2026-10-27), found with REA (Ghidra provider, raw-binary m68k,
+# entry 0x0) on build/ram/level2_full.bin (sha256 a039a158...0a88b09: RB1 MU1 DATAL2 MADEX SPERMA PERMA), seeded
+# with analysis/ghidra_seeds.tsv. Format: ADDRESS NAME [comment], with +data lines, as analysis/main_8000.sym.
+# The main code ($8000-$1257F) is the same in every level image; the names at $28000-$4B54B are level 2's data
+# (DATAL2 at $28000-$41D57, MADEX at $45250-$4B54B) and must never seed the level-1 or level-3 images.
+# Names already in analysis/main_8000.sym are not repeated, except where a better name is proposed (marked).
+#
+# --- the level header and the lists it patches into the code ---
++data 868c 86b4        level 2's header (level_init $871A: 40 bytes)
+868c  level2_header        +0 objects $A828, +4 hazards (vats) $95B2, +8 specials $8FE0, +12 spawn list $97B0, +16/+18 start x 352 / y 784 (player and camera), +20/+22 relocation (192, 112), +24 markers $C5EC, +28 camera's lowest y 624 ($B08), +30 timer 7:30 ($804A), +32 $2E ($16B8), +34 7 ($C53D's byte), +36 palette $10036
++data 8fe0 9008        level 2's special objects list (9 longs, -1 ends)
+8fe0  speclist_level1      level 2's special objects ($8B32 walks it: $8B54 patched by level_init): 5 lifts, 4 trolleys
++data 9088 911e        level 2's special objects' records (handler offset, x, y long, path index, path words, -1)
+9088  sp2_lift0            lift (handler 0, $8DE6) x 174, y 789, path y 709/789
+9098  sp2_lift1            lift x 542, y 789, path y 629/709/789
+90aa  sp2_lift2            lift x 2542, y 789, path y 469/709/789
+90bc  sp2_lift3            lift x 239, y 468, path y 308/468
+90cc  sp2_lift4            lift x 2543, y 181, path y 165/309/389
+90de  sp2_trolley0         trolley (handler 4, $8F02) y 592, path x 848/1008 (over vat 0)
+90ee  sp2_trolley1         trolley y 592, path x 1304/1408 (over vat 1)
+90fe  sp2_trolley2         trolley y 592, path x 1576/1712 (over vat 2)
+910e  sp2_trolley3         trolley y 640, path x 2016/2224 (over vat 3)
+8f02  special_trolley      (proposed for special_l1) handler 4, level 2 only by data: moves 2 px a frame between its path's x values; seen: RoboCop hanging on it (states 14/15, $1696), lift-table entry (left x, right x + 16, top y + 20, dx +-2), sound $0C on even frames, BOB $4B95A (BLTSIZE $BC3: 32 x 47) at (x + 16, y - 84). Writes no map cell
+# --- the vats (level_tick_1) ---
+91b0  hazard_tick_table    3 x bra.w: $933A (level 1, beams), $91BC (level 2, vats), $9436 (level 3); jmp ($91B0, level * 4) from $91AC
++data 927a 930a        level_tick_1's tables
+927a  vat_surface_words    T0: 16 map words, the vat's first row by d = (phase & 0Eh) + 10h * variant (all attributes 0)
+929a  vat_body_words_a     T1: 16 map words, the vat's rows 1, 3, 5... (all attributes 0)
+92ba  vat_body_words_b     T2: 16 map words, the vat's rows 2, 4, 6... (all attributes 0)
+92da  vat_column_phases    a word per vat column (23 used: up to 22 columns, + the next entry's high byte): low byte the phase (+2 at every odd frame for the columns of the first vat in the window), high byte of entry k + 1 nonzero = variant 1 of column k (changed at run time: the port needs a RAM copy)
++data 95b2 95ec        level 2's hazard list: 7 vats x [x left, y, x right, rows] (-1 ends)
+95b2  vat_list             vat 0 x 848-1024 y 640 rows 7; 1 1296-1440 640 7; 2 1568-1712 640 7; 3 2016-2256 688 4; 4 1904-2240 288 2; 5 1264-1568 288 2; 6 608-800 288 2 (cells: (x right - x left) / 16 + 1 columns x rows + 2 from map_cell(x left, y))
+95ec  hazlist_level2       level 3's hazard list (header +4 of level 3)
+15f0  vat_phases_done      byte: cleared by $9150 every frame; set after the first vat of an odd frame (only that vat's columns advance)
+10356 copper_sprite_cut    byte: the line of the in-game copper's WAIT before "sprite DMA off" ($1035A): $CA by default ($9154 every frame); level_tick_1 sets it to 203 - (camera y + 152 - vat y) with RoboCop within the vat's x - 16..x right + 16: the sprites end at the vat's surface; below 144 RoboCop dies ($169A, $16CC, sound $10)
+1035a copper_sprites_off   DMACON clear SPREN (the WAIT at $10354 decides the line)
+# --- the map objects ---
+9ee8  act_blink_mine       (proposed for act_0c) activator 0Ch, type 30h (level 2: 4 entries at row 9): every frame the look word $A4A6 = $E680, or $9700 when game frame bit 2 is clear (the look's row 0, column 2 blinks every 4 frames; sound $28 every 8th); RoboCop's cell on it ((y + 8) & F0h - 10h, x & F0h - 20h): its hits byte (4,A1) = FFh and 4 explosions (type 0) at x + 10h, 24h, 38h, 4Ch
+a1f2  looks_type30         $A4A2, $A4B6, -1
+a1fe  looks_type34         $A4CA, $A4DA, -1 (type 34h: activator 10h, obj_relocate $9FC4, to the header's (192, 112))
+a4a2  look_type30_0        5 x 2 words: A280 A280 [E680] A280 A280 / A901 CA81 FF81 CA81 A901
+a4a6  type30_blink_word    the word act_0c rewrites
+# --- level 3's 2 x 3 cell writers (not in level 2: types 40-42 are not spawned there) ---
+ea50  map_put_2x3_a        writes 2 x 3 map words from a table at A2 ((A0), (140h,A0), (280h,A0))
+eaa6  map_put_2x3_flash    obj40/obj41's: 3 looks at $EAE2 by $21(A3) and game frame bits 2 and 4
+ebb8  map_put_2x3_b
+# --- level 2's data ---
++data 28000 38000      DATAL2's tile sheet: 512 x 128 bytes (16 x 16, 4 planes interleaved per line)
++data 38000 3be80      level 2's map: 160 x 50 words (DATAL offset & ~7Fh | attributes)
+3be80 l2_after_map         the words after the map (BOB data): row 50 for $EF8E (rows < 51 for every level: $EFA4 cmpi.w #$66), 35 of its 160 words have a nonzero low nibble (solid for $EF8E)
+4b95a trolley_gfx          SPERMA: the trolley's BOB, 32 x 47 (mask + 4 planes)

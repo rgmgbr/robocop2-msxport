@@ -1,0 +1,69 @@
+# Level 2's drawing code and frame tables (REA/Ghidra on build/ram/level2_full.bin, 2026-10-27,
+# area "sprites" of the level-2 workflow). Format of analysis/*.sym: ADDRESS NAME [comment].
+# Names already in analysis/main_8000.sym or analysis/ghidra_seeds.tsv are not repeated
+# (obj01_update $C736 ... obj49_update $E6C0, special_l1 $8F02, walker_legs $C948, spawn_explosion
+# $F366, ebullet_add $F5BC, objtype_descriptors $BEB0, obj_map_cell $EF8E).
+# Addresses are of the code loaded at $8000 (main_8000.bin), the same in every level's RAM image.
+868c  level_header_1       level 2's header (40 bytes): objects $A828, hazards $95B2, specials $8FE0, spawns $97B0, markers +24 = $C5EC, lowest camera +28 = $270, palette +36 = $10036
+8fe0  speciallist_level1   level 2's special objects: 9 record pointers ($9088-$910E): 5 lifts (handler offset 0 = $8DE6) at x $AE, $21E, $9EE, $EF, $9EF; 4 trolleys (offset 4 = $8F02) at x $340, $510, $628, $7E0, each moving between two x of its record
+c5ec  markers_level1       level 2's marker spawns (6-byte entries, $FFFF ends): types 3, 4, 12, 13, 14, 15, 16, 30, 31
+c7e0  t1_legs_offs         type 1: 16 words, leg frame = $3E810 + word[(counter & $E) + $10 when facing right] (32 x 23, BLTSIZE $5C3)
+c800  t1_torso_dy          type 1: 8 words (1, 1, 0, 0, 1, 1, 0, 0), the torso's bob by step; torso $404D0 (left) / $40674 (right), 32 x 21 ($543)
+c8fe  t2_draw              type 2: D4 = $E04 (48 x 56); $B00 & 8 picks $AC56 (normal) or $AC6E (white flash) through the jump at $C90E; return pushed to $C91A
+c90e  t2_flash_jump        type 2: jmp ($C912 + ($B00 & 8) / 2): the body flashes white 8 frames in 16 for its whole life
+cc4a  walker2              legs of types 3 and 30: D2 = (counter & $E) (+$14 facing right), $10/$12 kneeling (+$14), legs $4F1D6 + $CBFA[D2], BLTSIZE $CC22[D2], dx $CCD2[D2], at y + $17; with the byte at +3 set: legs $4BD06 ($743) at (x + 5, y + $13) [why +3 is set: not read]
+ccfa  walker2_fire         walker2's kneel and fire: every 32 frames ebullet_add type 1/2 (the missile), spawn_explosion 2/3 (the muzzle smoke)
+c9a4  walker1_dy           walker1 ($C948): 8 words of body bob by step (returned in D1)
+c9b4  walker1_offs         walker1: 16 words, legs = $4BD06 + word (steps 0-7 left, 8-15 right)
+c9d4  walker1_bltsize      walker1: 16 BLTSIZE words ($704 = 48 x 28 for steps 0, 4, 8, 12; else $703 = 32 x 28)
+c9f4  walker1_dx           walker1: 16 words of x offsets of the legs
+cb12  gunman_torso_idx     types 15/30/31: torso index by aim (8 words)
+cb22  gunman_flash_idx     types 15/30/31: muzzle flash index by aim (8 words; flash = $6C620 + $50 * index)
+cb32  gunman_flash_dx      6 words
+cb3e  gunman_flash_dy      6 words
+cb4a  gunman_torso_offs    6 words: torso = $4E466 + word
+cb56  gunman_torso_bltsize 6 BLTSIZE words ($683 32 x 26, $883 32 x 34)
+cb62  gunman_torso_dx      6 words
+cbaa  t3_torso_offs        type 3: 20 words, torso = $4F1D6 + word (index = walker2's D2)
+cbd2  t3_torso_bltsize     type 3: 20 BLTSIZE words
+cbfa  walker2_legs_offs    20 words, legs = $4F1D6 + word
+cc22  walker2_legs_bltsize 20 BLTSIZE words
+ccd2  walker2_legs_dx      20 words
+d046  t4_flash_dx          type 4 ($CFB0): 8 words, muzzle flash = $6C620 + $50 * D3 (D3 = aim 0-14 from $D0A6)
+d056  t4_flash_dy          8 words
+d066  t4_torso_offs        type 4: 8 words, torso = $57192 + word: $58312, $57192, $57412, $57692, $57912, $57B92, $57E12, $58092
+d076  t4_torso_dx          8 words
+d086  t4_torso_dy          8 words
+d096  t4_torso_bltsize     8 BLTSIZE words: $983 (32 x 38) for aim 0, $803 (32 x 32) for the others (never 16 x 16: the catalogue's 8 frames of 16 x 16 at $57192.. are a scan error)
+d17c  t5_bltsize           type 5 ($D0E2): BLTSIZE by step (11 used: $402 x 5, $403, $402, $403 x 4)
+d19a  t5_gfx_offs          type 5: 11 words, frame = $3BFC0 + word (9 distinct frames)
+d1b0  t5_dx                type 5: 11 words of x offsets (then - $A)
+d1dc  t6_busy              type 6: set to 2 while a tyre is out (one at a time)
+d2da  t6_gfx_offs          type 6 ($D1E2): 8 words, frame = $3C920 + word (5 distinct: $3C920, $3CB00, $3CCE0, $3CEC0, $3D0A0), 32 x 24 ($603)
+e680  homing_dx            types 38/49: 16 words of x speed by direction (A4 = PC - $AE at $E72C)
+e6a0  homing_dy            types 38/49: 16 words of y speed by direction
+e728  homing_body          the body shared by types 38 and 49 (A2 = their graphics): turns toward the aim ($D0A6), draws A2 + $E7B2[dir] (16 x 16), on touch energy - $18; at the end spawn_explosion type 0
+e7b2  homing_gfx_offs      16 words: 0, $A0 .. $960 (type 49: $41358 + word, 16 directions)
+c1fc  death_hostage        a hostage shot: energy - $20, its flag, message, then death_smoke
+c2d8  death_suspect        type 2 shot: energy - $30, "SUSPECT DESTROYED." ($C238), then death_big
+c2ee  death_big            types 2, 3, 14: spawn_explosion $0408 (the big explosion of $F266) at the floor below
+c31e  death_smoke          types 1, 4, 12, 13, 15, 16, 30, 31 (and the hostage): spawn_explosion 4 (the 48 x 56 smoke) at y - $C
+c33e  death_t6             type 6: every 4th a pickup (nuke $24, energy $1C at the 16th), then death_expl with D5 = $15F2 & 3
+c35a  death_expl           spawn_explosion with the D5 it is called with: update_objects ($C40E/$C42A) calls a death routine with D5 = its own descriptor offset, so a type whose death is $C35A (49 and level 3's) passes that offset ($0198 for type 49: first frame byte $F454 = $E6, last $F45D = $41) [inferred effect: to be checked on the bench]
+ac44  draw_part            draw_bob, as a white silhouette (minterm $BFA at $AC16) while the object's hit flag (+$22) is set; keeps the flag
+ac56  draw_part_last       the same, and clears the hit flag: one picture of white per hit
+ac6e  draw_flash           always the white silhouette (type 2's blinking)
+ac84  draw_black           the black silhouette (type 25's, level 1)
+ef42  obj_walk             x += D4 in the facing direction while the map cell ahead allows, else the facing flips
+ef72  obj_fall             gravity: y speed + $2800 while the cell below is free, else 0
+f140  expl_bltsize         $F080: 40 BLTSIZE words of the explosion frames
+f1c6  expl_gfx             $F080: 40 long frame addresses: 0-7 $6A0A0.. (32 x 32), 8-15 $6B4A0.. (16 x 16), 16-23 the muzzle smoke $50946.. / $54096.., 24-29 the smoke $67940.. (48 x 56), 30-33 $3D780.. (DATAL addresses: level 2's type-2 graphics there), 34-39 $5220C.. (16 x 16)
+f37c  expl_sound           9 bytes: sound per explosion type
+f3bc  expl_first           9 bytes: first frame per type (0, 8, $10, $14, $18, $1D, $21, $24, 0)
+f3c5  expl_last            9 bytes: last frame per type (7, $F, $13, $17, $1D, $21, $24, $27, 8)
+f4a4  ebullet_gfx          long per bullet type at +4t (type 0 unused): 1 $54596, 2 $50E46, 3 $6D2A0, 4 $6D340, 5 $6D3E0, 6 $6D480, 7 $40660 ...
+f500  ebullet_bltsize      BLTSIZE per type at +4t
+f55c  ebullet_anim         per type at +4t: frame step, last offset (types 1/2: $140, $3BF)
+f5d2  ebullet_sound        sound per bullet type
+f658  ebullet_vx           x speed by direction (D7)
+f67c  ebullet_vy           y speed by direction (D7)
