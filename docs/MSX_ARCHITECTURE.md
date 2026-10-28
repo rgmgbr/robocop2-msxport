@@ -562,9 +562,9 @@ which as sprites were striped, cut or left out.
   on the bench's cov1, cov0 and death-and-restart drives, the cracked wall's relocation drive and
   the product configuration's traces the same as without them; the pinned LOCKSTEP 24 display
   records 0 differ). (1) The spawn walk (`objects.asm` `uo_free`) visits only the tick's candidates
-  (`level1.asm` `sw_prep`: `sw_list`): the entries the walk's window can reach from the camera's
-  64-pixel cells (`tools/cellmasks.py` writes a mask of entries per cell of camera x and per cell
-  of camera y into `cells_l1.inc`, in the level's bank, from the routine's own window tests) or
+  (`lvshared.asm` `sw_prep`: `sw_list`): the entries the walk's window can reach from the camera's
+  64-pixel cells (`tools/cellmasks.py` writes a 5-byte mask of entries per cell of camera x and per
+  cell of camera y into `cells_l1.inc`, in the level's bank, from the routine's own window tests) or
   that may hold a count or their spawned bit (`sw_dirty`, set when an entry's x is in the window,
   cleared with its reset); an entry left out is outside the window and already reset, so the
   original's visit would write zeros over zeros. The list is built again only when the cells or
@@ -588,9 +588,13 @@ which as sprites were striped, cut or left out.
   11.78 → 12.25; with (5)-(6) `drive_play` MSX2 16.86 and 24.69, MSX2+ 16.61 and 24.68, `c860`
   MSX2 7.73 and 11.54, MSX2+ 6.26 and 12.42. Fixed area +0 bytes; `LC1` +147 (39 bytes left),
   `LC2` +125, `LC3` +137, `L1` +681 (380 of tables). The caches live in `AC_VARS`' tail
-  (`DD20h-DD73h`). The next levels need their own `cells_lN.inc` and the level header's
-  convention (`lv_init`, `lv_hz`) extended to `sw_prep`, `sw_cell` and the tables `special.asm`
-  names.
+  (`DD20h-DD73h`). Level 2's step 5 made them per level: the masks take 40 entries (`SW_MAX`,
+  `SW_MB` = 5 bytes), the level header carries the spawn list's last entry and the hazards' cells
+  and masks (`objects.asm` `lv_swn1` ... `lv_hzall`) and `lv_noten` (the types `ENEMY_CAP` does
+  not count), and the shortcuts' code with the shared handlers lives in `lvshared.asm`, which
+  every level bank holds right after the header at the same addresses (level 2's bank a copy
+  with its labels suffixed, `tools/mkrom.py` `gen/lvshared_l2.asm`), so `objects.asm` and
+  `special.asm` call it at level 1's addresses.
 - **The cracked wall** (map object 25 of level 1, type 5Ch, activator `obj_relocate` `$9FC4`,
   `mapobj.asm` `act_10`): after 80 ticks of "up" in front of it RoboCop and the camera go to
   the level header's +20/+22 (`$15D6`/`$15D8`, set by `level1.asm` `l1i_hdr` as `level_init`
@@ -612,8 +616,9 @@ which as sprites were striped, cut or left out.
   around `$8B32`, `$9150`, the frame's end and `player_move`: `special.asm`, `frame.asm`,
   `plmove.asm`, which reaches `shots.asm` `pl_punch` through `player.asm` `pm_punch`: out of
   the fixed code, the 1.2 KiB the sprite engine needed), the level's bank
-  (`BANK_L1` at `A000h`: `level1.asm`, starting with the type handler table, `lv_init`,
-  `lv_tick`, `lv_hz`). The variables keep the Amiga's meaning and values: the mirror
+  (`BANK_L1` at `A000h`: `level1.asm`, starting with the level header: the type handler table,
+  `lv_init`, `lv_tick`, `lv_hz`, the shared code's per-level values and `lv_noten`; then
+  `lvshared.asm`, the code every level bank shares). The variables keep the Amiga's meaning and values: the mirror
   `AM`/`AG` (every Amiga word little-endian at its own address, a byte at A ^ 1), the code
   area's patched values in `AC_VARS`, the level's lists in RAM (`spawn_ram`, `objl_ram`,
   `SP_RAM`); the original's tables are copied at build time (`tools/amitab.py`,

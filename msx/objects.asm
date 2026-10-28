@@ -27,13 +27,24 @@ OS_TOUCH:   equ 0x23 ^ 1            ; byte +23h: RoboCop touched it ($FA7C)
 OBJ_SLOTS:  equ AM + 0x0BE4
 OBJ_END:    equ AM + 0x0BF8
 
-; The level's handler table (start of each level bank, A000h): per type 0-52 the handler and the
-; death routine.
+; The level header (the start of each level bank, A000h; level1.asm, level 2's bank): the handler
+; table, per type 0-52 the handler and the death routine, then the level's values the shared code
+; reads. lvshared.asm follows it in every level bank, at LV_HDR_END.
 lv_htab:    equ 0xA000
 
 lv_init:    equ lv_htab + 53*4      ; jp to the level's start
 lv_tick:    equ lv_init + 3         ; jp to the level's hazard handler ($91B0 + 4 * level)
 lv_hz:      equ lv_init + 6         ; dw: the level's hazard list ($915E's immediate)
+lv_swn1:    equ lv_init + 8         ; db: the spawn list's last entry (SW_N - 1; uf_last)
+lv_swlast:  equ lv_init + 9         ; dw: its address in spawn_ram
+lv_hzxn:    equ lv_init + 11        ; db: the hazards' masks: camera x cells (HZ_XN; special.asm
+lv_hzyn:    equ lv_init + 12        ; db:   hz_update), y cells (HZ_YN),
+lv_hzxm:    equ lv_init + 13        ; dw:   the x cells' masks (hz_xm),
+lv_hzym:    equ lv_init + 15        ; dw:   the y cells' (hz_ym),
+lv_hzall:   equ lv_init + 17        ; dw:   every record's (hz_all)
+lv_noten:   equ lv_init + 19        ; code: A = a type -> Z when it is not an enemy (ENEMY_CAP's
+                                    ;   count and spawns: uo_cap, uo_free), 9 bytes at most
+LV_HDR_END: equ lv_init + 28        ; lvshared.asm from here in every level bank
 
 ; The objects' part of the level's start (level_init $871A). The rating's table ($8060: ac_diff)
 ; is not set here: a new game sets SHARP (cold.asm ng_init, load_level0's $8314), the range its
@@ -69,7 +80,7 @@ death_none:
 update_objects:
         ld hl,(AM + 0x0B0E)
         ld (AM + 0x0B12),hl         ; the list from its start
-        call sw_prep                ; (the port: the list's candidates this tick, level1.asm)
+        call sw_prep                ; (the port: the list's candidates this tick, lvshared.asm)
         xor a
         ld (sw_ci),a                ; (entry 0)
         if ENEMY_CAP
@@ -145,7 +156,8 @@ uo_next:
         if ENEMY_CAP
 ; (The port, tools/mkrom.py ENEMY_CAP: the MSX shows two large characters in full colour at
 ; most; with ENEMY_CAP enemies in use their spawns wait: the spawn list's enemy entries stay as
-; they are, the spawn delay and the map's markers do not count. Only the enemies count: not 32,
+; they are, the spawn delay and the map's markers do not count. Only the enemies count (the level
+; header's lv_noten says which types are not; level 1's): not 32,
 ; the level's end, which spawns the henchmen it waits for, nor 44, the ride's pickup dropper
 ; (both draw nothing), nor 45, the hostage (drawn into the play field: it shows together with
 ; an enemy, the user's choice); those still spawn as on the Amiga, when their entry comes into
@@ -165,7 +177,7 @@ uo_cap: ld a,(sw_tchg)
 uoc_lp: ld a,(hl)
         or a
         jr z,uoc_n
-        call not_enemy
+        call lv_noten               ; (the level's: not an enemy)
         jr z,uoc_n
         inc c
 uoc_n:  add hl,de
@@ -176,15 +188,6 @@ uoc_n:  add hl,de
         sbc a,a
         ld (uo_capd),a              ; (FFh: capped)
         jp uo_free
-
-; A = an object type -> Z when it is not an enemy (ENEMY_CAP): 32, 44, 45.
-not_enemy:
-        cp 32
-        ret z
-        cp 44
-        ret z
-        cp 45
-        ret
         endif
 
 ; A = offset in lv_htab: calls that routine (IX = the slot).
@@ -200,7 +203,7 @@ obj_call:
 ; A free slot ($C44C): the next entries of the spawn list inside the window (x in camera x +
 ; 5Dh..+1AFh, y in camera y - 28h..+A8h) count down (an entry once spawned is skipped while bit 6
 ; of its flags is set); the first one at zero spawns here. Entries outside the window are reset.
-; (The port walks the tick's candidates only (sw_list, level1.asm sw_prep: the entries the
+; (The port walks the tick's candidates only (sw_list, lvshared.asm sw_prep: the entries the
 ; window can reach from the camera's 64-pixel cells and those that may hold a count or their
 ; spawned bit, sw_dirty), from the one $B12 points at (sw_ci): an entry left out is outside the
 ; window with nothing to reset, so the original's visit would change nothing. $B12 is set as the
@@ -254,7 +257,7 @@ uf_nx:  ld hl,(sw_lp)               ; the next candidate
         inc hl
         ld a,(hl)                   ; its type (+4 ^ 1)
         pop hl
-        call not_enemy
+        call lv_noten
         jr nz,uf_nx
 uf_any: ld a,d
         endif
@@ -374,9 +377,9 @@ uf_yout:
 ; The list's end: $B12 is the last entry (the original leaves $B12 alone when the walk started
 ; at the end marker, which never happens: $B12 only ever points at an entry).
 uf_last:
-        ld hl,spawn_ram + 14 * (SW_N - 1)
+        ld hl,(lv_swlast)
         ld (AM + 0x0B12),hl
-        ld a,SW_N - 1
+        ld a,(lv_swn1)
         ld (sw_ci),a
 
 ; The list is done: the spawn delay counts down; once it is negative a map marker can spawn,

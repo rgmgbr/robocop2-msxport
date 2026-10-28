@@ -1,9 +1,10 @@
 ; Game logic, module 3 (bank BANK_LC3, mapped at 8000h around its calls): the special objects.
 ;
 ;   $8B32 -> sp_update: the level's special objects, each through its handler ($8B92 + offset):
-;            0 the lifts ($8DE6), 8 the vehicle ($8B9E, level 1); 4 ($8F02, level 2): not yet
+;            0 the lifts ($8DE6), 8 the vehicle ($8B9E, level 1), 4 the trolleys ($8F02, level 2:
+;            sp_trolley, a stub until level 2's step 8)
 ;   $9150 -> hz_update: the level's hazards inside the window, each through the level's handler
-;            ($91B0 + 4 * level; level 1: its electric beams, level1.asm lt0)
+;            ($91B0 + 4 * level; level 1: its electric beams, level1.asm lt0; level 2: its vats)
 ;
 ; Their records live in the Amiga's code area and change at run time: copies at SP_RAM (words
 ; little-endian, as the mirror keeps them), the level's list ($8B54; level 1: $8FC0) as MSX
@@ -113,13 +114,23 @@ spu_full:
         ld a,(ix+0)
         cp 8
         jr z,spu_veh
+        cp 4
+        jr z,spu_tro
         or a
         call z,sp_lift
+        jr spu_nx
+spu_tro:
+        call sp_trolley
         jr spu_nx
 spu_veh:
         call sp_vehicle
 spu_nx: pop hl
         jp spu_lp
+
+; ($8F02) level 2's trolley (handler 4): not ported yet (level 2's step 8). (Only the lifts ever
+; set their rest flag, spl_rest: the shortcut above never skips a trolley's run.)
+sp_trolley:
+        ret
 
 ; The record's x and y (D0 / D1) against the camera ($B04, $B06): carry when it is not in
 ; (cam_x, cam_x + 1A0h] x (cam_y, cam_y + C4h] (the port: as unsigned distances from the corner).
@@ -640,35 +651,41 @@ spv_cmp:
 ; $15F0 cleared ($10356, the beams' copper colour: visual). Every record of the level's list
 ; (8 bytes: x, y, the window's x, rows - 1; a negative x ends it) whose y is in
 ; [camera y - 64h, + ACh) and x range meets the camera's x + 73h .. + 1A0h runs the level's
-; handler (lv_tick) with IX = the record.
+; handler (lv_tick) with IX = the record. The copper's sprite cut line ($10356) is set to CAh
+; first, level 2's vats move it up (vat_cut_line: the line RoboCop's sprites are cut from).
 hz_update:
         ld hl,0
         ld (AM + 0x15F0),hl
+        ld a,0xCA
+        ld (vat_cut_line),a
         ; (the port) nothing to do unless a record is within the window's reach from the
-        ; camera's 64-pixel cells (hz_xm, hz_ym: tools/cellmasks.py, in the level's bank with
-        ; sw_cell); a camera outside the tables takes every record (hz_all)
+        ; camera's 64-pixel cells (the level header's lv_hzxm, lv_hzym: tools/cellmasks.py, in
+        ; the level's bank with lvshared.asm sw_cell); a camera outside the tables takes every
+        ; record (lv_hzall)
         ld hl,(gcam_x)
-        ld b,HZ_XN
+        ld a,(lv_hzxn)
+        ld b,a
         call sw_cell
-        ld hl,hz_all
+        ld hl,(lv_hzall)
         cp 0xFF
         jr z,hzg_x
         add a,a
         ld e,a
         ld d,0
-        ld hl,hz_xm
+        ld hl,(lv_hzxm)
         add hl,de
 hzg_x:  push hl
         ld hl,(gcam_y)
-        ld b,HZ_YN
+        ld a,(lv_hzyn)
+        ld b,a
         call sw_cell
-        ld hl,hz_all
+        ld hl,(lv_hzall)
         cp 0xFF
         jr z,hzg_y
         add a,a
         ld e,a
         ld d,0
-        ld hl,hz_ym
+        ld hl,(lv_hzym)
         add hl,de
 hzg_y:  pop de
         ld a,(de)

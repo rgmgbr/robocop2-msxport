@@ -63,7 +63,7 @@ def main() -> int:
     modules = {"BANK_LC1": ("objects.asm", "shots.asm", "hits.asm"), "BANK_LC2": ("mapobj.asm",),
                "BANK_LC3": ("special.asm", "frame.asm")}         # (msx/rc2.asm's sections)
     mod = {banks.get(b): sorted(v for f in files for v in sets.get(f, [])) for b, files in modules.items()}
-    lvl = sorted(v for v in sets.get("level1.asm", []))
+    lvl = sorted(v for f in ("level1.asm", "lvshared.asm") for v in sets.get(f, []))   # (BANK_L1)
 
     def find(table, pc):
         best = None

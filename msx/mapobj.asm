@@ -141,8 +141,11 @@ ao_lp:  ld hl,(ao_cnd)
         ld l,a
         jp (hl)
 ao_acts:                            ; per offset / 4 (offsets 0Ch, 20h: levels 2 and 3)
-        dw ao_look, act_04, act_08, ao_look, act_10, act_14, act_18, act_1c, ao_look
+        dw ao_look, act_04, act_08, act_0c, act_10, act_14, act_18, act_1c, ao_look
 
+; ($9EE8, offset 0Ch: level 2's blinking mine; no level-1 entry has it) not ported yet (level 2's
+; step 8): the default meanwhile.
+act_0c:
 ; ($9C76) the default: a collision slot unless A4 is $BEC, then the look.
 ao_look:
         ld hl,(ao_a4)

@@ -399,6 +399,11 @@ pz_first:   equ 0xC6FF              ; PZ_TEST builds: 1 from the power-on until 
 lv_pal:     equ 0xC68A              ; 32: the level's palette (logic.asm pal_fade, the flashes)
 lv_voffy:   equ 0xC6AA              ; LV_VOFFN: its view_offy (player.asm pl_view)
 LV_VOFFN:   equ 43
+pz_tvb:     equ 0xC6AA              ; Brainstorm while it runs: the visit's TV pictures' first bank
+                                    ;   (puzl.asm rd_at; after rd_cmd, over lv_voffy, which every
+                                    ;   level start writes again)
+fo_cont:    equ 0xC6F0              ; front_cont's answer: not 0 for a continue (cleared by
+                                    ;   front_over at its start, read by the main loop right after it)
 ; Brainstorm (msx/puzl.asm) while it runs: its own variables (C68Ah-C6FEh; C691h on: the renderer's)
 pz_last:    equ 0xC68A              ; the tick of the last pass, or of the timer's set-up (bs_wait: wf_n)
 pz_pal:     equ 0xC68B              ; 2: the palette the fade reads (the immediate at $17B20)
@@ -592,7 +597,10 @@ pf_dx:      equ 0xCE3C              ; 2:   D2 (the shot's x step),
 pf_d7:      equ 0xCE3E              ;   D7 (direction)
 sp_d7:      equ 0xCE3F              ; D7 as the special objects ($8B32) leave it for update_player
 ht_n:       equ 0xCE40              ; hit_test: the boxes in ht_box,
-ht_ok:      equ 0xCE41              ;   1 once they are worked out this tick (CE42h-CE43h: free)
+ht_ok:      equ 0xCE41              ;   1 once they are worked out this tick
+vat_cut_line: equ 0xCE42            ; the screen line RoboCop's sprites are cut from ($9150 sets the
+                                    ;   copper's $10356 to CAh every tick, level 2's vats higher:
+                                    ;   special.asm hz_update; CE43h: free)
 ph_x0:      equ 0xCE44              ; 2: $FA7C: RoboCop's box: D0 (left),
 ph_y0:      equ 0xCE46              ; 2:   D1 (top),
 ph_x1:      equ 0xCE48              ; 2:   D4 (right, exclusive),
@@ -762,29 +770,47 @@ ac_ediv:    equ 0xDD15              ; explosions: frame divider ($F07E, a byte: 
 ac_jmask:   equ 0xDD16              ; player_move's joystick mask ($B02B: 7Fh, 0 while the vehicle
                                     ;   steers; the code's value at power-on, rc2.asm)
 ac_ridest:  equ 0xDD18              ; 2: RoboCop's state on the vehicle ($8C98: 2, or 3)
-; (the port) the game logic's shortcuts: their caches, worked out again every life (level1.asm
+barrel_gap: equ 0xDD1A              ; 2: level 2's type 6, the barrels: the frames between two
+                                    ;   ($D1DC; it persists across lives, levels and games as the
+                                    ;   Amiga's word in the code: AC_VARS is cleared at power-on only)
+; (the port) the game logic's shortcuts: their caches, worked out again every life (lvshared.asm
 ; sw_init, mapobj.asm ao_sort) in the rest of this block
-sw_list:    equ 0xDD20              ; 33: the spawn walk's candidates this tick (objects.asm
+SW_MAX:     equ 40                  ; the spawn list's entries at most (level 2 has 40; tools/cellmasks.py)
+SW_MB:      equ 5                   ; the bytes of an entry mask (SW_MAX / 8; lvshared.asm sw_prep
+                                    ;   multiplies a cell by 5)
+sw_list:    equ 0xDD20              ; SW_MAX + 1: the spawn walk's candidates this tick (objects.asm
                                     ;   uo_free): the entries' indices in the list's order, FFh
-                                    ;   after the last (up to 32 entries: the masks are longs)
-sw_dirty:   equ 0xDD42              ; 4: bit k set while entry k may hold a count or its spawned bit
-sw_key:     equ 0xDD46              ; 6: the camera's cells and the dirty mask sw_list was built for
-sw_lp:      equ 0xDD4C              ; 2: the walk's next candidate (in sw_list)
-sw_k:       equ 0xDD4E              ; the entry visited (its index)
-sw_ci:      equ 0xDD4F              ; the index of the entry $B12 points at
-sw_bc:      equ 0xDD50              ; 2: camera x + 5Eh this tick (the walk's D0 + 1)
-sw_tchg:    equ 0xDD52              ; ENEMY_CAP: not 0 once a slot's type changed since the enemies
+                                    ;   after the last
+sw_dirty:   equ 0xDD49              ; SW_MB: bit k set while entry k may hold a count or its spawned
+                                    ;   bit (in one 256-byte page: lvshared.asm sw_dbit)
+sw_key:     equ 0xDD4E              ; 2 + SW_MB: the camera's cells and the dirty mask sw_list was
+                                    ;   built for
+sw_lp:      equ 0xDD55              ; 2: the walk's next candidate (in sw_list)
+sw_k:       equ 0xDD57              ; the entry visited (its index)
+sw_ci:      equ 0xDD58              ; the index of the entry $B12 points at
+sw_bc:      equ 0xDD59              ; 2: camera x + 5Eh this tick (the walk's D0 + 1)
+sw_tchg:    equ 0xDD5B              ; ENEMY_CAP: not 0 once a slot's type changed since the enemies
                                     ;   in use were counted (objects.asm uo_cap)
-sw_px:      equ 0xDD54              ; 2: sw_prep: the x cell's mask
+sw_px:      equ 0xDD5C              ; 2: sw_prep: the x cell's mask (DD5Eh-DD5Fh: free)
 sp_rest:    equ 0xDD60              ; SP_REST_N: per special object n (counted from 1) 1 when the
                                     ;   lift was at rest at its last full run (special.asm sp_update)
-SP_REST_N:  equ 12                  ;   (room for 11 records; level 1 has 7)
+SP_REST_N:  equ 12                  ;   (room for 11 records; level 1 has 7, level 2 9)
 ao_calo:    equ 0xDD70              ; 2: activate_objects' candidates stand while camera x is in
 ao_cahi:    equ 0xDD72              ; 2:   (ao_calo, ao_cahi] (mapobj.asm ao_cands)
 AC_VARS_END: equ 0xDD80
 spawn_ram:  equ 0xDD80              ; DD80h-DFFFh: the level's spawn list ($B0E; 14-byte records,
                                     ; words little-endian), copied from the level bank at its start
+                                    ; (level 1: 28 entries, to DF09h; level 2: 40, to DFB1h)
+vat_phase:  equ 0xDFB2              ; 46: level 2's vats: the phases ($92DA-$9307, words as the
+                                    ;   mirror keeps them; set at a fresh level-2 start: docs/LEVEL2.md
+                                    ;   3.4, default 22); spawn_ram's tail, inside the trace's DD00h block
 objl_ram:   equ 0xEE00              ; EE00h-F0FFh: the level's object list ($9C18; 12-byte records)
+; Level 2's vats (docs/LEVEL2.md 3.5), in objl_ram's tail after level 2's list (EE00h-F011h; level
+; 1's reaches F0C5h, the stages use objl_ram only between levels; a fresh level-2 start sets them)
+vat_shown:  equ 0xF012              ; 103: per vat column the look its logic wrote last (the row
+                                    ;   table's index, $91BC's D3 / 2)
+vat_disp:   equ 0xF079              ; 103: per vat column the look each page shows (a nibble per page)
+vat_chg:    equ 0xF0E0              ; 7: per vat, not 0 once its looks changed (F0E7h-F0FFh: free)
 ; Brainstorm (msx/puzl.asm) while it runs, in objl_ram (EE00h-EF4Fh: the renderer's): the wanted
 ; state, what the original has drawn as of the last pass (pz_frame), for the renderer. Its
 ; first bytes follow the shown state's layout (puzl.inc PZ_ST_TV ... PZ_ST_BAR, PZ_ST_NONE: not
@@ -952,9 +978,11 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2D9h-C2FFh (C2B6h-C2C1h and
-; C2C5h-C2D8h: tune.asm's), C68Ah-C6FEh (the bonus stages' while they run), ECF0h-ED0Fh, EDC0h-EDFFh,
-; E0FEh-E0FFh, F1CFh, F1E2h,
-; F271h-F27Fh (below the stack), F170h-F190h, F1A0h-F1C2h: free (2026-10-24 audit); EA60h-EC41h: bob_list,
+; C2C5h-C2D8h: tune.asm's), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh,
+; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; F1A0h-F1C2h:
+; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
+; vat_phase, F012h-F0E6h the vats' display since its step 5); EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
 ; the BIOS's area: F380h-F43Bh so_x, so_n, F500h-F9FFh the map patches' MP_B)
 
