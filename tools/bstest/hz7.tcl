@@ -165,6 +165,8 @@ proc hz7_after_setup {dir tag rom labels drive} {
 	foreach n {txt_bs_intro txt_bs_ok} { set ::h7a_$n [rc2_label $labels $n] }
 	set ::hz_done 0
 	rc2_pz_drive $rom $labels "$dir/${tag}_pz.txt" 3000 0 "$::hz_root/build/emu/pz_$drive.drive"
+	# (a script build: the shooting range after Brainstorm's result never times out by itself)
+	rgx_timeout_if $labels
 	lappend ::hz_afters [after time 0.05 hz7a_step]
 	lappend ::hz_afters [after realtime 0.5 hz7a_rt]
 }

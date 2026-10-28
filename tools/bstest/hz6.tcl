@@ -32,6 +32,7 @@ proc hz6_arm_setup {dir tag rom labels} {
 	}
 	set ::hb_st 0
 	set ::hz_done 0
+	hb_init_range $labels
 	set f [open "$dir/${tag}_bonus.txt" w]
 	close $f
 	rc2_drive_rom $rom $labels "$dir/${tag}_end_l1.txt" 200 0 "$::hz_root/build/emu/drive_end.txt"
@@ -64,7 +65,8 @@ proc hz6_w2 {} {
 #     the product ROM on a new machine: the title, fire; level 1 to its end by build/emu/
 #     drive_end.txt's teleport and poke (rc2_drive_trace: its joystick bytes go to ext_joy, which a
 #     product build never reads; 200 rows); then hb_step: the intro, the stage left alone (its
-#     real timer: out of time), the result, the title, fire, the new game.
+#     real timer: out of time), the result, the shooting range's screens (its real 2:00, OUT OF
+#     TIME.: rgflow.tcl rgh_arm), the title, fire, the new game.
 proc hz6_prod {dir tag rom labels {m Gradiente_Expert20_64K}} {
 	file mkdir $dir
 	hz_chain [list [list "prod $tag" $m [list hz6_prod_setup $dir $tag $rom $labels] {$::hz_done} 900]]
@@ -79,6 +81,7 @@ proc hz6_prod_setup {dir tag rom labels} {
 	}
 	set ::hb_st 0
 	set ::hz_done 0
+	hb_init_range $labels
 	set ::h6_ps 0
 	set f [open "$dir/${tag}_bonus.txt" w]
 	close $f

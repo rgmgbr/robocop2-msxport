@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Checks a hz.tcl hz_bonus record: the bonus text screens against renders of the port's scripts.
 
-usage: bonuscheck.py DIR TAG [--tag N] [--result time|ok|fail] [--gen GEN_DIR]
+usage: bonuscheck.py DIR TAG [--tag N] [--result time|ok|fail] [--gen GEN_DIR] [--range time|C,D,M]
+                     [--no-game]
 
 DIR/TAG_intro.sc5 and DIR/TAG_result.sc5 (page 0's lines 0-161 as the emulator held them) must
 equal tools/msxtext.py fs_render of txt_bs_intro and of the result's script (txt_bs_time by
@@ -13,7 +14,13 @@ every VBLANK with its split (one more or fewer at most: the window
 starts and ends mid-frame), R#0 with the line interrupt and R#1 with the
 display on at both records. Writes DIR/TAG_intro.png and DIR/TAG_result.png: the play area
 (txt_pal through the grade) over 5 blank lines and the HUD (DIR/TAG_*_hud.bin in GEN_DIR's
-hud_grade.pal), 2x. Exit 0 when every check passed.
+hud_grade.pal), 2x. With --range (a build with the shooting range, which follows Brainstorm's result):
+the range's screens recorded in the same flow (DIR/TAG_rgintro.sc5, _rgres.sc5, TAG_rg.txt: rgflow.tcl
+rgh_arm, rgk_job) checked by rgcheck.py: its intro, OUT OF TIME. ("time") or the result for C correct,
+D dummy and M minutes, the HUD split, the result at fr_done, the rating at fr_rated, SHARP at the new
+game (noted in TAG_rg.txt). --no-game: Brainstorm's notes have no new game (the keyboard flow ends at
+the title's own game, which the range's notes give).
+Exit 0 when every check passed.
 
 Reads build/ram/level1_full.bin and build/msx/text_bs_*.sc5 of the repository this file is in
 (tools/bstest/); docs/HARNESS.md.
@@ -27,7 +34,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import msxtext  # noqa: E402
+import rgcheck  # noqa: E402
 from msxbright import grade_pal  # noqa: E402
 from planar import write_png  # noqa: E402
 
@@ -58,6 +67,8 @@ def main() -> int:
     ap.add_argument("--tag", dest="ntag", type=int, default=0, help="the build's TAG")
     ap.add_argument("--result", default="time", choices=("ok", "fail", "time"))
     ap.add_argument("--gen", type=Path, help="the build's gen folder (hud_grade.pal) for the previews")
+    ap.add_argument("--range", dest="rg", help="the shooting range's screens in this flow: time or C,D,M")
+    ap.add_argument("--no-game", action="store_true", help="the record stops before a new game")
     a = ap.parse_args()
     ram = (ROOT / "build" / "ram" / "level1_full.bin").read_bytes()
     glyphs = [msxtext.glyph_sc5(ram, g) for g in range(44)]
@@ -100,9 +111,14 @@ def main() -> int:
     if not m or abs(int(m[1]) - int(m[2])) > 1 or int(m[1]) < 100:      # (the window starts and ends mid-frame)
         print("the HUD split did not run at every VBLANK between the records")
         bad = 1
-    if not re.search(r"^game tick_n", notes, re.M):
+    if not a.no_game and not re.search(r"^game tick_n", notes, re.M):
         print("no new game after the stage")
         bad = 1
+    if a.rg:
+        print("-- the shooting range after Brainstorm's result")
+        rb = rgcheck.check(a.dir, a.tag, rgcheck.parse_counts(a.rg), a.ntag)
+        print("  the range:", "PASS" if not rb else "FAIL")
+        bad |= rb
     print("bonus check:", "PASS" if not bad else "FAIL")
     return bad
 

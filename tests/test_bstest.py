@@ -40,7 +40,9 @@ sys.path.insert(0, str(BST))
 FILES = {"build.sh", "hz.sh", "check_all.sh", "variants.sh", "hz.tcl", "hz6.tcl", "hz7.tcl", "fixchk.tcl",
          "suite.tcl", "c8.tcl", "run8.tcl", "load.tcl", "bonuscheck.py", "stepcheck.py", "restorecheck.py",
          "hudcheck.py", "shots.py", "relocheck.py", "romdiff.py", "fixblank.py", "frozen.py",
-         "np.tcl", "ft.tcl", "run8f.tcl", "titlecmp.py", "titlecmp2.py", "partialcheck.py"}
+         "np.tcl", "ft.tcl", "run8f.tcl", "titlecmp.py", "titlecmp2.py", "partialcheck.py",
+         "rgview.tcl", "rgview.py", "rgview.sh", "rgflow.tcl", "frsound.tcl", "regress.tcl", "regress.sh",
+         "rgcheck.py", "cmpcheck.py"}
 LEVEL1_RAM = ROOT / "build" / "ram" / "level1_full.bin"
 TEXT_SC5 = [ROOT / "build" / "msx" / f"text_bs_{n}.sc5" for n in ("intro", "time")]
 LEVEL1_VRAM = ROOT / "build" / "msx" / "level1.vram"
@@ -268,6 +270,59 @@ class HelperTests(unittest.TestCase):
         r = run(cmd)
         self.assertEqual(r.returncode, 1)
         self.assertIn("result (txt_bs_time, TEST 2): 1 bytes DIFFER, lines 100-100", r.stdout)
+
+    def test_bonuscheck_range_command_line(self):
+        """--range: the shooting range's screens recorded in the same flow (rgflow.tcl rgh_arm), checked
+        by rgcheck.py: OUT OF TIME. and a result for given counts, the notes, SHARP at the new game."""
+        import msxtext
+        ram = LEVEL1_RAM.read_bytes()
+        glyphs = [msxtext.glyph_sc5(ram, g) for g in range(44)]
+        bs = {label: script for label, _, script in msxtext.bonus_scripts(ram)}
+        rg = {label: script for label, _, script in msxtext.range_scripts(ram)}
+        (self.tmp / "t_intro.sc5").write_bytes(msxtext.fs_render(glyphs, bs["txt_bs_intro"]))
+        (self.tmp / "t_result.sc5").write_bytes(msxtext.fs_render(glyphs, bs["txt_bs_time"]))
+        (self.tmp / "t_rgintro.sc5").write_bytes(msxtext.fs_render(glyphs, rg["txt_rg_intro"]))
+        (self.tmp / "t_rgres.sc5").write_bytes(msxtext.fs_render(glyphs, bs["txt_bs_time"]))
+        for n in ("intro", "result", "rgintro", "rgres"):
+            (self.tmp / f"t_{n}_regs.bin").write_bytes(bytes([0x16, 0x62]) + bytes(62))
+        (self.tmp / "t_bonus.txt").write_text(
+            "intro at 9.4 s, fs_n 150, R#0 16 R#1 62, AG 8050h 1, 805Eh 0\n"
+            "result time at 77.5 s, fs_n 80, R#0 16 R#1 62, AG 805Eh 0\n"
+            "between the records: 4078 VBLANKs, 4078 HUD splits\n"
+            "game tick_n 9790 at 298.5 s, g_frame 101, lives 2\n")
+        notes = ("# t: prod/rc2.labels on C-BIOS_MSX2; drive none\n"
+                 "intro at 88.8 s, fs_n 151, R#0 16 R#1 62, AG 8050h 1, tick_n 699\n"
+                 "stage: result 0 0 255 (dummy correct 804Ch at fr_done), rating 24 at fr_rated (213.1 s, passes 6050)\n"
+                 "result time at 215.2 s, fs_n 101, R#0 16 R#1 62, ac_diff - diff_tab 24\n"
+                 "between the records: 7629 VBLANKs, 7629 HUD splits; display_on calls 0\n"
+                 "game tick_n 9790 at 298.5 s, g_frame 101, lives 2, ac_diff - diff_tab 0; lost: mp 0 atr 0 rd 0 fb 0\n")
+        (self.tmp / "t_rg.txt").write_text(notes)
+        cmd = [sys.executable, "-I", BST / "bonuscheck.py", self.tmp, "t", "--result", "time", "--range", "time"]
+        r = run(cmd)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("the range: PASS", r.stdout)
+        # (a flow without the range's records, the counts of a result, a lost write, not SHARP again)
+        r = run(cmd[:-1] + ["25,0,1"])
+        self.assertEqual(r.returncode, 1)
+        (self.tmp / "t_rg.txt").write_text(notes.replace("mp 0 atr", "mp 1 atr"))
+        r = run(cmd)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("lost counters not 0", r.stdout)
+        (self.tmp / "t_rg.txt").write_text(notes.replace("lives 2, ac_diff - diff_tab 0", "lives 2, ac_diff - diff_tab 24"))
+        r = run(cmd)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("the new game does not run with SHARP", r.stdout)
+        (self.tmp / "t_rg.txt").write_text(notes)
+        d = bytearray((self.tmp / "t_rgres.sc5").read_bytes())
+        d[128 * 60] ^= 0x11
+        (self.tmp / "t_rgres.sc5").write_bytes(d)
+        r = run(cmd)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("rgres (OUT OF TIME.): 1 bytes DIFFER, lines 60-60", r.stdout)
+        (self.tmp / "t_rgres.sc5").unlink()
+        r = run(cmd)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no record t_rgres.sc5", r.stdout)
 
 
 def title_files(d: Path, tag: str, vram: bytes, regs: bytes = bytes(64), pal: bytes = bytes(32)) -> None:

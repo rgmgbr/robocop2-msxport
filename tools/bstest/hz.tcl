@@ -34,9 +34,12 @@
 #                                    registers and palette (intro_regs.bin, ...), the HUD's VRAM
 #                                    (page 3 lines 208-252) at both; bonus.txt: the result shown,
 #                                    the VBLANKs and HUD splits (isr_split) between the two records,
-#                                    then the title (front_mode 1; fire pressed after 1.5 s) when
-#                                    the build has one, and the new game's tick 100 (EXTJOY: the
-#                                    result's tick + 100). Check with tools/bstest/bonuscheck.py.
+#                                    then, in a build with the shooting range, its screens
+#                                    (rgflow.tcl rgh_arm: rgintro, rgres, TAG_rg.txt; a script
+#                                    build times it out at its first pass), then the title
+#                                    (front_mode 1; fire pressed after 1.5 s) when the build has
+#                                    one, and the new game's tick 100 (EXTJOY: the result's tick +
+#                                    100). Check with tools/bstest/bonuscheck.py (--range).
 #   hz_chain JOBS                    the runner itself: JOBS a list of {name machine setup done
 #                                    timeout-seconds}; setup runs at global level on the new
 #                                    machine, the job ends when [expr done] is true.
@@ -86,7 +89,11 @@ proc hz_nowp {} {
 	}
 }
 
-proc hz_chain {jobs} {
+# hz_chain JOBS ?MARK?: with MARK (a file), the chain's messages are written there when it ends (done
+# or an error), so that a shell can wait for the file instead of polling the emulator
+proc hz_chain {jobs {mark ""}} {
+	set ::hz_mark $mark
+	if {$mark ne ""} { file delete $mark }
 	set ::hz_jobs $jobs
 	set ::hz_i -1
 	set ::hz_state running
@@ -96,11 +103,22 @@ proc hz_chain {jobs} {
 	return "started [llength $jobs] job(s)"
 }
 
+proc hz_mark_write {} {
+	if {![info exists ::hz_mark] || $::hz_mark eq ""} return
+	set f [open $::hz_mark w]
+	catch {
+		puts $f "state $::hz_state"
+		foreach m $::hz_msgs { puts $f $m }
+	}
+	close $f
+}
+
 proc hz_next {} {
 	incr ::hz_i
 	if {$::hz_i >= [llength $::hz_jobs]} {
 		set ::hz_state done
 		set ::pause on
+		hz_mark_write
 		return
 	}
 	lassign [lindex $::hz_jobs $::hz_i] name m setup done tmo
@@ -109,6 +127,7 @@ proc hz_next {} {
 	if {[catch {machine $m} err]} {
 		hz_msg "$name: machine $m failed: $err"
 		set ::hz_state "error: $name"
+		hz_mark_write
 		return
 	}
 	hz_cfg
@@ -118,6 +137,7 @@ proc hz_next {} {
 		hz_msg "$name: setup failed: $err"
 		hz_clean
 		set ::hz_state "error: $name"
+		hz_mark_write
 		return
 	}
 	set ::pause off
@@ -283,6 +303,7 @@ proc hz_bonus_setup {dir tag rom labels end} {
 	set ::hb_st 0
 	set ::hb_log {}
 	set ::hz_done 0
+	hb_init_range $labels
 	set f [open "$dir/${tag}_bonus.txt" w]
 	close $f
 	if {$end eq "end"} {
@@ -308,6 +329,14 @@ proc hb_wait_end {} {
 		return
 	}
 	lappend ::hz_afters [after realtime 0.5 hb_wait_end]
+}
+
+# the range after Brainstorm (rgflow.tcl rgh_arm): recorded by hb_step in a build that has it, unless
+# the job drives it itself (::hb_range 0 after its set-up)
+proc hb_init_range {labels} {
+	set ::hb_labels $labels
+	set ::hb_range 1
+	set ::rgh_on 0
 }
 
 proc hb_note {m} {
@@ -373,6 +402,14 @@ proc hb_step {} {
 				hb_note "between the records: $::hb_nvbl VBLANKs, $::hb_nsplit HUD splits"
 				set ::hb_tn [rc2_w 0xCEE0]
 				set ::hb_st [expr {$::hb_INPUT_SCRIPT ? 4 : 2}]
+				# (the shooting range comes next: its screens recorded, then on as before)
+				if {[rgh_arm]} { set ::hb_st 7 }
+			}
+		}
+		7 {
+			if {$::rgx_st == 2} {
+				set ::hb_tn [rc2_w 0xCEE0]
+				set ::hb_st $::rgh_next
 			}
 		}
 		2 {
@@ -395,6 +432,7 @@ proc hb_step {} {
 			if {[peek 0xEC44] == 0 && [rc2_w 0xCEE0] >= $::hb_tn + 100} {
 				hb_file game_vram.bin [debug read_block "physical VRAM" 0 0x20000]
 				hb_note "game tick_n [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34]"
+				if {[info exists ::rgh_on] && $::rgh_on} { rgh_game }
 				set ::hb_st 5
 				set ::hz_done 1
 				set ::pause on

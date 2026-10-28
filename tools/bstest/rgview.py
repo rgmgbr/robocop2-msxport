@@ -40,6 +40,11 @@ usage:
       0 in every frame of the stage, R#18 at the next VBLANK (iv_late) the applied list's; a probe
       with "neg 1" is the negative control (split_list + 8 poked back to 9Bh on a V9958): it passes
       when it reports shifted HUD frames
+  rgview.py want WANT.txt [...] --ref BENCH.jsonl --gen GEN
+      rgflow.tcl rgx_want_job's log ("pass hex lost" at every fr_tick: rg_want's bytes and rg_blost):
+      at every pass's start the wanted state equals what the original drew in the pass before (the
+      bench's rows, Bench.state: the pop-ups, the big target, the dissolve, the crosshair, the box)
+      at the camera rg_cam gives (s; RG_ST_C is unused there), and no recent-blit entry was lost
 Exit 0 when every check passed.
 
 A snapshot (hz7.tcl hz7_snap) is VRAM 128 KiB, RAM C000h-FFFFh, the 64 VDP registers and the
@@ -646,9 +651,43 @@ def probe(paths: list[Path]) -> int:
     return 1 if bad else 0
 
 
+def want(paths: list[Path], bench: Bench) -> int:
+    worst = 0
+    for path in paths:
+        n = bad = 0
+        seen = Counter()
+        for line in path.read_text().splitlines():
+            p = line.split()
+            if len(p) != 3:
+                continue
+            k, lost = int(p[0]), int(p[2])
+            exp = bench.state(k)
+            if exp is None:
+                continue
+            n += 1
+            sa = msxrange.State.from_bytes(bytes.fromhex(p[1])[:msxrange.ST_LEN])
+            sb = msxrange.State.from_bytes(exp)
+            diff = [f"{f} {getattr(sa, f)} / {getattr(sb, f)}" for f in ("s", "pops", "big", "fx", "cross", "box")
+                    if getattr(sa, f) != getattr(sb, f)]
+            if lost:
+                diff.append(f"rg_blost {lost}")
+            if diff:
+                bad += 1
+                if bad <= 8:
+                    print(f"{path.name}: pass {k}: (wanted / the bench's) {'; '.join(diff)}")
+            seen["pop-ups"] += sum(x is not None for x in sb.pops)
+            seen["big"] += sb.big is not None
+            seen["dissolves"] += sb.fx is not None
+            seen["boxes"] += sb.box is not None
+        print(f"{path.name}: {n} passes compared, drawn {dict(seen)}: {bad} differ"
+              f"{'' if n else ' (no pass compared)'}")
+        worst = max(worst, 1 if bad or not n else 0)
+    return worst
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=("still", "rec", "rate", "probe"))
+    ap.add_argument("mode", choices=("still", "rec", "rate", "probe", "want"))
     ap.add_argument("files", nargs="+", type=Path)
     ap.add_argument("--ref", type=Path, help="the bench's trace of the drive (build/emu/fr_NAME_ram.jsonl)")
     ap.add_argument("--gen", type=Path, help="the build's gen folder (range.inc, range_tab.inc), with --ref")
@@ -669,6 +708,10 @@ def main() -> int:
         bench = Bench(a.ref, a.gen, pokes)
     if a.png:
         a.png.mkdir(parents=True, exist_ok=True)
+    if a.mode == "want":
+        if bench is None:
+            ap.error("want needs --ref and --gen")
+        return want(a.files, bench)
     if a.mode == "still":
         return still(a.files, bench, a.png)
     return max(rec(f, bench, a.png, a.pngmax) for f in a.files)

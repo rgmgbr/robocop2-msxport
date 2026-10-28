@@ -96,7 +96,7 @@ proc ft_done {} {
 
 proc ft_flow_job {name m rom labels out freq} {
 	file mkdir "$out/flow"
-	return [list $name $m [list ft_flow_setup $name $rom $labels $out $freq] {[ft_flow_done]} 300]
+	return [list $name $m [list ft_flow_setup $name $rom $labels $out $freq] {[ft_flow_done]} 600]
 }
 
 proc ft_flow_setup {name rom labels out freq} {

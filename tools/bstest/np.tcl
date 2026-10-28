@@ -15,7 +15,9 @@
 #       a PZ_TEST=1 ROM from the power-on, solved by build/emu/pz_solve1.drive (rc2_pz_drive: the
 #       trace DIR/TAG_pz.txt; with KEYS = 1, a build without EXTJOY, the moves come from the
 #       keyboard); then hz.tcl hb_step's records (DIR/TAG_bonus.txt, _intro.sc5, _result.sc5:
-#       bonuscheck.py --result ok), the title when the build has one, fire, the new game
+#       bonuscheck.py --result ok), the shooting range's (rgflow.tcl rgh_arm: a script build times
+#       it out, a candidate plays its 2:00; bonuscheck.py --range time), the title when the build
+#       has one, fire, the new game
 #   np_title_setup DIR TAG ROM LABELS ?EXACT?
 #       hz6.tcl hz6_prod_setup's flow (the product: the title, level 1 ended by drive_end, the
 #       statistics, the stage left to time out, OUT OF TIME.); at the title that follows, hz.tcl
@@ -33,7 +35,7 @@
 #       tick 100 (DIR/TAG_game100.bin)
 #   np_two_setup DIR TAG ROM LABELS
 #       an EXTJOY=1 PZ_TEST=1 build: the first stage (pz_fail.drive, DIR/TAG_pz1.txt), its result,
-#       the new game, level 1 ended by build/emu/drive_end.txt (its frames moved by tick_n at the
+#       the shooting range timed out at its first pass (rgx_timeout_if), the new game, level 1 ended by build/emu/drive_end.txt (its frames moved by tick_n at the
 #       new game: DIR/TAG_drive_end.txt; the trace DIR/TAG_l1.txt), the statistics, the second
 #       stage driven by rc2_pz_arm (pz_solve1.drive, DIR/TAG_pz2.txt) with hb_step's records of its
 #       screens, the new game
@@ -127,6 +129,7 @@ proc np_hb_init {dir tag labels} {
 	}
 	set ::hb_st 0
 	set ::hz_done 0
+	hb_init_range $labels
 	set f [open "$dir/${tag}_bonus.txt" w]
 	close $f
 }
@@ -416,6 +419,8 @@ proc np_2_w1 {} {
 		hb_note "first stage done at [machine_info time] s: result $::rc2_pz_result, passes [rc2_w 0xD000], AG 805Eh [rc2_w 0xDC5E], tick_n [rc2_w 0xCEE0]"
 		set a [rc2_label $::n2_labels new_game]
 		set ::n2_bp [debug set_bp $a "\[peek $a\] == [peek $a]" np_2_ng]
+		# (the shooting range after the first stage's result: a script build's has no time out)
+		rgx_timeout_if $::n2_labels
 		set ::pause off
 		return
 	}

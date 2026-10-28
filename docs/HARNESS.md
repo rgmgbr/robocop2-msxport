@@ -12,7 +12,11 @@ went out, and followed the others here: their checks are 5.17, and section 10 sa
 and what was verified when they moved.
 
 The shooting range, the second bonus stage, adds its display's checks (`rgview.tcl`, `rgview.py`,
-`rgview.sh`): section 5.18.
+`rgview.sh`): section 5.18. Its milestone's whole regression (the flows through the range, its
+screens, its logic after a played level 1 and Brainstorm, its sound, the product from the keyboard,
+and every Brainstorm check run again through the new flow) is section 5.19: `regress.sh`,
+`regress.tcl`, `rgflow.tcl`, `frsound.tcl`, `rgcheck.py`, `cmpcheck.py` and `frsnd/`. They were
+written in the range chain's scratch folder and moved here at its step 10 (section 11).
 
 The harness has two sides:
 
@@ -62,7 +66,7 @@ The harness has two sides:
 | `run8f.tcl` | Tcl | `c8f_chain`: `c8_chain`'s jobs and the solved ending from the keyboard (5.17 h) |
 | `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` |
 | `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5) |
-| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9) |
+| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game` |
 | `restorecheck.py DIR AFTER FRESH [--known]` | python | what the stage leaves: page 2, the atlas, the SATs; the next game against a fresh start (5.10) |
 | `hudcheck.py NEW_DIR REF_DIR` | python | the HUD during the stage against a reference build's at the same passes (5.6) |
 | `shots.py OUT SNAP...` | python | whole-screen PNGs of snapshots (play area, blank lines, HUD; 2x) |
@@ -75,8 +79,17 @@ The harness has two sides:
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
 | `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK, the camera's pokes, the HUD's register probe), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 81 jobs) |
-| `rgview.py still` / `rec` / `rate` / `probe` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18) |
+| `rgview.py still` / `rec` / `rate` / `probe` / `want` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18); the wanted state at every pass (5.19) |
 | `rgview.sh builds W` / `check W` | shell | the range's four test builds; every verdict of 5.18, then "rgview: PASS" |
+| `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` | shell | the range milestone's whole regression (5.19): the base 4a8a61d rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS" |
+| `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 207 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
+| `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if` |
+| `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
+| `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game (5.19); `bonuscheck.py --range` calls it |
+| `cmpcheck.py BASE.log NEW.log [OUT]` | python | two `check_all.sh` logs job by job; a torn cell accepted only under a black palette (5.19) |
+| `frsnd/frregcmp.py ROOT LOG...` | python (venv) | FRM's registers per tick in an `frsound.tcl` log against `frm.bin`'s streams decoded apart; `--selftest` (5.19) |
+| `frsnd/frsim.py ROOT ROM LABELS` | python (venv) | the range's sound on a ROM image in a Z80 interpreter (`frsnd/z80.py`, `frsnd/pzsim.py`: Brainstorm's), offline (5.19) |
+| `frsnd/frwavcmp.py`, `frsnd/fxalone.py` | python (venv) | recordings judged by pitch against the converter's previews (`frsnd/int_wavcmp.py`'s measures; 5.19) |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -90,7 +103,9 @@ The Tcl reads these labels from a ROM's label file:
 - the shooting range (5.18): `fr_tick`, `fr_frame`, `fr_done`, `fr_rated`, `fr_code`, `ac_diff`,
   `diff_tab`, `rg_loop`, `tick`, `iv_late`, `txt_rg_intro`, `txt_bs_time` and the other `txt_`
   labels (a text's span ends at the next one); the camera's checks: `rg_want`, `RG_ST_S` (the
-  pokes), `sp_r19`, `split_list`, `hud_msk` (the probe).
+  pokes), `sp_r19`, `split_list`, `hud_msk` (the probe); the flows (5.19): `fs_buf`, `new_game`,
+  `display_on`, `txt_rg_res`, `rg_blost`; the sound: `tns_go`, `tn_tick`, `tn_left`, `snd_rfx`,
+  `snd_stop`, `BANK_MUSIC`.
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -128,6 +143,8 @@ None of these is committed (`build/` is git-ignored; data from the game is never
 | **The title reference**: `FDIR/BASE_*` | the title check (5.3) | `hz_fresh` on the product ROM of the commit before the change (5.3) |
 | A reference build's snapshots | the HUD check (5.6) | the same `hz7_job` on the commit before the change |
 | **The approved title flow**: `W/O/np/t0x_<m>_*` | the title after Brainstorm (5.17 b) | `np_title0_setup` (a base without Brainstorm) or `np_title_setup` (a base with it) with EXACT 1 on the product of the commit before the change (5.3's base build), on each machine |
+| `build/emu/fr_<name>.drive` and `fr_<name>_ram.jsonl` for the range's 15 drives (`armed`, `mixed`, `dummy`, `poor`, `fair`, `good`, `good_min0`, `timeout`, `late_timeout`, `hold`, `opp`, `edge`, `fuzz`, `quirk4`, `armed2`) | the range's traces (5.18, 5.19), its keyboard flow (`fr_armed`), its sound logs (`fr_mixed`) | `docs/RANGE.md` 4.5: `$PY -I tools/frngbot.py` for the bot drives, the hand-made ones a poke line added (`tools/drivejoy.py`), then `$PY -I tools/amigaemu.py frng --fframes 3000 --drive build/emu/fr_<name>.drive --trace build/emu/fr_<name>_ram.jsonl --trace-ram` (`--level 2 --ram build/ram/level2_full.bin` for `armed2`, `--fframes 80` for `opp`) |
+| **The range milestone's base**: `B` (`B/R`, `B/O`, `B/fresh`, `B/check_all.log`) | `regress.sh check W B` (5.19) | `regress.sh base B`, `rgr_base_chain`, `regress.sh basecheck B` (5.19) |
 
 The night's own records (`impl/step0/fresh`, `impl/cand/suite_out`, ...) were in the scratch
 folder and are gone or going. A new milestone makes its own references from its base commit.
@@ -1071,21 +1088,189 @@ The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdic
 - The pass rate: 0 late passes; the worst pass 37,973 T-states at 60 Hz, 38,633 at 50 Hz.
 - The restore PASS; the HUD at `armed`'s 39 passes equal to step 8's build.
 
+### 5.19 The shooting range's milestone: the whole regression (step 10 of its plan)
+
+`docs/RANGE.md` section 4 (the range chain's scratch notes until it lands) asks for every check of
+the range, logic, display, camera and sound, and for every check of what existed before it (level
+1, the title, `front_stats`, Brainstorm), against the base `4a8a61d`, the commit before the range.
+`regress.sh` (shell) and `regress.tcl` (Tcl) run them all; `rgflow.tcl` holds the range's flows,
+`frsound.tcl` its sound logs, `rgcheck.py` its text screens' check, `cmpcheck.py` the comparison of
+Brainstorm's check logs, and `frsnd/` the sound's Python checkers (the venv's Python: numpy).
+
+```sh
+sh tools/bstest/regress.sh base B          # once a milestone: B/wt (4a8a61d), B/R; the product's SHA-256
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgr_base_chain {B} {B/base.done}   (41 jobs)
+```
+```sh
+sh tools/bstest/regress.sh basecheck B     # B/check_all.log (Brainstorm's checks on the base)
+sh tools/bstest/regress.sh builds W        # 21 builds through build.sh, W/drives; prints the Tcl line
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgr_chain {W} all {W/all.done}     (207 jobs)
+```
+```sh
+until [ -f W/all.done ]; do sleep 20; done  # (or poll as in section 4); the file lists the messages
+sh tools/bstest/regress.sh check W B       # every verdict, then "regress: PASS"; exit 0
+```
+
+One family at a time: `rgr_chain {W} FAMILY {W/FAMILY.done}`, then `regress.sh check W B FAMILY`
+(several families may follow `check W B`). `hz_chain JOBS MARK` writes MARK when the chain ends,
+done or stopped by an error: a shell waits for the file instead of polling the emulator.
+
+**The base.** `regress.sh base B` adds a worktree of `4a8a61d` in `B/wt` (`git worktree add
+--detach`), copies `build/ram` and `build/msx` into it (without ROMs, labels, pictures and `gen/`;
+`build/extracted` is linked, read only), rebuilds the two conversions the range changed
+(`msxhudrt.py`, `msxtext.py`) with the base's own tools, and builds `B/R` with the base's `hz.sh
+builds`. The product must be `29d29e99e24731c8…`. On 2026-10-27 the six builds were byte-identical to
+the range chain's step-0 base. `rgr_base_chain` records the base: `suite_flows` (the title from
+power-on as `base`), the title after Brainstorm, exact, on the three machines (`B/O/np/tx_*`), and
+`suite_drives`. The check reads `B/fresh/base_*`, `B/O/np/tx_*`, `B/O/flow/guard_*`,
+`B/O/st/solve1_m2` and `B/check_all.log`. When the milestone is over: `git worktree remove --force
+B/wt`.
+
+**The builds** (`regress.sh builds W`): `W/R` (`hz.sh builds`: prod, pzt, pz1, pz2, trace, ext);
+`W/X`: `fr2` (`EXTJOY=1 PZ_TEST=2`), `fr2t` (+ `ENEMY_CAP=0 DAMAGE_X=1`), `fr2tag` (+ `TAG=4`), `ext`
+(`EXTJOY=1`), `pzt2` (`PZ_TEST=2`), `p2m` (`ROM_2M=1`), `cand` (`PZ_TEST=1 TAG=4`, the candidates'
+options); `W/V` (`rgview.sh builds`); `W/S`: `fr2`, `fr2_noscc` (+ `NO_SCC=1`), `fr2_nosccint`
+(+ `NO_SCC_INT=1`), `fr2_psg` (+ `NO_SCC=1 NO_FM=1`), `pz2`, `pz2_noscc`; `W/drives`: the poke
+drives (`rg_cC_dD_mM.drive`: the counts and the ammo poked at pass 5; `rg_time.drive`: `$804C` =
+FFh; `rg_none.drive`). About 8 s in all.
+
+**The families** (`rgr_jobs`) and what `check` says of each:
+
+| Family | Jobs | Verdicts |
+|---|---|---|
+| `flows` (21) | `suite_flows` (as `new`); `tx_ex`, `tx_f1`, `tx_tr` (`np_title_setup` EXACT 1); `wp_tr`; `p2m_ex` (the 2 MiB product, `hz6_prod_setup`); `kb_ex`, `kb_tr` (`rgk_job`) | level 1's coverage traces 0 differ; the title from power-on identical to the base's; `bonuscheck.py --range time` on `prod_*` and `pzt_*` (Brainstorm's screens, then the range's intro and OUT OF TIME. after its real 2:00, the rating 24 at `fr_rated`, SHARP and lost 0 at the new game); the restore; the turbo R's blank (reported); 0 writes to 4000h-7FFFh; the title after the flows against the base's (`titlecmp.py`, `titlecmp2.py --unheard`); the 2 MiB product through both stages; the keyboard flows (below) |
+| `final` (7) | `solved_m2`, `solved_tr` (`pz1`), `solved_cand_ex` (`cand`, the moves from the keyboard), `fire_ex`, `two_m2`, `two_title_ex` (`cand`), `ftflow_fx` (`cand` at 5.37 MHz) | 5.17's verdicts, every one through the range (`--range time`): the script builds time it out at its first pass, the candidate plays its real 2:00; `ftflow_fx` 0 VRAM writes lost in the cartridge from the power-on through Brainstorm and the range's 6,050 passes to the title |
+| `drives` (25) | `suite_drives` | `check_all.sh`, then `cmpcheck.py` against the base's log (a torn cell accepted only under a black palette); the guard and the VRAM speed; the HUD during Brainstorm against the base's snapshots |
+| `range` (54) | `rgx_job` / `rgx_arm_job` for 5 poked results and the time out on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT (36); TAG=4 (2); level 1 traced after the range (3); the real timer (3, `pzt2` on the Expert, C-BIOS_MSX2_EU, the FS-A1GT); `tarm_m2`, `tarm_tr` (`rgx_tarm_job`); `want_*` (8 drives) | `rgcheck.py` on 41 records; the real timer's time out at 6,050 passes; level 1's traces after the range 0 differ; `tools/frngcmp.py --skip score` of `fr_mixed` after a played level 1 and Brainstorm; `rgview.py want` on 8 drives and their traces |
+| `display` (81) | `rgv_suite W/V` | `rgview.sh check W/V` (5.18) |
+| `sound` (20) | `frs_suite W` | `frsnd/frregcmp.py` on the 20 register logs (FRM's registers per tick against `frm.bin`'s streams, the modes, tick 0 after the first pass, the refusals, the tune's end and the silence, the stop); the 15 drives' traces 0 differ |
+
+**The range inside Brainstorm's flows.** Brainstorm's flow checks expected the title right after its
+result; the range now comes in between (`front_range`). `hz.tcl hb_step`, after Brainstorm's result,
+calls `rgflow.tcl rgh_arm`: in a build with the range (`fr_tick` in its labels) whose job does not
+drive the range itself (`::hb_range`, set to 1 by `hb_init_range` in every set-up that runs
+`hb_step`; `rgx_arm_setup` and `rgk_setup` set 0), it records the range's intro and its result or
+OUT OF TIME. into the flow's own `DIR/TAG` (`TAG_rgintro.sc5`, `TAG_rgres.sc5`, `TAG_rg.txt`: the
+result at `fr_done`, the rating at `fr_rated`, then `hb_step`'s new game with `ac_diff` and the lost
+counters), then `hb_step` goes on to the title or the new game as before (its state 7). A build with
+a script (`INPUT_SCRIPT` 1: `EXTJOY` or `JOY`), whose timer stands still, gets `rc2_fr_timeout`
+(OUT OF TIME. at the range's first pass); the others play its real 2:00. `hz7_after_setup` (the
+restore jobs) and `np.tcl np_2_w1` (the first of two stages) arm `rc2_fr_timeout` through
+`rgx_timeout_if`; `ft_flow_job` allows 600 s. A build without the range takes the old path, so the
+base's records are made by the same code. `bonuscheck.py --range time|C,D,M` checks the range's
+records (`rgcheck.check`), and `--no-game` drops Brainstorm's own new-game line (the keyboard flow
+ends at the title's game, which the range's notes give).
+
+**The product from the keyboard** (`rgk_job`, docs/RANGE.md 4.4's fresh-machine run as far as the
+harness allows; a new machine from the power-on, the product's own input, never `ext_joy`): the
+title, SPACE, a new game; level 1 ended by `drive_end.txt`'s teleport and poke (pokes, as in every
+product flow: no keyboard drive of level 1 exists); the statistics; Brainstorm played from keymatrix
+row 8 with `pz_solve1.drive`'s moves (`np_keys_arm`), traced by `rc2_pz_arm`; the range played from
+row 8 with `fr_armed.drive`'s moves (`rgk_keys_arm`: at each `fr_tick` the byte of FRNG frame `$B00`;
+fire is SPACE), traced by `rc2_fr_arm`; its result (25 correct, 0 dummy, the timer at 1:37: SHARP);
+the title, recorded exactly (`np_hf_step`) to its game at tick 300. The checks: `tools/puzlcmp.py
+--skip joy,last_joy,timer_min,timer_sec,score` (394 fields) and `tools/frngcmp.py --skip
+joy,timer_min,timer_sec,score` (139 fields; the keyboard sets the joystick byte's bit 7, the product's
+timers count real seconds, the score carries level 1's): 0 differ; `bonuscheck.py --result ok
+--no-game --range 25,0,1`; the title against the base's title after Brainstorm: picture, registers and
+palette identical, `titlecmp2.py --unheard` PASS with every PSG write identical. The SCC's fourth
+channel (its waveform 60h-9Fh in the debuggable, its period A6h-A7h and the mirror B6h-B7h) differs at
+every title tick and is never heard: the range's effects play on that channel and the title never
+writes it (docs/RANGE.md 4.3: "only unheard registers differing").
+
+**Polling.** With throttle off the emulator runs 20 to 130 times faster than real time, so half a
+real second is a minute of the game or more. Poll a running machine's condition with `after time`
+(emulated); keep `after realtime` for the points where a trace paused the machine (`rc2_trace_done`).
+The first keyboard flow polled `hb_st` in real time and armed the range's keys 80 emulated seconds
+late: the range timed out with no shot (`rgk_tp` polls in emulated time).
+
+**The run of 2026-10-27** (branch `range` at `43569f6` plus the moved harness; `W` =
+`impl/s10/W`): 207 jobs in about 7 minutes, no time out, then `regress.sh check W B` for every
+family: **regress: PASS**.
+
+- flows: level 1's traces 0 differ (4,401 / 1,400 / 1,400 rows); the title from power-on identical
+  to the base (5,046 music ticks); the product's and PZ_TEST=1 flows 4,075 / 4,078 VBLANKs and HUD
+  splits in Brainstorm, then the range's intro and OUT OF TIME. equal to the renders, 7,629 VBLANKs
+  and splits between them, the rating 24, SHARP and lost 0 at the new game, on the Expert and the
+  FS-A1GT; the restore PASS (m2, tr); the turbo R's blank 6 frames as at the base; 0 writes to
+  4000h-7FFFh from `front_bonus` (43.3 s) to the new game's tick 100 (255.8 s); the title after the
+  flows identical to the base's on the Expert, the HB-F1XDJ and the FS-A1GT (5,044-5,045 ticks: 0 SCC,
+  PSG register and PSG write differences); the 2 MiB product PASS; the keyboard flows PASS on the
+  Expert and the FS-A1GT.
+- final: `solved_m2`, `solved_tr`, `solved_cand_ex` (732 passes, 399 / 395 fields), `fire_ex` (both
+  partial screens exact, the title 131 s after the press: the range's 2:00 between), `two_m2` and
+  `two_title_ex` (182 and 732 passes), every range record PASS; `ftflow_fx`: 0 lost in the cartridge.
+- drives: Brainstorm's 20 traces 0 differ, stills 0, records 0 outside, 0 cursor errors, the one
+  known torn cell under a black palette (`solve1_tr` record 407: a board's set-up; the base has one
+  in `solve1_tr` too); guard reg/pal/cpu/vbl 0 (cmd 171/165/175 and tear 31/29/32 on C-BIOS_MSX2,
+  the FS-A1FX and the FS-A1GT, all at the set-ups), VRAM speed 0; the HUD equal to the base's.
+- range: 41 screen records PASS; the real timer 6,050 passes on the three machines; level 1 after the
+  range 0 differ; `tarm_m2`, `tarm_tr` 1,869 passes, 142 fields 0 differ, result (8, 17, 0), SHARP;
+  the wanted state 0 differ at every pass of `armed` (1,162 passes: 1,382 pop-ups, 788 big targets,
+  353 dissolves, 200 boxes), `mixed`, `dummy`, `edge`, `fuzz`, `quirk4`, `hold`, `armed2`.
+- display: `rgview: PASS` (79 traces, 695 stills, every R#18 00h-0Fh; records 0 torn, 0 SAT and 0
+  coherence errors; the probe and its 3 negative controls; the guard; VRAM speed; 0 late passes; the
+  restore), as at the sound's step.
+- sound: the 20 logs 0 differences (1,880-1,881 ticks of the drive, 5,999 of the stages left alone;
+  modes 1, 5, 6, 0 as the set-up gives; tick 0 after the first pass; 39 effects started, 9-10
+  refused; the tune's end then silence; the stop); the 15 drives' traces 0 differ.
+
+Outside the chain, the same day: `tools/msxmatrix.py` 10 of 10 PASS on the product (its lines equal
+the base product's), the 2 MiB product, and with `--no-title` the PZ_TEST=1 and PZ_TEST=2 builds (the
+range's 50 passes a second: `tick_n` +350 in 7 s); its two negative cases FAIL as they must (the
+product with `--no-title`, the PZ_TEST=2 build without it). `variants.sh`: the same 38 of 41 sets
+build as at the base (`DEMO_ACTORS=2/5` and `DEMO_HUD=1` overflow the fixed area at both, now by 2
+bytes more: `fr_done`, `fr_rated`). `make test`: the 4 known failures only.
+
+**Negative controls** (on copies of the records; each gate must fail):
+
+| Gate | Known-bad input | Result |
+|---|---|---|
+| `bonuscheck.py --range` | one byte of `prod_m2`'s OUT OF TIME. record inverted | FAIL: 1 byte DIFFER, line 60 |
+| `bonuscheck.py --range` | the base's product flow (no range records) | FAIL: no record |
+| `bonuscheck.py --range 24,0,1` | the keyboard flow's result (25 correct) | FAIL: 26 bytes DIFFER, lines 91-98 |
+| `rgcheck.py` | `lost: mp 1` in the notes; the new game's `ac_diff - diff_tab 24` | FAIL: lost counters not 0; not SHARP |
+| `frngcmp.py` (keyboard flow) | no skip list | FAIL: 1,163 passes differ (the score) |
+| `titlecmp2.py` (keyboard flow) | without `--unheard`; one PSG write's hash changed with it | FAIL; FAIL (`PSG writes: 1`) |
+| `rgview.py want` | step 7's log (before the camera: s 32 throughout); one pop-up's X + 1 | FAIL: 1,144 differ; 1 differ (pass 2) |
+| `frngcmp.py --skip score` (`tarm`) | `fr_armed`'s reference instead of `fr_mixed`'s | FAIL: 1,096 differ |
+| `cmpcheck.py` | one trace's "0 differ" made "3 differ" in a copy of the check log | FAIL |
+| `frsnd/frregcmp.py` | channel A's volume changed at one T line of `d_scc` | FAIL: 1 difference |
+| `rgview.py probe` | `neg8_*` (5.18) | the shifted HUD reported |
+| `tools/msxmatrix.py` | the product with `--no-title`; `pzt2` without it | FAIL; FAIL |
+
+The scratch script that ran them is in the step's notes (impl/s10/neg.sh); `tests/test_bstest.py
+test_bonuscheck_range_command_line` keeps four of them as a unit test.
+
+**Not in the chain**: the recordings judged by pitch (`frs_suite W 1`, then `frsnd/frwavcmp.py` and
+`frsnd/fxalone.py` against the converter's previews, `tools/msxtune.py --frm --wav DIR`: the sound's
+step ran them; they need the ear's judgment more than a gate's), the Z80 interpreter's offline runs
+(`frsnd/frsim.py ROOT ROM LABELS`), `hz6_time`, `hzp_setup`, `ft_job` / `ft_boot_job` / `ft_l1_job`
+and the candidates' `c8f_chain` (5.17 g, h: with the candidates of a delivery).
+
 ## 6. The whole suite in order
 
-1. `sh tools/bstest/hz.sh builds W/R`, and the base reference if the milestone has none yet
-   (5.3).
+1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its
+   records (`rgr_base_chain {B} {B/base.done}` in the MCP's openMSX), `regress.sh basecheck B`.
 2. `msx_local_boot`; `source {<repo>/tools/bstest/load.tcl}`.
-3. `hz_chain [suite_drives {W/R} {W/O}]`, poll until done, then `sh tools/bstest/check_all.sh
-   W/O m2 tr fx eu` and 5.7-5.8's greps.
-4. `hz_chain [suite_flows {W/R} {W/O} {W/fresh} NEWTAG]`, poll until done, then 5.9's and 5.10's
-   commands and `fixblank.py`.
-5. The checks the suite does not run: `hz6_arm` (5.4), `hz6_time` (5.11), `hzp_setup` (5.12)
-   and `hudcheck.py` against the base (5.6).
-6. The final checks (5.17 a-g), and `c8f_chain` instead of `c8_chain` for test candidates (5.17 h).
-7. The shooting range's display (5.18): `rgview.sh builds W`, `hz_chain [rgv_suite {W}]`,
-   `rgview.sh check W`.
-8. `msx_local_shutdown`; the matrix (5.13); `make test`.
+3. `rgr_chain {W} all {W/all.done}`: every emulator check of 5.2-5.10, 5.12's blank, 5.17 a-g's
+   flows, 5.18 and 5.19 (207 jobs; about 7 minutes on 2026-10-27). Wait for `W/all.done`.
+4. `sh tools/bstest/regress.sh check W B`: every verdict, "regress: PASS".
+5. `msx_local_shutdown`; the matrix (5.13) on `W/R/prod`, `W/X/p2m` and, with `--no-title`, `W/R/pzt`
+   and `W/X/pzt2`; `sh tools/bstest/variants.sh` (5.15) against the base's; `make test`.
+6. The checks the chain does not run: `hz6_time` (5.11), `hzp_setup` (5.12's PAUSE), `hudcheck.py`
+   against the commit before a change (5.6), 5.17 g's other speed jobs, `c8f_chain` for test
+   candidates (5.17 h), the range's recordings (5.19).
+
+One family: `rgr_chain {W} FAMILY {W/FAMILY.done}` with FAMILY `flows`, `final`, `drives`, `range`,
+`display` or `sound`, then `sh tools/bstest/regress.sh check W B FAMILY`. The older entry points
+still work alone: `hz_chain [suite_drives {W/R} {W/O}]` and `check_all.sh` (5.4-5.8),
+`hz_chain [suite_flows {W/R} {W/O} {W/fresh} TAG]` (5.9-5.10), `hz_chain [rgv_suite {W}]` and
+`rgview.sh check W` (5.18).
 
 ## 7. For the next milestones
 
@@ -1242,3 +1427,27 @@ The final checks' scripts (5.17) were in the night's scratch folder (`impl/final
 
 **Not tested without an emulator.** The moved Tcl against a real openMSX. The night's copies ran
 (`docs/BRAINSTORM.md` 4.6); the moved procs differ from them only as listed above.
+
+## 11. When the range's harness moved (its step 10)
+
+The range chain's agents wrote their checks in the session's scratch folder; step 10 moved them
+here so that the repository alone reruns every gate:
+
+- `impl/harness/regress.sh`, `regress.tcl`, `rgflow.tcl`, `rgcheck.py`, `cmpcheck.py` became
+  `regress.sh`, `regress.tcl`, `rgflow.tcl`, `rgcheck.py`, `cmpcheck.py`: paths from the scripts'
+  own place; the base's folder an argument (`check W B`), and its recipe a command (`base B`,
+  `basecheck B`, `rgr_base_chain`); every family in one chain, with the display (`rgv_suite`) and
+  the sound (`frs_suite`) added; `rgx_flows`' wrapper dropped (`hz7_after_setup` arms the time out
+  itself); `rgcheck.py` importable (`check()`), with the lost counters checked.
+- Step 7's scripts: `s7_arm_job` became `rgx_tarm_job`, `s7_want_job` `rgx_want_job`, `wantcheck.py`
+  `rgview.py want` (on `rgview.py Bench`, with the camera: the old check expected s = 32); `s7_all`,
+  `cmp.sh`, `s7_rate_job` and `rate.py` were already `rgview.tcl`'s `rgv_tjob`, `rgview.sh check`'s
+  trace verdict, `rgv_rate_job` and `rgview.py rate`; the option-set scripts (`b3.sh`, `bset.sh`,
+  `b8.sh`, `b9.sh`, `b11.sh`) are `regress.sh builds` and `variants.sh`.
+- Steps 8 and 9's still and record checks were in the repository already (`rgview.*`, 5.18).
+- The sound's step: `frs.tcl` became `frsound.tcl` (+ `frs_suite`); `py/frsim.py`, `frregcmp.py`,
+  `frwavcmp.py`, `fxalone.py` and the Brainstorm night's `z80.py`, `pzsim.py`, `int_wavcmp.py` are in
+  `frsnd/`, unchanged but for their import path.
+- New: `hb_step`'s range part (`rgh_arm`), `rgk_job`, `hz_chain`'s MARK file, `bonuscheck.py --range`
+  and `--no-game`, `rgview.py want`.
+
