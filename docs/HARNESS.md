@@ -1558,6 +1558,50 @@ enemy bullets (`$C34-$D33`) and the explosions (`$D34-$D73`) out; a scratch set 
 slot's x, y, type, speeds, word +A0h and accelerations; the explosions' bytes and places) compared 0
 differ over `end`, `tour`, `fuzz`, `barrel`, `drone`, `t1left`, `vat` and `mine` too.
 
+At step 11 (2026-10-28, milestone 1's acceptance), three additions:
+
+- **The lost counters with every drive** (the plan's 4.2 check 5). `hz_l2`'s jobs run `hz_l2_drive`
+  (`rc2_drive_rom` and, at every `tick_start`, `mp_lost`, `atr_lost`, `rd_lost`, `fb_lost` and the map
+  patches' pools in use, MP_A's and MP_B's entry FFh) and append them when they end to `W/O/l2/lost.txt`
+  (`l2_<job> (<machine>): mp 0 atr 0 rd 0 fb 0 pools EVEN/ODD tick T`). `hz.sh compare --fields` takes
+  each job's last line there and fails on a counter that is not 0 (the pools' use printed: level 2's
+  bounds are 146/143, `mapcells.py`). `cont` now ends once its 109 rows are written (its counters
+  those of row 108's tick) instead of waiting for its 60-s time out; step 19 gives it the others'
+  condition (`$::rc2_trace_done`) again.
+- **Level 2's start check** (4.2 check 1): `hz_l2_start_jobs DIR ROM LABELS ?SECS?`, an `EXTJOY=1
+  LV_TEST=2` build from the power-on of C-BIOS_MSX2, the FS-A1FX and the FS-A1GT on `tour`'s drive;
+  from level 2's first `tick_start` (`lv_cur`'s logic bank `BANK_L2`) 42 s under `rc2_guard` (tears
+  counted), `rc2_patcheck`, `rc2_sprlines`, `rc2_satcheck`. `DIR/start_<m2|fx|tr>.txt`: at that tick
+  and at the end the game frame, RoboCop's and the camera's place, the logic bank, R#1, the VDP's
+  palette, `lv_pal` and `pf_pal`, the lost counters and the pools; the rows driven; the guard's counts
+  and its whole log. The drive's trace (`DIR/l2_tour.txt`, `l2_tour_fx.txt`, `l2_tour_tr.txt`) compares
+  with `hz.sh compare --fields analysis/amiga_ram_l2.tsv DIR R tour:N tour_fx:N tour_tr:N` on the `l2`
+  build.
+  ```
+  msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [hz_l2_start_jobs {W/O/start} {W/R/l2/rc2_l2.rom} {W/R/l2/rc2_l2.labels}]
+  ```
+  Expected at step 11: RoboCop at (352, 784), logic bank 104, `lv_pal` = `gen/level2_grade.pal` (the
+  VDP's palette black or the HUD's at the first tick, the play field fading in, `lv_pal` at the end);
+  reg, pal, cpu, vbl 0, patcheck 0 bad; the lost counters 0. **cmd and tear are not 0 yet**, and every
+  entry falls in one of the play-field engine's classes that level 1 shows too when the same guard runs
+  over an active drive (`drive_cov0` on the EXTJOY build: reg 6-12, cmd 47-523, vbl 0-1, tear 5-102 in
+  62 s): (1) the play-field BOBs' copy onto the page shown still running when the picture starts (HMMM
+  about 50 x 28 at the lifts; by `fb_fits`' rule it keeps ahead of the beam, which the guard cannot
+  see); (2) 16 x 16 tile HMMMs into the page shown during the play area when many cells change at once
+  (the redraw's fallback, `vdp_cmd` from the scroll engines' redraw: in `tour` frames 638-644, a map
+  object's look; 1-4 of them tears); (3) `R#46` written during the play area by `fb_qstart` for a
+  staged piece (pc in `fqs_go`). `rc2_satcheck` also differs once at game frame 0 (the SAT in VRAM ends
+  at sprite 0 while the first list's buffer is not published; level 1 the same at its frame 0; the
+  base's start check starts at tick 20). Milestone 2's field work (the plan's steps 13-16, 4.2 check 8:
+  tear 0) takes them; any entry outside these classes is new.
+- **The guard** (`tools/openmsx_rc2.tcl` `rc2_rg_cmd`): a command started below the play area while the
+  HUD's registers are in (R#2 page 3, between the split and the VBLANK's list) is no tear candidate any
+  more: those registers show only the HUD's lines of page 3, so the play-field BOBs' scratch and caches
+  on page 3 lines 112-175 were taken for play-area lines (69 such "tears" in level 2's start check,
+  two builds on the three machines); what the next picture shows is checked when its list goes in
+  (`rc2_rg_vbl`), as before. It can only remove reports: Brainstorm's guard tears (16 x 16 copies into
+  the play page) and the range's guard (0) are unchanged.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its

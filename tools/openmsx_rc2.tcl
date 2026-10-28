@@ -1011,6 +1011,14 @@ proc rc2_rg_cmd {op} {
 	if {$ny == 0} { set ny 1024 }
 	set ::rg_cmd [list $op $dx $dy $nx $ny $arg]
 	set line [rc2_rg_line]
+	if {$line >= $::rg_vis && $line < $::rg_nl - 4 && (([debug read "VDP regs" 2] >> 5) & 3) == 3} {
+		# (below the play area with the HUD's registers in, R#2 page 3: they show only the HUD's
+		#  lines of page 3, and the next picture shows the page its list sets, checked when the
+		#  list goes in (rc2_rg_vbl); a write to page 3's off-screen part then, the play-field
+		#  BOBs' scratch or caches, is no tear)
+		set ::rg_tc {}
+		return
+	}
 	set shown [rc2_rg_shown]
 	set ::rg_tc [expr {[llength $shown] && $line >= 0 ? [list $line $shown] : {}}]
 	if {$line >= $::rg_vis && $line < $::rg_nl - 4} { return }

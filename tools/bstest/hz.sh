@@ -34,7 +34,9 @@
 #                            rows and 0 frames differ. JOB:ROWS compares the job's first ROWS rows
 #                            only; without JOBs, every job whose trace is in DIR, whole, but cont
 #                            as cont:109 until the port has the continue (level 2's step 19: its
-#                            game over ends the trace at row 108, the plan's milestone 1)
+#                            game over ends the trace at row 108, the plan's milestone 1). With
+#                            DIR/lost.txt (hz_l2's), each job's lost counters too: mp, atr, rd
+#                            and fb 0 (the pools' use printed)
 #
 # The whole level-1 regression, three steps:
 #   sh tools/bstest/hz.sh trace DIR
@@ -44,7 +46,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../.." && pwd -P)"
-usage() { sed -n 2,41p "$0" >&2; exit 2; }
+usage() { sed -n 2,43p "$0" >&2; exit 2; }
 # a folder's absolute path (the printed lines run in openMSX, whose working directory is another;
 # compare runs from the repository root); "mk" creates it first
 absdir() {
@@ -112,7 +114,18 @@ compare)
       echo "$n: $rows rows${upto:+ (the first $upto)}; $out"
       [ "$rows" -eq "$want" ] || { echo "  FAIL: $rows rows, $want expected"; bad=1; }
       echo "$out" | grep -q ": 0 differ" || { echo "  FAIL: differences"; bad=1; }
+      if [ -f "$D/lost.txt" ]; then
+        # (hz_l2's lost counters: the job's last line)
+        lost=$(grep "^l2_$n (" "$D/lost.txt" | tail -1)
+        if [ -z "$lost" ]; then
+          echo "  FAIL: no lost counters for l2_$n in $D/lost.txt"; bad=1
+        else
+          echo "  lost: ${lost#*): }"
+          echo "$lost" | grep -q '): mp 0 atr 0 rd 0 fb 0 pools ' || { echo "  FAIL: lost counters"; bad=1; }
+        fi
+      fi
     done
+    [ -f "$D/lost.txt" ] || echo "(no $D/lost.txt: the lost counters not checked)"
     [ $seen -gt 0 ] || { echo "hz.sh: no level-2 trace to compare in $D" >&2; bad=1; }
     [ $bad -eq 0 ] && echo "level 2: PASS ($seen traces)" || echo "level 2: FAIL"
     exit $bad

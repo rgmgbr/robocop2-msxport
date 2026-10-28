@@ -190,12 +190,17 @@ proc hz_regress {dir rom labels {tr ""}} {
 # runs before level 2 in those builds, so tick_n is the drive's index): DIR/l2_<job>.txt, n rows
 # each (the reference's). With "tr", tour and vat on a turbo R too. ONLY: a list of job names (the
 # others skipped). Compare with "hz.sh compare --fields analysis/amiga_ram_l2.tsv DIR R".
+# Each job also keeps, at every tick_start, the port's lost counters and the map patches' pools in
+# use (hz_l2_drive), and appends them to DIR/lost.txt when it ends (hz_l2_lost; docs/LEVEL2.md 4.2
+# check 5): "hz.sh compare --fields" takes each job's last line there and wants mp, atr, rd, fb 0.
 # (cont: since level 2's step 8 RoboCop dies in the vat, and until the port has the continue (its
-# step 19) the game over ends the trace at row 108: the job times out after 60 s instead of 1,800,
-# and "hz.sh compare" takes it as cont:109, the plan's milestone 1)
+# step 19) the game over ends the trace at row 108: the job ends once those 109 rows are written
+# (its lost counters those of row 108's tick; 60 s at most), and "hz.sh compare" takes it as
+# cont:109, the plan's milestone 1; step 19 gives it the others' condition again)
 proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
+	set lost [file join $dir lost.txt]
 	set spec [list \
 		end l2 l2_end 259 C-BIOS_MSX2            tour l2 l2_tour 2654 C-BIOS_MSX2 \
 		lift l2 l2_lift 801 C-BIOS_MSX2          trolley l2 l2_trolley 641 C-BIOS_MSX2 \
@@ -212,15 +217,146 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	set jobs {}
 	foreach {name b drive n m} $spec {
 		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
-		set tmo [expr {$name eq "cont" ? 60 : 1800}]
-		lappend jobs [list l2_$name $m [list rc2_drive_rom "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
-			"$dir/l2_$name.txt" $n 0 "$e/$drive.drive"] {$::rc2_trace_done} $tmo]
+		set tmo 1800
+		set done "\$::rc2_trace_done && \[hz_l2_lost {$lost}\]"
+		if {$name eq "cont"} {
+			set tmo 60
+			set done "\$::rd_left <= [expr {$n - 109}] && \[hz_l2_lost {$lost}\]"
+		}
+		lappend jobs [list l2_$name $m [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
+			"$dir/l2_$name.txt" $n "$e/$drive.drive"] $done $tmo]
 	}
 	return $jobs
 }
 
 proc hz_l2 {dir R {tr ""} {only ""}} {
 	hz_chain [hz_l2_jobs $dir $R $tr $only]
+}
+
+# hz_l2_drive ROM LABELS OUT N DRIVE: rc2_drive_rom from 0 and, at every tick_start, the port's lost
+# counters (mp_lost 1084h, atr_lost 1082h, rd_lost 1088h, fb_lost 069Ch) and the map patches' pools
+# in use (MP_A's and MP_B's entry FFh: 0BFFh, F5FFh; tiles.asm map_write) kept in ::hz_l2_lv with
+# tick_n, for hz_l2_lost (rc2_drive_rom removes every breakpoint: this one is set after it)
+proc hz_l2_drive {rom labels out n drive} {
+	rc2_drive_rom $rom $labels $out $n 0 $drive
+	set ts [rc2_label $labels tick_start]
+	set gt [rc2_label $labels game_tick]
+	set ::hz_l2_lv {}
+	debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt" hz_l2_lv_hit
+}
+
+proc hz_l2_lv_hit {} {
+	set ::hz_l2_lv [list [peek 0x1084] [peek 0x1082] [peek 0x1088] [peek 0x069C] [peek 0x0BFF] [peek 0xF5FF] [rc2_w 0xCEE0]]
+}
+
+# the job's last kept counters appended to FILE ("l2_<job> (<machine>): mp N atr N rd N fb N pools
+# EVEN/ODD tick T"); a done condition's last term: returns 1
+proc hz_l2_lost {file} {
+	set f [open $file a]
+	catch {
+		if {[llength $::hz_l2_lv] == 7} {
+			lassign $::hz_l2_lv mp atr rd fb pa pb t
+			puts $f "$::hz_jobname ([machine_info config_name]): mp $mp atr $atr rd $rd fb $fb pools $pa/$pb tick $t"
+		} else {
+			puts $f "$::hz_jobname ([machine_info config_name]): no tick seen"
+		}
+	}
+	close $f
+	return 1
+}
+
+# hz_l2_start_jobs DIR ROM LABELS ?SECS?: level 2's start check (docs/LEVEL2.md 4.2 check 1) on the
+# three machines (C-BIOS_MSX2, the FS-A1FX's V9958, the FS-A1GT's R800): ROM (an EXTJOY=1 LV_TEST=2
+# build, LABELS its label file) from the power-on on tour's drive; from level 2's first tick_start
+# (lv_cur's logic bank BANK_L2: no VRAM transfer under way), SECS (default 42) of emulated time
+# under rc2_guard (tears counted), rc2_patcheck, rc2_sprlines and rc2_satcheck, as l2base.tcl's
+# start check of level 1. DIR/start_<m2|fx|tr>.txt: at that first tick ("start:") and at the end
+# ("end:") the game frame, RoboCop's and the camera's place, lv_cur's logic bank, R#1, the VDP's
+# palette, lv_pal and pf_pal (hex), the lost counters and the pools; the rows driven, the guard's
+# counts, patcheck, sprlines, satcheck. The drive's trace (tour's first rows, up to the guard's end)
+# goes to DIR/l2_tour.txt, l2_tour_fx.txt, l2_tour_tr.txt: on the l2 build (hz.sh l2builds) compare
+# them with "hz.sh compare --fields analysis/amiga_ram_l2.tsv DIR R tour:N tour_fx:N tour_tr:N".
+proc hz_l2_start_jobs {dir rom labels {secs 42}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set jobs {}
+	foreach {t m tn} {m2 C-BIOS_MSX2 tour fx Panasonic_FS-A1FX tour_fx tr Panasonic_FS-A1GT tour_tr} {
+		lappend jobs [list l2start_$t $m [list hz_l2_start_setup "$dir/start_$t.txt" $rom $labels \
+			"$dir/l2_$tn.txt" "$e/l2_tour.drive" $secs] {[hz_l2_start_done]} 900]
+	}
+	return $jobs
+}
+
+proc hz_l2_start_setup {out rom labels trace drive secs} {
+	set ::hz_l2g_out $out
+	set ::hz_l2g_rom $rom
+	set ::hz_l2g_lab $labels
+	set ::hz_l2g_secs $secs
+	set ::hz_l2g_n 2654
+	set ::hz_l2g 0
+	set ::hz_l2g_written 0
+	set ::rg_done 0
+	unset -nocomplain ::rg_notear              ;# (tears counted)
+	hz_l2_drive $rom $labels $trace $::hz_l2g_n $drive
+	set ts [rc2_label $labels tick_start]
+	set gt [rc2_label $labels game_tick]
+	set bank [expr {[rc2_label $labels BANK_L2]}]
+	set ::hz_l2g_bp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $bank" hz_l2_start_go]
+}
+
+proc hz_l2_start_go {} {
+	debug remove_bp $::hz_l2g_bp
+	set lab $::hz_l2g_lab
+	set ::hz_l2g_t0 [hz_l2_state]
+	rc2_guard $::hz_l2g_secs 159 262 163 $lab
+	rc2_patcheck $::hz_l2g_rom [rc2_label $lab spr_plan] [expr {[rc2_label $lab SPR_BASE_BANK]}] \
+		[expr {[rc2_label $lab SPR_PAT_BANK]}] [expr {[rc2_label $lab SPR_COL_BANK]}] 100000
+	rc2_sprlines 100000 [expr {[rc2_label $lab VIEW_LINES]}]
+	rc2_satcheck 100000
+	set ::hz_l2g 1
+}
+
+# the machine's state, a line per item (hz_l2_start_jobs' "start:" and "end:" lines)
+proc hz_l2_state {} {
+	set lab $::hz_l2g_lab
+	set s [list "game frame [rc2_w 0xD000] tick_n [rc2_w 0xCEE0] time [machine_info time]"]
+	lappend s "robocop [rc2_w 0xDAD0] [rc2_w 0xDAD4] camera [rc2_w 0xD004] [rc2_w 0xD006] lv_logic [peek 0xF1A0] R#1 [format %02X [debug read {VDP regs} 1]]"
+	binary scan [debug read_block {VDP palette} 0 32] H* p
+	lappend s "vdp_palette $p"
+	foreach v {lv_pal pf_pal} {
+		binary scan [debug read_block memory [rc2_label $lab $v] 32] H* p
+		lappend s "$v $p"
+	}
+	lappend s "lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C] pools [peek 0x0BFF]/[peek 0xF5FF]"
+	return $s
+}
+
+# the job's end: the guard done (it pauses the machine); the results written once
+proc hz_l2_start_done {} {
+	if {$::hz_l2g != 1 || !$::rg_done} { return 0 }
+	if {$::hz_l2g_written} { return 1 }
+	set ::hz_l2g_written 1
+	catch {debug probe remove_bp $::rx8_bp}
+	catch {debug probe remove_bp $::rs_sat_bp}
+	catch {debug remove_bp $::rp_bp}
+	set f [open $::hz_l2g_out w]
+	catch {
+		foreach x $::hz_l2g_t0 { puts $f "start: $x" }
+		foreach x [hz_l2_state] { puts $f "end: $x" }
+		puts $f "rows: [expr {$::hz_l2g_n - $::rd_left}]"
+		set g {}
+		foreach k {reg pal cmd cpu vbl tear} { lappend g "$k $::rg_n($k)" }
+		puts $f "guard: [join $g {, }]"
+		foreach x $::rg_log { puts $f "  $x" }
+		puts $f "patcheck: $::rp_n entries, $::rp_bad bad"
+		foreach x [lrange $::rp_log 0 40] { puts $f "  $x" }
+		puts $f "sprlines: $::rx8_frames frames with a line above 8"
+		foreach x [lrange $::rx8_log 0 40] { puts $f "  $x" }
+		puts $f "satcheck: $::rs_sat_bad frames differ (mux $::rs_sat_mux)"
+		foreach x [lrange $::rs_sat_log 0 40] { puts $f "  $x" }
+	}
+	close $f
+	return 1
 }
 
 # hz_l2_still_jobs DIR R ?FRAMES?: level 2's start on the three machines (C-BIOS_MSX2, the FS-A1FX's
