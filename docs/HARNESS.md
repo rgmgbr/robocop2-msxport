@@ -81,9 +81,9 @@ The harness has two sides:
 | `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK, the camera's pokes, the HUD's register probe), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 81 jobs) |
 | `rgview.py still` / `rec` / `rate` / `probe` / `want` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18); the wanted state at every pass (5.19) |
 | `rgview.sh builds W` / `check W` | shell | the range's four test builds; every verdict of 5.18, then "rgview: PASS" |
-| `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` | shell | the range milestone's whole regression (5.19): the base 4a8a61d rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS" |
+| `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` / `cand W B NAME CB` | shell | the range milestone's whole regression (5.19): the base 4a8a61d rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS"; `cand`: the range's test candidates' verdicts (5.20) |
 | `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 207 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
-| `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if` |
+| `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
 | `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game (5.19); `bonuscheck.py --range` calls it |
 | `cmpcheck.py BASE.log NEW.log [OUT]` | python | two `check_all.sh` logs job by job; a torn cell accepted only under a black palette (5.19) |
@@ -947,8 +947,8 @@ snapshot(s), 0 with differences". The last line draws the WELL DONE screen.
 
 ### 5.18 The shooting range's display and its camera (steps 8 and 9 of its plan)
 
-The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; the plan's 3.3 and 4.2 are
-in the range chain's scratch notes until `docs/RANGE.md` lands) draws what the original draws in each
+The second bonus stage (`msx/frng.asm`, its display `msx/frngview.asm`; `docs/RANGE.md` 3.3 and
+4.2) draws what the original draws in each
 pass: the wanted state `rg_want` (EE00h, `range.inc`'s `RG_ST_` layout), taken whole when a build of
 the page not on screen starts, so that each display page shows one pass. Each page's shown state is
 kept in RAM with the pass it was taken at (`rgs0` EE40h, `rgs1` EE68h: `RG_ST_LEN` bytes, then the
@@ -1090,7 +1090,7 @@ The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdic
 
 ### 5.19 The shooting range's milestone: the whole regression (step 10 of its plan)
 
-`docs/RANGE.md` section 4 (the range chain's scratch notes until it lands) asks for every check of
+`docs/RANGE.md` section 4 asks for every check of
 the range, logic, display, camera and sound, and for every check of what existed before it (level
 1, the title, `front_stats`, Brainstorm), against the base `4a8a61d`, the commit before the range.
 `regress.sh` (shell) and `regress.tcl` (Tcl) run them all; `rgflow.tcl` holds the range's flows,
@@ -1218,6 +1218,11 @@ family: **regress: PASS**.
 - sound: the 20 logs 0 differences (1,880-1,881 ticks of the drive, 5,999 of the stages left alone;
   modes 1, 5, 6, 0 as the set-up gives; tick 0 after the first pass; 39 effects started, 9-10
   refused; the tune's end then silence; the stop); the 15 drives' traces 0 differ.
+- Again on 2026-10-28 after `4650771` (the stage's own stop, `rg_end`): every family PASS, 45
+  verdicts; the sound's drives now 1,866-1,868 ticks (the 13-14 ticks after the last pass are gone),
+  the Q line 0 ticks after the last pass in all 20 logs; the logs of the build before the fix FAIL
+  the new rule ("no stop at the stage's end"), and `frregcmp.py --selftest` catches a missing and a
+  late stop on every chip set.
 
 Outside the chain, the same day: `tools/msxmatrix.py` 10 of 10 PASS on the product (its lines equal
 the base product's), the 2 MiB product, and with `--no-title` the PZ_TEST=1 and PZ_TEST=2 builds (the
@@ -1252,6 +1257,64 @@ step ran them; they need the ear's judgment more than a gate's), the Z80 interpr
 (`frsnd/frsim.py ROOT ROM LABELS`), `hz6_time`, `hzp_setup`, `ft_job` / `ft_boot_job` / `ft_l1_job`
 and the candidates' `c8f_chain` (5.17 g, h: with the candidates of a delivery).
 
+### 5.20 The shooting range's test candidates (step 13 of its plan)
+
+The candidates of `docs/RANGE.md` section 6 are built outside `build/msx` (`TAG=4`; each twice, to
+the same bytes, through `build.sh`), copied under their final names into a folder `C`, and checked
+from the power-on with the keyboard, never `ext_joy`:
+
+```sh
+sh tools/bstest/build.sh CB/prod/rc2.rom TAG=4               # and CB2/... for the second build; cmp
+sh tools/bstest/build.sh CB/range/rc2.rom PZ_TEST=2 TAG=4
+sh tools/bstest/build.sh CB/prod2m/rc2.rom TAG=4 ROM_2M=1
+sh tools/bstest/build.sh CB/range2m/rc2.rom PZ_TEST=2 TAG=4 ROM_2M=1
+sh tools/bstest/build.sh CB/noadj/rc2.rom PZ_TEST=2 TAG=4 RG_ADJ=0
+sh tools/bstest/build.sh CB/v2/rc2.rom PZ_TEST=2 PZ_LEVEL=2 TAG=4
+# then C/NAME.ROM, NAME-range.ROM, NAME-2M.ROM, NAME-range-2M.ROM, NAME-range-noadj.ROM,
+# NAME-range-v2.ROM (NAME = ROBOCOP2_v0.1.3-test4)
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgc_chain {CB} {C} NAME {W}     (15 jobs)
+```
+```sh
+sh tools/bstest/regress.sh cand W B NAME CB     # "cand: PASS"; pictures in W/png
+```
+
+`rgc_chain` (`rgflow.tcl`) runs, into `W/run` and `W/fresh`:
+- the title from the power-on of `NAME.ROM` and `NAME-2M.ROM` on a fresh Expert (`hz_fresh_setup`:
+  `cand`, `cand_2m`), checked against the base's `B/fresh/base_*` (`hz.sh fresh`; the 2 MiB image
+  may differ only in `game_ram.bin`'s D032h-D033h, cmp's offsets 51 and 52);
+- `rgk_job` on `NAME.ROM` on the Expert, the HB-F1XDJ and the FS-A1GT (`kb_m2`, `kb_f1`, `kb_tr`)
+  and on `NAME-2M.ROM` on the Expert (`kb2m_m2`): level 1 ended, Brainstorm solved, the range's 25
+  shots, the result, the title, checked as 5.19's keyboard flows with `--tag 4` against the base's
+  title after Brainstorm (`B/O/np/tx_ex`, `tx_f1`, `tx_tr`). The title's registers may differ only in
+  the sprite tables' (R#5, R#6, R#10, R#11) while both records have the sprites off (R#8 bit 1:
+  the title's G7): `regress.sh`'s `unseen_regs` (2026-10-28: R#5 CFh/C7h on the 2 MiB image, the
+  game's sprite set at level 1's end; nothing shows);
+- `rgc_job` (a PZ_TEST=2 build from the power-on: `rc2_fr_drive`'s trace, `rgk_keys_arm`'s keys
+  from `build/emu/fr_armed.drive` (`fr_armed2` for v2), `rgv_arm`'s snapshots at passes 60, 300,
+  600, 900 and 1100 and a record of 600 VBLANKs from pass 1000 with 60 past `fr_rated`, the intro's
+  and the result's records, then the title, fire 1.5 s after it and the new game's frame 100) on
+  `NAME-range.ROM` (Expert, HB-F1XDJ, FS-A1GT), `-range-2M` (Expert), `-range-noadj` (Expert,
+  HB-F1XDJ) and `-range-v2` (Expert): `frngcmp.py --skip joy,timer_min,timer_sec` against the bench,
+  `rgcheck.py --counts 25,0,1 --tag 4`, `rgview.py still` and `rec` with `--ref` and `--gen` (PNGs);
+- `rgc_job` with DRIVE `-` (no input; the trace from pass 5990 only) on `-range` (Expert) and
+  `-range-noadj` (HB-F1XDJ): the real 2:00, `rgcheck.py --time --tag 4`, stills at passes 600, 3000
+  and 6040.
+
+Then, with the MCP's openMSX shut down, `tools/msxmatrix.py` on each file (`--labels CB/K/rc2.labels`;
+`--no-title` for the four PZ_TEST ones): 10 of 10 each. The candidates' notes and screenshots go
+with the files; only the files actually sent go to `build/msx`.
+
+On 2026-10-28 (`4650771`, `impl/s13` of the range's scratch): the six built twice to the same
+bytes; `rgc_chain` 15 jobs without a time out; `regress.sh cand`: PASS (the fresh titles; the
+keyboard flows 732 and 1,163 passes 0 differ, every screen pixel-exact with TEST 4, the titles
+identical; the range candidates 1,163 passes, 140 fields 0 differ, 5 stills and 600 records each
+with 0 torn, 0 SAT errors and 0 pixels outside, R#18 shown 06h at s = 6 and 00h in the noadj
+builds; the two left alone 6,050 passes, OUT OF TIME., POOR; every new game SHARP with the lost
+counters 0); the matrix 10 of 10 on all six. Negative controls of `unseen_regs`: R#8's sprite bit
+cleared, or R#2 changed, gives DIFFER.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its
@@ -1263,8 +1326,9 @@ and the candidates' `c8f_chain` (5.17 g, h: with the candidates of a delivery).
 5. `msx_local_shutdown`; the matrix (5.13) on `W/R/prod`, `W/X/p2m` and, with `--no-title`, `W/R/pzt`
    and `W/X/pzt2`; `sh tools/bstest/variants.sh` (5.15) against the base's; `make test`.
 6. The checks the chain does not run: `hz6_time` (5.11), `hzp_setup` (5.12's PAUSE), `hudcheck.py`
-   against the commit before a change (5.6), 5.17 g's other speed jobs, `c8f_chain` for test
-   candidates (5.17 h), the range's recordings (5.19).
+   against the commit before a change (5.6), 5.17 g's other speed jobs, `c8f_chain` for
+   Brainstorm's test candidates (5.17 h), `rgc_chain` and `regress.sh cand` for the range's
+   (5.20), the range's recordings (5.19).
 
 One family: `rgr_chain {W} FAMILY {W/FAMILY.done}` with FAMILY `flows`, `final`, `drives`, `range`,
 `display` or `sound`, then `sh tools/bstest/regress.sh check W B FAMILY`. The older entry points

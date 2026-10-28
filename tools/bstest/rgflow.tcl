@@ -588,4 +588,125 @@ proc rgk_keys_tick {} {
 	}
 }
 
+# ----- the range's test candidates (docs/HARNESS.md 5.20): PZ_TEST=2 builds without a script, played
+# from the keyboard (keymatrix row 8, never ext_joy)
+
+# rgc_job NAME MACHINE DIR ROM LABELS DRIVE ?PASSES? ?REC? ?RFROM? ?TAIL?
+#   a PZ_TEST=2 build from the power-on: the range's intro, the stage played from the keyboard with
+#   DRIVE's moves (a .drive path: rgk_keys_arm; rc2_fr_arm's trace into DIR/NAME_fr.txt, ext_joy
+#   unread), rgview.tcl's snapshots at PASSES and a record of REC VBLANKs from pass RFROM, TAIL more
+#   past fr_rated (DIR/st/NAME), the intro's and the result's records (rgx_step: rgcheck.py), then
+#   the title, fire 1.5 s after it, and the new game's frame 100 (rgx_ng: SHARP again, the lost
+#   counters). DRIVE "-": no input, the real 2:00 to OUT OF TIME. (the trace from pass 5990 only).
+proc rgc_job {name m dir rom labels drive {passes {}} {rec 0} {rfrom 0} {tail 0}} {
+	file mkdir $dir
+	return [list $name $m [list rgc_setup $dir $name $rom $labels $drive $passes $rec $rfrom $tail] {[rgc_done]} 1200]
+}
+
+proc rgc_setup {dir tag rom labels drive passes rec rfrom tail} {
+	set n 3000
+	set from 0
+	if {$drive eq "-"} {
+		set drive "$dir/${tag}_idle.drive"
+		set f [open $drive w]
+		catch {puts -nonewline $f "\n\n\n\n"}
+		close $f
+		set n 100000
+		set from 5990
+	}
+	rgx_init $dir $tag $labels $drive ""
+	set ::rgc_st 0
+	set ::rgc_rv 0
+	rc2_fr_drive $rom $labels "$dir/${tag}_fr.txt" $n $from $drive
+	rgk_keys_arm $labels $drive
+	rgv_arm "$dir/st/$tag" $labels $passes $rec $rfrom $tail
+	set ::rgx_hb 1
+	rgx_arm_extra
+	lappend ::hz_afters [after time 0.05 rgx_step]
+	lappend ::hz_afters [after realtime 0.5 rgx_rt]
+	lappend ::hz_afters [after time 0.1 rgc_step]
+}
+
+proc rgc_step {} {
+	switch -- $::rgc_st {
+		0 {
+			if {$::rgx_st == 2} { set ::rgc_st 1 }
+		}
+		1 {
+			if {[peek 0xEC44] == 1} {
+				rgx_note "the title at [machine_info time] s, tick_n [rc2_w 0xCEE0]"
+				set a $::rgx_new_game
+				set ::rgx_ngbp [debug set_bp $a "\[peek $a\] == [peek $a]" rgx_ng]
+				set ::rgc_st 2
+				lappend ::hz_afters [after time 1.5 rgc_step]
+				return
+			}
+		}
+		2 {
+			keymatrixdown 8 1
+			lappend ::hz_afters [after time 0.3 {keymatrixup 8 1}]
+			rgx_note "fire at [machine_info time] s"
+			set ::rgc_st 3
+			return
+		}
+	}
+	lappend ::hz_afters [after time 0.05 rgc_step]
+}
+
+# (the job's done condition: rgview.tcl's snapshots and record closed once the trace is done, the
+#  machine resumed after a record's tail, then the new game's frame 100)
+proc rgc_done {} {
+	if {!$::rgc_rv} {
+		if {[rgv_done]} {
+			set ::rgc_rv 1
+			set ::pause off
+		}
+		return 0
+	}
+	return $::hz_done
+}
+
+# rgc_chain CB CDIR BASE W: the candidates CDIR/BASE.ROM (the product), BASE-2M, BASE-range,
+# BASE-range-2M, BASE-range-noadj (RG_ADJ=0) and BASE-range-v2 (PZ_LEVEL=2), their label files from
+# their builds CB/{prod,prod2m,range,range2m,noadj,v2}/rc2.labels; output in W/run and W/fresh
+# (regress.sh cand W B BASE CB). 15 jobs: the title from the power-on of BASE and BASE-2M (cand,
+# cand_2m: hz.sh fresh), the product from the keyboard (rgk_job) on an MSX2, an MSX2+ and a turbo R
+# and the 2 MiB product on the MSX2, the range candidates from the keyboard (rgc_job, armed's 25
+# shots; armed2 for v2) with snapshots and a record, and two left alone to their time out.
+proc rgc_chain {cb cdir base w} {
+	set C $cdir
+	set R "$w/run"
+	set fdir "$w/fresh"
+	set ftag cand
+	set sets {prod "" prod2m -2M range -range range2m -range-2M noadj -range-noadj v2 -range-v2}
+	foreach {k x} $sets {
+		set rom($k) "$C/$base$x.ROM"
+		set lab($k) "$cb/$k/rc2.labels"
+		foreach f [list $rom($k) $lab($k)] {
+			if {![file exists $f]} { error "rgc_chain: no $f" }
+		}
+	}
+	file mkdir $R
+	file mkdir $fdir
+	set e "$::hz_root/build/emu"
+	set P {60 300 600 900 1100}
+	set M2 Gradiente_Expert20_64K
+	set F1 Sony_HB-F1XDJ_128K_Lite
+	set TR Panasonic_FS-A1GT
+	set jobs {}
+	lappend jobs [list "fresh $ftag" $M2 [list hz_fresh_setup $fdir $ftag $rom(prod) $lab(prod) 300] {$::hz_done} 900]
+	lappend jobs [list "fresh ${ftag}_2m" $M2 [list hz_fresh_setup $fdir ${ftag}_2m $rom(prod2m) $lab(prod2m) 300] {$::hz_done} 900]
+	foreach {t m} [list m2 $M2 f1 $F1 tr $TR] {
+		lappend jobs [rgk_job kb_$t $m $R $rom(prod) $lab(prod)]
+	}
+	lappend jobs [rgk_job kb2m_m2 $M2 $R $rom(prod2m) $lab(prod2m)]
+	foreach {t m k d} [list rg_m2 $M2 range armed rg_f1 $F1 range armed rg_tr $TR range armed \
+			rg2m_m2 $M2 range2m armed rgn_m2 $M2 noadj armed rgn_f1 $F1 noadj armed rgv2_m2 $M2 v2 armed2] {
+		lappend jobs [rgc_job $t $m $R $rom($k) $lab($k) "$e/fr_$d.drive" $P 600 1000 60]
+	}
+	lappend jobs [rgc_job rgt_m2 $M2 $R $rom(range) $lab(range) - {600 3000 6040} 0 0 0]
+	lappend jobs [rgc_job rgt_f1 $F1 $R $rom(noadj) $lab(noadj) - {600 3000 6040} 0 0 0]
+	return [hz_chain $jobs]
+}
+
 set ::rgx_loaded "rgflow loaded"

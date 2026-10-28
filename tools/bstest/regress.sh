@@ -17,6 +17,11 @@
 #   sh tools/bstest/regress.sh check W B [FAMILY ...]
 #                                            every verdict (default: every family whose records
 #                                            exist), then "regress: PASS" or "FAIL"; exit 0 on PASS
+#   sh tools/bstest/regress.sh cand W B NAME CB
+#                                            the range's test candidates C/NAME*.ROM (built in
+#                                            CB/{prod,prod2m,range,range2m,noadj,v2}, TAG=4) after
+#                                            msx_local_cmd: rgc_chain {CB} {C} NAME {W} (rgflow.tcl,
+#                                            15 jobs into W/run, W/fresh); pictures into W/png
 #
 # W and B: folders outside build/msx (a session's scratch folder). B holds the base's records and is
 # made once per milestone; it needs the MCP's openMSX for rgr_base_chain (about 45 jobs).
@@ -25,7 +30,7 @@ H="$(cd "$(dirname "$0")" && pwd -P)"
 REPO="$(cd "$H/../.." && pwd -P)"
 BASE_COMMIT=4a8a61d
 BASE_PROD=29d29e99e24731c8
-usage() { sed -n 2,24p "$0" >&2; exit 2; }
+usage() { sed -n 2,28p "$0" >&2; exit 2; }
 cmd="${1:-}"; [ $# -ge 2 ] || usage
 mkdir -p "$2" || exit 2
 W="$(cd "$2" && pwd -P)"
@@ -37,6 +42,19 @@ bld() {   # bld DIR OPTIONS...: one build through build.sh's checks
   r=$(sh "$H/build.sh" "$d/rc2.rom" "$@" 2>&1); rc=$?
   echo "$(basename "$d") [$*]: $(echo "$r" | tail -1 | sed 's/.*build OK: [^ ]*/build OK/')"
   [ $rc -eq 0 ] || { echo "$r" | head -8; bad=1; }
+}
+# unseen_regs A B: two title records' VDP registers; "registers that show: identical" when they are
+# equal but for the sprite tables' (R#5, R#6, R#10, R#11) while both have the sprites off (R#8 bit 1:
+# the title's G7), else what differs
+unseen_regs() {
+  python3 -I -c '
+import sys
+a, b = (open(f, "rb").read() for f in sys.argv[1:3])
+d = [i for i in range(min(len(a), len(b))) if a[i] != b[i]]
+ok = all(i in (5, 6, 10, 11) for i in d) and (not d or (a[8] & 2 and b[8] & 2))
+print("registers that show: " + ("identical" + (" (sprites off: %s apart)" % ", ".join("R#%d %02X/%02X" % (i, a[i], b[i]) for i in d) if d else "")
+      if ok else "DIFFER %s" % d))
+' "$1" "$2"
 }
 case "$cmd" in
 base)
@@ -304,6 +322,75 @@ check)
   done
   echo
   [ $bad -eq 0 ] && echo "regress: PASS" || echo "regress: FAIL"
+  exit $bad
+  ;;
+cand)
+  # (docs/HARNESS.md 5.20: W = rgc_chain's output folder, then B, the base name, the builds' folder)
+  [ $# -ge 3 ] || usage
+  B="$(cd "$1" && pwd -P)" || exit 2
+  NAME="$2"
+  CB="$(cd "$3" && pwd -P)" || exit 2
+  cd "$REPO" || exit 2
+  R="$W/run"; F="$W/fresh"; bad=0
+  mkdir -p "$W/png"
+  step "the products' title from the power-on on a fresh Expert against the base (2 MiB: only game_ram.bin's D032h-D033h)"
+  cp "$B"/fresh/base_* "$F/" 2>/dev/null
+  sh "$H/hz.sh" fresh "$F" base cand > "$W/fresh_1m.txt" 2>&1; rc=$?
+  sed 's/^/  1 MiB: /' "$W/fresh_1m.txt"; verdict $rc
+  sh "$H/hz.sh" fresh "$F" base cand_2m > "$W/fresh_2m.txt" 2>&1
+  sed 's/^/  2 MiB: /' "$W/fresh_2m.txt"
+  # (game_ram.bin is D000h-DFFFh: cmp's 1-based offsets 51 and 52)
+  o=$(cmp -l "$F/base_game_ram.bin" "$F/cand_2m_game_ram.bin" | awk '{printf "%d ", $1}')
+  echo "  2 MiB: game_ram.bin's differing offsets (1-based): $o"
+  [ "$(grep -c DIFFERENT "$W/fresh_2m.txt")" = 1 ] && grep -q '^game_ram.bin: DIFFERENT' "$W/fresh_2m.txt" && [ "$o" = "51 52 " ]; verdict $?
+  step "the product from the keyboard: level 1 ended, Brainstorm solved, the range's 25 shots, the result, the title (MSX2, MSX2+, turbo R; the 2 MiB product on the MSX2)"
+  for t in kb_m2 kb_f1 kb_tr kb2m_m2; do
+    case $t in kb_f1) bt=tx_f1 ;; kb_tr) bt=tx_tr ;; *) bt=tx_ex ;; esac
+    case $t in kb2m*) g=prod2m ;; *) g=prod ;; esac
+    [ -f "$R/${t}_bonus.txt" ] || { echo "  $t: no record"; bad=1; continue; }
+    r1=$(python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec,score build/emu/pz_solve1_ram.jsonl "$R/${t}_pz.txt" 2>&1); c1=$?
+    r2=$(python3 -I tools/frngcmp.py --skip joy,timer_min,timer_sec,score build/emu/fr_armed_ram.jsonl "$R/${t}_fr.txt" 2>&1); c2=$?
+    python3 -I "$H/bonuscheck.py" "$R" $t --tag 4 --result ok --no-game --gen "$CB/$g/gen" --range 25,0,1 > "$W/bonus_$t.txt" 2>&1; c3=$?
+    for f in "$B"/O/np/${bt}_*; do cp "$f" "$R/b$(basename "$f" | sed "s/^${bt}_/${t}_/")"; done
+    python3 -I "$H/titlecmp.py" "$R" b$t $t > "$W/title_$t.txt" 2>&1
+    python3 -I "$H/titlecmp2.py" "$R" b$t $t --unheard > "$W/title2_$t.txt" 2>&1; c4=$?
+    unseen_regs "$R/b${t}_title_regs.bin" "$R/${t}_title_regs.bin" >> "$W/title_$t.txt"
+    p=$(grep -c -E "picture.*: identical|palette: identical|registers that show: identical" "$W/title_$t.txt")
+    echo "  $t: Brainstorm $(echo "$r1" | grep -E 'frames compared' | head -1) | $(echo "$r1" | grep '^result' | head -1)"
+    echo "  $t: the range $(echo "$r2" | grep -E 'frames compared' | head -1) | $(echo "$r2" | grep '^result' | head -1)"
+    grep -E 'equal|DIFFER|bonus check|the range:|rating at fr_rated|^game tick_n' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
+    grep -E 'picture|palette|registers' "$W/title_$t.txt" | head -4 | sed "s/^/  $t: /"
+    grep -E 'common ticks|titlecmp2' "$W/title2_$t.txt" | sed "s/^/  $t: /"
+    [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ] && [ $c4 -eq 0 ] && [ "$p" -ge 3 ]; verdict $?
+  done
+  step "the range candidates from the keyboard: the trace, the screens (TEST 4), the stills and the record against the bench, the new game"
+  for t in rg_m2 rg_f1 rg_tr rg2m_m2 rgn_m2 rgn_f1 rgv2_m2; do
+    case $t in rg2m*) g=range2m ;; rgn*) g=noadj ;; rgv2*) g=v2 ;; *) g=range ;; esac
+    case $t in rgv2*) ref=build/emu/fr_armed2_ram.jsonl ;; *) ref=build/emu/fr_armed_ram.jsonl ;; esac
+    [ -f "$R/${t}_rg.txt" ] || { echo "  $t: no record"; bad=1; continue; }
+    r1=$(python3 -I tools/frngcmp.py --skip joy,timer_min,timer_sec "$ref" "$R/${t}_fr.txt" 2>&1); c1=$?
+    r2=$(python3 -I "$H/rgcheck.py" "$R" $t --counts 25,0,1 --tag 4 2>&1); c2=$?
+    r3=$(python3 -I "$H/rgview.py" still "$R"/st/$t/p*.bin --ref $ref --gen "$CB/$g/gen" --png "$W/png/$t" 2>&1); c3=$?
+    r4=$(python3 -I "$H/rgview.py" rec "$R/st/$t/rec.bin" --ref $ref --gen "$CB/$g/gen" --png "$W/png/${t}_rec" --pngmax 40 2>&1); c4=$?
+    echo "  $t: $(echo "$r1" | grep -E 'frames compared' | head -1) | $(echo "$r1" | grep '^result' | head -1)"
+    echo "$r2" | grep -E 'PASS|FAIL|DIFFER|rating|new game' | sed "s/^/  $t: /" | cut -c1-200
+    echo "$r3" | tail -2 | sed "s/^/  $t still: /" | cut -c1-200
+    echo "$r4" | tail -3 | sed "s/^/  $t rec: /" | cut -c1-200
+    [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ] && [ $c4 -eq 0 ]; verdict $?
+  done
+  step "the range candidates left alone: the real 2:00, OUT OF TIME. (TEST 4), the title, the new game"
+  for t in rgt_m2 rgt_f1; do
+    case $t in rgt_f1) g=noadj ;; *) g=range ;; esac
+    [ -f "$R/${t}_rg.txt" ] || { echo "  $t: no record"; bad=1; continue; }
+    r2=$(python3 -I "$H/rgcheck.py" "$R" $t --time --tag 4 2>&1); c2=$?
+    r3=$(python3 -I "$H/rgview.py" still "$R"/st/$t/p*.bin --png "$W/png/$t" 2>&1); c3=$?
+    grep -E '^stage:' "$R/${t}_rg.txt" | sed "s/^/  $t: /" | cut -c1-200
+    echo "$r2" | grep -E 'PASS|FAIL|DIFFER|rating|new game' | sed "s/^/  $t: /" | cut -c1-200
+    echo "$r3" | tail -2 | sed "s/^/  $t still: /" | cut -c1-200
+    [ $c2 -eq 0 ] && [ $c3 -eq 0 ]; verdict $?
+  done
+  echo
+  [ $bad -eq 0 ] && echo "cand: PASS" || echo "cand: FAIL"
   exit $bad
   ;;
 *)
