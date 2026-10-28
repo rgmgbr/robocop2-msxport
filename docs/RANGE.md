@@ -1835,3 +1835,21 @@ HUD probe on R#18, R#27 and MSK at the split's end, its negative control at s = 
 
 The V9938 keeps R#18 and its whole-page builds: it has no horizontal scroll register. Only bank 88
 (`BANK_FRNG`, now 7,899 B) differs from test4's product; the logic's traces are unchanged.
+
+### 11.2 The V9938's camera in 16-column steps (2026-10-28)
+
+The V9938 has no horizontal scroll register, so a page whose c changes must have its 20 KB moved
+again: about 90 ms a page with the VDP's own commands, whether the page is built from the clean
+scene (the plan's way), moved within itself, or copied from the page on screen with the elements'
+changes on top (both tried: every check passed, the holds stayed at 8-10 passes; the experiment is
+kept outside the repository, build/archive/range_v9938_copy_experiment_2026-10-28.patch). The user
+tried test4's `-range-noadj` ROM on the MSX2 and chose its camera for the V9938: `rg_cam` now
+applies the RG_ADJ=0 rule at run time whenever the pages are not a V9958's ring (`rgr_ring` 0):
+s a multiple of 16 that moves only when the crosshair's line would leave cx - s in 5..240
+(`msxrange.camera_steps`), so the view stands still and steps 16 columns near the edges. A V9958
+keeps 11.1's ring. `RG_ADJ=0` builds still use the steps on every VDP.
+
+Measured in openMSX (`tools/bstest/rgview.sh`: all 11 sections PASS): on C-BIOS_MSX2 the holds of
+7-10 passes went from 35 to 13 (armed) and from about 35 to 9 (mixed), the camera moving in 9
+spans of armed's 1,163 passes instead of 15. The V9958's numbers are 11.1's. Only bank 88 differs
+from test5's product.
