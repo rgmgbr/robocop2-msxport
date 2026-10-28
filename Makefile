@@ -46,6 +46,9 @@ sprites: rea-asm
 $(BUILD)/ram/level1_full.bin:
 	$(MAKE) ram
 
+$(BUILD)/ram/level2_full.bin:
+	$(MAKE) ram
+
 $(BUILD)/sprites/catalog.json:
 	$(MAKE) sprites
 
@@ -53,12 +56,22 @@ $(BUILD)/sprites/catalog.json:
 $(BUILD)/emu/cov_level1.json: $(BUILD)/ram/level1_full.bin
 	$(VPYTHON) -I tools/amigacov.py --scenario level1 $@
 
-msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/sprites/catalog.json $(BUILD)/emu/cov_level1.json
+msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/sprites/catalog.json $(BUILD)/emu/cov_level1.json
 	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
 		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
 		--ram $(BUILD)/ram/level1_full.bin --level level1 --remove msx/level1_frames.json $(BUILD)/msx/robocop
 	$(PYTHON) -I tools/msxconv.py level $(X)/files/DATAL1_10.bin --pal-file $(X)/boot/main_8000.bin \
 		--pal-addr 0xfff6 --rows 51 --joint $(BUILD)/msx/robocop -o $(BUILD)/msx/level1
+# level 2's play field: palette C (level 1's joint palette with level 2's values), its tiles and
+# map, the check of its map writers and vats, and the whole map against the original's (graded)
+	$(PYTHON) -I tools/msxlvpal.py palette $(X)/files/DATAL2_18.bin --pal-file $(X)/boot/main_8000.bin \
+		--base-addr 0xfff6 --pal-addr 0x10036 --base $(BUILD)/msx/robocop --rows 50 -o $(BUILD)/msx/level2
+	$(PYTHON) -I tools/msxconv.py level $(X)/files/DATAL2_18.bin --pal-file $(X)/boot/main_8000.bin \
+		--pal-addr 0x10036 --rows 50 --joint $(BUILD)/msx/level2 -o $(BUILD)/msx/level2
+	$(PYTHON) -I tools/mapcells.py $(BUILD)/ram/level2_full.bin analysis/amiga_tables.tsv $(BUILD)/msx/level2.atrp \
+		160 50 --level 2
+	$(PYTHON) -I tools/msxlvpal.py preview $(X)/files/DATAL2_18.bin --pal-file $(X)/boot/main_8000.bin \
+		--pal-addr 0x10036 --rows 50 --level $(BUILD)/msx/level2 -o $(BUILD)/msx/level2_amiga_vs_msx.png
 	$(PYTHON) -I tools/msxhud.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(BUILD)/msx/hud --black 4
 	$(PYTHON) -I tools/msxhudrt.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(X)/files/PUZL_25.bin $(BUILD)/msx/hud_rt \
 		$(X)/files/FRNG_15.bin

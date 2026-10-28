@@ -20,17 +20,34 @@ data, the way the ported writers compute them, and fails when they do not fit:
         from t23_cell's cell (row y >> 4 as a word, 0 outside the map's rows)
     the level's end (msx/level1.asm type 32): the 36 words of t32_map (35 cells, two words share
         one): column (x >> 4) - 7, row the low byte of y >> 4
+    the blinking mines (map objects of activator 0Ch, act_0c $9EE8, level 2): their look's cells,
+        with the second word act_0c writes into the look's blinking cell ($A4A6: E680h or 9700h)
 
 The map objects' cell is map_cell's (msx/logic.asm, $EF8E: column (x >> 4) - 8 as a byte, row
-the low byte of y >> 4, 0 when y is negative or that byte is past the map's rows). The writers
-step rows and columns as bytes (the Z80's D and E), then map_write_lin wraps a column below 0
-(F8h-FFh) into the row above's end and one of 160 or more into the next row's start. The cells
-are an upper bound: a cell counts though the ROM map may already hold some of its words.
+the low byte of y >> 4, 0 when y is negative or that byte is 51 or more: $EF8E's own limit in
+every level, $EFA4 cmpi.w #$66). The writers step rows and columns as bytes (the Z80's D and E),
+then map_write_lin wraps a column below 0 (F8h-FFh) into the row above's end and one of 160 or
+more into the next row's start. The cells are an upper bound: a cell counts though the ROM map
+may already hold some of its words.
+
+The level's hazards (hz_<level>, $91B0 + 4 x level): level 1's electric beams write map patches
+(above); level 2's vats (level_tick_1 $91BC) do not: the port draws them as a display layer, so
+they stay out of the pools and get their own checks instead:
+    every vat word (T0/T1/T2: vat_top, vat_odd, vat_even, 16 words each) and every vat cell of the
+        map (the level's RAM image: the map at $38000) has attributes 0: the vats change no
+        attribute the logic reads;
+    no map object's cell lies in a vat;
+    every vat word's tile is in the sheet (<atrp>.otile, .til: tools/msxconv.py's outputs);
+    every vat column of the map is one look of the tables (T0[d] in its first row, then T1[d] and
+        T2[d] alternating, d 0-15): the cells are level_tick_1's, ((x right - x left) >> 4) + 1
+        columns of rows + 2 cells from map_cell(x left, y).
 
 usage: mapcells.py build/ram/level1_full.bin analysis/amiga_tables.tsv build/msx/level1.atrp MAP_COLS MAP_ROWS
+       mapcells.py build/ram/level2_full.bin analysis/amiga_tables.tsv build/msx/level2.atrp 160 50 --level 2
 """
 from __future__ import annotations
 
+import argparse
 import re
 import struct
 import sys
@@ -46,6 +63,11 @@ HZ_REC = 8                          # a hazard record: x, y, window x, rows - 1 
 ACTS = range(0, 0x24, 4)            # msx/mapobj.asm ao_acts: the activator offsets it has
 BARRIER_WORDS = (0x0D00, 0x7980, 0xCD80, 0xCE00, 0xCE80)   # msx/mapobj.asm act_1c
 BEAM_OFF_WORDS = (0xE800, 0x0D00)                          # msx/level1.asm lt0_off
+MINE_WORDS = (0xE680, 0x9700)       # act_0c $9EE8: the look word $A4A6 it writes (move.w #imm at $9EE8, $9EF8)
+EF8E_ROWS = 51                      # $EF8E's row limit ($EFA4 cmpi.w #$66): a constant of every level
+HAZARDS = {"l1": "beams", "l2": "vats"}   # the hazard ticks: $933A (level 1), $91BC (level 2)
+VAT_WORDS = ("vat_top", "vat_odd", "vat_even")    # level_tick_1's T0, T1, T2: 16 words each, by d
+MAP_ADDR = 0x38000                  # draw_background $BCCA: the map in every level (DATAL at $28000)
 
 
 def msx_equ(name: str) -> int:
@@ -98,13 +120,15 @@ def writers(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[d
 
     conv = words(img, tab("conv_words"), 16)
     cells, words_of = {}, {}
+    if f"objl_{level}" not in tabs:
+        raise SystemExit(f"analysis/amiga_tables.tsv: no objl_{level} (the level's object list)")
     a = tab(f"objl_{level}")
     k = 0
     while struct.unpack_from(">h", img, a)[0] >= 0:
         t, look, _hits, value, x, y = words(img, a, 6)
         t &= 0xFF                   # (the asm reads bytes of these: the type, the activator,
         act = words(img, types + 0x8A + t, 1)[0] & 0xFF          # width - 1, height - 1)
-        row, col = map_cell(x, y, rows)
+        row, col = map_cell(x, y, EF8E_ROWS)
         name = f"entry {k} (type {t:02X}h)"
         if act not in ACTS:
             raise SystemExit(f"{name}: activator offset {act:02X}h, not in msx/mapobj.asm ao_acts")
@@ -133,12 +157,16 @@ def writers(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[d
                 ws += copy_words(low, wd * ht, f"{name}: its look {n}")
             else:
                 raise SystemExit(f"{name}: no end (a negative long) in its look table at ${table:05X}")
+            if act == 0x0C:
+                ws += list(MINE_WORDS)                       # (act_0c: the look's blinking word)
         cells[name] = {lin(r, c, cols) for r, c in cs}
         words_of[name] = ws
         a += OBJ_REC
         k += 1
     hz = f"hz_{level}"
-    if hz in tabs:
+    if hz in tabs and HAZARDS.get(level) not in ("beams", "vats"):
+        raise SystemExit(f"{hz}: the level's hazard writer is not modelled here")
+    if hz in tabs and HAZARDS[level] == "beams":
         top, body = words(img, tab("lt0_top"), 4), words(img, tab("lt0_body"), 32)
         a = tab(hz)
         k = 0
@@ -161,6 +189,69 @@ def writers(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[d
     return cells, words_of
 
 
+def vats(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[list[list[list[tuple[int, int]]]], list[list[int]]]:
+    """level_tick_1 $91BC's cells, per record of hz_<level> (x left, y, x right, rows): from
+    map_cell(x left, y), ((x right - x left) >> 4) + 1 columns of rows + 2 cells -> (per vat its
+    columns, each its cells top down as (row, column)), [T0, T1, T2] (16 map words each)."""
+    out = []
+    a = tabs[f"hz_{level}"]["addr"]
+    while struct.unpack_from(">h", img, a)[0] >= 0:
+        xl, y, xr, n = words(img, a, 4)
+        row, col = map_cell(xl, y, EF8E_ROWS)
+        width = (((xr - xl) & 0xFFFF) >> 4) + 1
+        if width > cols or n + 2 > rows or len(out) == 64:
+            raise SystemExit(f"hz_{level} at ${a:05X}: a vat of {width} x {n + 2} cells (record {len(out)}): "
+                             f"not one of the map's {cols} x {rows}")
+        out.append([[lin(row + r, col + c, cols) for r in range(n + 2)] for c in range(width)])
+        a += HZ_REC
+    return out, [words(img, tabs[t]["addr"], 16) for t in VAT_WORDS]
+
+
+def column_look(img: bytes, column: list[tuple[int, int]], cols: int, t: list[list[int]]) -> int | None:
+    """The look d (0-15) whose words the map holds down a vat column (T0[d], then T1[d] and T2[d]
+    alternating), None when it holds none."""
+    have = [words(img, MAP_ADDR + 2 * (r * cols + c), 1)[0] for r, c in column]
+    for d in range(16):
+        if have == [t[0][d]] + [t[1 + (k & 1)][d] for k in range(len(column) - 1)]:
+            return d
+    return None
+
+
+def vat_problems(img: bytes, tabs: dict, level: str, cols: int, rows: int, objects: set,
+                 otile: bytes, ntiles: int) -> tuple[list[str], str]:
+    """The vats' own checks -> (what fails, a summary)."""
+    vs, t = vats(img, tabs, level, cols, rows)
+    every = [cell for v in vs for column in v for cell in column]
+    cells = set(every)
+    bad = []
+    if len(cells) != len(every):
+        bad.append("vats that share cells")
+    outside = sorted(c for c in cells if c[0] >= rows)
+    if outside:
+        bad.append(f"vat cells outside the map's rows: {outside[:8]}")
+    vw = [w for ws in t for w in ws]
+    if any(w & 0x7F for w in vw):
+        bad.append("vat words with attributes: " + ", ".join(f"{w:04X}h" for w in vw if w & 0x7F))
+    attr = sorted({(r, c) for r, c in cells - set(outside) if words(img, MAP_ADDR + 2 * (r * cols + c), 1)[0] & 0x7F})
+    if attr:
+        bad.append(f"vat cells of the map with attributes: {attr[:8]}")
+    shared = sorted(cells & objects)
+    if shared:
+        bad.append(f"map object cells in a vat: {shared[:8]}")
+    if len(otile) != 1024:
+        bad.append(f".otile: {len(otile)} bytes, not 512 tiles' words")
+    else:
+        lost = sorted({w for w in vw if struct.unpack_from("<H", otile, 2 * (w >> 7))[0] >= ntiles})
+        if lost:
+            bad.append("vat words whose tile is not in the sheet: " + ", ".join(f"{w:04X}h" for w in lost))
+    columns = [column for v in vs for column in v]
+    odd = [column[0] for column in columns if not outside and column_look(img, column, cols, t) is None]
+    if odd:
+        bad.append(f"vat columns of the map that are no look of the tables (first cells {odd[:8]})")
+    return bad, (f"{len(vs)} vats, {len(cells)} cells in {len(columns)} columns (outside the pools), "
+                 f"{len(set(w & ~0x7F for w in vw))} tile offsets, attributes 0, every column one look")
+
+
 def code_problems(table: bytes, values: list[int]) -> list[str]:
     """The packed map's 16 code values (the .atrp's last 16 bytes, FFh a free code) against the
     attribute values the writers write -> what does not fit (nothing: they fit)."""
@@ -175,20 +266,26 @@ def code_problems(table: bytes, values: list[int]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 6:
-        print(__doc__, file=sys.stderr)
-        return 2
-    img = Path(argv[1]).read_bytes()
-    tabs = {r["label"]: r for r in parse(Path(argv[2]))}
-    table = Path(argv[3]).read_bytes()[-CODES:]
-    cols, rows = int(argv[4], 0), int(argv[5], 0)
-    cells, words_of = writers(img, tabs, "l1", cols, rows)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("image", help="the level's RAM image (tools/ramimage.py)")
+    ap.add_argument("tables", help="analysis/amiga_tables.tsv")
+    ap.add_argument("atrp", help="the level's packed attributes (tools/msxconv.py)")
+    ap.add_argument("cols", type=lambda s: int(s, 0))
+    ap.add_argument("rows", type=lambda s: int(s, 0))
+    ap.add_argument("--level", type=int, default=1, choices=(1, 2, 3))
+    a = ap.parse_args(argv[1:])
+    level = f"l{a.level}"
+    img = Path(a.image).read_bytes()
+    tabs = {r["label"]: r for r in parse(Path(a.tables))}
+    table = Path(a.atrp).read_bytes()[-CODES:]
+    cols, rows = a.cols, a.rows
+    cells, words_of = writers(img, tabs, level, cols, rows)
     every = set().union(*cells.values())
     outside = sorted(c for c in every if c[0] >= rows)
     pools = [sorted(c for c in every if c[0] % 2 == p) for p in (0, 1)]
     values = sorted({w & 0x7F for ws in words_of.values() for w in ws})
     lut = {v for v in table if v != 0xFF}
-    print(f"mapcells: {len(every)} cells the writers can change ({len(pools[0])} in even rows, "
+    print(f"mapcells: {'' if level == 'l1' else f'level {a.level}: '}{len(every)} cells the writers can change ({len(pools[0])} in even rows, "
           f"{len(pools[1])} in odd ones; {MP_N} a pool), {len(lut | set(values))} attribute values "
           f"({len(set(values) - lut)} not in the map; {CODES} codes, {table.count(0xFF)} free)")
     bad = []
@@ -198,7 +295,13 @@ def main(argv: list[str]) -> int:
     for p, name in ((0, "even"), (1, "odd")):
         if len(pools[p]) > MP_N:
             bad.append(f"the {name} rows' pool: {len(pools[p])} cells, more than its {MP_N} patches")
-    bad += [f"{argv[3]}: {b}" for b in code_problems(table, values)]
+    bad += [f"{a.atrp}: {b}" for b in code_problems(table, values)]
+    if f"hz_{level}" in tabs and HAZARDS[level] == "vats":
+        sheet = Path(a.atrp)
+        vbad, summary = vat_problems(img, tabs, level, cols, rows, every, sheet.with_suffix(".otile").read_bytes(),
+                                     len(sheet.with_suffix(".til").read_bytes()) // 128)
+        print(f"mapcells: vats: {summary}" if not vbad else "mapcells: vats: checks failed")
+        bad += [f"vats: {b}" for b in vbad]
     for b in bad:
         print(f"mapcells: error: {b}", file=sys.stderr)
     return 1 if bad else 0

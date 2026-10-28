@@ -19,10 +19,18 @@ words: tile offset & ~$7F, attributes in the low 7 bits) -> SCREEN 5 format:
   <out>.png   map preview already in the 9-bit palette
 
 Every one of the 512 DATAL tiles is kept (deduplicated by content after the remap), numbered by
-use in the map, most used first: the first 432 fit the VRAM tile slots and are uploaded at the
-start of the level, the others are loaded on demand by the tile cache (msx/tiles.asm).
+use in the map, most used first: the first 256 fill the tile cache's VRAM slots (page 2,
+msx/tiles.asm TC_SLOTS) and are uploaded at the start of the level, the others are loaded on
+demand by the tile cache (msx/tiles.asm tile_src).
 
-usage: msxconv.py level DATAL.bin --pal-file main_8000.bin --pal-addr 0xfff6 --rows 51 -o build/msx/level1
+--joint PREFIX takes the palette and the background remap from PREFIX.pal and PREFIX.remap
+instead of the Amiga palette at --pal-addr (which must still be given): level 1's joint palette
+(tools/msxsprites.py: build/msx/robocop), level 2's palette C (tools/msxlvpal.py: build/msx/level2).
+
+usage: msxconv.py level DATAL1_10.bin --pal-file main_8000.bin --pal-addr 0xfff6 --rows 51
+                         --joint build/msx/robocop -o build/msx/level1
+       msxconv.py level DATAL2_18.bin --pal-file main_8000.bin --pal-addr 0x10036 --rows 50
+                         --joint build/msx/level2 -o build/msx/level2
 """
 from __future__ import annotations
 

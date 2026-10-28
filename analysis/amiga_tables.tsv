@@ -96,3 +96,45 @@ t44_dx          eca4    4     w             l1      type 44 $EC22: the dropped p
 t32_map         de68    108   w             l1      type 32 $DF6E: 36 x [x, y, map word] the end sequence writes
 t32_ex          e09c    4     w             l1      type 32: explosion type (D5) by (A3) & 6
 fe_boom         81c2    48    w             c3      main_loop $8252: the death's explosions around RoboCop [dx, dy] per $16BC / 4 (y - 46h)
+# Level 2 (bank l2: BANK_L2, from its plan's step 7; nothing includes at_l2.inc before that). The
+# main code is the same in every level's image, so build/ram/level1_full.bin gives these bytes too.
+l2_hdr          868c    20    w             l2      level 2 header (level_init $871A): lists, start, relocation, marker table, lowest camera, timer, spawn delay, marker mask, palette
+# spawn_l2 waits for tools/cellmasks.py's SW_MAX 40 (level 2's plan, step 5): cellmasks makes the
+# masks of every level whose spawn_ and hz_ rows are both listed, and today's limit of 32 entries
+# would fail tools/mkrom.py on level 2's 40. Uncomment it with that change.
+#spawn_l2       97b0    562   x             l2      level 2 spawn list (40 x 14 bytes + the end word): x, y, type.b, ?, ?, flags.b (bit 6 once, bit 7 at the screen edge), reload, counter, spawned.b (bit 7), ?
+objl_l2         a828    530   x             l2      level 2 object list (44 x 12 bytes + the end word): type, look, hits (high byte bit 7: animated), value, x, y
+sp_l2           9088    150   x             l2      level 2 special objects' records ($9088-$911D: 5 lifts, handler 0; 4 trolleys, handler 4, $8F02): handler offset, x, y (long), path index, path (-1 ends)
+spl_l2          8fe0    10    l             l2      level 2 special objects' list ($8B54): 9 record addresses, -1 ends
+mk_tab2         c5ec    28    w             l2      level 2 map-marker table (header +24: $C598, $C692): 9 x [band mask, type, y offset], the end word
+hz_l2           95b2    29    w             l2      level 2 hazards (header +4, $915E): the 7 vats, x left, y, x right, rows per record (level_tick_1 $91BC: rows + 2 cells a column); -1 ends
+vat_top         927a    16    w             l2      level_tick_1 $91BC: a vat column's first map word by d = (phase & 0Eh) + 10h x variant (attributes 0)
+vat_odd         929a    16    w             l2      level_tick_1: the map word of a vat column's rows 1, 3, 5... by d
+vat_even        92ba    16    w             l2      level_tick_1: the map word of a vat column's rows 2, 4, 6... by d
+vat_ph0         92da    23    w             l2      level_tick_1: column k's phase the low byte of word k (+2 every odd game frame, the first vat in the window only), its variant word k + 1's high byte (not 0: +10h); code-area data it changes: the initial words
+t1_gfx          c7e0    16    w             l2      type 1 $C736: legs graphic offset from $3E810 by D2 = (A3) & 0Eh (+10h facing right)
+t1_dy           c800    8     w             l2      type 1: torso y offset by D2 & 0Eh
+t5_size         d17c    11    w             l2      type 5 $D0E2: BLTSIZE by frame (1,A3) - 1
+t5_gfx          d19a    11    w             l2      type 5: graphic offset from $3BFC0 by frame
+t5_dx           d1b0    11    w             l2      type 5: x offset by frame (then - 0Ah)
+t6_gfx          d2da    8     w             l2      type 6 $D1E2: graphic offset from $3C920 by D5 = (1,A3) & 0Eh
+fly_dx          e680    16    w             l2      types 38/49 $E728: x step by direction D2 = (A3) & 1Eh ((dx << 16) >> 1 a frame)
+fly_dy          e6a0    16    w             l2      types 38/49: y step by direction
+fly_gfx         e7b2    16    w             l2      types 38/49: graphic offset by direction (type 49 from $41358)
+# copies of level 1's tables for the shared handlers of types 3, 4, 12, 30 and 45 in BANK_L2 (z80asm
+# labels are global: msx/lvshared.asm's copy has every label suffixed _l2, the plan's default 28)
+t3_gfx_l2       cbaa    20    w             l2      copy of t3_gfx for BANK_L2
+t3_size_l2      cbd2    20    w             l2      copy of t3_size
+t4_gx_l2        d046    8     w             l2      copy of t4_gx
+t4_gy_l2        d056    8     w             l2      copy of t4_gy
+t4_tgfx_l2      d066    8     w             l2      copy of t4_tgfx
+t4_tx_l2        d076    8     w             l2      copy of t4_tx
+t4_ty_l2        d086    8     w             l2      copy of t4_ty
+t4_tsize_l2     d096    8     w             l2      copy of t4_tsize
+t12_gfx_l2      cf98    3     w             l2      copy of t12_gfx
+t12_dx_l2       cf9e    3     w             l2      copy of t12_dx
+t12_mx_l2       cfa4    3     w             l2      copy of t12_mx
+t12_my_l2       cfaa    3     w             l2      copy of t12_my
+t30_dy_l2       ca2e    8     w             l2      copy of t30_dy
+t45_gfx_l2      ede2    16    w             l2      copy of t45_gfx
+t45_dy_l2       ee02    16    w             l2      copy of t45_dy
