@@ -518,6 +518,37 @@ front_rgtest:
         jp cpu_title
         endif
 
+        if LV_TEST
+; (Test build, tools/mkrom.py LV_TEST=2) rc2.asm lv_test's part: LV_CARRY's score ($8046, a BCD
+; long: AG's two words), lives ($8034), credits ($805E) and rating ($8060: ac_diff) over what level
+; 1's set-up left (ng_init), and AG $8050 = 1, as level 1, Brainstorm and the range would leave
+; them; then the screens the product shows between the range and level 2, from the state level
+; 1's set-up leaves (a turbo R: back on the Z80, as after the stages): the next level's briefing
+; (front_brief), then cpu_title as at front_bonus' end. rc2.asm lv_next follows.
+front_l2test:
+        ld hl,LV_SCORE_H
+        ld (AG + 0x8046),hl
+        ld hl,LV_SCORE_L
+        ld (AG + 0x8048),hl
+        ld hl,LV_LIVES
+        ld (AG + 0x8034),hl
+        ld hl,LV_CREDITS
+        ld (AG + 0x805E),hl
+        ld hl,diff_tab + 8 * LV_RATING
+        ld (ac_diff),hl             ; (front_range's $84FC: $C716 + 8 x the rating)
+        ld hl,1
+        ld (AG + 0x8050),hl         ; (level 2: $81B8's + 1 at level 1's end)
+        call cpu_title              ; (cold.asm: a turbo R, the Z80 again)
+        call fb_prep
+        call front_brief
+        jp cpu_title
+        endif
+
+; The next level's briefing (load_level1 $8582's $110F0 before level 2, load_level2's $110B4
+; before level 3; docs/LEVEL2.md 3.7), at front_bonus' end: not yet (the plan's step 18).
+front_brief:
+        ret
+
 ; A text screen of the bonus stages ($10762: $10768's screen and loop, then $FE14), HL = its
 ; script in this bank (positions, characters, FF 02 n, FF 07: tools/msxtext.py txt_bs_*):
 ; front_stats' screen and loop, the script read in place, with the HUD's work each tick (the VBL

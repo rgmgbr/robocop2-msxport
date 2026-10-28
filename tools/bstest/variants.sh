@@ -2,8 +2,9 @@
 # variants.sh OUT: the night review's option sets (2026-10-27), built with the repository as it is
 # through build.sh, one folder each (OUT/NAME/rc2.rom, the log in OUT/NAME.out); prints NAME OK or
 # NAME FAIL with the build's first error. At 14bc5ef every set built except DEMO_ACTORS=2/5 and
-# DEMO_HUD=1, which overflow the fixed area at 52149b0 too (docs/HARNESS.md).
-if [ $# -lt 1 ]; then sed -n 2,5p "$0" >&2; exit 2; fi
+# DEMO_HUD=1, which overflow the fixed area at 52149b0 too (docs/HARNESS.md). The last seven (l2_*,
+# level 2's step 7) are the LV_TEST=2 sets: 48 in all.
+if [ $# -lt 1 ]; then sed -n 2,6p "$0" >&2; exit 2; fi
 H="$(cd "$(dirname "$0")" && pwd -P)"
 OUT="$1"
 v() { n="$1"; shift; if sh "$H/build.sh" "$OUT/$n/rc2.rom" "$@" > "$OUT/$n.out" 2>&1; then echo "$n OK"; else echo "$n FAIL: $(grep -i 'error' "$OUT/$n/rc2.log" 2>/dev/null | head -1 | sed 's/.*msxports\///')"; fi; }
@@ -49,3 +50,10 @@ v rom2m ROM_2M=1
 v splitdiag SPLITDIAG=1
 v trace DAMAGE_X=1 ENEMY_CAP=0 EXTJOY=1
 v v9938 FORCE_V9938=1
+v l2_test LV_TEST=2
+v l2_trace DAMAGE_X=1 ENEMY_CAP=0 EXTJOY=1 LV_TEST=2
+v l2_carry LV_CARRY=0:0:1:3 LV_TEST=2
+v l2_lock EXTJOY=1 LOCKSTEP=24 LV_TEST=2
+v l2_tag LV_TEST=2 TAG=5
+v l2_2m LV_TEST=2 ROM_2M=1
+v l2_diag DIAG=1 LV_TEST=2

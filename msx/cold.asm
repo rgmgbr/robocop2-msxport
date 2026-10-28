@@ -597,10 +597,10 @@ ci_ok:                              ;  stays on it)
         ld (tick_n),hl              ; (the test scripts' game frames)
         xor a
         ld (front_mode),a
-        if PZ_TEST
+        if PZ_TEST + LV_TEST
         ld a,1
-        ld (pz_first),a             ; (test build: Brainstorm first, without the title: pz_test)
-        else
+        ld (pz_first),a             ; (test build: Brainstorm first, or level 2, without the title:
+        else                        ;  rc2.asm pz_test, lv_test)
         call title                  ; (rc2.asm: front.asm fr_title, or nothing in a script's build)
         endif
         jp ng_go

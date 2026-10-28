@@ -1757,3 +1757,58 @@ proc rc2_fr_timeout_off {} {
 		unset ::rft_bp
 	}
 }
+
+# ----- level 2 (docs/LEVEL2.md 4.1, its default 44): the drive's trace from level 2's first tick
+
+# rc2_l2_arm: rc2_drive_trace's trace (the same five blocks, inputs, teleports, pokes and god mode,
+# 'n' rows from the drive's index 0) in the running machine, without a reset, other breakpoints
+# kept, but indexed from level 2's start: the first tick_start after msx/rc2.asm lv_next (the
+# product's way into the next level, and LV_TEST's) is the drive's index 0, whatever tick_n the
+# levels before left. Level 2 reached through the product's flow (an EXTJOY=1 build: level 1 with
+# build/emu/drive_end.txt, Brainstorm, the range, as rc2_pz_arm / rc2_fr_arm drive them), or from
+# the power-on of an LV_TEST=2 build (rc2_l2_drive). tick_n is rewritten around rc2_drive_hit (its
+# index) and put back before the tick runs: the game never sees the rewritten value. lv_next's
+# breakpoint checks its first instruction (call dsp_off): openMSX breaks at an address in any slot.
+proc rc2_l2_arm {labels file n script} {
+	set ts [rc2_label $labels tick_start]
+	set gt [rc2_label $labels game_tick]
+	set ln [rc2_label $labels lv_next]
+	set ds [rc2_label $labels dsp_off]
+	rc2_drive_trace $file $n $ts $gt 0 $script
+	debug remove_bp $::rd_bp
+	set ::rl2_tick0 -1                              ;# -1: level 2 not started, -2: lv_next passed, else its first tick_n
+	set ::rl2_go [debug set_bp $ln "\[peek $ln\] == 0xCD && \[rc2_w [expr {$ln + 1}]\] == $ds" rc2_l2_go]
+	set cond "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \$::rl2_tick0 != -1"
+	set ::rd_bp [debug set_bp $ts $cond rc2_l2_hit] ;# (rc2_drive_hit removes it after n rows)
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	return "armed for level 2 into $file; poll ::rc2_trace_done"
+}
+
+proc rc2_l2_go {} {
+	catch { debug remove_bp $::rl2_go }
+	set ::rl2_tick0 -2
+}
+
+proc rc2_l2_hit {} {
+	set real [rc2_w 0xCEE0]
+	if {$::rl2_tick0 == -2} { set ::rl2_tick0 $real }
+	rc2_wset 0xCEE0 [expr {($real - $::rl2_tick0) & 0xFFFF}]   ;# the drive's index for rc2_drive_hit ...
+	rc2_drive_hit
+	rc2_wset 0xCEE0 $real                           ;# ... and tick_n back before the tick runs
+}
+
+# rc2_l2_drive: a fresh start of 'rom' (an EXTJOY=1 LV_TEST=2 build; 'labels' its label file): every
+# breakpoint and condition removed, the cartridge inserted again, the machine reset, then
+# rc2_l2_arm (the same trace as rc2_drive_rom's in such a build, where no tick runs before level 2:
+# a check of rc2_l2_arm itself).
+proc rc2_l2_drive {rom labels file n script} {
+	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
+	foreach {id opts} [debug condition list] { debug condition remove $id }
+	carta eject
+	carta insert $rom -romtype KonamiSCC
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	reset
+	rc2_l2_arm $labels $file $n $script
+}

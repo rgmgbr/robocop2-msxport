@@ -1,0 +1,170 @@
+; Game logic of level 2, the Tokugawa brewery (bank BANK_L2, mapped at A000h while the game ticks:
+; logic_map; docs/LEVEL2.md 3.2, 3.3). The bank starts with the level header every level bank
+; shares (objects.asm lv_htab ... LV_HDR_END), laid out as level1.asm's: per object type 0-52 its
+; handler and death routine, the jumps to the level's start and hazard handler, its hazard list,
+; the spawn walk's and the hazards' per-level values and lv_noten. Then gen/lvshared_l2.asm, the
+; copy of lvshared.asm tools/mkrom.py writes (its labels and the level data's names suffixed _l2),
+; at level 1's addresses (mkrom checks them), then the level's own code (level2obj.asm: the types
+; only level 2 has) and tables (at_l2.inc, cells_l2.inc).
+
+lv_htab_l2:
+        dw obj_none, death_none     ; 0
+        dw t1, death_c31e           ; 1: the walking gunman ($C736, level2obj.asm)
+        dw t2, death_c2d8           ; 2: the armed suspect, Cain ($C868)
+        dw t3_l2, death_c2ee        ; 3
+        dw t4_l2, death_c31e        ; 4
+        dw t5, death_none           ; 5: the drip ($D0E2; its death $C1FA: an rts)
+        dw t6, death_c33e           ; 6: the rolling tyre ($D1E2; its death $C33E)
+        dw obj_none, death_none     ; 7
+        dw obj_none, death_none     ; 8
+        dw obj_none, death_none     ; 9
+        dw obj_none, death_none     ; 10
+        dw obj_none, death_none     ; 11
+        dw t12_l2, death_c31e       ; 12
+        dw t13_l2, death_c31e       ; 13
+        dw t14, death_c2ee          ; 14: the grenadier ($CE0A)
+        dw t15_l2, death_c31e       ; 15
+        dw t16, death_c31e          ; 16: the walker with a big gun ($CD7A)
+        dw obj_none, death_none     ; 17
+        dw t15_l2, death_c31e       ; 18 (as level 1's: the same record)
+        dw obj_none, death_none     ; 19
+        dw obj_none, death_none     ; 20
+        dw obj_none, death_none     ; 21
+        dw obj_none, death_none     ; 22
+        dw obj_none, death_none     ; 23
+        dw obj_none, death_none     ; 24
+        dw obj_none, death_none     ; 25
+        dw obj_none, death_none     ; 26
+        dw obj_none, death_none     ; 27
+        dw obj_none, death_none     ; 28
+        dw obj_none, death_none     ; 29
+        dw t30_l2, death_c31e       ; 30
+        dw t31_l2, death_c31e       ; 31
+        dw obj_none, death_none     ; 32
+        dw obj_none, death_none     ; 33
+        dw obj_none, death_none     ; 34
+        dw obj_none, death_none     ; 35
+        dw obj_none, death_none     ; 36
+        dw obj_none, death_none     ; 37
+        dw obj_none, death_none     ; 38 (level 3's: launched by its own types only)
+        dw obj_none, death_none     ; 39
+        dw obj_none, death_none     ; 40
+        dw obj_none, death_none     ; 41
+        dw obj_none, death_none     ; 42
+        dw obj_none, death_none     ; 43
+        dw obj_none, death_none     ; 44
+        dw t45_l2, death_c1fc       ; 45: hostage
+        dw obj_none, death_none     ; 46
+        dw obj_none, death_none     ; 47
+        dw obj_none, death_none     ; 48
+        dw t49, death_c35a          ; 49: the homing drone ($E6C0)
+        dw obj_none, death_none     ; 50
+        dw obj_none, death_none     ; 51
+        dw obj_none, death_none     ; 52
+lv_init_l2:
+        jp l2_init
+        jp lt1                      ; (lv_tick: the vats, level_tick_1 $91BC)
+        dw hz_l2                    ; (lv_hz)
+        ds lv_swn1 - $              ; (an error when the header's fields drift from objects.asm's)
+        db SW_N_l2 - 1              ; (lv_swn1) the spawn list's last entry (cells_l2.inc),
+        dw spawn_ram + 14 * (SW_N_l2 - 1)  ; (lv_swlast) its address in RAM (objects.asm uf_last)
+        db HZ_XN_l2, HZ_YN_l2       ; (lv_hzxn, lv_hzyn) the hazards' camera cells,
+        dw hz_xm_l2, hz_ym_l2, hz_all_l2  ; (lv_hzxm, lv_hzym, lv_hzall) their masks (special.asm hz_update)
+        ds lv_noten - $
+; (lv_noten) A = an object type -> Z when it is not an enemy (objects.asm uo_cap, uo_free:
+; ENEMY_CAP): only 45, the hostage (decision 18; docs/LEVEL2.md default 25: types 2, 5, 6 and 49
+; count). At most LV_HDR_END - lv_noten bytes.
+        cp 45
+        ret
+        ds LV_HDR_END - $
+        include "lvshared_l2.asm"   ; (at LV_HDR_END in every level bank)
+
+; The level's start (level_init $871A with the header at $868C, level 1 in $8050's count): the
+; lists the game changes are copied into RAM (a new level only: a death keeps them, as the
+; original keeps them in its code area), the pointers patched into the code become variables.
+; The vats' phases ($92DA-$9307, code-area words level_tick_1 changes) are set again at each
+; new level 2 (docs/LEVEL2.md default 22).
+l2_init:
+        ld a,(lv_fresh)
+        or a
+        jr z,l2i_hdr
+        xor a
+        ld (lv_fresh),a
+        ld hl,spawn_l2
+        ld de,spawn_ram
+        ld bc,spawn_l2_end - spawn_l2
+        ldir
+        ld hl,objl_l2
+        ld de,objl_ram
+        ld bc,objl_l2_end - objl_l2
+        ldir
+        ld hl,vat_ph0
+        ld de,vat_phase
+        ld bc,vat_ph0_end - vat_ph0
+        ldir
+        call l2i_sp0
+l2i_hdr:
+        ld hl,(l2_hdr + 2)          ; (header +0: the object list, $9C18)
+        ld (ac_objlA),hl
+        ld hl,spawn_ram
+        ld (AM + 0x0B0E),hl         ; ($B0E: the spawn list)
+        ld hl,(l2_hdr + 20)         ; (header +20, +22: where obj_relocate sends RoboCop, $87A4)
+        ld (AM + 0x15D6),hl
+        ld hl,(l2_hdr + 22)
+        ld (AM + 0x15D8),hl
+        ld hl,(l2_hdr + 26)         ; (header +24: the marker table, $C598 and $C692)
+        ld de,mk_tab2 - 0xC5EC
+        add hl,de
+        ld (ac_mkptr),hl
+        ld (ac_mktab),hl
+        ld hl,(l2_hdr + 32)
+        ld (AM + 0x16B8),hl         ; (header +32: the spawn delay)
+        ld a,(l2_hdr + 34)
+        ld (ac_mkmask),a            ; (header +34, the word's low byte)
+        ld hl,(l2_hdr + 30)
+        ld (AG + 0x804A),hl         ; (header +30: the timer, BCD minutes and seconds)
+        xor a
+        ld (AG + (0x804C ^ 1)),a    ; (setup_ciab_timer $F9DC: no time out)
+        jp sw_init_l2               ; (the port: the logic shortcuts' caches from the lists)
+l2i_sp0:
+        ld hl,sp_l2                 ; the special objects ($8B54: $8FE0): records into RAM,
+        ld de,SP_RAM
+        ld bc,sp_l2_end - sp_l2
+        ldir
+        ld hl,spl_l2                ;   their list (longs) as MSX pointers
+        ld de,sp_ptrs
+l2i_sp: ld a,(hl)
+        inc hl
+        ld b,(hl)
+        inc hl
+        bit 7,b
+        jr nz,l2i_spe
+        ld c,(hl)
+        inc hl
+        ld b,(hl)
+        inc hl
+        push hl
+        ld hl,SP_RAM - 0x9088       ; (the records' first Amiga address)
+        add hl,bc
+        ex de,hl
+        ld (hl),e
+        inc hl
+        ld (hl),d
+        inc hl
+        ex de,hl
+        pop hl
+        jr l2i_sp
+l2i_spe:
+        xor a
+        ld (de),a
+        inc de
+        ld (de),a
+        ret
+
+; ----- level_tick_1 ($91BC): a vat of level 2 -----
+
+; IX = its record (x left, y, x right, rows). Not ported yet (the plan's step 8: the phases, the
+; columns' looks for the display, the cut line, the death).
+lt1:    ret
+
+        include "level2obj.asm"     ; (the types only level 2 has)

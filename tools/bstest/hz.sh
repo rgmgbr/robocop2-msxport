@@ -20,6 +20,19 @@
 #                            product), R/pzt/rc2.rom (PZ_TEST=1), R/pz1/rc2_pz1.rom (EXTJOY=1
 #                            PZ_TEST=1), R/pz2/rc2_pz2.rom (EXTJOY=1 PZ_TEST=1 PZ_LEVEL=2),
 #                            R/trace/rc2_ext5.rom (trace's), R/ext/rc2_ext.rom (EXTJOY=1)
+#   hz.sh l2builds R         level 2's six trace builds (hz.tcl hz_l2; docs/LEVEL2.md 4.1), all
+#                            EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2: R/l2/rc2_l2.rom (the
+#                            default carry 10050:2:0:1, GOOD), R/l2s, R/l2f, R/l2p (LV_CARRY
+#                            10050:2:0:0, :2, :3: SHARP, FAIR, POOR), R/l2o (0:0:0:1: the game over
+#                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom
+#   hz.sh compare --fields FIELDS DIR R [--refs REFS] [JOB[:ROWS] ...]
+#                            level 2's traces (hz_l2): tools/tracecmp.py --ram --fields FIELDS
+#                            (analysis/amiga_ram_l2.tsv) on DIR/l2_<job>.txt against its reference
+#                            (build/emu/l2_<ref>_ram.jsonl, or REFS/l2_<ref>_ram.jsonl: the bench
+#                            with the port's stubs, tools/bstest/l2stub.py) with its build's labels
+#                            (R/<b>/rc2_<b>.labels): exit 0 only when every trace compared has its
+#                            rows and 0 frames differ. JOB:ROWS compares the job's first ROWS rows
+#                            only; without JOBs, every job whose trace is in DIR, whole
 #
 # The whole level-1 regression, three steps:
 #   sh tools/bstest/hz.sh trace DIR
@@ -29,7 +42,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../.." && pwd -P)"
-usage() { sed -n 2,28p "$0" >&2; exit 2; }
+usage() { sed -n 2,41p "$0" >&2; exit 2; }
 # a folder's absolute path (the printed lines run in openMSX, whose working directory is another;
 # compare runs from the repository root); "mk" creates it first
 absdir() {
@@ -46,6 +59,60 @@ trace)
   ;;
 compare)
   [ $# -ge 1 ] || usage
+  if [ "$1" = --fields ]; then
+    # level 2's jobs: name, build, reference, rows (hz.tcl hz_l2_jobs)
+    [ $# -ge 4 ] || usage
+    F="$(absdir "$(dirname "$2")")/$(basename "$2")"
+    [ -f "$F" ] || { echo "hz.sh: no field file $2" >&2; exit 2; }
+    D="$(absdir "$3")" || { echo "hz.sh: no folder $3" >&2; exit 2; }
+    R="$(absdir "$4")" || { echo "hz.sh: no folder $4" >&2; exit 2; }
+    shift 4
+    E="$ROOT/build/emu"
+    if [ "${1:-}" = --refs ]; then
+      [ $# -ge 2 ] || usage
+      E="$(absdir "$2")" || { echo "hz.sh: no folder $2" >&2; exit 2; }
+      shift 2
+    fi
+    JOBS="end:l2:l2_end:259 tour:l2:l2_tour:2654 lift:l2:l2_lift:801 trolley:l2:l2_trolley:641
+      vat:l2:l2_vat:701 fuzz:l2:l2_fuzz:2501 sharp:l2s:l2_trolley_sharp:641 fair:l2f:l2_trolley_fair:641
+      poor:l2p:l2_trolley_poor:641 over:l2o:l2_over:109 cont:l2c:l2_cont:301 barrel:l2:l2_barrel:901
+      mine:l2:l2_mine:161 t1left:l2:l2_t1left:341 drone:l2:l2_drone:401 tour_fx:l2:l2_tour:2654
+      vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701"
+    want_jobs="$*"
+    bad=0; seen=0
+    cd "$ROOT" || exit 2
+    for j in $JOBS; do
+      n=$(echo "$j" | cut -d: -f1); b=$(echo "$j" | cut -d: -f2); ref=$(echo "$j" | cut -d: -f3)
+      want=$(echo "$j" | cut -d: -f4); upto=""
+      if [ -n "$want_jobs" ]; then
+        hit=""
+        for w in $want_jobs; do
+          case "$w" in "$n") hit=1 ;; "$n":*) hit=1; upto="${w#*:}" ;; esac
+        done
+        [ -n "$hit" ] || continue
+      elif [ ! -f "$D/l2_$n.txt" ]; then
+        continue
+      fi
+      seen=$((seen + 1))
+      [ -f "$D/l2_$n.txt" ] || { echo "$n: no trace"; bad=1; continue; }
+      L="$R/$b/rc2_$b.labels"
+      [ -f "$L" ] || { echo "$n: no label file $L"; bad=1; continue; }
+      rows=$(grep -c . "$D/l2_$n.txt")
+      T="$D/l2_$n.txt"
+      if [ -n "$upto" ]; then
+        [ "$rows" -ge "$upto" ] || { echo "$n: $rows rows, $upto wanted"; bad=1; continue; }
+        T="$D/.l2_$n.$upto.txt"; head -n "$upto" "$D/l2_$n.txt" > "$T"; want="$upto"; rows="$upto"
+      fi
+      [ -f "$E/${ref}_ram.jsonl" ] || { echo "$n: no reference $E/${ref}_ram.jsonl"; bad=1; continue; }
+      out=$(python3 -I tools/tracecmp.py --ram --fields "$F" --labels "$L" "$E/${ref}_ram.jsonl" "$T" 2>&1 | tail -1)
+      echo "$n: $rows rows${upto:+ (the first $upto)}; $out"
+      [ "$rows" -eq "$want" ] || { echo "  FAIL: $rows rows, $want expected"; bad=1; }
+      echo "$out" | grep -q ": 0 differ" || { echo "  FAIL: differences"; bad=1; }
+    done
+    [ $seen -gt 0 ] || { echo "hz.sh: no level-2 trace to compare in $D" >&2; bad=1; }
+    [ $bad -eq 0 ] && echo "level 2: PASS ($seen traces)" || echo "level 2: FAIL"
+    exit $bad
+  fi
   D="$(absdir "$1")" || { echo "hz.sh: no folder $1" >&2; exit 2; }
   if [ $# -ge 2 ]; then
     L="$(absdir "$(dirname "$2")")/$(basename "$2")"
@@ -107,6 +174,20 @@ builds)
     sh "$H/build.sh" "$R/$out" "$@" || bad=1
   done
   [ $bad -eq 0 ] && echo "builds: PASS ($R)" || echo "builds: FAIL"
+  exit $bad
+  ;;
+l2builds)
+  [ $# -ge 1 ] || usage
+  R="$(absdir "$1" mk)" || exit 2
+  bad=0
+  for spec in "l2" "l2s LV_CARRY=10050:2:0:0" "l2f LV_CARRY=10050:2:0:2" "l2p LV_CARRY=10050:2:0:3" \
+              "l2o LV_CARRY=0:0:0:1" "l2c LV_CARRY=0:0:1:1"; do
+    set -- $spec
+    b="$1"; shift
+    echo "== $b $*"
+    sh "$H/build.sh" "$R/$b/rc2_$b.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 "$@" || bad=1
+  done
+  [ $bad -eq 0 ] && echo "l2builds: PASS ($R)" || echo "l2builds: FAIL"
   exit $bad
   ;;
 *)

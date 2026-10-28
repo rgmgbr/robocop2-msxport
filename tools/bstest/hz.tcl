@@ -182,6 +182,97 @@ proc hz_regress {dir rom labels {tr ""}} {
 	hz_chain $jobs
 }
 
+# ----- level 2's drives (docs/LEVEL2.md 4.1; docs/HARNESS.md 5.22)
+
+# hz_l2 DIR R ?tr? ?ONLY?: the bench's level-2 references played on the LV_TEST=2 builds of
+# "hz.sh l2builds R" (R/<b>/rc2_<b>.rom: l2 the default carry, l2s, l2f and l2p the ratings SHARP,
+# FAIR and POOR, l2o and l2c the game over without and with a credit) through rc2_drive_rom (no tick
+# runs before level 2 in those builds, so tick_n is the drive's index): DIR/l2_<job>.txt, n rows
+# each (the reference's). With "tr", tour and vat on a turbo R too. ONLY: a list of job names (the
+# others skipped). Compare with "hz.sh compare --fields analysis/amiga_ram_l2.tsv DIR R".
+proc hz_l2_jobs {dir R {tr ""} {only ""}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set spec [list \
+		end l2 l2_end 259 C-BIOS_MSX2            tour l2 l2_tour 2654 C-BIOS_MSX2 \
+		lift l2 l2_lift 801 C-BIOS_MSX2          trolley l2 l2_trolley 641 C-BIOS_MSX2 \
+		vat l2 l2_vat 701 C-BIOS_MSX2            fuzz l2 l2_fuzz 2501 C-BIOS_MSX2 \
+		sharp l2s l2_trolley 641 C-BIOS_MSX2     fair l2f l2_trolley 641 C-BIOS_MSX2 \
+		poor l2p l2_trolley 641 C-BIOS_MSX2      over l2o l2_over 109 C-BIOS_MSX2 \
+		cont l2c l2_cont 301 C-BIOS_MSX2         barrel l2 l2_barrel 901 C-BIOS_MSX2 \
+		mine l2 l2_mine 161 C-BIOS_MSX2          t1left l2 l2_t1left 341 C-BIOS_MSX2 \
+		drone l2 l2_drone 401 C-BIOS_MSX2        tour_fx l2 l2_tour 2654 Panasonic_FS-A1FX \
+		vat_fx l2 l2_vat 701 Panasonic_FS-A1FX   trolley_eu l2 l2_trolley 641 C-BIOS_MSX2_EU]
+	if {$tr eq "tr"} {
+		lappend spec tour_tr l2 l2_tour 2654 Panasonic_FS-A1GT vat_tr l2 l2_vat 701 Panasonic_FS-A1GT
+	}
+	set jobs {}
+	foreach {name b drive n m} $spec {
+		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
+		lappend jobs [list l2_$name $m [list rc2_drive_rom "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
+			"$dir/l2_$name.txt" $n 0 "$e/$drive.drive"] {$::rc2_trace_done} 1800]
+	}
+	return $jobs
+}
+
+proc hz_l2 {dir R {tr ""} {only ""}} {
+	hz_chain [hz_l2_jobs $dir $R $tr $only]
+}
+
+# hz_l2_still_jobs DIR R ?FRAMES?: level 2's start on the three machines (C-BIOS_MSX2, the FS-A1FX's
+# V9958, the FS-A1GT's R800): the l2 build (R/l2) from the power-on on lift's drive, a snapshot
+# (rc2_snap) at the HUD split of the first new list from each game frame of FRAMES (default 0 and 50)
+# with level 2's logic bank in lv_cur and the display on, into DIR/<m2|fx|tr>/gNNNN (when.txt: the
+# game frame, tick_n, the list, the time; pos.txt: RoboCop's x and y, the camera's, lv_cur's logic
+# bank); check them with tools/msxframe.py (build/msx/level2's map and tiles) and look at the PNG.
+# hz_l2_still_setup's BANK (the label of the level's logic bank, BANK_L1 for level 1 on an EXTJOY
+# build) takes the same records of another level.
+proc hz_l2_still_jobs {dir R {frames {0 50}}} {
+	set e "$::hz_root/build/emu"
+	set jobs {}
+	foreach {t m} {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {
+		lappend jobs [list l2st_$t $m [list hz_l2_still_setup "$dir/$t" "$R/l2/rc2_l2.rom" "$R/l2/rc2_l2.labels" \
+			"$e/l2_lift.drive" $frames] {$::hz_l2s_done} 600]
+	}
+	return $jobs
+}
+
+proc hz_l2_still_setup {dir rom labels drive frames {bank BANK_L2}} {
+	file mkdir $dir
+	set ::hz_l2s_dir $dir
+	set ::hz_l2s_want $frames
+	set ::hz_l2s_seq -1
+	set ::hz_l2s_done 0
+	set ::hz_l2s_bank [expr {[rc2_label $labels $bank]}]
+	rc2_drive_rom $rom $labels [file join $dir trace.txt] 1 999999 $drive
+	set ::hz_l2s_bp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hz_l2_still_hit]
+}
+
+# (the level's set-up runs with the display off, and a line match still sets the VDP's flag then:
+# only a split with the display on counts)
+proc hz_l2_still_hit {} {
+	if {$::hz_l2s_done || [peek 0xC002] == 0 || ([debug read "VDP regs" 1] & 0x40) == 0} { return }
+	set seq [peek 0xC006]
+	if {$seq == $::hz_l2s_seq} { return }
+	set ::hz_l2s_seq $seq
+	set g [lindex $::hz_l2s_want 0]
+	if {[peek 0xF1A0] != $::hz_l2s_bank || [rc2_w 0xD000] < $g} { return }
+	set d [file join $::hz_l2s_dir [format g%04d $g]]
+	rc2_snap $d
+	set f [open [file join $d when.txt] w]
+	catch {puts $f "game frame [rc2_w 0xD000] tick_n [rc2_w 0xCEE0] seq $seq time [machine_info time]"}
+	close $f
+	set f [open [file join $d pos.txt] w]
+	catch {puts $f "robocop [rc2_w 0xDAD0] [rc2_w 0xDAD4] camera [rc2_w 0xD004] [rc2_w 0xD006] lv_logic [peek 0xF1A0]"}
+	close $f
+	set ::hz_l2s_want [lrange $::hz_l2s_want 1 end]
+	if {[llength $::hz_l2s_want] == 0} {
+		catch {debug probe remove_bp $::hz_l2s_bp}
+		set ::hz_l2s_done 1
+		set ::pause on
+	}
+}
+
 # ----- a fresh machine: the title, its music, the start of the game
 
 proc hz_fresh {dir tag rom labels {m Gradiente_Expert20_64K} {ticks 300}} {

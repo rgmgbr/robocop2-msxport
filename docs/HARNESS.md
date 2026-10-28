@@ -53,9 +53,9 @@ The harness has two sides:
 | File | Side | What it does |
 |---|---|---|
 | `build.sh OUT.rom [NAME=VALUE ...]` | shell | `tools/mkrom.py` into `OUT.rom`, then checks: mkrom's exit status, no "error" in `OUT.log`, a ROM written by this build, and no z80asm message in `OUT.labels` other than the 12 known "expression fully enclosed in parenthesis" warnings. `LEVEL=` another conversion; `SRC=` another source tree (5.3); `KNOWN_WARNINGS=` another count. Refuses `build/msx` and any OUT not ending in `.rom`/`.ROM` |
-| `hz.sh` | shell | `trace DIR` (the regression's build), `compare DIR [LABELS]` (the regression's verdict), `product DIR` (a product build), `fresh DIR A B` (two title records), `builds R` (the suite's six builds) |
+| `hz.sh` | shell | `trace DIR` (the regression's build), `compare DIR [LABELS]` (the regression's verdict), `product DIR` (a product build), `fresh DIR A B` (two title records), `builds R` (the suite's six builds); level 2 (5.22): `l2builds R` (its six trace builds), `compare --fields FIELDS DIR R [--refs REFS] [JOB[:ROWS] ...]` (its drives' traces) |
 | `load.tcl` | Tcl | sources the Tcl files below in order (`hz.tcl` first) |
-| `hz.tcl` | Tcl | `hz_chain` (the job runner), `hz_regress`, `hz_fresh`, `hz_bonus` |
+| `hz.tcl` | Tcl | `hz_chain` (the job runner), `hz_regress`, `hz_fresh`, `hz_bonus`; level 2 (5.22): `hz_l2` / `hz_l2_jobs` (its 20 drive jobs), `hz_l2_still_jobs` (its start on the three machines) |
 | `hz6.tcl` | Tcl | `hz6_arm` (the stage after a played level 1), `hz6_prod` (the product's whole flow), `hz6_time` (the real timer) |
 | `hz7.tcl` | Tcl | `hz7_snap`, `hz7_arm` (snapshots at passes, a record at every VBLANK), `hz7_job`, `hz7_guard_arm`, `hz7_after_setup` / `hz7_fresh_setup` (the restore) |
 | `fixchk.tcl` | Tcl | `hzp_setup` (the turbo R's PAUSE), `hzb_setup` (the turbo R's HUD blank), `hzg_job` (the display guard), `hzf_job` (VRAM access speed) |
@@ -74,7 +74,7 @@ The harness has two sides:
 | `frozen.py SNAP OUT.png` | python | what the VDP shows while the CPU is held (5.12) |
 | `romdiff.py A B` | python | the 8 KiB banks that differ |
 | `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words (5.15) |
-| `variants.sh OUT` | shell | the night review's 41 option sets, built (5.15) |
+| `variants.sh OUT` | shell | the night review's 41 option sets and level 2's 7 `LV_TEST=2` sets, built (5.15, 5.22) |
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
@@ -96,6 +96,8 @@ The harness has two sides:
 | `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21); a `CLASS` line per kind of difference in a picture (the hostage tear with its BOBs, a torn explosion, other) |
 | `fxcmp.py BASE_sn.txt NEW_sn.txt`, `--starts A B` | python | the effects of two builds by their starts: the same starts in the same order and `LOCKSTEP` frames, each effect's own sound from its start (5.21, the gate's timing-blind verdicts) |
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
+| `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
+| `l2frame.py SNAP LEVEL HUD OUT.png [SPRITE_PAL]` | python (venv) | `tools/msxframe.py` on a level-2 snapshot, the sprites' expected pixels from the palette they were converted with (level 1's, until level 2's step 12) (5.22) |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -112,6 +114,8 @@ The Tcl reads these labels from a ROM's label file:
   pokes), `sp_r19`, `split_list`, `hud_msk` (the probe); the flows (5.19): `fs_buf`, `new_game`,
   `display_on`, `txt_rg_res`, `rg_blost`; the sound: `tns_go`, `tn_tick`, `tn_left`, `snd_rfx`,
   `snd_stop`, `BANK_MUSIC`;
+- level 2 (5.22): `lv_next`, `dsp_off` (`rc2_l2_arm`), `BANK_L2`, `BANK_L1` (`hz_l2_still_setup`);
+  `tracecmp.py --fields analysis/amiga_ram_l2.tsv` reads `mk_tab2` and `diff_tab`;
 - level 2's base (5.21): `spr_plan`, `SPR_BASE_BANK`, `SPR_PAT_BANK`, `SPR_COL_BANK`, `VIEW_LINES`,
   `fx_start`, `fx_tick`; its field records copy RAM 0600h-09FFh (the play-field engine's lists:
   `fb_dn0` 06D9h, `fb_dn1` 0712h, `fb_lost`, `fb_qn`), F240h-F27Fh (`fb_vis` F248h) and MP_B
@@ -1462,6 +1466,80 @@ explains, the tear in another window, 50 page lines zeroed in a record (`fieldch
 0 → 1: 383 starts differ; PSG volume 11 → 10: 363 differ), a start one frame late, another effect,
 a missing start (both builds), another effect in `sess_fxlog.tcl`'s starts. 25 FAIL, 8 PASS, as
 they must.
+
+### 5.22 Level 2's drives and its test start (step 7 of its plan)
+
+**The test start.** `tools/mkrom.py LV_TEST=2` builds a ROM that starts level 2 at power-on, once
+(`pz_first`), without the title: level 1's set-up (`ng_go`), then `rc2.asm` `lv_test` instead of level
+1's main loop: `front.asm` `front_l2test` writes `LV_CARRY`'s score, lives, credits and rating
+(`LV_CARRY=SCORE:LIVES:CREDITS:RATING`, default `10050:2:0:1`: score 10050 as a BCD long in AG's two
+words, `$8034`, `$805E`, `ac_diff` = `diff_tab` + 8 x the rating 0-3, SHARP to POOR) and AG `$8050` = 1,
+then runs the screens the product will show between the range and level 2 (`cpu_title`, `fb_prep`,
+`front_brief`, a stub until step 18, `cpu_title`), then `lv_next` (the display off, `lv_go` with AG
+`$8050`): the product's way into the next level. Later games are the product's. mkrom refuses
+`LV_TEST` with `PZ_TEST`, `LV_TEST` other than 0 or 2, and `LV_CARRY` without `LV_TEST`. No level-1
+tick runs before level 2, so `tick_n` is level 2's game frame and `rc2_drive_rom` drives these builds
+unchanged.
+
+```sh
+sh tools/bstest/hz.sh l2builds W/R      # R/l2 (the default carry), l2s, l2f, l2p (SHARP, FAIR, POOR), l2o (0:0:0:1), l2c (0:0:1:1)
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_l2 {W/O/l2} {W/R} tr      (20 jobs: with ONLY, a list of names, a subset)
+```
+```sh
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv W/O/l2 W/R                 # the bench's references
+python3 -I tools/bstest/l2stub.py W/stub                                                   # (about 2 minutes, 4 cores)
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv W/O/l2 W/R --refs W/stub   # "level 2: PASS (20 traces)"
+```
+
+`hz_l2`'s jobs (`hz_l2_jobs`), each `rc2_drive_rom` with the reference's rows: `end` 259, `tour` 2,654,
+`lift` 801, `trolley` 641, `vat` 701, `fuzz` 2,501, `sharp`/`fair`/`poor` (`l2_trolley` on `l2s`/`l2f`/
+`l2p`) 641, `over` (`l2o`) 109, `cont` (`l2c`) 301, `barrel` 901, `mine` 161, `t1left` 341, `drone` 401 on
+C-BIOS_MSX2; `tour_fx` and `vat_fx` on the FS-A1FX, `trolley_eu` on C-BIOS_MSX2_EU; with `tr`, `tour_tr`
+and `vat_tr` on the FS-A1GT. `compare --fields` takes each trace with its build's labels against
+`build/emu/l2_<ref>_ram.jsonl` (`tools/l2drives.py`), or with `--refs` against another folder's;
+`JOB:ROWS` compares a job's first rows only.
+
+**The stubbed references** (`l2stub.py`). While routines are missing, a level-2 trace differs from the
+bench's reference from its first row: `act_0c` (`$9EE8`) runs in `level_init`'s map-object pass, before
+row 0 (its sound request `$B2D` = 28h is row 0's only difference), the trolleys (`$8F02`) from game
+frame 0, type 1 from frame 4 (the first frames each reference runs a routine not ported at step 7: all
+16 references alike). `l2stub.py` makes every direct reference again with those routines stubbed on
+the bench the way the port stubs them (`--pre-poke` patches written before `level_init`: the trolley
+`rts`, the vats' handler `bra.w $919E`, `act_0c` `bra.w $9C76` (the default activator, the port's
+`ao_look`), types 1, 2, 5, 6, 14, 16 and 49 `moveq #-1,D0 / rts`, the slot freed as the port's stubs
+free it), so that everything the port has compares whole, every row and field. A step that ports a
+routine removes its stub from the port and from `l2stub.py`'s table (or `--drop NAME`).
+
+**`rc2_l2_arm`** (`tools/openmsx_rc2.tcl`; default 44 of the plan): `rc2_drive_trace`'s trace in the
+running machine, indexed from the first `tick_start` after `lv_next` (its breakpoint checks the
+instruction there, `call dsp_off`: openMSX breaks at an address in any slot); `tick_n` is rewritten
+around `rc2_drive_hit` and put back before the tick runs. For the product's flow into level 2 (step
+18). `rc2_l2_drive` starts an `LV_TEST=2` build from the power-on and arms it: its trace of `lift`
+equals `rc2_drive_rom`'s byte for byte (a check of the proc).
+
+**The start** (`hz_l2_still_jobs W/O/still W/R ?FRAMES?`, default game frames 0 and 50): the `l2` build
+from the power-on of C-BIOS_MSX2, the FS-A1FX and the FS-A1GT on `lift`'s drive, `rc2_snap` at the HUD
+split of the first new list from each frame with level 2's logic bank in `lv_cur` and the display on
+(a level's set-up runs with the display off, and a line match still sets the VDP's flag:
+`hz_l2_still_hit` skips those), `when.txt` and `pos.txt` (RoboCop's and the camera's place, the logic
+bank) beside each snapshot. Check each with `$PY -I tools/bstest/l2frame.py SNAP build/msx/level2
+build/msx/hud OUT.png`: `tools/msxframe.py` with the sprites' expected pixels taken from the palette
+they were converted with. msxframe converts every sprite frame again with the palette it is given, and
+under level 2's palette C it picks other OR rows than the ROM's level-1 data (30-40 of RoboCop's pixels
+a picture "wrong" where the screen shows the ROM's data exactly); until step 12 converts level 2's
+frames against C, `l2frame.py` passes `build/msx/level1.pal` for them. msxframe's map has no
+play-field BOB: the lifts drawn into the play field remain as differences (5.21's stills have the
+same kind).
+
+At step 7 (2026-10-28): the 20 jobs against the stubbed references 0 differ in all 1,022 fields over
+every row (`tour` 2,654 rows on the three machines, `fuzz` 2,501, the four ratings, 50 Hz); against the
+plain references `lift`'s row 0 differs in `snd_b2d` alone (28h/0). The start on the three machines:
+RoboCop at (352, 784), `lv_cur`'s logic bank `BANK_L2`; the first picture (the view at (173, 638))
+equal to the render but for the HUD's timer, which shows `hud_init`'s 09:58 for a frame or two before
+7:30, as level 1's first picture does with its 10:00; at game frames 50, 70 and 100 RoboCop's and the
+enemy's sprite pixels all exact (861, 808, 1,612), the only differing pixels the lift's (233-617).
 
 ## 6. The whole suite in order
 

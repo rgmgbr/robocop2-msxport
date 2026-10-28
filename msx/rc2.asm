@@ -80,6 +80,11 @@ lv_gs:  call front_call
         or a
         jp nz,pz_test               ; (test build: Brainstorm once, before level 1's main loop)
         endif
+        if LV_TEST
+        ld a,(pz_first)
+        or a
+        jp nz,lv_test               ; (test build: level 2 once, instead of level 1's main loop)
+        endif
 mainloop:
         call wait_frame             ; feeds the VDP while waiting; returns right after the VBLANK
         call sprites_vblank         ; SAT of the list now on screen (still in the VBLANK)
@@ -177,6 +182,24 @@ pz_test:
         endif
         jr ml_fe
         endif
+
+        if LV_TEST
+; (Test build, tools/mkrom.py LV_TEST=2) Once after the power-on, instead of level 1's main loop:
+; level 2 as the product starts it after the range, with LV_CARRY's score, lives, credits and
+; rating (front.asm front_l2test: the carry, AG $8050 = 1, the screens between the range and the
+; level), then lv_next; later games as the product's (pz_first: one shot).
+lv_test:
+        xor a
+        ld (pz_first),a
+        ld hl,front_l2test
+        call front_call
+        endif
+; The next level (load_level1's tail $85B8-$85C4 and level_init $871A: AG $8050 its number, 1 for
+; level 2): the display and the VDP's interrupts off (as a new game), then its start (lv_go).
+lv_next:
+        call dsp_off
+        ld a,(AG + 0x8050)          ; (the word's low byte: the mirror keeps words little-endian)
+        jp lv_go
 
 ; The CIA-B interrupt ($1015E, an alarm of 15625 lines: once a second) unless paused: the timer's
 ; seconds - 1 (BCD), at the bottom its minutes - 1 and seconds 59; below 0:00 time out ($804C,
@@ -490,3 +513,12 @@ puzl_end:
         include "frng.asm"
 frng_end:
         ds 0xC000 - frng_end, 0xFF
+
+; ----- the game logic of level 2 (BANK_L2 at A000h while it is played, as BANK_L1 for level 1:
+; lv_cur's lv_logic; docs/LEVEL2.md 3.2) -----
+        org 0xA000
+        include "level2.asm"
+        include "at_l2.inc"
+        include "cells_l2.inc"      ; the camera-cell masks of its spawn list and hazards (tools/cellmasks.py)
+l2_end:
+        ds 0xC000 - l2_end, 0xFF

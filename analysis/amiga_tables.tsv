@@ -96,13 +96,12 @@ t44_dx          eca4    4     w             l1      type 44 $EC22: the dropped p
 t32_map         de68    108   w             l1      type 32 $DF6E: 36 x [x, y, map word] the end sequence writes
 t32_ex          e09c    4     w             l1      type 32: explosion type (D5) by (A3) & 6
 fe_boom         81c2    48    w             c3      main_loop $8252: the death's explosions around RoboCop [dx, dy] per $16BC / 4 (y - 46h)
-# Level 2 (bank l2: BANK_L2, from its plan's step 7; nothing includes at_l2.inc before that). The
-# main code is the same in every level's image, so build/ram/level1_full.bin gives these bytes too.
+# Level 2 (bank l2: BANK_L2, msx/level2.asm, from its plan's step 7). The main code is the same in
+# every level's image, so build/ram/level1_full.bin gives these bytes too. tools/cellmasks.py makes
+# the masks of every level whose spawn_ and hz_ rows are both listed (cells_l2.inc: 40 entries,
+# its SW_MAX)
 l2_hdr          868c    20    w             l2      level 2 header (level_init $871A): lists, start, relocation, marker table, lowest camera, timer, spawn delay, marker mask, palette
-# spawn_l2 waits for tools/cellmasks.py's SW_MAX 40 (level 2's plan, step 5): cellmasks makes the
-# masks of every level whose spawn_ and hz_ rows are both listed, and today's limit of 32 entries
-# would fail tools/mkrom.py on level 2's 40. Uncomment it with that change.
-#spawn_l2       97b0    562   x             l2      level 2 spawn list (40 x 14 bytes + the end word): x, y, type.b, ?, ?, flags.b (bit 6 once, bit 7 at the screen edge), reload, counter, spawned.b (bit 7), ?
+spawn_l2        97b0    562   x             l2      level 2 spawn list (40 x 14 bytes + the end word): x, y, type.b, ?, ?, flags.b (bit 6 once, bit 7 at the screen edge), reload, counter, spawned.b (bit 7), ?
 objl_l2         a828    530   x             l2      level 2 object list (44 x 12 bytes + the end word): type, look, hits (high byte bit 7: animated), value, x, y
 sp_l2           9088    150   x             l2      level 2 special objects' records ($9088-$911D: 5 lifts, handler 0; 4 trolleys, handler 4, $8F02): handler offset, x, y (long), path index, path (-1 ends)
 spl_l2          8fe0    10    l             l2      level 2 special objects' list ($8B54): 9 record addresses, -1 ends
