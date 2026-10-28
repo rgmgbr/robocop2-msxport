@@ -11,10 +11,12 @@
 # Families (rgr_chain W all runs them in this order):
 #   flows   Brainstorm's flows, now through the range (13: suite_flows: level 1's coverage traces, the
 #           title from power-on as "new", the product's and PZ_TEST=1 flows with the range's screens,
-#           the restore with the range timed out, the turbo R's blank); the title after the flows,
+#           the restore with the range timed out, the turbo R's blank); the title from power-on again,
+#           exact (xfresh: rgr_xfresh_setup, as "xnew": the game at exactly its tick 300, which
+#           regress.sh judges when the base has its own, "xbase"); the title after the flows,
 #           exact (np_title_setup EXACT 1: tx_ex, tx_f1, tx_tr); the turbo R's writes to 4000h-7FFFh
 #           (wp_tr); the 2 MiB product through both bonus stages (p2m_ex); the product from the
-#           keyboard (rgk_job: kb_ex, kb_tr). 21 jobs
+#           keyboard (rgk_job: kb_ex, kb_tr). 22 jobs
 #   final   the final checks' flows through the range (np.tcl): solved_m2, solved_tr (pz1),
 #           solved_cand_ex (the candidate build from the keyboard), fire_ex, two_m2, two_title_ex,
 #           the 5.37 MHz flow (ft_flow_job: ftflow_fx). 7 jobs
@@ -42,6 +44,7 @@ proc rgr_jobs {w {what all}} {
 	set jobs {}
 	if {$what eq "all" || $what eq "flows"} {
 		set jobs [concat $jobs [suite_flows $r $o "$w/fresh" new]]
+		lappend jobs [list xfresh Gradiente_Expert20_64K [list rgr_xfresh_setup "$w/fresh" xnew "$r/prod/rc2.rom" "$r/prod/rc2.labels"] {$::hz_done} 900]
 		foreach {t m} {ex Gradiente_Expert20_64K f1 Sony_HB-F1XDJ_128K_Lite tr Panasonic_FS-A1GT} {
 			lappend jobs [np_job tx_$t $m np_title_setup "$o/np" "$r/prod/rc2.rom" "$r/prod/rc2.labels" 1]
 		}
@@ -113,11 +116,29 @@ proc rgr_base_chain {b {mark ""}} {
 	file mkdir "$o/np"
 	file mkdir "$b/fresh"
 	set jobs [suite_flows $r $o "$b/fresh" base]
+	lappend jobs [list xfresh Gradiente_Expert20_64K [list rgr_xfresh_setup "$b/fresh" xbase "$r/prod/rc2.rom" "$r/prod/rc2.labels"] {$::hz_done} 900]
 	foreach {t m} {ex Gradiente_Expert20_64K f1 Sony_HB-F1XDJ_128K_Lite tr Panasonic_FS-A1GT} {
 		lappend jobs [np_job tx_$t $m np_title_setup "$o/np" "$r/prod/rc2.rom" "$r/prod/rc2.labels" 1]
 	}
 	set jobs [concat $jobs [suite_drives $r $o]]
 	return "[hz_chain $jobs $mark] (regress.tcl: the base)"
+}
+
+# The title from power-on, exact (job xfresh): hz.tcl hz_fresh_setup's run of the product on a new
+# machine with np.tcl np_hf_step's records instead of hf_step's polled ones: the title's VRAM,
+# registers and palette a second after it shows, its music keyed by mus_tick (DIR/TAG_music2.txt),
+# and the game the title starts by itself at exactly its tick 300 (a breakpoint at tick_start:
+# DIR/TAG_game2_ram.bin, _game2_vram.bin, _game2.txt). The polled record moves with the CPU time
+# (hf_step polls every 0.1 s: tick 302 instead of 300 after level 2's steps 4 and 5); this one does
+# not. regress.sh check compares it with the base's xbase_* (l2base.py fresh).
+proc rgr_xfresh_setup {dir tag rom labels} {
+	file mkdir $dir
+	set ::nt_labels $labels
+	hz_fresh_setup $dir $tag $rom $labels 300
+	# (hz_fresh_setup's own poll replaced by the exact one)
+	catch {after cancel [lindex $::hz_afters end]}
+	set ::hz_afters [lrange $::hz_afters 0 end-1]
+	lappend ::hz_afters [after time 0.2 np_hf_step]
 }
 
 set ::rgr_loaded "regress.tcl loaded"

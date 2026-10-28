@@ -5,7 +5,7 @@
 # builds):
 #
 #   source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}
-#   l2b_chain W ?MARK?   rgr_jobs W all (regress.tcl, 207 jobs), then l2b_jobs W (19): one chain
+#   l2b_chain W ?MARK?   rgr_jobs W all (regress.tcl, 208 jobs), then l2b_jobs W (19): one chain
 #   l2b_jobs W           level 1's jobs alone (records into W/l1):
 #     tr_die, tr_over, tr_end  the death-and-restart drives and the level's end (build/emu/drive_die,
 #                              drive_over, drive_end: 901, 1249, 517 ticks) on the trace build
@@ -32,7 +32,9 @@
 #     pw_scc, pw_psg           every PSG write ("VBLANK register value") over the same 300 s, on that
 #                              build and on its twin without the SCC (W/L/lock24p, NO_SCC=1: the
 #                              effects on the PSG alone, which sess_fxlog.tcl does not see):
-#                              W/l1/fx/pw_K.txt
+#                              W/l1/fx/pw_K.txt; and in the same run the effects by their starts
+#                              (l2b_sn_arm: the frames, the starts, every sound tick's state):
+#                              W/l1/fx/pw_K_sn.txt (tools/bstest/fxcmp.py)
 # Then "sh tools/bstest/l2base.sh check W BASE".
 # Rules kept (hz.tcl's): no exit, vwait, max or min; every channel closed on every path; a job's
 # probes removed when it ends.
@@ -277,7 +279,84 @@ proc l2b_pw_setup {out rom labels drive secs} {
 	set ::l2b_pw_f [open $out w]
 	set ::l2b_pw_wp [debug set_watchpoint write_io {0xA0 0xA1} {} l2b_pw_w]
 	set ::l2b_pw_pb [debug probe set_bp VDP.IRQvertical {[debug probe read VDP.IRQvertical] == 1} {incr ::l2b_pw_v}]
+	l2b_sn_arm "[file rootname $out]_sn.txt" $rom $labels
 	lappend ::hz_afters [after time $secs l2b_pw_end]
+}
+
+# The effects by their starts (tools/bstest/fxcmp.py), in the same run: OUT gets "F V" at every
+# LOCKSTEP frame's start (wait_frame's wfk_ok), "S V EFFECT CHANNEL" at every effect the VBLANK
+# interrupt starts (sndplay.asm sq_sfx; CHANNEL from snd_sfx, the Amiga channel), "G V" at the
+# gun's opening (sq_gun: channels 0-2), "X V" where everything stops (sndplay.asm sq_stop, music.asm
+# mus_stop: every channel), and "T V PSG VOICES [SCC]" at every sound tick (sq_frame's
+# sqf_t, 50 a second: the state before the tick, after the VBLANK's starts): PSG R0-R10, per PSG
+# voice its ticks left, noise period and Amiga channel (with an SCC music.asm's fx_pv, else
+# sndplay.asm's snd_v), and with an SCC its registers 00h-AFh; "T V" alone repeats the last state.
+# V counts VBLANKs (VDP.IRQvertical). The lines stay in memory until the job's end writes the file
+# (a job that times out leaves no channel open and no log: its verdict fails).
+proc l2b_sn_arm {out rom labels} {
+	set ::l2b_sn_out $out
+	set ::l2b_sn_buf {}
+	set ::l2b_sn_last ""
+	set ::l2b_sn_rb "[file tail $rom] romblocks"
+	set ::l2b_sn_scc ""
+	foreach d [debug list] {
+		if {[string match "[file tail $rom] SCC*" $d]} { set ::l2b_sn_scc $d }
+	}
+	foreach k {BANK_INPUT BANK_MUSIC SND_SFX_N snd_sfx snd_v fx_pv mus_mode} { set ::l2b_sn_$k [rc2_label $labels $k] }
+	set c "\[debug read {$::l2b_sn_rb} 0xA000\] == $::l2b_sn_BANK_INPUT"
+	set cm "\[debug read {$::l2b_sn_rb} 0xA000\] == $::l2b_sn_BANK_MUSIC"
+	set ::l2b_sn_bps [list \
+		[debug set_bp [rc2_label $labels wfk_ok] {} {l2b_sn_put "F $::l2b_pw_v"}] \
+		[debug set_bp [rc2_label $labels sq_sfx] $c l2b_sn_s] \
+		[debug set_bp [rc2_label $labels sq_gun] $c {l2b_sn_put "G $::l2b_pw_v"}] \
+		[debug set_bp [rc2_label $labels sq_stop] $c {l2b_sn_put "X $::l2b_pw_v"}] \
+		[debug set_bp [rc2_label $labels mus_stop] $cm {l2b_sn_put "X $::l2b_pw_v"}] \
+		[debug set_bp [rc2_label $labels sqf_t] $c l2b_sn_t]]
+}
+
+proc l2b_sn_put {s} { lappend ::l2b_sn_buf $s }
+
+proc l2b_sn_s {} {
+	set a [reg a]
+	set ch x
+	if {$a >= 1 && $a <= $::l2b_sn_SND_SFX_N} { set ch [peek [expr {$::l2b_sn_snd_sfx + 3 * ($a - 1) + 2}]] }
+	lappend ::l2b_sn_buf "S $::l2b_pw_v $a $ch"
+}
+
+proc l2b_sn_t {} {
+	binary scan [debug read_block {PSG regs} 0 11] H* p
+	set v ""
+	if {[peek $::l2b_sn_mus_mode] & 1} {
+		for {set i 0} {$i < 3} {incr i} {
+			set b [expr {$::l2b_sn_fx_pv + 16 * $i}]
+			append v [format %02x%02x%02x [peek [expr {$b + 3}]] [peek [expr {$b + 7}]] [peek [expr {$b + 13}]]]
+		}
+		set s ""
+		if {$::l2b_sn_scc ne ""} { binary scan [debug read_block $::l2b_sn_scc 0 0xB0] H* s }
+		set x "$p $v $s"
+	} else {
+		for {set i 0} {$i < 3} {incr i} {
+			set b [expr {$::l2b_sn_snd_v + 10 * $i}]
+			append v [format %02x%02x%02x [peek [expr {$b + 2}]] [peek [expr {$b + 6}]] [peek [expr {$b + 9}]]]
+		}
+		set x "$p $v"
+	}
+	if {$x eq $::l2b_sn_last} {
+		lappend ::l2b_sn_buf "T $::l2b_pw_v"
+	} else {
+		lappend ::l2b_sn_buf "T $::l2b_pw_v $x"
+		set ::l2b_sn_last $x
+	}
+}
+
+proc l2b_sn_end {} {
+	foreach b $::l2b_sn_bps { catch {debug remove_bp $b} }
+	set ::l2b_sn_bps {}
+	lappend ::l2b_sn_buf "# $::l2b_pw_v VBLANKs, time [machine_info time]"
+	set f [open $::l2b_sn_out w]
+	catch {puts $f [join $::l2b_sn_buf "\n"]}
+	close $f
+	set ::l2b_sn_buf {}
 }
 
 proc l2b_pw_w {} {
@@ -292,6 +371,7 @@ proc l2b_pw_w {} {
 proc l2b_pw_end {} {
 	catch {debug remove_watchpoint $::l2b_pw_wp}
 	catch {debug probe remove_bp $::l2b_pw_pb}
+	l2b_sn_end
 	catch {puts $::l2b_pw_f "# $::l2b_pw_n writes, $::l2b_pw_v VBLANKs, time [machine_info time]"}
 	close $::l2b_pw_f
 	set ::l2b_pw_done 1

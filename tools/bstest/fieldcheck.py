@@ -132,6 +132,36 @@ def bob_fid(lst, wx, wy):
     return None
 
 
+def bob_ent(lst, wx, wy):
+    """The list entry (frame, x, y) of the top BOB with a pixel at (wx, wy) in lst, or None."""
+    for e in lst:
+        f = FT.get(e[0])
+        if not f:
+            continue
+        dx, dy = wx - e[1], wy - e[2]
+        if 0 <= dx < f["sw"] and 0 <= dy < f["sh"] and frame_img(f)[dy, dx]:
+            return e
+    return None
+
+
+def tear_note(shown, newest, lst, tlst, wx, wy):
+    """A torn hostage pixel: its hostage BOBs (never a lift's, the vehicle's, an explosion's or the
+    smoke's) of the shown list and of the newest one, into the picture's sets."""
+    for s, L in ((shown, lst), (newest, tlst)):
+        e = bob_ent(L, wx, wy)
+        if e is not None and e[0] < FIELD_LATE and not is_dyn(e[0]):
+            s.add(e)
+
+
+def tear_key(shown, newest):
+    """A hostage tear's class: the hostage BOBs of the shown list and of the newest list that the
+    torn pixels belong to ("fid@x,y", joined by "+"); the same BOBs in the same frames are the same
+    tear whichever picture, VDP or timing shows it."""
+    def side(s):
+        return "+".join(f"{f}@{x},{y}" for f, x, y in sorted(s)) or "-"
+    return f"shown={side(shown)} newest={side(newest)}"
+
+
 def bob_at(lst, wx, wy):
     for fi, bx, by in lst:                      # the first in the list on top
         f = FT.get(fi)
@@ -212,6 +242,7 @@ def main():
         bad = 0
         badcells = {}
         only_new = only_old = 0
+        tear_shown, tear_newest = set(), set()  # (the torn pixels' hostage BOBs: the tear's class)
         dyn_masks = []                          # per explosion/smoke pixel: the recent lists
         cands = vhist + [tlst]                  # whose state it shows
         dyn_box = []
@@ -275,6 +306,7 @@ def main():
                             c = (b >> 4) if wx % 2 == 0 else b & 15
                         if got != bytes(rgb[c]):
                             only_old += 1
+                            tear_note(tear_shown, tear_newest, lst, tlst, wx, wy)
                 if not ok:
                     # ahead: a hostage pixel of the newest list (never a lift's or the vehicle's)
                     fn = bob_fid(tlst, wx, wy)
@@ -290,6 +322,7 @@ def main():
                         if got == bytes(rgb[c]):
                             ok = True
                             only_new += 1
+                            tear_note(tear_shown, tear_newest, lst, tlst, wx, wy)
                 if not ok:
                     # an explosion's or the smoke's step, never held: any recent list's (but all
                     # of a picture's such pixels from one list: else the step shows torn)
@@ -316,8 +349,11 @@ def main():
             img.append(bytes(drow))
         prev_low = low
         prev_patches = patches
+        other_px = bad                          # (the pixels that match no list: no known class)
+        tear_px = dyn_px = 0
         if only_new and only_old:               # half old, half new
-            bad += min(only_new, only_old)
+            tear_px = min(only_new, only_old)
+            bad += tear_px
             print(f"{p.stem}: hostage torn ({only_old} old, {only_new} new pixels)")
         if dyn_masks:                           # (torn: no one list shows all of them)
             best = max(range(len(cands)), key=lambda i: sum(1 for m in dyn_masks if m >> i & 1))
@@ -325,6 +361,7 @@ def main():
             if True:
                 if off > 8:
                     bad += off
+                    dyn_px = off
                     dyn_torn += 1
                     print(f"{p.stem}: explosion/smoke torn ({off} of {len(dyn_masks)} pixels not from one step)")
         total_bad += bad
@@ -332,6 +369,14 @@ def main():
         if bad:
             print(f"{p.stem}: {bad} pixels differ; list {lst} qn {low[0x0890 - 0x600]} lost {low[0x069C - 0x600]} "
                   f"cells {sorted(badcells.items())[:6]}")
+            # (one line a kind of difference, for tools/bstest/l2base.py field: "CLASS picture kind
+            #  [key] px=N"; the hostage tear's key names its BOBs, tear_key)
+            if tear_px:
+                print(f"CLASS {p.stem} hostage-tear {tear_key(tear_shown, tear_newest)} px={tear_px}")
+            if dyn_px:
+                print(f"CLASS {p.stem} smoke-tear px={dyn_px}")
+            if other_px:
+                print(f"CLASS {p.stem} other px={other_px}")
         sheet.append(img)
     if wrong:
         print(f"{wrong} files of another length skipped")

@@ -82,7 +82,7 @@ The harness has two sides:
 | `rgview.py still` / `rec` / `rate` / `probe` / `want` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18); the wanted state at every pass (5.19) |
 | `rgview.sh builds W` / `check W` | shell | the range's four test builds; every verdict of 5.18, then "rgview: PASS" |
 | `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` / `cand W B NAME CB` | shell | the range milestone's whole regression (5.19): the base 4a8a61d rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS"; `cand`: the range's test candidates' verdicts (5.20) |
-| `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 207 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
+| `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 208 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
 | `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
 | `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game (5.19); `bonuscheck.py --range` calls it |
@@ -91,9 +91,10 @@ The harness has two sides:
 | `frsnd/frsim.py ROOT ROM LABELS` | python (venv) | the range's sound on a ROM image in a Z80 interpreter (`frsnd/z80.py`, `frsnd/pzsim.py`: Brainstorm's), offline (5.19) |
 | `frsnd/frwavcmp.py`, `frsnd/fxalone.py` | python (venv) | recordings judged by pitch against the converter's previews (`frsnd/int_wavcmp.py`'s measures; 5.19) |
 | `l2base.sh builds W` / `check W BASE [RB]` / `base W` | shell | level 2's base and the comparison of any later build against it (5.21): `regress.sh`'s builds, the `LOCKSTEP=24` builds and the code banks' free bytes; every verdict of `regress.sh check` and of level 1's records below, then "l2base: PASS" |
-| `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 226 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 19 jobs) (5.21) |
-| `l2base.py banks` / `start` / `field` / `stills` | python | the code banks' free bytes (`msx/rc2.asm`'s padded windows) and the product's bank map; the verdicts of 5.21 against the base's |
-| `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21) |
+| `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 227 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 19 jobs; the PSG-write jobs also log the effects by their starts, `l2b_sn_arm`) (5.21) |
+| `l2base.py banks` / `start` / `field` / `stills` / `tears` / `fresh` / `ram` | python | the code banks' free bytes (`msx/rc2.asm`'s padded windows) and the product's bank map; the verdicts of 5.21 against the base's; the field check's known hostage tear (`TEARS`, `tears` derives it); the exact title from power-on and the game's RAM by variable (5.21, the gate's timing-blind verdicts) |
+| `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21); a `CLASS` line per kind of difference in a picture (the hostage tear with its BOBs, a torn explosion, other) |
+| `fxcmp.py BASE_sn.txt NEW_sn.txt`, `--starts A B` | python | the effects of two builds by their starts: the same starts in the same order and `LOCKSTEP` frames, each effect's own sound from its start (5.21, the gate's timing-blind verdicts) |
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
 
 The Tcl reads these labels from a ROM's label file:
@@ -1118,7 +1119,7 @@ sh tools/bstest/regress.sh basecheck B     # B/check_all.log (Brainstorm's check
 sh tools/bstest/regress.sh builds W        # 21 builds through build.sh, W/drives; prints the Tcl line
 ```
 ```
-msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgr_chain {W} all {W/all.done}     (207 jobs)
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgr_chain {W} all {W/all.done}     (208 jobs)
 ```
 ```sh
 until [ -f W/all.done ]; do sleep 20; done  # (or poll as in section 4); the file lists the messages
@@ -1152,7 +1153,7 @@ FFh; `rg_none.drive`). About 8 s in all.
 
 | Family | Jobs | Verdicts |
 |---|---|---|
-| `flows` (21) | `suite_flows` (as `new`); `tx_ex`, `tx_f1`, `tx_tr` (`np_title_setup` EXACT 1); `wp_tr`; `p2m_ex` (the 2 MiB product, `hz6_prod_setup`); `kb_ex`, `kb_tr` (`rgk_job`) | level 1's coverage traces 0 differ; the title from power-on identical to the base's; `bonuscheck.py --range time` on `prod_*` and `pzt_*` (Brainstorm's screens, then the range's intro and OUT OF TIME. after its real 2:00, the rating 24 at `fr_rated`, SHARP and lost 0 at the new game); the restore; the turbo R's blank (reported); 0 writes to 4000h-7FFFh; the title after the flows against the base's (`titlecmp.py`, `titlecmp2.py --unheard`); the 2 MiB product through both stages; the keyboard flows (below) |
+| `flows` (22) | `suite_flows` (as `new`); `xfresh` (the title from power-on again, exact: 5.21); `tx_ex`, `tx_f1`, `tx_tr` (`np_title_setup` EXACT 1); `wp_tr`; `p2m_ex` (the 2 MiB product, `hz6_prod_setup`); `kb_ex`, `kb_tr` (`rgk_job`) | level 1's coverage traces 0 differ; the title from power-on identical to the base's (on the exact record when the base has one: `l2base.py fresh`, 5.21); `bonuscheck.py --range time` on `prod_*` and `pzt_*` (Brainstorm's screens, then the range's intro and OUT OF TIME. after its real 2:00, the rating 24 at `fr_rated`, SHARP and lost 0 at the new game); the restore; the turbo R's blank (reported); 0 writes to 4000h-7FFFh; the title after the flows against the base's (`titlecmp.py` with `unseen_regs`, `titlecmp2.py --unheard`); the 2 MiB product through both stages; the keyboard flows (below) |
 | `final` (7) | `solved_m2`, `solved_tr` (`pz1`), `solved_cand_ex` (`cand`, the moves from the keyboard), `fire_ex`, `two_m2`, `two_title_ex` (`cand`), `ftflow_fx` (`cand` at 5.37 MHz) | 5.17's verdicts, every one through the range (`--range time`): the script builds time it out at its first pass, the candidate plays its real 2:00; `ftflow_fx` 0 VRAM writes lost in the cartridge from the power-on through Brainstorm and the range's 6,050 passes to the title |
 | `drives` (25) | `suite_drives` | `check_all.sh`, then `cmpcheck.py` against the base's log (a torn cell accepted only under a black palette); the guard and the VRAM speed; the HUD during Brainstorm against the base's snapshots |
 | `range` (54) | `rgx_job` / `rgx_arm_job` for 5 poked results and the time out on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT (36); TAG=4 (2); level 1 traced after the range (3); the real timer (3, `pzt2` on the Expert, C-BIOS_MSX2_EU, the FS-A1GT); `tarm_m2`, `tarm_tr` (`rgx_tarm_job`); `want_*` (8 drives) | `rgcheck.py` on 41 records; the real timer's time out at 6,050 passes; level 1's traces after the range 0 differ; `tools/frngcmp.py --skip score` of `fr_mixed` after a played level 1 and Brainstorm; `rgview.py want` on 8 drives and their traces |
@@ -1336,7 +1337,7 @@ make (`l2base.tcl`), in one chain, and compares any later build with the base:
 sh tools/bstest/l2base.sh builds W         # regress.sh builds W, W/L/lock24 (EXTJOY=1 LOCKSTEP=24) and lock24p (+ NO_SCC=1), W/banks.txt
 ```
 ```
-msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; l2b_chain {W} {W/all.done}   (226 jobs)
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; l2b_chain {W} {W/all.done}   (227 jobs)
 ```
 ```sh
 until [ -f W/all.done ]; do sleep 20; done
@@ -1350,10 +1351,10 @@ holds what `regress.sh check` reads of a base, its title from power-on as `fresh
 |---|---|---|
 | `tr_die`, `tr_over`, `tr_end` | `drive_die`, `drive_over`, `drive_end` (901, 1,249, 517 ticks) on the trace build, C-BIOS_MSX2 | `tools/tracecmp.py --ram` against the bench's `trace_*_ram.jsonl`: 0 differ |
 | `st_m2`, `st_fx`, `st_tr` | the product from the power-on of C-BIOS_MSX2, the FS-A1FX, the FS-A1GT: the title, SPACE, 40 s of level 1 from its tick 20 under `rc2_guard` (tears counted), `rc2_patcheck`, `rc2_sprlines`, `rc2_satcheck`; the lost counters | reg, pal, cmd, cpu, vbl, bad patterns, bad SATs, lost 0; tears and lines above 8 at most the base's (`l2base.py start`) |
-| `fd_FROM_M` | the field records: every picture of `drive_cov0` from game frame 430 (125), 860 (480), 1490 (360) on the `EXTJOY` build, C-BIOS_MSX2 and the FS-A1FX | `fieldcheck.py` (venv): every picture checked, at most the base's pictures and pixels that differ (`l2base.py field`) |
+| `fd_FROM_M` | the field records: every picture of `drive_cov0` from game frame 430 (125), 860 (480), 1490 (360) on the `EXTJOY` build, C-BIOS_MSX2 and the FS-A1FX | `fieldcheck.py` (venv): every picture checked; every picture that differs of the known hostage tear's classes, within their bound (`l2base.py field`, `TEARS`: the timing-blind verdicts below) |
 | `sl_m2`, `sl_fx` | the stills: `rc2_snap` at the HUD split of the first new list from game frames 100, 430, 860, 1490, 2400 of `drive_cov0` on `lock24` | `tools/msxframe.py` (venv) renders each; the picture identical to the base's, its own count at most the base's (`l2base.py stills`) |
 | `lk_m2`, `lk_fx` | `rc2_disp_rom`, 3,000 lists of `drive_cov0` on `lock24` | `tools/dispcmp.py` against the base's: 0 differ |
-| `fx_scc`, `pw_scc`, `pw_psg` | 300 s of `drive_cov0` on `lock24`: `sess_fxlog.tcl` (every effect start, the SCC's and the PSG's registers at every `fx_tick`); every PSG write ("VBLANK register value") on `lock24` and `lock24p` (the effects on the PSG alone, which `sess_fxlog.tcl` does not see) | byte-identical to the base's: write for write |
+| `fx_scc`, `pw_scc`, `pw_psg` | 300 s of `drive_cov0` on `lock24`: `sess_fxlog.tcl` (every effect start, the SCC's and the PSG's registers at every `fx_tick`); every PSG write ("VBLANK register value") on `lock24` and `lock24p` (the effects on the PSG alone, which `sess_fxlog.tcl` does not see), and in the same runs the effects by their starts (`pw_K_sn.txt`, `l2b_sn_arm`) | by their starts (`fxcmp.py`: the timing-blind verdicts below): the same starts in the same order and `LOCKSTEP` frames, each effect's own sound from its start; `sess_fxlog.tcl`'s starts the same; the logs themselves reported |
 
 The code banks' free bytes (`l2base.py banks`: every `ds LIMIT - NAME_end` window of `msx/rc2.asm`)
 are listed beside the base's for every build. `l2base.sh base W` turns a checked folder into a base.
@@ -1388,13 +1389,88 @@ check, 50 page lines zeroed in one field record (1 picture, 10,987 pixels), 16 K
 page zeroed (42,348 pixels), one SAT byte of a `LOCKSTEP` list (1 differ), one PSG write, one SCC
 tick: every one FAIL.
 
+**The gate's timing-blind verdicts (2026-10-28, level 2's harness step).** Steps 3-5 changed level
+1's CPU time on purpose, and four families of verdicts failed although nothing visible changed; a
+build of steps 3's tree with pure delays added (13 T in `get_tile`, 14 T in `atr_rc`, 10 T in
+`ttp_prep`/`dt_prep`) failed the same four. They now judge what a change of CPU time cannot move,
+so that a step passes `l2base.sh check` literally:
+
+| Verdict | Before | Now |
+|---|---|---|
+| The title from power-on (`regress.sh` flows) | `hz_fresh`'s record: `hf_step` polls every 0.1 s, so the game was recorded at tick 302 instead of 300 | job `xfresh` (`regress.tcl` `rgr_xfresh_setup`: `hz_fresh_setup` with `np.tcl` `np_hf_step`): `fresh/xnew_*`, the game at exactly its tick 300 (a breakpoint at `tick_start`); `l2base.py fresh` against the base's `xbase_*`: the title's VRAM, registers and palette identical, its music identical at every tick (`titlecmp2.py`), the game's VRAM identical and its RAM D000h-DFFFh by `l2base.py ram`. A base without `xbase_*` (the range's) keeps the polled comparison; the polled record is reported |
+| The titles after the flows (`tx_ex`, `tx_f1`, `tx_tr`, `kb_ex`, `kb_tr`) | the registers identical | `unseen_regs` (as `regress.sh cand`): identical but the sprite tables' R#5, R#6, R#10 and R#11 while both records have the sprites off (R#8 bit 1). R#5 differed (CF/C7: the SAT's double buffer, whose parity the frames before the title set) |
+| The field check (`fd_*`) | at most the base's pictures and pixels per window | `fieldcheck.py` prints a `CLASS` line per kind of difference in a picture (`hostage-tear` with the hostage BOBs of the shown and of the newest list, `smoke-tear`, `other`); `l2base.py field` accepts only the known classes (`TEARS`), within their bound |
+| The effects (`fx_scc`, `pw_scc`, `pw_psg`) | the logs byte-identical, write for write by VBLANK | `fxcmp.py` on `pw_K_sn.txt` (below); `fxcmp.py --starts` on `sess_fxlog.tcl`'s log (the same effects in the same order); the logs themselves reported |
+
+- **The game's RAM by variable** (`l2base.py ram`): a byte is compared at its variable's place in
+  each build: the nearest RAM label at or below it, by the same name in the new build's label file,
+  as far as the variable reaches there (up to the next label). A differing word that points at the
+  same label and offset in both builds is a relocated pointer (code moved: `diff_tab`, `mk_tab`,
+  `sw_xm`); `$B32` (D032h-D033h) is R-seeded (the plan's 4.4); a byte past its variable's room in
+  the new layout is compared in place unless a moved variable's byte lies there (step 5's repack:
+  DD53h, DD58h-DD5Fh); a variable whose name is gone fails. Step 5 against the base: 3,996 bytes
+  equal at their place (19 moved with their variable), 5 bytes of relocated pointers, 84 compared in
+  place, 9 not compared, 0 differ.
+- **The known hostage tear** (level 1's, older than this work: the base has it, v0.1.1 had "3/6"):
+  for a few pictures the hostage on the bar at (785, 680), above RoboCop's lift, shows half its old
+  frame and half its new one. Class A `shown=4@785,680 newest=2@785,680+11@961,760` (59 pixels a
+  picture), class B `shown=2@785,680+11@961,760 newest=0@785,680` (2 pixels). Which VDP and which
+  pictures show it moves with the CPU time: window 860, base m2 3 (A) and fx 0; step 4 m2 0, fx 6
+  (A 3, B 3; 183 pixels); step 5 m2 3 (A), fx 5 (A 2, B 3; 124 pixels); every other window 0. The
+  bound, the most of that timing-control set on either machine (`l2base.py tears` on its check
+  files): per class 3 pictures and its pixels a picture, per window and machine 6 pictures and 183
+  pixels; no tear outside window 860. A new class, a pixel no list explains, a torn explosion or more
+  than the bound fails. Milestone 2's field work should fix the tear (zero glitches), then `TEARS`
+  empties.
+- **The effects by their starts** (`l2base.tcl` `l2b_sn_arm`, in the PSG-write jobs' runs: no extra
+  job): `pw_K_sn.txt` holds `F V` at every `LOCKSTEP` frame's start (`wfk_ok`), `S V EFFECT
+  CHANNEL` at every start (`sq_sfx`), `G V` (the gun, `sq_gun`), `X V` (`sq_stop`, `mus_stop`) and
+  `T V PSG VOICES [SCC]` at every sound tick (`sqf_t`: the PSG's R0-R10, each PSG voice's ticks left,
+  noise period and Amiga channel, the SCC's registers; a bare `T V` repeats the state). The cadence
+  gives the tolerance: under `LOCKSTEP=24` a frame of two game ticks starts every 24 VBLANKs whatever
+  the CPU time; the logic asks for an effect, the next tick's `frame_keys` queues it and the VBLANK
+  interrupt starts it, so a start moves only by whole VBLANKs inside its frame. `fxcmp.py`: the same
+  starts in the same order, each in the base's frame (24 VBLANKs, 20 sound ticks); then each start's
+  own sound tick by tick from its start, per Amiga channel it takes: the SCC channel (period,
+  volume, waveform) and the PSG voice that channel owns, whichever voice it is (volume, the tone
+  period when on, the voice's own noise period when on: the shared R6 and the voice a channel-3
+  effect takes are interplay), until a later start may take it in either run (the next start on the
+  channel; for a PSG voice also any channel-3 start; for channel 3's voice any start; a stop). Exact.
+  Step 5 against the base: 803 / 802 starts the same, in the same frames, moved -1 to +1 VBLANKs
+  inside them; SCC 57,475 and PSG 33,390 / 33,393 sound ticks compared, 0 differ (step 4 and the
+  delays build alike: 0 differ, moves -1 to +2).
+
+**The base gained** (`impl/base`): `fresh/xbase_*` (the job `xfresh` on the base's product: byte for
+byte step 4's and step 5's exact base records) and `l1/fx/pw_scc_sn.txt`, `pw_psg_sn.txt` (the
+`pw_*` jobs again on the base's builds; their `pw_*.txt` came out byte-identical to the base's).
+
+**HEAD's run** (e0399d4 built from a worktree, its 25 ROMs byte-identical to step 5's gate builds;
+227 jobs, 0 time outs, about 8 minutes): `l2base.sh check W BASE`: **l2base: PASS**: regress 45
+verdicts PASS (the exact title from power-on PASS while the polled one still differs in 24 bytes;
+the titles after the flows "registers that show: identical (sprites off: R#5 CF/C7 apart)"), the
+death, game-over and end traces 0 differ, the start checks 0, the field check PASS with the known
+tear (860_m2 A 3 pictures, 860_fx A 2 and B 3), the stills identical, LOCKSTEP 0 differ, the
+effects PASS.
+
+**Negative controls** (on copies of real records, each FAIL; the unmutated copies PASS): the exact
+title: one title VRAM byte, the title's R#7, one game VRAM byte, the RAM's D100h, the pointer DD08h
+moved to another place, a moved variable's value (`sw_ci`), free RAM DFC0h written, the game
+recorded at tick 302, one music tick's registers; `unseen_regs`: R#7, R#2, R#5 apart with the
+sprites on; the field: a new tear class, the known tear above its bound, a picture's pixels no list
+explains, the tear in another window, 50 page lines zeroed in a record (`fieldcheck.py` run again:
+8,431 pixels); the effects: ROMs with effect 4's first record changed, run in openMSX (SCC volume
+0 → 1: 383 starts differ; PSG volume 11 → 10: 363 differ), a start one frame late, another effect,
+a missing start (both builds), another effect in `sess_fxlog.tcl`'s starts. 25 FAIL, 8 PASS, as
+they must.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its
    records (`rgr_base_chain {B} {B/base.done}` in the MCP's openMSX), `regress.sh basecheck B`.
 2. `msx_local_boot`; `source {<repo>/tools/bstest/load.tcl}`.
 3. `rgr_chain {W} all {W/all.done}`: every emulator check of 5.2-5.10, 5.12's blank, 5.17 a-g's
-   flows, 5.18 and 5.19 (207 jobs; about 7 minutes on 2026-10-27). Wait for `W/all.done`.
+   flows, 5.18 and 5.19 (207 jobs, about 7 minutes on 2026-10-27; 208 since the exact title of
+   5.21). Wait for `W/all.done`.
 4. `sh tools/bstest/regress.sh check W B`: every verdict, "regress: PASS".
 5. `msx_local_shutdown`; the matrix (5.13) on `W/R/prod`, `W/X/p2m` and, with `--no-title`, `W/R/pzt`
    and `W/X/pzt2`; `sh tools/bstest/variants.sh` (5.15) against the base's; `make test`.

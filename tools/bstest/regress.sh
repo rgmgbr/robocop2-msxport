@@ -136,9 +136,19 @@ check)
     [ -d "$O/trace" ] || { echo; echo "== flows: no records in $O"; bad=1; continue; }
     step "level 1's coverage traces (C-BIOS_MSX2 4401, FS-A1FX and FS-A1GT 1400)"
     sh "$H/hz.sh" compare "$O/trace" "$W/R/trace/rc2_ext5.labels"; verdict $?
-    step "the title from power-on on a fresh Gradiente Expert 2.0, against the base (4a8a61d)"
+    step "the title from power-on on a fresh Gradiente Expert 2.0, against the base"
     cp "$B"/fresh/base_* "$W/fresh/" 2>/dev/null
-    sh "$H/hz.sh" fresh "$W/fresh" base new; verdict $?
+    if [ -f "$B/fresh/xbase_game2_ram.bin" ]; then
+      # (a base with the exact record, rgr_xfresh_setup's: judged on it, l2base.py fresh; the polled
+      #  one moves with the CPU time, hz_fresh polls every 0.1 s: reported only)
+      for f in "$B"/fresh/xbase_*; do cp "$f" "$W/fresh/"; done
+      echo "  the polled record (hz.sh fresh, reported): $(sh "$H/hz.sh" fresh "$W/fresh" base new 2>&1 | grep -E 'DIFFERENT|^fresh:|missing' | tr '\n' ' ' | cut -c1-160)"
+      python3 -I "$H/l2base.py" fresh "$W/fresh" xbase xnew "$B/R/prod/rc2.labels" "$W/R/prod/rc2.labels" > "$W/fresh_exact.txt" 2>&1; rc=$?
+      sed 's/^/  /' "$W/fresh_exact.txt" | cut -c1-250
+      verdict $rc
+    else
+      sh "$H/hz.sh" fresh "$W/fresh" base new; verdict $?
+    fi
     step "the product's and PZ_TEST=1 flows: Brainstorm's screens, then the range's (its real 2:00, OUT OF TIME.), the title, the new game"
     for t in prod_m2 prod_tr pzt_m2 pzt_tr; do
       case $t in prod*) g=prod ;; *) g=pzt ;; esac
@@ -161,10 +171,11 @@ check)
     for m in ex f1 tr; do
       for f in "$B"/O/np/tx_${m}_*; do cp "$f" "$O/np/b$(basename "$f")"; done
       python3 -I "$H/titlecmp.py" "$O/np" btx_$m tx_$m > "$W/title_$m.txt" 2>&1
-      grep -E "picture|palette|registers" "$W/title_$m.txt" | head -4 | sed "s/^/  $m: /"
+      unseen_regs "$O/np/btx_${m}_title_regs.bin" "$O/np/tx_${m}_title_regs.bin" >> "$W/title_$m.txt"
+      grep -E "picture|palette|registers" "$W/title_$m.txt" | head -5 | sed "s/^/  $m: /"
       python3 -I "$H/titlecmp2.py" "$O/np" btx_$m tx_$m --unheard > "$W/title2_$m.txt" 2>&1; rc=$?
       grep -E 'common ticks|titlecmp2' "$W/title2_$m.txt" | sed "s/^/  $m: /"
-      p=$(grep -c -E "picture.*: identical|palette: identical|registers: identical" "$W/title_$m.txt")
+      p=$(grep -c -E "picture.*: identical|palette: identical|registers that show: identical" "$W/title_$m.txt")
       [ "$rc" -eq 0 ] && [ "$p" -ge 3 ]; verdict $?
     done
     step "the 2 MiB product (ROM_2M=1) through both bonus stages, the title, the new game"
@@ -180,12 +191,13 @@ check)
       python3 -I "$H/bonuscheck.py" "$K" $t --result ok --no-game --gen "$W/R/prod/gen" --range 25,0,1 > "$W/bonus_$t.txt" 2>&1; c3=$?
       for f in "$B"/O/np/tx_${m}_*; do cp "$f" "$K/b$(basename "$f" | sed "s/^tx_${m}_/kb_${m}_/")"; done
       python3 -I "$H/titlecmp.py" "$K" b$t $t > "$W/title_$t.txt" 2>&1
+      unseen_regs "$K/b${t}_title_regs.bin" "$K/${t}_title_regs.bin" >> "$W/title_$t.txt"
       python3 -I "$H/titlecmp2.py" "$K" b$t $t --unheard > "$W/title2_$t.txt" 2>&1; c4=$?
-      p=$(grep -c -E "picture.*: identical|palette: identical|registers: identical" "$W/title_$t.txt")
+      p=$(grep -c -E "picture.*: identical|palette: identical|registers that show: identical" "$W/title_$t.txt")
       echo "  $t: Brainstorm $(echo "$r1" | grep -E 'frames compared' | head -1) | $(echo "$r1" | grep '^result' | head -1)"
       echo "  $t: the range $(echo "$r2" | grep -E 'frames compared' | head -1) | $(echo "$r2" | grep '^result' | head -1)"
       grep -E 'equal|DIFFER|bonus check|the range:|rating at fr_rated|^game tick_n|keys' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
-      grep -E 'picture|palette|registers' "$W/title_$t.txt" | head -3 | sed "s/^/  $t: /"
+      grep -E 'picture|palette|registers' "$W/title_$t.txt" | head -4 | sed "s/^/  $t: /"
       grep -E 'common ticks|titlecmp2' "$W/title2_$t.txt" | sed "s/^/  $t: /"
       [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ] && [ $c4 -eq 0 ] && [ "$p" -ge 3 ]; verdict $?
     done

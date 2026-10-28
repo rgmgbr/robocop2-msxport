@@ -8,12 +8,18 @@
 #                                              and W/L/lock24p (NO_SCC=1), the code banks' free bytes
 #                                              (W/banks.txt); prints the Tcl line:
 #   msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; l2b_chain {W} {W/all.done}
-#                                              (226 jobs; wait for W/all.done)
+#                                              (227 jobs; wait for W/all.done)
 #   sh tools/bstest/l2base.sh check W BASE [RB] every verdict against BASE (and regress.sh's against RB,
 #                                              default BASE), then "l2base: PASS"; exit 0 on PASS
 #   sh tools/bstest/l2base.sh base W           W, once its check passed, made a base: its title from
-#                                              power-on (fresh/new_*) becomes fresh/base_* (regress.sh
-#                                              check reads a base's title there)
+#                                              power-on (fresh/new_*, and the exact fresh/xnew_*) becomes
+#                                              fresh/base_* (xbase_*): regress.sh check reads a base's
+#                                              title there
+#
+# The verdicts are blind to level 1's CPU time (HARNESS.md 5.21, "the gate's timing-blind
+# verdicts"): the title from power-on judged on its exact record (the game at exactly its tick 300),
+# the titles after the flows on the registers that show, the field check with the known hostage
+# tear classified and bounded (l2base.py TEARS), the effects by their starts (fxcmp.py).
 #
 # W and BASE: folders outside build/msx (a session's scratch folder). The fieldcheck and msxframe
 # verdicts need the venv's Python (numpy): PY, default ~/.venvs/msxports/bin/python.
@@ -21,7 +27,7 @@ set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 REPO="$(cd "$H/../.." && pwd -P)"
 PY="${PY:-$HOME/.venvs/msxports/bin/python}"
-usage() { sed -n 2,24p "$0" >&2; exit 2; }
+usage() { sed -n 2,26p "$0" >&2; exit 2; }
 cmd="${1:-}"; [ $# -ge 2 ] || usage
 mkdir -p "$2" || exit 2
 W="$(cd "$2" && pwd -P)"
@@ -75,7 +81,7 @@ check)
     python3 -I "$H/l2base.py" start "$O/start/st_$m.txt" "$BO/start/st_$m.txt" > /dev/null 2>&1 || r1=1
   done
   verdict $r1
-  step "the field check: every play-area pixel no sprite covers (fieldcheck.py; drive_cov0's windows)"
+  step "the field check: every play-area pixel no sprite covers (fieldcheck.py; drive_cov0's windows; the known hostage tear classified, l2base.py TEARS)"
   for d in "$O"/field/*_m2 "$O"/field/*_fx; do
     [ -d "$d" ] || continue
     "$PY" -I "$H/fieldcheck.py" "$d" build/msx/level1 "$d.png" > "$d.check.txt" 2>&1 &
@@ -110,15 +116,17 @@ check)
     [ $c -eq 0 ] || r1=1
   done
   verdict $r1
-  step "the effects (300 s of drive_cov0, LOCKSTEP=24): write for write as the base"
+  step "the effects (300 s of drive_cov0, LOCKSTEP=24): by their starts, each start in the base's frame, each effect's own sound from its start (fxcmp.py)"
   r1=0
   f="$O/fx/fx_scc.txt"
-  echo "  the SCC (sess_fxlog.tcl): $(grep -c '^S' "$f" 2>/dev/null) starts, $(grep -c '^T' "$f" 2>/dev/null) ticks; $(cmp -s "$BO/fx/fx_scc.txt" "$f" && echo identical to the base || echo DIFFERS from the base)"
-  cmp -s "$BO/fx/fx_scc.txt" "$f" && [ "$(grep -c '^S' "$f")" -gt 0 ] || r1=1
+  echo "  the SCC (sess_fxlog.tcl): $(grep -c '^S' "$f" 2>/dev/null) starts, $(grep -c '^T' "$f" 2>/dev/null) ticks; $(cmp -s "$BO/fx/fx_scc.txt" "$f" && echo identical to the base || echo "not identical to the base (reported: the ticks move with the CPU time)")"
+  python3 -I "$H/fxcmp.py" --starts "$BO/fx/fx_scc.txt" "$f" | sed 's/^/  /' | cut -c1-200
+  python3 -I "$H/fxcmp.py" --starts "$BO/fx/fx_scc.txt" "$f" > /dev/null 2>&1 || r1=1
   for k in scc psg; do
     f="$O/fx/pw_$k.txt"
-    echo "  the PSG's writes ($k build): $(tail -1 "$f" 2>/dev/null | sed 's/^# //'); $(cmp -s "$BO/fx/pw_$k.txt" "$f" && echo identical to the base || echo DIFFERS from the base)"
-    cmp -s "$BO/fx/pw_$k.txt" "$f" && [ "$(grep -c -v '^#' "$f")" -gt 0 ] || r1=1
+    echo "  the PSG's writes ($k build, reported): $(tail -1 "$f" 2>/dev/null | sed 's/^# //'); $(cmp -s "$BO/fx/pw_$k.txt" "$f" && echo identical to the base || echo "not write for write the base's")"
+    python3 -I "$H/fxcmp.py" "$BO/fx/pw_${k}_sn.txt" "$O/fx/pw_${k}_sn.txt" > "$O/fx/fxcmp_$k.txt" 2>&1 || r1=1
+    sed "s/^/  $k build: /" "$O/fx/fxcmp_$k.txt" | cut -c1-240
   done
   verdict $r1
   step "the code banks' free bytes (against the base's)"
@@ -132,11 +140,15 @@ check)
 base)
   [ -d "$W/fresh" ] || { echo "no $W/fresh"; exit 1; }
   n=0
-  for f in "$W"/fresh/new_*; do
+  for f in "$W"/fresh/new_* "$W"/fresh/xnew_*; do
     [ -f "$f" ] || continue
-    cp "$f" "$W/fresh/base_${f##*/new_}"; n=$((n + 1))
+    case "${f##*/}" in
+      xnew_*) cp "$f" "$W/fresh/xbase_${f##*/xnew_}" ;;
+      *) cp "$f" "$W/fresh/base_${f##*/new_}" ;;
+    esac
+    n=$((n + 1))
   done
-  echo "$W: $n title records copied to fresh/base_* (regress.sh check W2 $W compares W2's title with this one's)"
+  echo "$W: $n title records copied to fresh/base_* and xbase_* (regress.sh check W2 $W compares W2's title with this one's)"
   [ -f "$W/check_all.log" ] && [ -d "$W/O/np" ] && [ -d "$W/O/st/solve1_m2" ] && [ -d "$W/l1" ] || { echo "base: incomplete (run the chain and check first)"; exit 1; }
   echo "base: ready"
   ;;
