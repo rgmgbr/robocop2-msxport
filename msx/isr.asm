@@ -415,38 +415,52 @@ isr_fbgo:
         call ifg_send
         ld hl,fb_cq
         inc (hl)                    ; (2, 4: started)
-        ld a,(fb_c2)                ; the pair's second part (fb_cmd2) right after it, so that
-        dec a                       ; both show from the same frame
-        ret nz
-        ld b,110                    ; (about 90 lines at 3.58 MHz at most: else fb_wait starts it)
+        ld a,(fb_c2)                ; the copy's other parts (fb_cmd2 ...: fb_cp, fb_cn) right
+        dec a                       ; after it, each when the one before is done, so that all
+        ret nz                      ; show from the same frame
+        ld b,110                    ; (about 90 lines at 3.58 MHz at most: else fb_wait starts them)
 ifg_wt: call ifg_idle
         jr z,ifg_2
         bit 6,a
         jr nz,ifg_vr                ; (S#2 VR: the blank began)
         djnz ifg_wt
         ret
-ifg_vr: ld a,b                      ; (only the split's wait gets there: a pair never starts at
-        ld (fb_w2),a                ;  the VBLANK, fb_vok) the VBLANK interrupt, which comes at
-        ld a,3                      ; once, starts the second part after its list (ifg_fin):
-        ld (fb_c2),a                ; waited for here, the list went late by as much (2026-10-24)
+ifg_vr: ld a,b                      ; (only the split's wait gets there: such a copy never starts
+        ld (fb_w2),a                ;  at the VBLANK, fb_vok) the VBLANK interrupt, which comes at
+        ld a,3                      ; once, starts the rest after its list (ifg_fin): waited for
+        ld (fb_c2),a                ; here, the list went late by as much (2026-10-24)
         ret
-ifg_2:  ld hl,fb_cmd2
+ifg_2:  call ifg_nxt
+        jr nz,ifg_wt                ; (another part: when this one is done)
+        ret
+
+; The copy's next part (fb_cp) starts -> NZ while more follow (fb_cn), else Z and fb_c2 2. C =
+; VDP_CTRL, AF, HL.
+ifg_nxt:
+        ld hl,(fb_cp)
         call ifg_send
+        ld (fb_cp),hl
+        ld hl,fb_cn
+        dec (hl)
+        ret nz
         ld a,2
         ld (fb_c2),a
         ret
 
-; The pair's second part the split's wait left to the VBLANK (fb_c2 3), the list being in: the
-; first part's end, within what is left of that wait (fb_w2), then the second part, at the time
-; the split would have started it; else fb_wait does (fb_c2 1). C = VDP_CTRL, AF, B, HL.
+; The copy's other parts the split's wait left to the VBLANK (fb_c2 3), the list being in: each
+; one when the part before is done, within what is left of that wait (fb_w2), at the time the split
+; would have started them; else fb_wait does (fb_c2 1). C = VDP_CTRL, AF, B, HL.
 ifg_fin:
         ld a,(fb_w2)
         ld b,a
 ifn_wt: call ifg_idle
-        jr z,ifg_2
+        jr z,ifn_2
         djnz ifn_wt
         ld a,1
         ld (fb_c2),a
+        ret
+ifn_2:  call ifg_nxt
+        jr nz,ifn_wt
         ret
 
 ; A command of the play-field BOBs for page 3 ready (field.asm fb_rdy 1: the scratch, the caches,
@@ -658,7 +672,13 @@ publish:
         push hl
         ld hl,pq_buf
         ld (pq_rd),hl               ; (its queue from the start)
-        pop hl
+        ld hl,fb_tick               ; (field.asm: this picture's play-field copies may start now,
+        inc (hl)                    ;  the next one's items wait for it; counted here, before the
+        pop hl                      ;  interrupts may take the list: until 2026-10-28 rc2.asm
+                                    ;  do_publish counted it after, and a list the split's uploads
+                                    ;  readied and the VBLANK took in between went on screen
+                                    ;  without its play-field BOBs, fb_pend seeing them as the
+                                    ;  next picture's: a lift missing for 6 pictures, level 2)
         ld a,(pq_buf)               ; no uploads for it: ready at once
         or a
         ld a,1

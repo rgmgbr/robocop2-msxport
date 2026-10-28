@@ -280,5 +280,28 @@ class PoolTests(unittest.TestCase):
         self.assertIn("rc:14:0", {c["key"] for g in data["groups"] if g["section"] == "Level 2" for c in g["items"]})
 
 
+
+@unittest.skipUnless((BUILD / "msx/sprites_l2_field.inc").exists() and (BUILD / "msx/sprites_fdyn.bin").exists(),
+                     "make msx's sprite pool missing")
+class FieldLooksTests(unittest.TestCase):
+    """tools/msxframe.py FieldLooks: each level's play-field frames as its ROM uploads them (the level-2
+    plan's step 13): level 2's own frames from its atlas, the dynamic ones the same as level 1's."""
+
+    def test_level_twos_frames_and_the_shared_dynamic_ones(self):
+        import msxframe
+        pool = BUILD / "msx/sprites"
+        l1, l2 = msxframe.FieldLooks(1, pool), msxframe.FieldLooks(2, pool)
+        self.assertEqual(len(l2.frames), l2.inc["FIELD_N"])
+        trolley = next(f for f in l2.frames.values() if f["addr"] == 0x4B95A)
+        px = l2.pixels(trolley["fid"])
+        self.assertEqual((len(px), len(px[0])), (trolley["sh"], trolley["sw"]))
+        self.assertTrue(any(c for row in px for c in row))
+        for f in l2.frames.values():
+            if "dyn" not in f:
+                continue
+            g = next(g for g in l1.frames.values() if (g["addr"], g["w"], g["h"]) == (f["addr"], f["w"], f["h"]))
+            self.assertEqual(l2.pixels(f["fid"]), l1.pixels(g["fid"]), hex(f["addr"]))
+
+
 if __name__ == "__main__":
     unittest.main()

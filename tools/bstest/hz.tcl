@@ -397,20 +397,39 @@ proc hz_l2_start_done {} {
 	return 1
 }
 
-# hz_l2_still_jobs DIR R ?FRAMES?: level 2's start on the three machines (C-BIOS_MSX2, the FS-A1FX's
-# V9958, the FS-A1GT's R800): the l2 build (R/l2) from the power-on on lift's drive, a snapshot
-# (rc2_snap) at the HUD split of the first new list from each game frame of FRAMES (default 0 and 50)
-# with level 2's logic bank in lv_cur and the display on, into DIR/<m2|fx|tr>/gNNNN (when.txt: the
-# game frame, tick_n, the list, the time; pos.txt: RoboCop's x and y, the camera's, lv_cur's logic
-# bank); check them with tools/msxframe.py (build/msx/level2's map and tiles) and look at the PNG.
+# hz_l2_still_jobs DIR R ?FRAMES? ?DRIVE?: level 2's start on the three machines (C-BIOS_MSX2, the
+# FS-A1FX's V9958, the FS-A1GT's R800): the l2 build (R/l2) from the power-on on DRIVE (default lift's,
+# build/emu/l2_<DRIVE>.drive), a snapshot (rc2_snap) at the HUD split of the first new list from each
+# game frame of FRAMES (default 0 and 50) with level 2's logic bank in lv_cur and the display on, into
+# DIR/<m2|fx|tr>/gNNNN (when.txt: the game frame, tick_n, the list, the time; pos.txt: RoboCop's x and
+# y, the camera's, lv_cur's logic bank); check them with tools/msxframe.py (build/msx/level2's map and
+# tiles; --sprites build/msx/sprites --level 2 --field: the play-field BOBs too) and look at the PNG.
 # hz_l2_still_setup's BANK (the label of the level's logic bank, BANK_L1 for level 1 on an EXTJOY
 # build) takes the same records of another level.
-proc hz_l2_still_jobs {dir R {frames {0 50}}} {
+proc hz_l2_still_jobs {dir R {frames {0 50}} {drive l2_lift}} {
 	set e "$::hz_root/build/emu"
 	set jobs {}
 	foreach {t m} {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {
 		lappend jobs [list l2st_$t $m [list hz_l2_still_setup "$dir/$t" "$R/l2/rc2_l2.rom" "$R/l2/rc2_l2.labels" \
-			"$e/l2_lift.drive" $frames] {$::hz_l2s_done} 600]
+			"$e/$drive.drive" $frames] {$::hz_l2s_done} 600]
+	}
+	return $jobs
+}
+
+# hz_l2_field_jobs DIR ROM LABELS DRIVE WINDOWS ?MACHINES?: level 2's field records (the plan's 4.2 check
+# 2, its step 13): l2b_fd_setup (l2base.tcl, sourced when missing: rc2_jumprec's record and RAM
+# 0600h-09FFh, F240h-F27Fh at every picture's HUD split) on ROM (an EXTJOY=1 LV_TEST=2 build) driven by
+# DRIVE (a build/emu/l2_<name>.drive), per window {FROM N} (N records from game frame FROM) and machine
+# (default C-BIOS_MSX2 m2, the FS-A1FX fx, the FS-A1GT tr): DIR/<FROM>_<tag>. Check each with
+# "$PY -I tools/bstest/fieldcheck.py DIR/W build/msx/level2 DIR/W.png --level 2".
+proc hz_l2_field_jobs {dir rom labels drive wins {machines {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}}} {
+	if {[info commands l2b_fd_setup] eq ""} { source [file join $::hz_root tools bstest l2base.tcl] }
+	set jobs {}
+	foreach {t m} $machines {
+		foreach {from n} $wins {
+			lappend jobs [list fd_${from}_$t $m [list l2b_fd_setup "$dir/${from}_$t" $rom $labels $drive $from $n] \
+				{$::l2b_fd_done} 900]
+		}
 	}
 	return $jobs
 }

@@ -93,7 +93,7 @@ The harness has two sides:
 | `l2base.sh builds W` / `check W BASE [RB]` / `base W` | shell | level 2's base and the comparison of any later build against it (5.21): `regress.sh`'s builds, the `LOCKSTEP=24` builds and the code banks' free bytes; every verdict of `regress.sh check` and of level 1's records below, then "l2base: PASS" |
 | `l2base.tcl` | Tcl | `l2b_chain W ?MARK?` (`rgr_jobs W all` and `l2b_jobs W`: 227 jobs), `l2b_jobs W` (level 1's death-and-restart and end traces, the start check, the field records, the stills, the `LOCKSTEP` records, the effects: 19 jobs; the PSG-write jobs also log the effects by their starts, `l2b_sn_arm`) (5.21) |
 | `l2base.py banks` / `start` / `field` / `stills` / `tears` / `fresh` / `ram` | python | the code banks' free bytes (`msx/rc2.asm`'s padded windows) and the product's bank map; the verdicts of 5.21 against the base's; the field check's known hostage tear (`TEARS`, `tears` derives it); the exact title from power-on and the game's RAM by variable (5.21, the gate's timing-blind verdicts) |
-| `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21); a `CLASS` line per kind of difference in a picture (the hostage tear with its BOBs, a torn explosion, other) |
+| `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png [--level 2]` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21); a `CLASS` line per kind of difference in a picture (the hostage tear with its BOBs, a torn explosion, other); `--level 2`: level 2's frames as its ROM uploads them (`tools/msxframe.py` `FieldLooks`) and its hostage-like BOBs torn per object (5.22, step 13) |
 | `fxcmp.py BASE_sn.txt NEW_sn.txt`, `--starts A B` | python | the effects of two builds by their starts: the same starts in the same order and `LOCKSTEP` frames, each effect's own sound from its start (5.21, the gate's timing-blind verdicts) |
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
 | `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
@@ -1658,6 +1658,52 @@ counts as not exact (steps 9, 11, 12) all become exact with the SAT's order (eve
 steps 11 and 12 checked: the roof g2565 on the three machines, `t1left` g0215/g0260, `barrel` g0076,
 `drone` g0300); and on the V9938 a sprite in the right border's columns (set-adjust) is counted but
 not checked (`drone` g0050: 10 pixels). The check's limits, not the picture's.
+
+At step 13 (2026-10-28, level 2's play field: its own atlas, frames and field tables, the dynamic slot
+on page 2, 224 tile slots), **level 2's field check** (the plan's 4.2 check 2): `hz_l2_field_jobs DIR
+ROM LABELS DRIVE WINDOWS ?MACHINES?` (hz.tcl; `l2base.tcl` `l2b_fd_setup`'s records: every picture's
+HUD split from game frame FROM, N of them) and `fieldcheck.py DIR/W build/msx/level2 DIR/W.png --level
+2` (level 2's frames as its ROM uploads them, `tools/msxframe.py` `FieldLooks`: the atlas as VRAM holds
+it, the dynamic frames from `sprites_fdyn.bin` with `dyn_tab`; its hostage-like BOBs, the hostage and
+types 2, 14 and 16's bodies, torn per object: two hostages, one a picture ahead of the other, are each
+whole, which level 1's rule took for a tear). The vats are checked against the static map until the
+vats' display (step 14) draws them.
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [hz_l2_field_jobs {W/fd} {W/R/l2/rc2_l2.rom} {W/R/l2/rc2_l2.labels} {<repo>/build/emu/l2_tour.drive} {0 300 150 300 495 300 735 200 960 250 1150 300 1255 350 2385 400 2420 400 2500 300}]
+```
+`tools/msxframe.py` (the plan's 4.2 check 6): the tile area of VRAM per level (each cache slot of page
+2 against its `TC_TILE` entry, page-0 RAM: 256 slots, 224 in level 2; the atlas's static frames on page
+3 against `POOL_lN_field_vram.bin`) instead of level 1's whole VRAM image (which every picture failed:
+the cache and the atlas write there); `--field`: the map with its patches and the play-field BOBs of the
+list on screen (`fb_vis`, test builds) in the expected picture, so that a level-2 still compares whole.
+`hz_l2_still_jobs DIR R FRAMES DRIVE` takes a drive (default `l2_lift`).
+
+At step 13: the field check on the `l2` build (`ENEMY_CAP=0`, the bench's enemies: types 2, 14, 16, the
+trolleys, the lifts, the hostages) over `tour`'s windows (the start, types 14 and 16, the four trolley
+rides, the drips, the arrest) and `barrel`'s stairs on the three machines: 0 differ in every window but
+three cases, none of the play-field frames' own: `2385_fx` (the drive's teleport at 2410 sweeps the view
+1,400 pixels in one tick: 85 pictures at tick 2412 with an empty list, the scroll's catch-up), `735_tr`
+(5 pixels: a trolley entering at the screen's right edge one picture before its list, which waits for the
+other trolley's copy: two late items take two blanks) and `150_tr` (one picture: a 2-piece staged item,
+type 16's body with the lift, its second piece started by the main loop during the picture: the guard's
+class (3) of step 11). On the product-caps build (`EXTJOY=1 LV_TEST=2`) the same windows: 0 differ on
+the three machines. The play-field BOBs of the lists on screen against the bench's draw calls (a scratch
+check over the records: 5,467 BOBs exact; missing only in the teleport's sweep, 3 more at the view's
+edges, where the list's camera and the tick's differ by a few pixels). Two engine faults found
+and fixed: a piece across both the V9958 ring's x 256 and y 256 (four parts) was copied two parts a blank
+(the trolleys' top lines a picture ahead, 9-23 pictures a ride on the MSX2+ and the turbo R; `isr.asm`
+`isr_fbgo` now chains every part, `fb_cmd2` at EDC0h for three); and a list could go on screen without its
+BOBs when the split's uploads readied it and the VBLANK took it before `do_publish` counted the picture
+(`fb_tick`, now counted in `publish`; a lift missing for 6 pictures in `barrel`, MSX2). Stills
+(`hz_l2_still_jobs` on `tour`, 12 frames, three machines; `msxframe.py --sprites build/msx/sprites
+--level 2 --field`): the play area exact in all 36, the tile area clean, sprite pixels exact but where
+two objects overlap (msxframe's object order: exact with the SAT's, step 12's note) and at the arrest
+(2555) the HUD's can 171 pixels (its model). `rc2_sprlines` over `tour` on the product caps
+(`hz_l2_start_jobs ... 110`): 1,125 / 834 / 769 frames with a line above 8 (MSX2, MSX2+, turbo R), all
+RoboCop beside a level-1 walker drawn as legs and torso (types 3, 4, 15: 3 + 3 on the lines where the
+parts meet, no silhouette among them); step 12's build on the same route 827 (MSX2): not the play
+field's, left to milestone 2. Note: `hz_l2_start_jobs` with a time past the drive's end pauses at the
+drive's end (`rc2_drive_rom`): the guard's `after time` waits for `set ::pause off`.
 
 ## 6. The whole suite in order
 

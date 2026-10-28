@@ -907,8 +907,8 @@ lv_rows:    equ lv_cur + 3              ; its map's rows (the display, atr_load,
 lv_atr:     equ lv_cur + 4              ; its packed attributes' bank (atr_load),
 lv_atrn:    equ lv_cur + 5              ;   2: their bytes after row 47's (ATR_RAM1's)
 lv_tab:     equ lv_cur + 7              ; its tables' bank (OTILE, ATR2, BOBHASH: at 8000h)
-lv_fimg:    equ lv_cur + 8              ; its play-field atlas's bank (field.asm field_upload)
-lv_dyn:     equ lv_cur + 9              ; the play field's dynamic slot: its first atlas line
+lv_fimg:    equ lv_cur + 8              ; its play-field atlas's (first) bank (field.asm field_upload)
+lv_dyn:     equ lv_cur + 9              ; the play field's dynamic slot: its first line (in page lv_dynp)
 lv_x:       equ lv_cur + 10             ; 2: RoboCop's start: x,
 lv_y:       equ lv_cur + 12             ; 2:   y,
 lv_ymax:    equ lv_cur + 14             ; 2: the game camera's lowest y (gcam_ymax)
@@ -920,7 +920,13 @@ lv_voffp:   equ lv_cur + 22             ; 2:   its view_offy (LV_VOFFN bytes), w
 lv_sidx:    equ lv_cur + 24             ; 2: its BOB frames' index in the global sprite pool (sprites.asm
                                         ;   os_new; bank SPR_BASE_BANK at 8000h: SPR_BOB_INDEX_Ln)
 lv_spark:   equ lv_cur + 26             ; its hit spark's first frame - 1 (player.asm: SPR_SPARK_Ln - 1)
-LV_SIZE:    equ 27                      ; (34 at most: lv_vram follows)
+lv_dynp:    equ lv_cur + 27             ; the dynamic slot's VRAM page (field.asm: 3 in level 1, after
+                                        ;   the atlas; 2 in level 2, after the tile slots)
+lv_tcn:     equ lv_cur + 28             ; 2: the tile cache's slots, negated (tiles.asm tc_load, cold.asm
+                                        ;   tiles_init: 256 in level 1, 224 in level 2)
+lv_fld:     equ lv_cur + 30             ; 2: its play-field frames' tables in BANK_FIELD (field.asm fld_l1,
+                                        ;   fld_l2: fb_init copies them to fb_flate ... fb_flook)
+LV_SIZE:    equ 32                      ; (34 at most: lv_vram follows)
 lv_vram:    equ 0xF1C2                  ; the level whose tiles 0-255 (page 2) and play-field atlas
                                         ;   (page 3) VRAM holds: cold.asm lv_select uploads them
                                         ;   only for another level (FFh: none, an upload forced)
@@ -962,10 +968,16 @@ fb_rdy:     equ 0xF1EC              ; field.asm: 1 a command for page 3 is ready
                                     ;   finds the VDP idle starts it: fb_go, isr.asm ifg_rdy), 2 the
                                     ;   interrupts started it
 fb_vok:     equ 0xF1ED              ; 1: the copy waiting keeps ahead of the beam from the VBLANK
-fb_c2:      equ 0xF1EE              ; 1: fb_cmd2 holds the next part of the copy waiting (the split
-                                    ;   interrupt starts it right after fb_cmd's: 2; 3: the blank
-                                    ;   began first, the VBLANK starts it after its list, isr.asm)
-fb_cmd2:    equ 0xF1EF              ; 15: that part's command (R#32-R#46)
+fb_c2:      equ 0xF1EE              ; 1: fb_cmd2 ... hold the copy's other parts (the split interrupt
+                                    ;   starts them right after fb_cmd's, each when the one before is
+                                    ;   done: 2; 3: the blank began first, the VBLANK goes on after its
+                                    ;   list, isr.asm; F1EFh-F1FDh free since the chain moved)
+fb_cmd2:    equ 0xEDC0              ; 45: field.asm: the copy's other parts for the page shown (up to
+                                    ;   three: the V9958's ring crossed at x 256 and at y 256), 15
+                                    ;   bytes each (R#32-R#46), started in a row after fb_cmd's
+                                    ;   (isr.asm isr_fbgo, ifg_fin; fb_wait)
+fb_cn:      equ 0xEDED              ;   the parts of them not started yet,
+fb_cp:      equ 0xEDEE              ;   2: the next one's command
 fb_qlk:     equ 0xF1FE              ; 1 while field.asm moves items (queue, work): fb_pend holds
 fb_wk:      equ 0xF1FF              ; field.asm fb_work: steps of the work left in the call
 fb_tr:      equ 0xF240              ; 8: field.asm fb_cellq's cell
@@ -982,7 +994,7 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2D9h-C2FFh (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
-; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDC0h-EDFFh, E0FEh-E0FFh,
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDF0h-EDFFh, E0FEh-E0FFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
 ; vat_phase, F012h-F0E6h the vats' display since its step 5); EA60h-EC41h: bob_list,
@@ -1053,7 +1065,12 @@ fb_bkp:     equ 0x0635              ;   2: its item
 fb_wbx:     equ 0x0637              ; 8: the box around fb_want's rectangles (x0, y0, x1, y1: a cell
                                     ;   outside it meets no BOB wanted; fb_wants), while fb_wn is not 0
 fb_pbx0:    equ 0x063F              ; 8: the same around page 0's list (fb_dr0), set with it (fbx_set),
-fb_pbx1:    equ 0x0647              ; 8:   around page 1's (fb_dr1); 064Fh-065Fh free
+fb_pbx1:    equ 0x0647              ; 8:   around page 1's (fb_dr1)
+fb_flate:   equ 0x064F              ; the level's play-field frames (fb_init: lv_fld's): the first of
+fb_fdyn0:   equ 0x0650              ;   its lifts, the vehicle, the trolleys (FIELD_LATE), the first
+fb_fdyn1:   equ 0x0651              ;   of the dynamic slot's frames, the first after them,
+fb_ftab:    equ 0x0652              ;   2: its field_tab,
+fb_flook:   equ 0x0654              ;   2: its field_look (0656h-065Fh free)
 fb_sn:      equ 0x0660              ; the item being composed: its page's list when it started
 fb_snap:    equ 0x0661              ;   (how many, then FB_MAX entries)
 fb_own:     equ 0x0699              ; 2: the owner of a rectangle going into the queue (FFFFh: none)

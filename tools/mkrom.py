@@ -38,8 +38,9 @@
         map (L2_MAP), its packed attributes (L2_ATR), its tables (L2_TAB: OTILE, ATR2 and its
         BOBHASH at 8000h, its palette through the colour grade, level2_grade.pal, and its view_offy
         after them, at L2_PALP / L2_VOFFP in the A000h window) and its play-field atlas
-        (sprites_l2_field.bin, from L2_ATLAS: placed, not used yet: its descriptor keeps level 1's
-        atlas, L2_FIMG, until the play field shows level 2's own frames, the plan's step 13); up to
+        (sprites_l2_field.bin, from L2_ATLAS: two banks, each with a table of its own frames,
+        atlas_banks); its tables bank also holds the vats' display tables at L2_VATS (8000h window:
+        tools/mapcells.py vat_tables); up to
         256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
@@ -49,8 +50,9 @@
 Generates build/msx/gen/banks.inc, rowtab.inc (the map's rows: banks relative to the level's first
 map bank, msx/tiles.asm get_tile; the attributes' rows; view_offx), levels.inc (the levels'
 descriptors, msx/msx.inc lv_cur's fields, levels 1 and 2 in a row, with level 1's palette and
-view_offy: msx/cold.asm lv_select; level 2's are in its tables bank), options.inc (build options,
-see OPTIONS; LV_CARRY's values),
+view_offy: msx/cold.asm lv_select; level 2's are in its tables bank), field_l2.inc (level 2's
+play-field tables for msx/field.asm, field_inc), vats_l2.inc (vat_shown's start for msx/level2.asm,
+tools/mapcells.py vat_tables), options.inc (build options, see OPTIONS; LV_CARRY's values),
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
 headers, the SCC's waveforms, the OPLL's patch, the voices' state after the speech), tune.inc
 (Brainstorm's and the shooting range's tune descriptors and effects' tables for msx/tune.asm, from
@@ -139,6 +141,16 @@ DATAL_OWN = (0x28000, 0x45250)      # DATAL1's own part (its tail from 45250h is
                                     # level 2 (docs/LEVEL2.md 3.12; its BOBHASH leaves them out)
 L2_PAL_AT = 0x1680                  # level 2's tables bank: its graded palette (32 bytes), then its
                                     # view_offy (LV_VOFFN), after the BOBHASH (8600h-967Fh)
+L2_VAT_AT = 0x1700                  # level 2's tables bank: the vats' display tables (tools/mapcells.py
+                                    # vat_tables: 9700h at 8000h, docs/LEVEL2.md 3.5)
+TC_SLOTS = {1: 256, 2: 224}         # the tile cache's slots per level (page 2; msx/tiles.asm tc_load,
+                                    # msx/cold.asm tiles_init: the descriptors' lv_tcn): level 2's
+                                    # dynamic slot takes page 2's lines 224-247 (docs/LEVEL2.md 3.5,
+                                    # default 35)
+DYN_PAGE = {1: 3, 2: 2}             # the VRAM page of each level's dynamic slot (its lines: DYN_Y of
+                                    # its POOL_lN_field.inc): level 1's after its atlas on page 3, level
+                                    # 2's on page 2 after its tile slots (the descriptors' lv_dyn, lv_dynp)
+FB_CY = 112                         # msx/field.asm: page 3's lines from 112 the play field's caches
 LV_CARRY = "10050:2:0:1"            # LV_TEST's carry by default: what level 1, Brainstorm and the range
                                     # leave on the bench's flow (score 10050, two lives, no credit, GOOD)
 OPTIONS = {
@@ -335,23 +347,60 @@ def pool_above(blob: bytes, inc: dict[str, int], level: int, data: dict) -> dict
     return out
 
 
-def l2_hash(l2: dict, l1: dict, img1: bytes, img2: bytes, above: dict[int, int]) -> bytes:
-    """Level 2's BOBHASH while its play field draws level 1's frames (the plan's step 12; step 13
-    gives it its own): its sprite frames (POOL_l2.json, level 2's ids; 'above' their lines above;
-    the frames another record draws, "hidden", HIDDEN_ID) and level 1's play-field frames it shares
-    (POOL_l1.json "field": the hostage, the explosions and the smoke, the lift; level 1's atlas and
-    ids), each checked to be the same bytes in both levels' memory (DATAL_OWN); the play-field
-    frames only level 2 has (its silhouettes' sprite frames with them) still off."""
+def l2_hash(l2: dict, above: dict[int, int]) -> bytes:
+    """Level 2's BOBHASH: its sprite frames (POOL_l2.json, level 2's ids; 'above' their lines above;
+    the frames another record draws, "hidden", HIDDEN_ID) and its play-field frames (POOL_l2.json
+    "field": ids FIELD_ID0 + their index in level 2's atlas and field tables, msx/field.asm fld_l2;
+    types 2, 14 and 16's with their hit flash's silhouette, a sprite frame of level 2's: "sil").
+    Its frames that are level 1's too (the hostage, the explosions and the smoke, the lift) are
+    tools/msxsprites.py's level-1 conversions where both levels' memory holds the same bytes, its
+    own otherwise (the converter's rule): every one has level 2's own id here."""
     frames = [dict(f, above=above.get(f["id"], 0)) for f in level_frames({"bobs": l2["bobs"]})]
     frames += [dict(f, id=HIDDEN_ID) for f in l2.get("hidden", [])]
-    shared = level_frames({"field": l1["field"]}, shared_frame)
-    bad = [f"{f['addr']:05X}" for f in shared if img1[f["addr"]:f["addr"] + bob_bytes(f)]
-           != img2[f["addr"]:f["addr"] + bob_bytes(f)]]
-    if bad:
-        raise SystemExit(f"level 1's play-field frame(s) at {', '.join(bad[:8])} differ in level 2's memory (DATAL_OWN)")
-    if any(f.get("sil", 0xFF) != 0xFF for f in shared):
-        raise SystemExit("a shared play-field frame with a silhouette: its sprite id is level 1's (not level 2's)")
-    return hash_table(frames + shared)
+    return hash_table(frames + level_frames({"field": l2["field"]}))
+
+
+def atlas_banks(rom: bytes) -> bytes:
+    """A level's play-field atlas for the ROM (tools/msxsprites.py field_frames: db n; n x [atlas
+    line, x / 2, bytes a line, lines, mirrored, dw the pixels' offset]; the pixels) as msx/field.asm
+    field_upload reads it, bank by bank at 8000h: unchanged when it fits a bank; else cut into
+    banks that each hold a table of their frames (the count's bit 7: another bank follows) and the
+    pixels those read, offsets from the bank's start (a mirrored frame's pixels copied into its bank
+    when another bank holds the frame it mirrors), padded to whole banks."""
+    if len(rom) <= BANK:
+        return rom
+    ents = [struct.unpack_from("<BBBBBH", rom, 1 + 7 * i) for i in range(rom[0])]
+    size = lambda g: 1 + 7 * len(g) + sum({e[5]: e[2] * e[3] for e in g}.values())   # noqa: E731
+    groups = [[]]
+    for e in ents:
+        if groups[-1] and size(groups[-1] + [e]) > BANK:
+            groups.append([])
+        groups[-1].append(e)
+    out = b""
+    for k, g in enumerate(groups):
+        where, pix = {}, b""
+        for e in g:
+            if e[5] not in where:
+                where[e[5]] = 1 + 7 * len(g) + len(pix)
+                pix += rom[e[5]:e[5] + e[2] * e[3]]
+        b = bytes([len(g) | (0x80 if k < len(groups) - 1 else 0)]) \
+            + b"".join(struct.pack("<BBBBBH", *e[:5], where[e[5]]) for e in g) + pix
+        if not 0 < len(g) < 0x80 or len(b) > BANK:
+            raise SystemExit(f"the play-field atlas's bank {k}: {len(g)} frames, {len(b)} bytes")
+        out += b + b"\xff" * (-len(b) % BANK)
+    return out
+
+
+def field_inc(l1_inc: str, inc: str, suffix: str) -> str:
+    """Another level's play-field tables (tools/msxsprites.py POOL_lN_field.inc) for msx/field.asm
+    beside level 1's: its equates and its field_tab and field_look with their names suffixed (z80asm's
+    labels are global); its dynamic frames' tables (field_dyn, dyn_tab) must be level 1's, which
+    field.asm reads for every level (the dynamic frames are both levels', the same banks)."""
+    head, sep, dyn = inc.partition("field_dyn:")
+    if not sep or dyn != l1_inc.partition("field_dyn:")[2]:
+        raise SystemExit("a level's dynamic play-field frames differ from level 1's (msx/field.asm reads level 1's)")
+    return re.sub(r"^(\w+):", rf"\1_{suffix}:", head, flags=re.M).replace(
+        "; generated by tools/msxsprites.py", f"; generated by tools/mkrom.py from tools/msxsprites.py's (_{suffix})", 1)
 
 
 def lv_carry(spec: str) -> dict[str, int]:
@@ -812,12 +861,23 @@ def main(argv: list[str]) -> int:
     img2 = (ROOT / "build" / "ram" / "level2_full.bin").read_bytes()
     l2_x, l2_y = struct.unpack_from(">hh", img2, L2_HEADER + L2_START)
     l2_ymax = struct.unpack_from(">h", img2, L2_HEADER + L2_YMAX)[0]
-    # its BOBHASH: its sprite frames (the pool's, level 2's ids) and the play-field frames it shares
-    # with level 1 (level 1's atlas, until its own: the plan's step 13); its own atlas placed
-    img1 = (ROOT / "build" / "ram" / "level1_full.bin").read_bytes()
+    # its BOBHASH: its sprite frames (the pool's, level 2's ids) and its play-field frames (its own
+    # atlas and field tables: gen/field_l2.inc, msx/field.asm fld_l2), the atlas in banks of their
+    # own tables when it passes one (field_upload)
     tab2 = l2.with_suffix(".otile").read_bytes() + l2.with_suffix(".atr2").read_bytes()
-    tab2 += b"\xff" * (0x600 - len(tab2)) + l2_hash(spool[2], spool[1], img1, img2, above[2])
-    field_img2 = (level.parent / f"{POOL}_l2_field.bin").read_bytes()
+    tab2 += b"\xff" * (0x600 - len(tab2)) + l2_hash(spool[2], above[2])
+    field_img2 = atlas_banks((level.parent / f"{POOL}_l2_field.bin").read_bytes())
+    finc = {n: (level.parent / f"{POOL}_l{n}_field.inc").read_text() for n in (1, 2)}
+    (gen / "field_l2.inc").write_text(field_inc(finc[1], finc[2], "l2"))
+    fq = {n: equates(level.parent / f"{POOL}_l{n}_field.inc") for n in (1, 2)}
+    for n in (1, 2):                    # (each level's VRAM: msx/field.asm, docs/LEVEL2.md 3.5)
+        tc, y, page = TC_SLOTS[n], fq[n]["DYN_Y"], DYN_PAGE[n]
+        ok = fq[n]["FIELD_LINES"] <= (y if page == 3 else FB_CY) and y + fq[n]["DYN_H"] <= (FB_CY if page == 3 else 256) \
+            and (page == 3 or y >= tc // 16 * 16) and tc % 16 == 0 and tc <= 256
+        if not ok:
+            print(f"error: level {n}'s atlas ({fq[n]['FIELD_LINES']} lines), dynamic slot (page {page} line {y}) "
+                  f"and tile slots ({tc}) overlap in VRAM", file=sys.stderr)
+            return 1
     if len(tab2) > L2_PAL_AT:
         print("error: level 2's tables overlap its palette (L2_PAL_AT)", file=sys.stderr)
         return 1
@@ -828,7 +888,23 @@ def main(argv: list[str]) -> int:
         return 1
     view_y2 += view_y2[-1:] * (LV_VOFFN - len(view_y2))
     tab2 += b"\xff" * (L2_PAL_AT - len(tab2)) + pal2 + bytes(view_y2)
+    # the vats' display tables (tools/mapcells.py vat_tables: docs/LEVEL2.md 3.5) and vat_shown's
+    # start for level2.asm l2_init (gen/vats_l2.inc, BANK_L2)
+    sys.path.insert(0, str(ROOT / "tools"))
+    import mapcells
+    from amitab import parse
+    vat_tab, vat_sh0 = mapcells.vat_tables(img2, {r["label"]: r for r in parse(ROOT / "analysis" / "amiga_tables.tsv")},
+                                           "l2", COLS, rows2, l2.with_suffix(".otile").read_bytes())
+    if len(tab2) > L2_VAT_AT:
+        print("error: level 2's palette and view_offy overlap its vat tables (L2_VAT_AT)", file=sys.stderr)
+        return 1
+    tab2 += b"\xff" * (L2_VAT_AT - len(tab2)) + vat_tab
     tab2 += b"\xff" * (BANK - len(tab2))
+    (gen / "vats_l2.inc").write_text(
+        "; generated by tools/mkrom.py (tools/mapcells.py vat_tables): per vat column (hz_l2's order) the look\n"
+        "; the static map holds there: vat_shown's start (msx/level2.asm l2_init, a fresh level 2)\n"
+        f"VAT_COLS_l2: equ {len(vat_sh0)}\nvat_sh0:\n"
+        + "".join("        db " + ", ".join(str(v) for v in vat_sh0[k:k + 16]) + "\n" for k in range(0, len(vat_sh0), 16)))
 
     r = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "amitab.py"),
                         str(ROOT / "build" / "ram" / "level1_full.bin"), str(ROOT / "analysis" / "amiga_tables.tsv"),
@@ -957,8 +1033,7 @@ def main(argv: list[str]) -> int:
         pzm_check(frm, "frm.bin")
     bank_frm = bank_range_hit + len(range_hit) // BANK
     # level 2's blocks (docs/LEVEL2.md 3.12), after the range's: its logic (STAGES' L2), its tiles,
-    # map, packed attributes, tables and play-field atlas (placed: its descriptor keeps level 1's
-    # atlas until the plan's step 13)
+    # map, packed attributes, tables and play-field atlas
     bank_l2 = bank_frm + -(-len(frm) // BANK)
     stage_bank["L2"] = bank_l2
     tiles2 = vram2[0x10000:0x20000]
@@ -1005,10 +1080,12 @@ def main(argv: list[str]) -> int:
         f"RANGE_GFX_BANK: equ {bank_range_gfx}\nRANGE_GFX_BANKS: equ {len(range_gfx) // BANK}\n"
         f"RANGE_HIT_BANK: equ {bank_range_hit}\nFRM_BANK: equ {bank_frm}\n"
         f"L2_TILES: equ {bank_l2_tiles}\nL2_MAP: equ {bank_l2_map}\nL2_ROWS: equ {rows2}\nL2_ATR: equ {bank_l2_atr}\n"
-        f"L2_ATRN: equ {len(atr_2) - 16 - 48 * 80}\nL2_TAB: equ {bank_l2_tab}\nL2_FIMG: equ {bank_atr + 3}\n"
+        f"L2_ATRN: equ {len(atr_2) - 16 - 48 * 80}\nL2_TAB: equ {bank_l2_tab}\n"
         f"L2_ATLAS: equ {bank_l2_atlas}\nL2_ATLAS_BANKS: equ {len(field_img2) // BANK}\n"
         f"L2_X: equ {l2_x}\nL2_Y: equ {l2_y}\nL2_YMAX: equ {l2_ymax}\n"
         f"L2_PALP: equ 0x{0xA000 + L2_PAL_AT:04X}\nL2_VOFFP: equ 0x{0xA000 + L2_PAL_AT + 32:04X}\n"
+        f"L2_VATS: equ 0x{0x8000 + L2_VAT_AT:04X}\n"
+        + "".join(f"L{n}_TCN: equ {TC_SLOTS[n]}\nL{n}_DYNP: equ {DYN_PAGE[n]}\n" for n in (1, 2)) +
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
         f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\nL2_KY: equ {ky2}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
@@ -1040,9 +1117,10 @@ def main(argv: list[str]) -> int:
                                     + atr_rows + db_rows("view_offx", view_x))
     # the levels' descriptors (msx/msx.inc lv_cur's fields, in their order, LV_SIZE bytes a level in a
     # row; msx/cold.asm lv_copy), then level 1's palette (through the colour grade) and view_offy;
-    # level 2's are in its tables bank (L2_PALP, L2_VOFFP, which lv_copy reads at A000h). Level 2's
-    # atlas and dynamic slot are level 1's until its own come (docs/LEVEL2.md 3.12, step 13); each
-    # level's BOB index and hit spark in the global sprite pool (sprites.inc)
+    # level 2's are in its tables bank (L2_PALP, L2_VOFFP, which lv_copy reads at A000h); each level's
+    # BOB index and hit spark in the global sprite pool (sprites.inc); its play field: its atlas (level
+    # 2's in two banks), its dynamic slot's line and VRAM page, its tile cache's slots (negated: tc_load
+    # adds them) and its play-field frames' tables in BANK_FIELD (msx/field.asm fld_l1, fld_l2)
     (gen / "levels.inc").write_text(
         "; generated by tools/mkrom.py: the levels' descriptors (msx/msx.inc lv_cur; msx/cold.asm lv_select)\n"
         "lv_desc:                            ; level 1\n"
@@ -1053,15 +1131,19 @@ def main(argv: list[str]) -> int:
         "        dw lv_pal1, lv_voffy1       ; lv_palp, lv_voffp\n"
         "        dw SPR_BOB_INDEX_L1         ; lv_sidx\n"
         "        db SPR_SPARK_L1 - 1         ; lv_spark\n"
+        "        db L1_DYNP                  ; lv_dynp\n"
+        "        dw -L1_TCN, fld_l1          ; lv_tcn, lv_fld\n"
         "        ds LV_SIZE - ($ - lv_desc)  ; (an error when the fields outgrow LV_SIZE)\n"
         "lv_desc2:                           ; level 2 (lv_desc + LV_SIZE)\n"
         "        db BANK_L2, L2_TILES, L2_MAP, L2_ROWS, L2_ATR\n"
         "        dw L2_ATRN\n"
-        "        db L2_TAB, L2_FIMG, DYN_Y   ; (level 1's atlas and dynamic slot for now)\n"
+        "        db L2_TAB, L2_ATLAS, DYN_Y_l2  ; (its atlas: two banks; its dynamic slot on page 2)\n"
         "        dw L2_X, L2_Y, L2_YMAX, L2_ROWS * 16 - VIEW_LINES, L2_ROWS * 16\n"
         "        dw L2_PALP, L2_VOFFP        ; (in L2_TAB at A000h: lv_copy)\n"
         "        dw SPR_BOB_INDEX_L2\n"
         "        db SPR_SPARK_L2 - 1\n"
+        "        db L2_DYNP\n"
+        "        dw -L2_TCN, fld_l2\n"
         "        ds LV_SIZE - ($ - lv_desc2)\n"
         "        ds lv_desc2 - lv_desc - LV_SIZE  ; (lv_copy: a descriptor every LV_SIZE bytes)\n"
         "        ds lv_desc + LV_SIZE - lv_desc2\n"

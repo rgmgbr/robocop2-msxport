@@ -120,14 +120,22 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
 | Area | Content |
 |---|---|
 | pages 0–1 | play field: V9958 512×256 ring (SP2); V9938 two 256×256 pages |
-| page 2 | tile cache (256 slots of 16×16) |
-| page 3 lines 0–87 | play-field BOB frames (atlas, `robocop_field.bin`) |
-| page 3 lines 88–111 | the atlas's dynamic slot: the explosion's or the smoke's step being shown (`robocop_fdyn.bin`, strips of 24 lines) |
+| page 2 | tile cache (256 slots of 16×16; level 2: slots 0–223, then lines 224–247 its play-field dynamic slot, 248–255 unused) |
+| page 3 lines 0–87 | play-field BOB frames (atlas, `sprites_l1_field.bin`; level 2: lines 0–111, its atlas of 108 lines, `sprites_l2_field.bin`) |
+| page 3 lines 88–111 | level 1: the atlas's dynamic slot, the explosion's or the smoke's step being shown (`sprites_fdyn.bin`, strips of 24 lines) |
 | page 3 lines 112–175 | play-field BOB background caches (x 0–191, three 64×64) and scratch (x 192–255) |
 | page 3 lines 176–191 | sprite patterns `1D800h` (R#6 = 3Bh) |
 | page 3 lines 192–199 | sprite set A: colour table `1E000h`, SAT `1E200h` (R#5 = C7h) |
 | page 3 lines 200–207 | sprite set B: colour table `1E400h`, SAT `1E600h` (R#5 = CFh) |
 | page 3 lines 208–252 | HUD (45 lines; shown with R#23 = 41 at display line 167) |
+
+Per level (the descriptor, `msx/msx.inc` `lv_cur`, from `tools/mkrom.py`'s `gen/levels.inc`): the
+atlas's banks (`lv_fimg`: level 2's two, each with a table of its own frames, `tools/mkrom.py`
+`atlas_banks`), the dynamic slot's line and page (`lv_dyn`, `lv_dynp`), the tile cache's slots
+(`lv_tcn`: `tiles.asm` `tc_load`, `cold.asm` `tiles_init`) and the play-field frames' tables in
+`BANK_FIELD` (`lv_fld`: `field.asm` `fld_l1`, `fld_l2`, which `fb_init` copies to `fb_flate` ...
+`fb_flook`). `cold.asm` `lv_select` uploads page 2 and the atlas when VRAM holds another level's
+(`lv_vram`).
 
 Brainstorm, the bonus stage after level 1, lends some of it while it runs (see "Brainstorm" under
 Front end, and `docs/BRAINSTORM.md` 3.3): pages 0–1 are its two display pages, page 0 lines 162–217
@@ -403,9 +411,13 @@ which as sprites were striped, cut or left out.
   sprite pool: level 2 has 204 sprite frame ids) and packs them into an atlas (page 3 lines 0-87;
   `sprites_l1_field.inc`: place, size and the draw offset of a frame removed by the user's
   choices, the frame each one looks like). The ROM keeps the atlas frame by frame
-  (`sprites_l1_field.bin`, one bank; level 2's own, `sprites_l2_field.bin`, is placed at
-  `L2_ATLAS` for its step 13; a gunner's other facing is the mirror of the first,
-  `field_upload` mirrors it). `bob_flush` sends their records to `fb_new` (frame, x, y, owner =
+  (`sprites_l1_field.bin`, one bank; level 2's own, `sprites_l2_field.bin`, at `L2_ATLAS`, two
+  banks that each hold a table of their frames: `tools/mkrom.py` `atlas_banks`; a gunner's other
+  facing is the mirror of the first, `field_upload` mirrors it). Level 2's play-field frames
+  (level-2 plan's step 13): the hostage, types 2, 14 and 16's body, the explosions and the smoke,
+  the lift and the trolley (`FIELD_LATE`: copied late, as the lift; RoboCop hangs from it), with
+  their own ids and tables (`gen/field_l2.inc`, `field.asm` `fld_l2`); types 2, 14 and 16's hit
+  flash, and the suspect's white blink, show their sprite silhouette over the play field. `bob_flush` sends their records to `fb_new` (frame, x, y, owner =
   the record's object) instead of sprite objects; a gunner's hit flash also shows its sprite
   silhouette over the play field (BOBHASH's silhouette byte, `bf_frame`).
 - **Dynamic frames**: the explosion and the smoke do not fit in VRAM: their frames stay in two
@@ -446,12 +458,20 @@ which as sprites were striped, cut or left out.
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
   the blank when it is short enough (`fb_mayq`); while such a copy waits nothing else may take
-  the VDP. A copy in two parts (the V9958 ring's x 256 or y 256 crossed) is a pair: the split
-  interrupt starts the second (`fb_cmd2`) as soon as the first is done, both in the same frame.
+  the VDP. A copy in parts (the V9958 ring's x 256 or y 256 crossed: two, or four when both
+  are) is a chain: the split interrupt starts each of the others (`fb_cmd2` ..., `fb_cp`,
+  `fb_cn`) as soon as the one before is done, all in the same frame. Until 2026-10-28 (level 2's
+  step 13) only two parts went together: a piece across both lines took two frames, and level
+  2's trolleys (map y 508-554, across the ring's line 256) showed their top 4 lines 4 px ahead
+  for a picture each time they crossed the ring's x 256 (MSX2+ and turbo R, 9-23 pictures a
+  ride; `fieldcheck.py --level 2`).
   All of an owner's BOBs change in one item (items of one owner always merge). `cmd_lock` keeps
   the interrupts off the command registers while the main program writes them.
 - **With the sprites**: every item carries the picture it belongs to (`fb_tick`, counted by
-  `do_publish`; a merged item keeps the older picture): its copy onto the page shown waits until
+  `isr.asm` `publish` right before the interrupts may take the list: until 2026-10-28 `do_publish`
+  counted it after, and a list the split's uploads readied and the VBLANK took in between went on
+  screen without its BOBs, `fb_pend` taking them for the next picture's; a merged item keeps the
+  older picture): its copy onto the page shown waits until
   that picture is published and its sprites uploaded (`pk_state`), and the VBLANK keeps a
   published list off the screen until its play-field BOBs are copied (`fb_pend`, `FB_HOLD` = 8
   VBLANKs at most; `fb_qlk` while an item moves between the queue and the work), but for the
@@ -1755,7 +1775,8 @@ splits); confirmed on the user's SX-2 the same day.
 
 The split's wait for a pair's first part (`isr_fbgo`: a play-field copy in two parts, the
 V9958 ring's x or y 256 crossed, both started by the split so that both show from the same
-frame; `fb_vok` never lets the VBLANK start a pair) ran up to 110 iterations, about 90 lines at
+frame; `fb_vok` never lets the VBLANK start a pair; since 2026-10-28 a chain of up to four
+parts, each started when the one before is done) ran up to 110 iterations, about 90 lines at
 3.58 MHz (its comment said 3 ms), and the VBLANK's list waited behind it: in the coverage drive
 4 lists in 1800 game frames went in at line 9 of the next picture, its first lines in the HUD's
 page and palette. The wait now ends when the blank begins (S#2 VR) and leaves the second part to

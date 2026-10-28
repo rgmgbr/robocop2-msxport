@@ -9,12 +9,15 @@
 ; a cell's tile queues the cell for the scroll engines, which redraw it where it is shown (rd_q).
 ;
 ; Tile cache: the level's tile sheet (up to 512 tiles, most used first, tools/msxconv.py) is
-; in the ROM; the TC_SLOTS VRAM slots start with tiles 0..TC_SLOTS-1 (vdp_setup) and a tile that is not in
-; VRAM is copied into the slot the clock hand finds unused since it last passed (tile_src).
+; in the ROM; the level's VRAM slots (lv_tcn: 256 in level 1, 224 in level 2, whose play-field
+; dynamic slot takes page 2's lines 224-247) start with tiles 0.. (vdp_setup, cold.asm lv_select,
+; tiles_init) and a tile that is not in VRAM is copied into the slot the clock hand finds unused
+; since it last passed (tile_src).
 
-TC_SLOTS:   equ 256                 ; (page 2: 432 until the play-field BOBs took page 3 lines 0-175;
-                                    ; the view and a margin use 129 tiles at most, a 40x24-cell window
-                                    ; 209)
+TC_SLOTS:   equ 256                 ; the most a level has (page 2: 432 until the play-field BOBs took
+                                    ; page 3 lines 0-175; the view and a margin use 129 tiles at most,
+                                    ; a 40x24-cell window 209; level 2: 148 with every tile its writers
+                                    ; can put there, docs/LEVEL2.md 3.5)
 
 ; ----- map reads -----
 
@@ -658,7 +661,7 @@ tc_load:
         call vdp_wait               ; (no command may be reading a slot)
         ld de,(tc_hand)
 tl_lp:  inc de
-        ld hl,-TC_SLOTS
+        ld hl,(lv_tcn)              ; (the level's slots, negated)
         add hl,de
         jr nc,tl_in
         ld de,0

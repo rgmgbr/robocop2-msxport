@@ -3,7 +3,7 @@
 the tile (map + patches) under it, or the play-field BOB the shown page's list (fb_dr0/fb_dr1)
 has there (the first in the list on top, as fb_bobs composes). A pixel matching the previous
 record's list passes too (the engine composes changes over a few pictures). Writes a contact
-sheet (2x, mismatches magenta). usage: fieldcheck.py RECDIR LEVEL_PREFIX OUT.png
+sheet (2x, mismatches magenta). usage: fieldcheck.py RECDIR LEVEL_PREFIX OUT.png [--level 2]
 
 Level 1's scratch tool of 2026-10-21/22 (the play-field engine's checks), brought into the harness
 at level 2's step 0 (the plan's 4.2) from its copy of 2026-10-23 (build/perf_2026-10-23). The
@@ -14,7 +14,16 @@ patches as they have been since 2026-10-25 (46fa12c: two pools by row parity, MP
 rc2_jumprec's record carries since): patch_map follows tools/recframes.py tile_at, and the record
 is rc2_jumprec's (tools/recframes.py REC) + RAM 0600h-09FFh and F240h-F27Fh (EXTRA); a file of
 another length is counted as skipped. Needs numpy (tools/msxsprites.py): run it with the venv's
-Python. The records: tools/bstest/l2base.tcl l2b_fd_setup."""
+Python. The records: tools/bstest/l2base.tcl l2b_fd_setup.
+
+--level 2 (the level-2 plan's step 13): level 2's play-field frames (build/msx/sprites_l2.json "field",
+sprites_l2_field.inc: FIELD_LATE, the dynamic frames), their pixels as the ROM uploads them
+(tools/msxframe.py FieldLooks: its atlas and the dynamic frames); LEVEL_PREFIX build/msx/level2. Its
+vats stay as the static map shows them until the vats' display (step 14) draws them. Level 1's check
+is unchanged. A hostage-like BOB (a hostage, types 2, 14 and 16's bodies) ahead or behind counts as
+torn per object: its old and new frames (the shown and the newest lists' entries whose boxes meet)
+with pixels of both lists; two of them, one a picture ahead of the other, are each whole (level 1's
+check, whose verdicts are compared with level 2's base, takes the picture as a whole)."""
 import json
 import struct
 import sys
@@ -31,14 +40,25 @@ FIELD_Y0 = FIELD_LATE = DYN0 = DYN1 = None
 _IMG = {}
 
 
-def load():
+LOOKS = None                                    # --level 2: tools/msxframe.py FieldLooks
+
+
+def load(level=1):
     """The conversions the pictures are checked against (build/msx, build/ram, build/extracted) and
     numpy: read when the check runs, not when the module is imported."""
     global meta, FT, atlas, np, msxsprites, _RAM, _MAIN, _JP, _PAL, _BGPAL, _NEAR, INC
-    global FIELD_Y0, FIELD_LATE, DYN0, DYN1
+    global FIELD_Y0, FIELD_LATE, DYN0, DYN1, LOOKS
     import numpy as np
     import msxsprites
     b = ROOT / "build"
+    if level == 2:                              # (level 2's frames as its ROM holds them)
+        from msxframe import FieldLooks
+        LOOKS = FieldLooks(2, b / "msx/sprites")
+        FT = LOOKS.frames
+        INC = LOOKS.inc
+        FIELD_Y0, FIELD_LATE = INC["FIELD_Y0"], INC["FIELD_LATE"]
+        DYN0, DYN1 = INC["FIELD_DYN0"], INC["FIELD_DYN1"]
+        return
     meta = json.loads((b / "msx/robocop.json").read_text())
     FT = {f["fid"]: f for f in meta["field"]}
     atlas = (b / "msx/robocop_field_vram.bin").read_bytes()   # (the atlas as VRAM holds it)
@@ -58,6 +78,10 @@ def load():
 
 def frame_img(f):
     """The pixels a play-field frame draws (its "src": the frame shown), joint palette indices."""
+    if LOOKS is not None:
+        if f["fid"] not in _IMG:
+            _IMG[f["fid"]] = np.array([list(r) for r in LOOKS.pixels(f["fid"])], dtype=np.uint8)
+        return _IMG[f["fid"]]
     k = f["src"]
     if k not in _IMG:
         a, w, h = k.split(":")
@@ -153,6 +177,35 @@ def tear_note(shown, newest, lst, tlst, wx, wy):
             s.add(e)
 
 
+def tear_objects(pix):
+    """--level 2: the torn objects among a picture's hostage-like pixels (pix: (kind "old" or "new",
+    the BOB entries of the shown and newest lists the pixel belongs to)): entries whose boxes meet
+    are one object (its old and new frames); an object with pixels of both kinds is torn -> the
+    pixels counted torn (per torn object the fewer kind)."""
+    ents = sorted({e for _k, es in pix for e in es})
+    up = {e: e for e in ents}
+
+    def find(e):
+        while up[e] != e:
+            e = up[e]
+        return e
+
+    def box(e):
+        f = FT[e[0]]
+        return e[1], e[2], e[1] + f["sw"], e[2] + f["sh"]
+    for i, a in enumerate(ents):
+        for b in ents[i + 1:]:
+            ax0, ay0, ax1, ay1 = box(a)
+            bx0, by0, bx1, by1 = box(b)
+            if ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1:
+                up[find(a)] = find(b)
+    n = {}
+    for k, es in pix:
+        for g in {find(e) for e in es}:
+            n.setdefault(g, {"old": 0, "new": 0})[k] += 1
+    return sum(min(c["old"], c["new"]) for c in n.values())
+
+
 def tear_key(shown, newest):
     """A hostage tear's class: the hostage BOBs of the shown list and of the newest list that the
     torn pixels belong to ("fid@x,y", joined by "+"); the same BOBs in the same frames are the same
@@ -176,9 +229,13 @@ def bob_at(lst, wx, wy):
 
 
 def main():
-    if len(sys.argv) != 4:
+    level = 1
+    if len(sys.argv) == 6 and sys.argv[4] == "--level":
+        level = int(sys.argv.pop(5))
+        sys.argv.pop(4)
+    if len(sys.argv) != 4 or level not in (1, 2):
         sys.exit(__doc__.split("\n\n")[0])
-    load()
+    load(level)
     d, level, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
     if not level.is_absolute():
         level = ROOT / level
@@ -243,6 +300,7 @@ def main():
         badcells = {}
         only_new = only_old = 0
         tear_shown, tear_newest = set(), set()  # (the torn pixels' hostage BOBs: the tear's class)
+        tear_pix = []                           # (--level 2: per such pixel its kind and BOBs)
         dyn_masks = []                          # per explosion/smoke pixel: the recent lists
         cands = vhist + [tlst]                  # whose state it shows
         dyn_box = []
@@ -307,6 +365,8 @@ def main():
                         if got != bytes(rgb[c]):
                             only_old += 1
                             tear_note(tear_shown, tear_newest, lst, tlst, wx, wy)
+                            if LOOKS is not None:
+                                tear_pix.append(("old", {e for e in (bob_ent(lst, wx, wy), bob_ent(tlst, wx, wy)) if e}))
                 if not ok:
                     # ahead: a hostage pixel of the newest list (never a lift's or the vehicle's)
                     fn = bob_fid(tlst, wx, wy)
@@ -323,6 +383,8 @@ def main():
                             ok = True
                             only_new += 1
                             tear_note(tear_shown, tear_newest, lst, tlst, wx, wy)
+                            if LOOKS is not None:
+                                tear_pix.append(("new", {e for e in (bob_ent(lst, wx, wy), bob_ent(tlst, wx, wy)) if e}))
                 if not ok:
                     # an explosion's or the smoke's step, never held: any recent list's (but all
                     # of a picture's such pixels from one list: else the step shows torn)
@@ -352,9 +414,10 @@ def main():
         other_px = bad                          # (the pixels that match no list: no known class)
         tear_px = dyn_px = 0
         if only_new and only_old:               # half old, half new
-            tear_px = min(only_new, only_old)
+            tear_px = min(only_new, only_old) if LOOKS is None else tear_objects(tear_pix)
             bad += tear_px
-            print(f"{p.stem}: hostage torn ({only_old} old, {only_new} new pixels)")
+            if tear_px:
+                print(f"{p.stem}: hostage torn ({only_old} old, {only_new} new pixels)")
         if dyn_masks:                           # (torn: no one list shows all of them)
             best = max(range(len(cands)), key=lambda i: sum(1 for m in dyn_masks if m >> i & 1))
             off = sum(1 for m in dyn_masks if not m >> best & 1)

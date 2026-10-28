@@ -324,11 +324,8 @@ do_update:
         jp (hl)
 
 do_publish:
-        ld hl,(pub_vec)
-        call fc_hl
-        ld hl,fb_tick               ; (field.asm: this picture's play-field copies may start now,
-        inc (hl)                    ; the next one's items wait for it)
-        ret
+        ld hl,(pub_vec)             ; (isr.asm publish counts the picture: fb_tick)
+        jp (hl)
 
 idle_work:
         ld a,(fb_busy)              ; the play-field BOBs (field.asm) first while they have work: a

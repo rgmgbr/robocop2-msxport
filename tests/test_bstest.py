@@ -126,6 +126,21 @@ class HelperTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
+    def test_fieldcheck_counts_a_hostage_torn_per_object(self):
+        import fieldcheck
+        old_ft = fieldcheck.FT
+        fieldcheck.FT = {0: {"sw": 48, "sh": 28}, 2: {"sw": 48, "sh": 28}}
+        try:
+            a_old, a_new, b_old = (0, 17, 424), (2, 17, 424), (0, 129, 504)
+            # (hostage A a picture ahead, hostage B as shown: each whole, no tear)
+            ahead = [("new", {a_old, a_new})] * 5 + [("old", {b_old})] * 7
+            self.assertEqual(fieldcheck.tear_objects(ahead), 0)
+            # (hostage A half old, half new: torn, the fewer kind counted)
+            torn = [("new", {a_new})] * 5 + [("old", {a_old})] * 3 + [("old", {b_old})] * 7
+            self.assertEqual(fieldcheck.tear_objects(torn), 3)
+        finally:
+            fieldcheck.FT = old_ft
+
     def roms(self, stray: bool) -> list[Path]:
         """Two 2-bank images and their labels: foo moved from 4010h to 4013h, its word at bank 1 + 100h."""
         a, b = bytearray(b"\xff" * 16384), bytearray(b"\xff" * 16384)

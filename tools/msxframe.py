@@ -22,16 +22,25 @@ tools/msxscreen.py's model (sprite mode 2 included) and compared with the expect
     alternate between frames are recorded as not shown on the frames they are off. Lines where
     the SAT shown puts more than 8 sprites (the budget's layout for new positions still on its
     way: the VDP drops the last ones) are reported apart and their sprite pixels not checked;
-  - the tile area of VRAM (page 2 and page 3 lines 0-175) against the level's VRAM image:
-    nothing may write there at run time.
+  - the tile area of VRAM: each of the level's tile-cache slots on page 2 (256; 224 in level 2,
+    whose play-field dynamic slot takes page 2's lines 224-247) holds the tile its TC_TILE entry
+    names (page-0 RAM, ram0.bin: msx/tiles.asm tc_load), and the level's play-field atlas on page 3
+    holds its frames (POOL_lN_field_vram.bin, or level 1's robocop_field_vram.bin, inside each
+    static frame's box): nothing else may write there at run time.
 Needs numpy for the sprites (tools/msxsprites.py).
+
+With --field (test builds: msx/field.asm fb_visrec), the play area's expected picture is the map
+with its patches (msx/tiles.asm map_write: page-0 RAM and F500h-F8FFh) and the play-field BOBs of
+the list on screen (fb_vis at F248h: the first in the list on top, as msx/field.asm fb_bobs
+composes) as the level's atlas and dynamic frames hold them (FieldLooks: the bytes the ROM
+uploads); without it the static map alone, as before (a BOB or a patch counts as a difference).
 
 Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
 tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
 index; RoboCop's is both levels'), and the silhouettes from level N's colour rows; without it they
 are level 1's, converted again from build/msx/robocop.json as tools/msxsprites.py cut them.
 
-usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N]
+usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N] [--field]
        (e.g. build/snap build/msx/level1 build/msx/hud build/png/frame.png)
 """
 from __future__ import annotations
@@ -57,9 +66,110 @@ SAT_ORDER = [SPARK_OBJ] + list(range(SPARK_OBJ))
 PUB_SPR = {0xC080: 0xC700, 0xC0A0: 0xC780}     # what each list's SAT shows (MAX_OBJ objects x 8 bytes)
 SPLIT_LIST = 0xC0C0
 VIEW, HUD_TOP = 162, 167
-TILE_AREA = (0x10000, 0x18000 + 176 * 128)       # page 2 and page 3 lines 0-175: tiles only
+TC_TILE = 0x0400                                # page-0 RAM: the tile in each cache slot (msx/msx.inc)
+TC_SLOTS = {1: 256, 2: 224}                     # the cache's slots per level (tools/mkrom.py TC_SLOTS)
+FB_VIS = 0xF248                                 # test builds: the play-field BOBs of the list on screen
+FB_MAX = 8
 HUD_MSK = 0xC02B
 COLS = 160
+
+
+class FieldLooks:
+    """A level's play-field frames as the ROM uploads them (tools/msxsprites.py --pool's files: POOL_lN.json
+    "field", the atlas as VRAM holds it, POOL_lN_field_vram.bin, and the dynamic frames, POOL_fdyn.bin with
+    the level's field_dyn and dyn_tab, POOL_lN_field.inc): per frame its entry (x, y, sw, sh in the atlas; a
+    removed frame's are those of the frame shown, moved by ox, oy) and its pixels (joint palette indices,
+    0 transparent). Level 1 without a pool: build/msx/robocop.*."""
+
+    def __init__(self, level: int = 1, pool: Path | None = None):
+        import json
+        import re
+        if pool is None:
+            pre, meta = ROOT / "build/msx/robocop", ROOT / "build/msx/robocop.json"
+            dyn = ROOT / "build/msx/robocop_fdyn.bin"
+        else:
+            pre, meta = pool.with_name(f"{pool.name}_l{level}"), pool.with_name(f"{pool.name}_l{level}.json")
+            dyn = pool.with_name(f"{pool.name}_fdyn.bin")
+        self.frames = {f["fid"]: f for f in json.loads(meta.read_text())["field"]}
+        self.atlas = Path(f"{pre}_field_vram.bin").read_bytes()
+        self.dyn = dyn.read_bytes()
+        inc = Path(f"{pre}_field.inc").read_text()
+        self.inc = {m[1]: int(m[2], 0) for m in re.finditer(r"^(\w+): equ (\S+)", inc, re.M)}
+        tab = inc.partition("dyn_tab:")[2]
+        nums = [int(v, 0) for v in re.findall(r"0x[0-9A-Fa-f]+|\b\d+\b", re.sub(r";.*", "", tab))]
+        self.dyn_tab = [tuple(nums[k:k + 5]) for k in range(0, len(nums), 5)]   # bit, evict, bank, addr, 0
+        self._img: dict[int, list[bytes]] = {}
+
+    def pixels(self, fid: int) -> list[bytes]:
+        """Frame fid's pixels, a bytes object a line (sw x sh)."""
+        if fid in self._img:
+            return self._img[fid]
+        f = self.frames[fid]
+        w, h = f["sw"], f["sh"]
+        rows = []
+        if "dyn" in f:                              # (its strips of DYN_H lines side by side, a line of
+            _bit, _ev, bank, addr, _z = self.dyn_tab[f["dyn"]]   # the slot after another: field.asm fb_dyn)
+            o = bank * 0x2000 + addr - 0x8000
+            dh = self.inc["DYN_H"]
+            n = -(-h // dh)
+            lines: dict[int, bytes] = {}
+            for r in range(min(h, dh)):
+                for st in range(n):
+                    if r + dh * st < h:
+                        lines[r + dh * st] = self.dyn[o:o + w // 2]
+                        o += w // 2
+            src = [lines[y] for y in range(h)]
+        else:
+            src = [self.atlas[(f["y"] + y) * 128 + f["x"] // 2:(f["y"] + y) * 128 + (f["x"] + w) // 2] for y in range(h)]
+        for line in src:
+            rows.append(bytes(v for b in line for v in (b >> 4, b & 15)))
+        self._img[fid] = rows
+        return rows
+
+    def at(self, lst: list[tuple[int, int, int]], wx: int, wy: int) -> int | None:
+        """The colour of the top BOB of lst (frame, map x, map y; the first on top) with a pixel at map
+        (wx, wy), or None."""
+        for fi, bx, by in lst:
+            f = self.frames.get(fi)
+            if f is None:
+                continue
+            dx, dy = wx - bx, wy - by
+            if 0 <= dx < f["sw"] and 0 <= dy < f["sh"]:
+                c = self.pixels(fi)[dy][dx]
+                if c:
+                    return c
+        return None
+
+
+def fb_vis(ramf: bytes) -> list[tuple[int, int, int]]:
+    """The play-field BOBs of the list on screen (test builds: msx/field.asm fb_visrec, RAM F248h)."""
+    n = ramf[FB_VIS - 0xF000]
+    return [struct.unpack_from("<Bhh", ramf, FB_VIS - 0xF000 + 1 + 5 * i) for i in range(min(n, FB_MAX))]
+
+
+def tile_area(vram: bytes, ram0: bytes, til: bytes, level: int, looks: FieldLooks) -> list[str]:
+    """What the tile area of VRAM holds that it should not: the level's cache slots (page 2) against
+    their TC_TILE entries and the atlas's static frames (page 3) against the level's atlas."""
+    bad = []
+    slots = TC_SLOTS[level]
+    for s in range(slots):
+        t = ram0[TC_TILE + 2 * s] | ram0[TC_TILE + 2 * s + 1] << 8
+        if t == 0xFFFF:
+            continue
+        for y in range(16):
+            a = 0x10000 + (s // 16) * 2048 + y * 128 + (s % 16) * 8
+            if vram[a:a + 8] != til[t * 128 + 8 * y:t * 128 + 8 * y + 8]:
+                bad.append(f"slot {s} (tile {t})")
+                break
+    for fid, f in sorted(looks.frames.items()):
+        if "dyn" in f or f.get("look", fid) != fid:
+            continue
+        for y in range(f["sh"]):
+            a = (f["y"] + y) * 128 + f["x"] // 2
+            if vram[0x18000 + a:0x18000 + a + f["sw"] // 2] != looks.atlas[a:a + f["sw"] // 2]:
+                bad.append(f"atlas frame {fid}")
+                break
+    return bad
 
 
 def applied_list(ram: bytes) -> tuple[dict[int, int], int, int, list[dict]]:
@@ -259,11 +369,20 @@ def hud_expected(ram: bytes) -> list[list[int]] | None:
 
 def main() -> int:
     snap, level, hud, out = (Path(a) for a in sys.argv[1:5])
-    if "--sprites" in sys.argv:
-        use_pool(Path(sys.argv[sys.argv.index("--sprites") + 1]),
-                 int(sys.argv[sys.argv.index("--level") + 1]) if "--level" in sys.argv else 1)
+    lv = int(sys.argv[sys.argv.index("--level") + 1]) if "--level" in sys.argv else 1
+    pool = Path(sys.argv[sys.argv.index("--sprites") + 1]) if "--sprites" in sys.argv else None
+    if pool:
+        use_pool(pool, lv)
+    looks = FieldLooks(lv, pool)
     vram = (snap / "vram.bin").read_bytes()
     ram = (snap / "ram.bin").read_bytes()
+    ram0 = (snap / "ram0.bin").read_bytes() if (snap / "ram0.bin").exists() else None
+    ramf = (snap / "ramf.bin").read_bytes() if (snap / "ramf.bin").exists() else None
+    field = "--field" in sys.argv and ram0 is not None and ramf is not None
+    if field:
+        import recframes
+        patches = ram0[0x0A00:0x1000] + ramf[0x0500:0x0900]    # (MP_ROW, MP_A; MP_B: recframes' layout)
+        lst = fb_vis(ramf)
     base = [int(v) for v in (snap / "regs.txt").read_text().split()]
     play, cam_x, cam_y, objs = applied_list(ram)
     regs_play = list(base)
@@ -311,9 +430,15 @@ def main() -> int:
                 wx, wy = cam_x + x - 8, cam_y + y
                 if wy // 16 >= rows_map or wx // 16 >= COLS:
                     continue
-                t = mp[2 * ((wy // 16) * COLS + wx // 16)] | mp[2 * ((wy // 16) * COLS + wx // 16) + 1] << 8
-                b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
-                want = bytes(prgb[(b >> 4) if wx % 2 == 0 else b & 15])
+                c = looks.at(lst, wx, wy) if field else None
+                if c is None:
+                    if field:
+                        t = recframes.tile_at(mp, patches, wy // 16, wx // 16)
+                    else:
+                        t = mp[2 * ((wy // 16) * COLS + wx // 16)] | mp[2 * ((wy // 16) * COLS + wx // 16) + 1] << 8
+                    b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
+                    c = (b >> 4) if wx % 2 == 0 else b & 15
+                want = bytes(prgb[c])
                 if sat_pending:
                     pass                            # sprites not checked (see the docstring)
                 elif (x, y) in spr:
@@ -351,12 +476,13 @@ def main() -> int:
     if over:
         print(f"  {len(over)} lines with more than 8 sprites in the SAT shown (transient), their sprite pixels "
               f"not checked: {min(over)}..{max(over)}")
+    if field:
+        print(f"  play field: the map's patches and {len(lst)} BOB(s) of the list on screen: "
+              + ", ".join(f"{fi} at ({bx},{by})" for fi, bx, by in lst))
     print(f"  {checked} pixels checked, {bad} differ, {border_px} right-border pixels skipped")
-    want_tiles = level.with_suffix(".vram").read_bytes()[TILE_AREA[0]:TILE_AREA[1]]
-    got_tiles = vram[TILE_AREA[0]:TILE_AREA[1]]
-    tile_bad = [a for a in range(len(got_tiles)) if got_tiles[a] != want_tiles[a]]
+    tile_bad = tile_area(vram, ram0, til, lv, looks) if ram0 is not None else []
     if tile_bad:
-        print(f"  tile VRAM changed: {len(tile_bad)} bytes, first at {TILE_AREA[0] + tile_bad[0]:05X}h")
+        print(f"  tile VRAM changed: {len(tile_bad)} slot(s) or atlas frame(s) differ ({', '.join(tile_bad[:6])})")
     return 0 if bad == 0 and not tile_bad else 1
 
 

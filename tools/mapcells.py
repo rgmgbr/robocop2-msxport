@@ -217,6 +217,49 @@ def column_look(img: bytes, column: list[tuple[int, int]], cols: int, t: list[li
     return None
 
 
+VAT_ROWS = 0x40                     # vat_tables: the per-row bytes (a map's rows: 51 at most),
+VAT_RECS = 0x40                     #   then 8 bytes a vat (8 vats at most: a row's byte has 8 bits),
+VAT_TILES = 0x80                    #   then the 48 vat words' tiles
+VAT_SIZE = VAT_TILES + 3 * 16 * 2
+
+
+def vat_tables(img: bytes, tabs: dict, level: str, cols: int, rows: int, otile: bytes) -> tuple[bytes, bytes]:
+    """The vats' display tables (docs/LEVEL2.md 3.5: tools/mkrom.py puts them into the level's tables
+    bank at L2_VAT_AT, read at 8000h as map_write reads OTILE; msx/tiles.asm get_tile's vat rule) and
+    vat_shown's start (msx/level2.asm l2_init: a fresh level's), from level_tick_1's cells (vats):
+      VAT_ROWS  per map row (64 bytes) the vats that cover it: bit v for vat v of hz_<level>;
+      VAT_RECS  per vat 8 bytes: its first column, its columns, its first row, its rows (the record's
+                rows + 2), its first column's index in vat_shown (the columns of the vats before
+                it), then FFh x 3;
+      VAT_TILES the tile (the sheet's: <atrp>.otile at the word's offset, word >> 7) of every vat word,
+                words little-endian: T0[0..15], T1[0..15], T2[0..15] (a column at look d shows T0[d]
+                in its first row, then T1[d] and T2[d] alternating);
+    and per vat column (hz_<level>'s order, vat_shown's) the look d (0-15) the static map holds there
+    (column_look). The level's vat checks (vat_problems) must pass first."""
+    vs, t = vats(img, tabs, level, cols, rows)
+    if len(vs) > 8:
+        raise SystemExit(f"hz_{level}: {len(vs)} vats, a row's byte holds 8")
+    table = bytearray(b"\x00" * VAT_ROWS + b"\xff" * (VAT_TILES - VAT_ROWS))
+    first = 0
+    looks = []
+    for v, columns in enumerate(vs):
+        r0, c0 = columns[0][0]
+        if any(cell != (r0 + r, c0 + c) for c, column in enumerate(columns) for r, cell in enumerate(column)):
+            raise SystemExit(f"hz_{level}: vat {v} is not a box of the map's cells (its columns wrap)")
+        if r0 + len(columns[0]) > min(rows, VAT_ROWS):
+            raise SystemExit(f"hz_{level}: vat {v}'s rows {r0}-{r0 + len(columns[0]) - 1} outside the map's")
+        for r in range(r0, r0 + len(columns[0])):
+            table[r] |= 1 << v
+        table[VAT_RECS + 8 * v:VAT_RECS + 8 * v + 5] = bytes([c0, len(columns), r0, len(columns[0]), first])
+        first += len(columns)
+        looks += [column_look(img, column, cols, t) for column in columns]
+    if first > 0xFF or None in looks:
+        raise SystemExit(f"hz_{level}: {first} vat columns, or a column the tables do not hold")
+    for ws in t:
+        table += b"".join(struct.pack("<H", struct.unpack_from("<H", otile, 2 * (w >> 7))[0]) for w in ws)
+    return bytes(table), bytes(looks)
+
+
 def vat_problems(img: bytes, tabs: dict, level: str, cols: int, rows: int, objects: set,
                  otile: bytes, ntiles: int) -> tuple[list[str], str]:
     """The vats' own checks -> (what fails, a summary)."""

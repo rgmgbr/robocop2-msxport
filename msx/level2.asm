@@ -83,7 +83,8 @@ lv_init_l2:
 ; lists the game changes are copied into RAM (a new level only: a death keeps them, as the
 ; original keeps them in its code area), the pointers patched into the code become variables.
 ; The vats' phases ($92DA-$9307, code-area words level_tick_1 changes) are set again at each
-; new level 2 (docs/LEVEL2.md default 22).
+; new level 2 (docs/LEVEL2.md default 22), and so are their looks: vat_shown the static map's
+; (vat_sh0, tools/mapcells.py), vat_disp and vat_chg cleared (none drawn, none changed: 3.5).
 l2_init:
         ld a,(lv_fresh)
         or a
@@ -102,6 +103,14 @@ l2_init:
         ld de,vat_phase
         ld bc,vat_ph0_end - vat_ph0
         ldir
+        ld hl,vat_sh0
+        ld de,vat_shown
+        ld bc,VAT_COLS_l2
+        ldir
+        ld hl,vat_disp              ; (vat_chg follows it)
+        ld bc,vat_chg + 7 - vat_disp
+        xor a
+        call fill
         call l2i_sp0
 l2i_hdr:
         ld hl,(l2_hdr + 2)          ; (header +0: the object list, $9C18)
@@ -317,3 +326,5 @@ lt1_n:  push hl
         ret
 
         include "level2obj.asm"     ; (the types only level 2 has)
+        include "vats_l2.inc"       ; vat_shown's start (tools/mkrom.py: tools/mapcells.py vat_tables)
+        ds (VAT_COLS_l2 - (vat_disp - vat_shown)) * 0x4000  ; (an error when vat_shown has not the vats' room)

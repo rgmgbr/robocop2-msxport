@@ -217,13 +217,22 @@ lvc_m:  add hl,de
         jp bank_a000
 
 ; The tile cache and the map patches at the start of a level (tiles.asm; lv_select):
-; slots 0..TC_SLOTS-1 hold tiles 0..TC_SLOTS-1 (uploaded by vdp_setup), no patch, nothing to
-; redraw.
+; the level's slots (lv_tcn: 256, or 224 in level 2) hold its first tiles (uploaded by
+; vdp_setup or lv_select: page 2), no patch, nothing to redraw.
 tiles_init:
         call cpu_game               ; (a turbo R: the game on its R800 from here, docs/TURBO_R.md)
+        ld hl,(lv_tcn)
+        ex de,hl
+        ld hl,0
+        or a
+        sbc hl,de                   ; HL = the level's slots (TC_SLOTS at most)
+        push hl
+        srl h
+        rr l
+        ld b,l
+        push bc                     ; (B = the slots / 2)
         ld hl,TC_SLOT
         ld de,1
-        ld b,TC_SLOTS/2
 ti_s:   ld (hl),e                   ; tile t: slot t + 1
         inc hl
         ld (hl),d
@@ -235,12 +244,22 @@ ti_s:   ld (hl),e                   ; tile t: slot t + 1
         inc hl
         inc de
         djnz ti_s
-        ld bc,(512 - TC_SLOTS)*2
+        ex de,hl
+        ld hl,TC_SLOT + 512 * 2
+        or a
+        sbc hl,de
+        ld b,h
+        ld c,l
+        ex de,hl
         xor a
-        call fill                   ; tiles TC_SLOTS-511: not in VRAM
+        call fill                   ; the other tiles (up to 511): not in VRAM
+        ld hl,TC_TILE
+        ld bc,TC_SLOTS * 2
+        ld a,0xFF
+        call fill                   ; (the slots the level has not: no tile)
+        pop bc
         ld hl,TC_TILE
         ld de,0
-        ld b,TC_SLOTS/2
 ti_t:   ld (hl),e                   ; slot s: tile s
         inc hl
         ld (hl),d
@@ -252,8 +271,8 @@ ti_t:   ld (hl),e                   ; slot s: tile s
         inc hl
         inc de
         djnz ti_t
+        pop bc                      ; (the slots)
         ld hl,TC_REF
-        ld bc,TC_SLOTS
         xor a
         call fill
         ld hl,0

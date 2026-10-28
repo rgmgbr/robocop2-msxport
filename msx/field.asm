@@ -5,20 +5,32 @@
 ; code: get_tile puts the A000h window's bank back, the tile cache maps 8000h only.
 
         include "sprites_l1_field.inc"  ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py --pool)
+        include "field_l2.inc"      ; level 2's: FIELD_LATE_l2, field_tab_l2 ... (tools/mkrom.py)
 
-; The level's atlas (bank lv_fimg: tools/msxsprites.py field_frames) into VRAM, above the caches:
-; at power-on, after the tiles (vdp.asm vdp_setup), and at each level's start (cold.asm
-; lv_select). Frame by frame, as the ROM keeps no empty part
-; of it: [atlas line, x / 2, bytes a line, lines, mirrored, the pixels' offset (2)] each; a
-; mirrored frame is another's pixels read from the right, each byte's two pixels swapped. Keeps
-; the 8000h window's bank.
+; Each level's play-field frames (the descriptor's lv_fld; fb_init copies them to fb_flate ...
+; fb_flook): the first frame of its lifts, vehicle and trolleys (FIELD_LATE: the late ones,
+; fb_late), its dynamic slot's frames (FIELD_DYN0 to FIELD_DYN1, excluded: the explosions and
+; the smoke, both levels' the same, field_dyn and dyn_tab), its field_tab and field_look.
+fld_l1: db FIELD_LATE, FIELD_DYN0, FIELD_DYN1
+        dw field_tab, field_look
+fld_l2: db FIELD_LATE_l2, FIELD_DYN0_l2, FIELD_DYN1_l2
+        dw field_tab_l2, field_look_l2
+
+; The level's atlas (bank lv_fimg on: tools/msxsprites.py field_frames, tools/mkrom.py atlas_banks)
+; into VRAM, above the caches: at power-on, after the tiles (vdp.asm vdp_setup), and at each
+; level's start (cold.asm lv_select). Frame by frame, as the ROM keeps no empty part of it: per
+; bank its frames (bit 7: the next bank holds more of them), then [atlas line, x / 2, bytes a
+; line, lines, mirrored, the pixels' offset (2) in the bank] each; a mirrored frame is another's
+; pixels read from the right, each byte's two pixels swapped. Keeps the 8000h window's bank.
 field_upload:
         ld a,(act_8000)
         push af
         ld a,(lv_fimg)
+fu_bnk: push af                     ; (a bank of the atlas)
         call bank_8000
         ld ix,0x8001
         ld a,(0x8000)               ; frames
+        and 0x7F
 fu_frm: push af
         ld l,(ix+5)
         ld h,(ix+6)
@@ -77,6 +89,11 @@ fu_nl:  pop hl
         pop af
         dec a
         jr nz,fu_frm
+        pop af
+        inc a                       ; (the next bank)
+        ld hl,0x8000
+        bit 7,(hl)                  ; (another bank of the atlas follows)
+        jr nz,fu_bnk
         call vram_done
         pop af
         jp bank_8000
@@ -289,8 +306,12 @@ FB_BURST:   equ 16                      ; 16 x 16 copies in a row in one call (e
 FB_STEPS:   equ 3                       ; steps of the work in one fb_work call at most
 
 ; At a level's start (engines_init): the pages hold no BOB, no cache holds anything, the dynamic
-; slot no frame, nothing to do.
+; slot no frame, nothing to do; the level's play-field frames' tables (lv_fld: fld_l1, fld_l2).
 fb_init:
+        ld hl,(lv_fld)
+        ld de,fb_flate
+        ld bc,7
+        ldir
         xor a
         ld (dyn_res),a
         ld (dyn_res + 1),a
@@ -382,7 +403,7 @@ fb_wants:
         ld iy,fb_want
 fw_lp:  ld e,(ix+0)
         ld d,0
-        ld hl,field_look
+        ld hl,(fb_flook)            ; (the level's field_look)
         add hl,de
         ld a,(hl)
         ld (iy+0),a
@@ -475,7 +496,7 @@ fb_tab: ld l,a
         add hl,hl
         add hl,de
         add hl,hl                   ; * 6
-        ld de,field_tab
+        ld de,(fb_ftab)             ; (the level's field_tab)
         add hl,de
         ret
 
@@ -1384,7 +1405,8 @@ fla_p:  cp c
         push hl
         pop iy
 fla_lp: ld a,(iy+0)
-        cp FIELD_LATE
+        ld hl,fb_flate              ; (the level's FIELD_LATE)
+        cp (hl)
         jr c,fla_nx
         push iy
         pop ix
@@ -2286,9 +2308,11 @@ fbb_1:  dec a
         call fb_rpiece
         jr nc,fb_bobs               ; (none of it there)
         ld a,(ix+0)
-        cp FIELD_DYN0
+        ld hl,fb_fdyn0              ; (the level's FIELD_DYN0, FIELD_DYN1)
+        cp (hl)
         jr c,fbb_at
-        cp FIELD_DYN1
+        inc hl
+        cp (hl)
         jr c,fbb_dy
 fbb_at: call fb_tab                 ; source: the atlas + (part - BOB's place)
         ld a,(hl)                   ; atlas x
@@ -2311,9 +2335,9 @@ fbb_at: call fb_tab                 ; source: the atlas + (part - BOB's place)
         ld a,l
         add a,c
 fbb_sy: add a,FIELD_Y0
-        ld (fb_cmd + 2),a           ; SY: page 3
+        ld (fb_cmd + 2),a           ; SY: the atlas, page 3
         ld a,3
-        ld (fb_cmd + 3),a
+fbb_pg: ld (fb_cmd + 3),a
         call fb_dscr
         ld a,FB_LMMMT
         jp fb_issue
@@ -2407,9 +2431,11 @@ fbd_x:  djnz fbd_w
         ld (fb_cmd),a               ; SX
         xor a
         ld (fb_cmd + 1),a
-        ld a,(lv_dyn)               ; (the level's dynamic slot)
+        ld a,(lv_dyn)               ; SY: the level's dynamic slot, its page
         add a,c
-        jp fbb_sy
+        ld (fb_cmd + 2),a
+        ld a,(lv_dynp)
+        jp fbb_pg
 
 ; IX = fb_snap's entry fb_ci (7 bytes each). Keeps BC.
 fbb_ix: ld a,(fb_ci)
@@ -2431,7 +2457,8 @@ fbb_ix: ld a,(fb_ci)
 ; it takes forgotten. Keeps IX.
 fb_dyn: push ix
         ld c,a                      ; (the frame)
-        sub FIELD_DYN0
+        ld hl,fb_fdyn0
+        sub (hl)                    ; (the level's FIELD_DYN0)
         ld e,a
         ld d,0
         ld hl,field_dyn
@@ -2505,15 +2532,16 @@ fdy_k:  ld b,a
 fdy_ln: push bc
         push de
         push hl
-        ld hl,lv_dyn                ; VRAM 18000h + (FIELD_Y0 + lv_dyn (DYN_Y) + line) * 128 + E
-        ld a,(fb_ds)
+        ld hl,lv_dyn                ; VRAM 10000h + (lv_dynp & 1) * 8000h + (lv_dyn (DYN_Y) + line)
+        ld a,(fb_ds)                ;   * 128 + E: the level's dynamic slot (page 3 or 2)
         add a,(hl)
-        if FIELD_Y0
-        add a,FIELD_Y0
-        endif
         ld l,a
         srl a
-        or 0x80
+        ld h,a
+        ld a,(lv_dynp)
+        rrca
+        and 0x80
+        or h
         ld h,a
         ld a,l
         rrca
@@ -2557,8 +2585,9 @@ fdy_bz: pop ix
 
 ; Phase FP_COPY: the next part of the piece from the scratch onto its page (HMMM; the V9958's ring
 ; in parts that do not cross its x 256 or its y 256, a V9938 page in parts that do not cross y
-; 256), once it is still kept there (else the whole item again); the page shown waits for the
-; blank (FP_WAIT). Then the next piece, or the next item.
+; 256), once it is still kept there (else the whole item again); on the page shown all its parts
+; together (fb_cmd, then fb_cmd2 ...: up to four on the V9958, its ring crossed at x 256 and at
+; y 256), which wait for the blank (FP_WAIT). Then the next piece, or the next item.
 fb_copy:
         ld a,(fb_cpi)
         cp 4
@@ -2603,8 +2632,11 @@ fcp_part:
         ld (fb_rdy),a
         ret
 fcp_wait:
-        xor a                       ; the piece's next part: right after this one (fb_cmd2, the
-        ld (fb_c2),a                ; split interrupt), so that both show from the same frame
+        xor a                       ; the piece's other parts: right after this one, each when the
+        ld (fb_c2),a                ; one before is done (fb_cmd2 ..., the split interrupt), so that
+        ld (fb_cn),a                ; all show from the same frame (until 2026-10-28 two at a time:
+        ld hl,fb_cmd2               ; a piece across the ring's x 256 and y 256, level 2's trolleys at
+        ld (fb_cp),hl               ; y 508, showed its top lines a picture early)
 fcw_nx: ld a,(fb_cpi)
         cp 4
         jr nc,fcw_one
@@ -2613,10 +2645,23 @@ fcw_nx: ld a,(fb_cpi)
         dec a
         call fb_part
         jr nc,fcw_nx
+        ld a,(fb_cn)                ; (its command: fb_cmd2 + 15 x the parts before it)
+        ld e,a
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        sub e
+        ld e,a
+        ld d,0
         ld hl,fb_cmd2
+        add hl,de
         call fb_pcmd
+        ld hl,fb_cn
+        inc (hl)
         ld a,1
         ld (fb_c2),a
+        jr fcw_nx
 fcw_one:
         call fb_fits                ; (the VBLANK interrupt may start it too when it keeps ahead of
         ld a,0                      ; the beam from there, not a pair)
@@ -2636,9 +2681,9 @@ fcw_n:  ld (fb_cq),a
         ld (fb_ph),a
         ; (falls through)
 
-; Phase FP_WAIT: the part prepared for the page shown (with the next one, fb_c2), started by the
+; Phase FP_WAIT: the part prepared for the page shown (with the others, fb_c2), started by the
 ; split interrupt (fb_cq 2, 4 for the item's last part: isr.asm) or here when what is left of the
-; blank is enough (fb_mayq); then the next part (the next call, the VDP idle again).
+; blank is enough (fb_mayq); then the next piece (the next call, the VDP idle again).
 fb_wait:
         ld a,(fb_cq)
         and 1
@@ -2647,14 +2692,19 @@ fb_wait:
         ret nz
         jp fb_qstart
 fwt_done:
-        ld a,(fb_c2)                ; (the pair's second part the interrupt could not start: now)
+        ld a,(fb_c2)                ; (the other parts the interrupts could not start: now)
         cp 3
-        ret z                       ; (3: the VBLANK interrupt starts it after its list, isr.asm)
+        ret z                       ; (3: the VBLANK interrupt starts them after its list, isr.asm)
         dec a
         jr nz,fwt_c
         ld (fb_c2),a
-        ld hl,fb_cmd2
-        jp vdp_cmd
+        ld hl,(fb_cp)
+fwt_ch: call vdp_cmd                ; (HL: past its 15 bytes, the next part's)
+        ld a,(fb_cn)
+        dec a
+        ld (fb_cn),a
+        jr nz,fwt_ch
+        ret
 fwt_c:  ld a,(fb_cq)                ; (it ran: the VDP is idle again; the last part's 4 stays
         cp 4                        ; until the item is done: fb_pend)
         jr z,fwt_4
