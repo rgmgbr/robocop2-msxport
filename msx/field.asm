@@ -3531,31 +3531,44 @@ an_w:   or b
 VAT_REC:    equ L2_VATS + 0x40          ; per vat: first column, columns, first row, rows (its record's
                                         ;   + 2), first index in vat_shown (tools/mapcells.py vat_tables)
 VAT_TIL:    equ L2_VATS + 0x80          ; the tiles (words) of T0[16], T1[16], T2[16]
+        if (VAT_TIL & 0xFF) + 96 > 0x100
+vat_til_page:                           ; (an error: vat_srcs takes VAT_TIL's 96 bytes in one page)
+vat_til_page:
+        endif
 VAT_LB:     equ 12                      ; lines (63.5 us) the VDP takes at most for 16 lines of a column
 VAT_LP:     equ 15                      ;   and for its parts' starts (5 at most, 15 registers each)
 VAT_LM:     equ 40                      ; lines the VBLANK interrupt may hold the next part back
 VAT_LV:     equ 49                      ; lines from the VBLANK to the play area's first (60 Hz)
-VAT_YM:     equ 16                      ; lines the view may move by before a column is done
-; the frame of a column (IX, on the stack)
-VF_DX:      equ 0                       ; the column's x on its page (DX)
+VAT_LB0:    equ 4                       ; lines from the blank's end to the play area's first, at least
+VAT_KZ:     equ 4                       ; VBLANKs from a column to the next on the Z80 (the R800: 1)
+; the column being prepared or ready (vat_fr, msx.inc: IX = vat_fr in vats.asm, vat_* here)
+VF_DX:      equ 0                       ; its x on the page shown (DX)
 VF_PG:      equ 1                       ; DY's high byte (the V9938's page; the ring's x 256 and up)
-VF_R0:      equ 2                       ; the vat's first row
-VF_JA:      equ 3                       ; the column's first and last row drawn (the vat's own: 0..)
+VF_R0:      equ 2                       ; its vat's first row
+VF_JA:      equ 3                       ; its first and last row drawn (the vat's own: 0..)
 VF_JB:      equ 4
 VF_N:       equ 5                       ; parts started
 VF_LN:      equ 6                       ; lines it takes (vat_fits)
 VF_S:       equ 7                       ; 12: T0, T1, T2's SX, SY (tile_src's)
 VF_W0:      equ 19                      ; the window: the page's first column (the ring: the kept ones)
 VF_WN:      equ 20                      ;   and its columns
-VF_LO:      equ 21                      ; the columns (vat_shown's indexes) this pass may draw: from,
+VF_LO:      equ 21                      ; the columns (vat_shown's indexes) a pass may take: from,
 VF_HI:      equ 22                      ;   to (excluded)
 VF_ST:      equ 23                      ; 1: a column of the vat in the window waits
 VF_V:       equ 24                      ; the vat (its record's index)
 VF_WT:      equ 25                      ; the column: its look wanted,
 VF_IX:      equ 26                      ;   its index in vat_shown,
-VF_CC:      equ 27                      ;   its map column,
-VF_OLD:     equ 28                      ;   its nibble before (on the page shown)
-VF_SZ:      equ 29
+VF_CC:      equ 27                      ;   its map column
+VF_RDY:     equ 28                      ; 1: ready for the next window (vats.asm vat_run)
+VF_EC:      equ 29                      ; the engines then: the page's first column (the ring: prev_cx),
+VF_EY:      equ 30                      ;   prev_cy,
+VF_EP:      equ 31                      ;   the page shown
+VF_STK:     equ 32                      ; the tick of vats.asm vat_prep's last look for a column
+VF_T:       equ 33                      ; 6: T0, T1, T2's tiles
+VF_FS:      equ 39                      ; vat_fits: bit 0 it may start between the split and the VBLANK,
+                                        ;   bit 1 in the blank after the VBLANK (S#2 VR)
+VF_TRY:     equ 40                      ; columns vat_prep may still try this time
+VF_SZ:      equ 41
 
 
 ; (engines_init, engines_jump: every level) No vat column drawn on any page, nothing to do; level
@@ -3565,6 +3578,7 @@ vat_init:
         ld (vat_pg),a
         ld (vat_bk),a
         ld (vat_rr),a
+        ld (vat_fr + VF_RDY),a
         ld hl,vat_chg
         ld b,7
 vin_c:  ld (hl),a
@@ -3859,10 +3873,10 @@ vbi_nv: pop af
         pop af
         jp bank_8000
 
-; (vats.asm through field_call) C = a page, IX = a column's frame -> L = 1 when the column over its rows
-; drawn there (fb_r: vat_rect) meets the play-field BOBs' work (the item being composed, one queued),
-; a BOB of its list, one wanted (fb_want) or, on the V9938's page being built, what its copy may bring
-; (fb_bb); else L = 0. Changes fb_tr. Keeps IX.
+; (vats.asm through field_call) C = a page, IX = vat_fr -> L = 1 when its column over its rows drawn
+; (fb_r: vat_rect) meets the play-field BOBs' work there (the item being composed, one queued), the box
+; around that page's list or around the BOBs wanted (fb_wbx), or, on the V9938's page being built, what
+; its copy may bring (fb_bb); else L = 0. Keeps IX.
 vat_meet:
         call vat_rect
         push ix
@@ -3872,13 +3886,7 @@ vat_meet:
         ret nc
         inc l
         ret
-vmt_go: ld hl,fb_r
-        ld de,fb_tr
-        push bc
-        ld bc,8
-        ldir                        ; (fb_tr: the rectangle; fb_rect takes fb_r)
-        pop bc
-        ld a,(fb_ph)                ; the item being composed
+vmt_go: ld a,(fb_ph)                ; the item being composed
         or a
         jr z,vmt_q
         ld a,(fb_cur)
@@ -3891,50 +3899,33 @@ vmt_q:  ld a,(fb_qn)                ; a queued item of that page
         or a
         jr z,vmt_l
         ld b,a
-        ld ix,fb_q
-vmt_ql: ld a,(ix+0)
+        ld ix,fb_q + 3
+vmt_ql: ld a,(ix-3)
         cp c
         jr nz,vmt_qn
-        push ix
-        inc ix
-        inc ix
-        inc ix
         call fb_meet
-        pop ix
         ret c
 vmt_qn: ld de,FB_QSZ
         add ix,de
         djnz vmt_ql
-vmt_l:  ld a,c                      ; a BOB of its list
+vmt_l:  ld a,c                      ; the box around its list's BOBs
         call fb_dnp
         ld a,(hl)
         inc a
         jr z,vmt_w                  ; (unknown)
         dec a
         jr z,vmt_w                  ; (none)
-        ld b,a
-        push hl
         ld a,c
         call fb_bxp
         call fb_meet
-        pop hl
-        jr nc,vmt_w
-        inc hl
-        call vmt_ents
         ret c
-vmt_w:  call vmt_rr                 ; a BOB wanted
-        ld a,(fb_wn)
+vmt_w:  ld a,(fb_wn)                ; the box around the BOBs wanted
         or a
         jr z,vmt_b
-        ld b,a
         ld ix,fb_wbx
         call fb_meet
-        jr nc,vmt_b
-        ld hl,fb_want
-        call vmt_ents
         ret c
-vmt_b:  call vmt_rr
-        ld a,(fb_eng)               ; the V9938's page being built: what its copy may bring
+vmt_b:  ld a,(fb_eng)               ; the V9938's page being built: what its copy may bring
         or a
         ret z
         ld a,(s38_vis_page)
@@ -3952,21 +3943,7 @@ vmt_bl: call fb_meet
         djnz vmt_bl
 vmt_n:  or a
         ret
-; HL = the first of B entries (FB_ENT bytes each) -> C when the rectangle of one meets fb_tr.
-vmt_ents:
-        push hl
-        pop ix
-vme_lp: call fb_rect                ; (fb_r: the entry's; keeps BC, IX)
-        push ix
-        ld ix,fb_tr
-        call fb_meet
-        pop ix
-        ret c
-        ld de,FB_ENT
-        add ix,de
-        djnz vme_lp
-        or a
-        ret
+
 ; fb_r = the frame's column (VF_CC) over its rows drawn, in the map.
 vat_rect:
         ld a,(ix+VF_CC)
@@ -3986,72 +3963,259 @@ vat_rect:
         ld (fb_r + 6),hl
         ret
 
-; (vats.asm through field_call: IX = a column's frame) -> L = 0 when the frame's column (its rows drawn: VAT_LB lines each, VAT_LP its starts) ends before
-; the beam reaches its first line on the screen even when it starts just before the VBLANK (VAT_LV
-; lines from there, less VAT_LM for that interrupt; VAT_YM for the view's move), or when none of it
-; shows; else L = 1.
+; (vats.asm through field_call: IX = vat_fr) -> L = 0 when its column (its rows drawn: VAT_LB lines
+; each, VAT_LP its parts' starts) may start now and end before the beam reaches its first line on the
+; screen (R#23: the list's on screen and the one published for the next VBLANK, the least), else 1;
+; VF_FS bit 0: when started between the HUD split and the VBLANK (VAT_LV lines from the VBLANK to the
+; play area, VAT_LM for that interrupt), bit 1: when started in the blank after the VBLANK (S#2 VR).
 vat_fits:
         ld a,(ix+VF_JB)
         sub (ix+VF_JA)
         inc a
         ld b,a
-        ld a,VAT_LP + VAT_LM
+        ld a,VAT_LP
 vft_m:  add a,VAT_LB
         djnz vft_m
-        ld (ix+VF_LN),a
+        ld (ix+VF_LN),a             ; (its lines)
+        ld hl,(vbl_ptr)
+        inc hl
+        inc hl
+        ld a,(hl)                   ; (every list starts with R#23)
+        call vft_ya
+        ld c,a                      ; C = its first line on the screen now (FFh: none)
+        ld a,(pk_state)
+        or a
+        jr z,vft_1
+        ld hl,(pk_list)
+        inc hl
+        inc hl
+        ld a,(hl)
+        call vft_ya
+        cp c
+        jr nc,vft_1
+        ld c,a                      ; (the next picture's, when less)
+vft_1:  ld b,3
+        ld a,c
+        inc a
+        jr z,vft_e                  ; (none of it shows)
+        ld b,0
+        ld a,(ix+VF_LN)
+        add a,VAT_LB0
+        cp c
+        jr z,vft_b
+        jr nc,vft_a
+vft_b:  set 1,b
+vft_a:  ld a,(ix+VF_LN)
+        ld l,a
+        ld h,0
+        ld de,VAT_LM
+        add hl,de                   ; its lines + the VBLANK's
+        ex de,hl
+        ld l,c
+        ld h,0
+        push bc
+        ld bc,VAT_LV
+        add hl,bc                   ; the lines left at worst: from the VBLANK to its first line
+        pop bc
+        or a
+        sbc hl,de
+        jr c,vft_e
+        set 0,b
+vft_e:  ld (ix+VF_FS),b
+        ld l,0
+        ld a,b
+        or a
+        ret nz
+        inc l
+        ret
+; A = R#23 -> A = the first line of the column (VF_R0, VF_JA, VF_JB) on the screen, FFh when none.
+vft_ya: ld e,a
         ld a,(ix+VF_R0)
         add a,(ix+VF_JA)
-        call fb_c16
-        push hl                     ; (its top in the map)
-        ex de,hl
-        ld hl,(cam_y)
-        ld bc,VIEW_LINES + VAT_YM
-        add hl,bc
-        or a
-        sbc hl,de
-        jr c,vft_ok                 ; (its top below what the screen may show)
-        jr z,vft_ok
-        ld a,(ix+VF_R0)
-        add a,(ix+VF_JB)
+        and 15
+        rlca
+        rlca
+        rlca
+        rlca
+        sub e                       ; (its first row's line - R#23) & 255
+        cp VIEW_LINES
+        ret c                       ; (its top on the screen)
+        neg
+        ld d,a                      ; (R#23 - its first line) & 255: the screen's top in it?
+        ld a,(ix+VF_JB)
+        sub (ix+VF_JA)
         inc a
-        call fb_c16                ; (past its bottom)
-        ld bc,VAT_YM
-        add hl,bc
-        ld de,(cam_y)
-        or a
-        sbc hl,de
-        jr c,vft_ok                 ; (above it)
-        jr z,vft_ok
-        pop hl
-        ld de,(cam_y)
-        or a
-        sbc hl,de
-        ld de,VAT_YM
-        or a
-        sbc hl,de                   ; its first line on the screen, less the view's move
-        jr nc,vft_y
-        ld hl,0
-vft_y:  ld de,VAT_LV
-        add hl,de                   ; the lines left when it starts just before the VBLANK
-        ld e,(ix+VF_LN)
-        ld d,0
-        or a
-        sbc hl,de
-        ld l,1
-        ret c
-        dec l
+        rlca
+        rlca
+        rlca
+        rlca                        ; (its lines)
+        cp d
+        jr z,vya_n
+        jr c,vya_n
+        xor a                       ; (it covers the screen's top)
         ret
-vft_ok: pop hl
-        ld l,0
+vya_n:  ld a,0xFF
         ret
 
-; fb_r = fb_tr again. Keeps BC.
-vmt_rr: ld hl,fb_tr
-        ld de,fb_r
+; (vats.asm vat_mirror through field_call: IX = vat_fr, C = the V9938's page being built) Its column,
+; just copied there from the page shown, which may have play-field BOBs over it: where it meets them or
+; their work on that page, the sync composes it again before the page may be shown (fb_bb, fb_bsync).
+vat_mmark:
+        call vat_meet
+        dec l
+        ret nz
+        call vat_rect
+        call fb_bbadd
+        ld a,0xFF
+        ld (fb_bsync),a
+        ret
+
+; (vats.asm through field_call: IX = vat_fr, its column's look VF_WT; lv_tab at 8000h) -> its tiles T0,
+; T1, T2 at that look (VF_T: VAT_TIL's) and their places in the tile cache (VF_S: tiles.asm tile_srct,
+; which loads them): L = 1 when one of the three lost its place to another's load (later then), else 0.
+; Keeps the 8000h window's bank.
+vat_srcs:
+        ld c,0
+vss_a:  ld a,c                      ; tile c: VAT_TIL + 32 c + 2 look
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        ld l,a
+        ld a,(ix+VF_WT)
+        add a,l
+        add a,a
+        ld l,a
+        ld h,VAT_TIL / 256          ; (VAT_TIL: 9780h, its 96 bytes in one page)
+        ld a,l
+        add a,VAT_TIL & 0xFF
+        ld l,a
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        push ix
+        pop hl
+        ld a,c
+        add a,a
+        add a,VF_T
+        add a,l
+        ld l,a
+        jr nc,vss_t
+        inc h
+vss_t:  ld (hl),e
+        inc hl
+        ld (hl),d                   ; its tile
+        ex de,hl
+        ld a,(act_8000)
+        push af
+        call tile_srct              ; (keeps BC, DE)
+        pop af
+        call bank_8000              ; (a load maps its tile's bank)
+        push ix
+        pop hl
+        ld a,c
+        add a,a
+        add a,a
+        add a,VF_S
+        add a,l
+        ld l,a
+        jr nc,vss_s
+        inc h
+vss_s:  ex de,hl
+        ld hl,cmdbuf
         push bc
-        ld bc,8
-        ldir
+        ld bc,4
+        ldir                        ; its place
         pop bc
+        inc c
+        ld a,c
+        cp 3
+        jr c,vss_a
+        jp vat_valid                ; (the three still in their places)
+
+; (also vats.asm through field_call) IX = vat_fr -> L = 0 when the tile cache's slots of VF_S still
+; hold the tiles of VF_T, else 1. Keeps IX.
+vat_valid:
+        push ix
+        pop hl
+        ld de,VF_S
+        add hl,de                   ; HL = VF_S's first place
+        push ix
+        pop de
+        ld a,e
+        add a,VF_T
+        ld e,a
+        jr nc,vvl_0
+        inc d                       ; DE = VF_T's first tile
+vvl_0:  ld b,3
+vvl_lp: push hl
+        ld a,(hl)                   ; SX: (s & 15) * 16
+        rrca
+        rrca
+        rrca
+        rrca
+        and 15
+        inc hl
+        inc hl
+        or (hl)                     ; SY's low byte: s & F0h (TC_SLOTS 256 at most)
+        push de
+        ld l,a
+        ld h,0
+        add hl,hl
+        ld de,TC_TILE
+        add hl,de                   ; HL = TC_TILE[s]
+        pop de
+        ld a,(de)
+        cp (hl)
+        jr nz,vvl_no
+        inc de
+        inc hl
+        ld a,(de)
+        cp (hl)
+        jr nz,vvl_no
+        inc de
+        pop hl
+        inc hl
+        inc hl
+        inc hl
+        inc hl
+        djnz vvl_lp
+        ld l,0
+        ret
+vvl_no: pop hl
+        ld l,1
+        ret
+
+; (vats.asm through field_call) IX = vat_fr -> its VF_DX, VF_PG: its column's place on the page shown
+; (the ring: x & 255, its page the x's bit 8; a V9938 page: from its first column).
+vat_dst:
+        ld a,(fb_eng)
+        or a
+        jr nz,vds_38
+        ld a,(ix+VF_CC)
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        ld (ix+VF_DX),a
+        ld a,(ix+VF_CC)
+        rrca
+        rrca
+        rrca
+        rrca
+        and 1
+        ld (ix+VF_PG),a
+        ret
+vds_38: ld a,(ix+VF_CC)
+        ld hl,s38_vis_c0
+        sub (hl)
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        ld (ix+VF_DX),a
+        ld a,(s38_vis_page)
+        ld (ix+VF_PG),a
         ret
 
         if EXTJOY

@@ -23,24 +23,34 @@ vats stay as the static map shows them until the vats' display (step 14) draws t
 is unchanged. A hostage-like BOB (a hostage, types 2, 14 and 16's bodies) ahead or behind counts as
 torn per object: its old and new frames (the shown and the newest lists' entries whose boxes meet)
 with pixels of both lists; two of them, one a picture ahead of the other, are each whole (level 1's
-check, whose verdicts are compared with level 2's base, takes the picture as a whole)."""
+check, whose verdicts are compared with level 2's base, takes the picture as a whole).
+
+Level 2's vats (its step 14, the plan's 4.2 checks 2 and 8): a record may carry RAM F012h-F0E6h after
+EXTRA (VATX: vat_shown, vat_disp, vat_chg; tools/bstest/l2base.tcl l2b_fd_setup). Then every vat cell
+is expected at the look its column has on the page shown (vat_disp's nibble, tools/mapcmp.py vat_look),
+so that a column showing two looks or a half-drawn one differs ("CLASS picture vat-look"); and a column
+seen in two pictures in a row never shows an older look than the one before ("CLASS picture vat-older":
+its look's age, the latest record in which vat_shown became it, goes back)."""
 import json
 import struct
 import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
+import mapcmp  # noqa: E402
 import recframes as rf  # noqa: E402
 from msxscreen import render, sprite_line  # noqa: E402
 from planar import write_png  # noqa: E402
 
 EXTRA = 0x440
+VATX = 0xD5                                     # (RAM F012h-F0E6h: vat_shown, vat_disp, vat_chg)
 meta = FT = atlas = np = msxsprites = _RAM = _MAIN = _JP = _PAL = _BGPAL = _NEAR = INC = None
 FIELD_Y0 = FIELD_LATE = DYN0 = DYN1 = None
 _IMG = {}
 
 
 LOOKS = None                                    # --level 2: tools/msxframe.py FieldLooks
+VATS, VATS_N = None, 0                          # level 2's vats: tools/mapcmp.py vat_layout
 
 
 def load(level=1):
@@ -242,6 +252,10 @@ def main():
     mp = level.with_suffix(".map").read_bytes()
     til = level.with_suffix(".til").read_bytes()
     files = sorted(p for p in d.glob("*.bin"))
+    global VATS, VATS_N
+    VATS = mapcmp.vat_layout(level) if level.name == "level2" else None
+    VATS_N = len({v[0] for v in VATS["cells"].values()}) if VATS else 0
+    vat_hist, vat_age, vat_older, vat_recs, vat_cols = {}, {}, 0, 0, set()
     prev_low = None
     sheet, total_bad, pics_bad = [], 0, 0
     hist = []                                   # the last VOLATILE_N records' patch maps
@@ -252,8 +266,9 @@ def main():
     wrong = 0
     for p in files:
         data = p.read_bytes()
-        sp2 = len(data) == rf.REC + 0x8000 + EXTRA
-        if len(data) not in (rf.REC + EXTRA, rf.REC + 0x8000 + EXTRA):
+        sp2 = len(data) in (rf.REC + 0x8000 + EXTRA, rf.REC + 0x8000 + EXTRA + VATX)
+        if len(data) not in (rf.REC + EXTRA, rf.REC + 0x8000 + EXTRA, rf.REC + EXTRA + VATX,
+                             rf.REC + 0x8000 + EXTRA + VATX):
             wrong += 1
             continue
         regs = list(data[:64])
@@ -271,7 +286,10 @@ def main():
         patches = data[pos:pos + 0x600 + 0x400]     # (0A00h-0FFFh, then MP_B F500h-F8FFh)
         pos += 0x600 + 0x400
         low = data[pos:pos + EXTRA]
+        vram_f = bytes(0x12) + data[pos + EXTRA:pos + EXTRA + VATX] if len(data) - pos - EXTRA == VATX else None
         cam_x, cam_y = rf.camera(ram)
+        if vram_f is not None:
+            vat_recs += 1
         pm = patch_map(patches)
         hist.append(pm)
         if len(hist) > VOLATILE_N:
@@ -308,6 +326,23 @@ def main():
             for fi, bx, by in L:
                 if is_dyn(fi) and FT.get(fi):
                     dyn_box.append((bx, by, bx + FT[fi]["sw"], by + FT[fi]["sh"]))
+        vat_on = VATS is not None and vram_f is not None
+        if vat_on:
+            vpage = 0 if sp2 else (page & 1)
+            for idx in range(VATS_N):           # (vat_shown's history: its looks' ages)
+                lk = vram_f[0x12 + idx]
+                h = vat_hist.setdefault(idx, [])
+                if not h or h[-1][1] != lk:
+                    h.append((len(sheet), lk))
+
+        def vtile(P, row, col):
+            v = VATS["cells"].get((row, col)) if vat_on else None
+            if v:
+                vat_seen.add(v[0])
+                return mapcmp.vat_tile(VATS, v, mapcmp.vat_look(vram_f, v[0], vpage))
+            return rf.tile_at(mp, P, row, col)
+        vat_seen = set()
+        vat_px = 0
         img = []
         for y in range(rf.VIEW):
             row = rows[y]
@@ -331,7 +366,7 @@ def main():
                         for li, L in enumerate(cands):   # the lists whose state it shows)
                             c = bob_at(L, wx, wy)
                             if c is None:
-                                t = rf.tile_at(mp, patches, wy // 16, wx // 16)
+                                t = vtile(patches, wy // 16, wx // 16)
                                 b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                                 c = (b >> 4) if wx % 2 == 0 else b & 15
                             if got == bytes(rgb[c]):
@@ -342,7 +377,7 @@ def main():
                     for P in (patches, prev_patches):
                         c = bob_at(L, wx, wy)
                         if c is None:
-                            t = rf.tile_at(mp, P, wy // 16, wx // 16)
+                            t = vtile(P, wy // 16, wx // 16)
                             b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                             c = (b >> 4) if wx % 2 == 0 else b & 15
                         if got == bytes(rgb[c]):
@@ -359,7 +394,7 @@ def main():
                             (fn is not None and fn < FIELD_LATE and not is_dyn(fn)):
                         c = bob_at(tlst, wx, wy)
                         if c is None:
-                            t = rf.tile_at(mp, patches, wy // 16, wx // 16)
+                            t = vtile(patches, wy // 16, wx // 16)
                             b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                             c = (b >> 4) if wx % 2 == 0 else b & 15
                         if got != bytes(rgb[c]):
@@ -376,7 +411,7 @@ def main():
                             (fn is not None or fo is not None):
                         c = bob_at(tlst, wx, wy)
                         if c is None:
-                            t = rf.tile_at(mp, patches, wy // 16, wx // 16)
+                            t = vtile(patches, wy // 16, wx // 16)
                             b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                             c = (b >> 4) if wx % 2 == 0 else b & 15
                         if got == bytes(rgb[c]):
@@ -397,7 +432,7 @@ def main():
                             continue            # (an old step's pixel, never another BOB's)
                         c = bob_at(L, wx, wy)
                         if c is None:
-                            t = rf.tile_at(mp, patches, wy // 16, wx // 16)
+                            t = vtile(patches, wy // 16, wx // 16)
                             b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                             c = (b >> 4) if wx % 2 == 0 else b & 15
                         if got == bytes(rgb[c]):
@@ -406,12 +441,31 @@ def main():
                             break
                 if not ok:
                     bad += 1
+                    if vat_on and (wy // 16, wx // 16) in VATS["cells"]:
+                        vat_px += 1
                     badcells[(wy // 16, wx // 16)] = badcells.get((wy // 16, wx // 16), 0) + 1
                     drow[3 * x:3 * x + 3] = b"\xff\x00\xff"
             img.append(bytes(drow))
         prev_low = low
         prev_patches = patches
-        other_px = bad                          # (the pixels that match no list: no known class)
+        older = []                              # (a vat column seen again at an older look)
+        if vat_on:
+            for idx in vat_seen:
+                lk = mapcmp.vat_look(vram_f, idx, vpage)
+                ages = [k for k, l2 in vat_hist[idx] if l2 == lk]
+                if not ages:
+                    vat_age.pop(idx, None)      # (a look from before the record: no age known)
+                    continue
+                if idx in vat_age and ages[-1] < vat_age[idx]:
+                    older.append(idx)
+                vat_age[idx] = ages[-1]
+            for idx in list(vat_age):
+                if idx not in vat_seen:
+                    del vat_age[idx]            # (not seen in this picture: a new start)
+        if older:
+            vat_older += 1
+            print(f"{p.stem}: vat column(s) {sorted(older)} at an older look than the picture before")
+        other_px = bad - vat_px                 # (the pixels that match no list: no known class)
         tear_px = dyn_px = 0
         if only_new and only_old:               # half old, half new
             tear_px = min(only_new, only_old) if LOOKS is None else tear_objects(tear_pix)
@@ -438,14 +492,22 @@ def main():
                 print(f"CLASS {p.stem} hostage-tear {tear_key(tear_shown, tear_newest)} px={tear_px}")
             if dyn_px:
                 print(f"CLASS {p.stem} smoke-tear px={dyn_px}")
+            if vat_px:
+                print(f"CLASS {p.stem} vat-look px={vat_px}")
             if other_px:
                 print(f"CLASS {p.stem} other px={other_px}")
+        if older:
+            print(f"CLASS {p.stem} vat-older px=0")
+        vat_cols |= vat_seen
         sheet.append(img)
     if wrong:
         print(f"{wrong} files of another length skipped")
     print(f"{len(files)} pictures ({len(files) - wrong} checked): {pics_bad} with differences, {total_bad} pixels "
           f"({skipped} pixels of animated map cells not checked; {dyn_lag} explosion/smoke pixels of a recent step; "
           f"{dyn_torn} torn explosion/smoke pictures)")
+    if VATS is not None:
+        print(f"vats: {vat_recs} records with the vats' RAM, {len(vat_cols)} vat columns seen, {vat_older} pictures "
+              f"with a column at an older look")
     # contact sheet: 8 per row, 1x
     per = 8
     w = 256

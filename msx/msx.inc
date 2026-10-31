@@ -830,6 +830,9 @@ vat_bk:     equ 0xF0EA              ; V9938: the last column drawn, copied onto 
 vat_bkc:    equ 0xF0EB              ;   its column (vat_shown's index),
 vat_bky:    equ 0xF0EC              ;   the kept rows' prev_cy it is copied for
 vat_cmd:    equ 0xF0ED              ; 15: a part's VDP command (R#32-R#46; F0FCh-F0FFh: free)
+vat_fr:     equ 0x0860              ; 39: the vat column being prepared or ready for the blank
+                                    ;   (field.asm VF_*; page-0 RAM that TC_REF leaves free with 256
+                                    ;   slots at most: 0860h-088Fh)
 ; Brainstorm (msx/puzl.asm) while it runs, in objl_ram (EE00h-EF4Fh: the renderer's): the wanted
 ; state, what the original has drawn as of the last pass (pz_frame), for the renderer. Its
 ; first bytes follow the shown state's layout (puzl.inc PZ_ST_TV ... PZ_ST_BAR, PZ_ST_NONE: not

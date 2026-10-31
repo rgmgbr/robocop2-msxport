@@ -204,6 +204,7 @@ proc l2b_fd_hit {} {
 		puts -nonewline $f [debug read_block memory 0xF500 0x400]
 		puts -nonewline $f [debug read_block memory 0x0600 0x400]
 		puts -nonewline $f [debug read_block memory 0xF240 0x40]
+		puts -nonewline $f [debug read_block memory 0xF012 0xD5]   ;# (level 2's vats: fieldcheck.py VATX)
 	}
 	close $f
 	incr ::l2b_fd_k
