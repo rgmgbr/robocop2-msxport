@@ -10,6 +10,11 @@ effects in banks 86-87 (section 2.1). Section 4.1 counts the whole game against 
 there: about 189 banks likely and 198 high, 196 and 203 with the range's graphics raw too, of 256.
 The rest of this document is the budget of 2026-10-26.
 
+**Update, 2026-10-31.** The shooting range (2.2) and level 2 with both stages' second visits (2.3)
+are built: **127 of the 128 banks**, still 1 MiB, the count the level-2 plan estimated
+(`docs/LEVEL2.md` 3.12). The next block, level 3's first, makes the image 2 MiB with its boot guard:
+the minimum device for the complete game.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -43,6 +48,8 @@ Conventions:
 | Free on 2026-10-27 (banks 88-127) | 40 | 320 |
 | Used on 2026-10-28, with the shooting range too (banks 0-103, 2.2) | 104 | 832 |
 | Free on 2026-10-28 (banks 104-127 of the 1 MiB test images) | 24 | 192 |
+| Used on 2026-10-31, with level 2 and the stages' second visits (banks 0-126, 2.3) | 127 | 1,016 |
+| Free on 2026-10-31 (bank 127) | 1 | 8 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -127,9 +134,9 @@ of fill. `rowtab.inc` stores a bank and an address for each row, so that row can
 
 ### 2.1 Added on 2026-10-27: Brainstorm
 
-M, from the product's image and label file at `b59a338`. The image at `14bc5ef` differed only in
+M, from the product's image and label file at `ff249f6`. The image at `8b89e4e` differed only in
 bank 78: `rs_one` without its two `nop`s, `puzl_end` at ADFCh (3,580 B used). With the sound, from
-the product of `bs-sound-int` merged with main `a90e77a` (`puzl_end` AE12h):
+the product of `bs-sound-int` merged with main `fcdd9e8` (`puzl_end` AE12h):
 
 | Banks | Content | Bytes used | Fill or free |
 |---|---|---:|---:|
@@ -139,13 +146,13 @@ the product of `bs-sound-int` merged with main `a90e77a` (`puzl_end` AE12h):
 | 88-127 | Free | 0 | 327,680 |
 
 - `tools/mkrom.py` places the bonus stages' code banks (`STAGES`) after the sound effects, so no
-  bank before 78 moved, and the data banks 10-77 are byte-identical to those of `52149b0`
+  bank before 78 moved, and the data banks 10-77 are byte-identical to those of `1818985`
   (`ROBOCOP2_v0.1.3-test1.ROM`, the last image before Brainstorm) but for bank 45's padding, which
   took PUZL's three HUD messages (447 B free in `HUD_BANK` + 1, 493 before).
 - The code banks changed where code was added: 23 B of fixed code (the hook, `hud_keep`,
-  `pz_done`: 190 B free, 213 at `52149b0`), with the banked modules' calls into the fixed area
+  `pz_done`: 190 B free, 213 at `1818985`), with the banked modules' calls into the fixed area
   moved by a few words, and FRONT (`front_bonus`, `fe_text` and the four bonus texts: 2,733 B free,
-  3,202 at `52149b0`).
+  3,202 at `1818985`).
 - Bank 90 (5Ah) is still padding; when it holds data, its byte at 1800h must not be an SCC test
   value (mkrom checks it).
 - **The sound** (`pzm.bin` after the graphics, so again no earlier bank moved):
@@ -168,7 +175,7 @@ the product of `bs-sound-int` merged with main `a90e77a` (`puzl_end` AE12h):
 
 ### 2.2 Added on 2026-10-27/28: the shooting range
 
-M, from the product's image and label file of the branch `range` at `4650771` (`docs/RANGE.md`
+M, from the product's image and label file of the branch `range` at `b4fdcc3` (`docs/RANGE.md`
 3.12 and 11):
 
 | Banks | Content | Bytes used | Fill or free |
@@ -180,7 +187,7 @@ M, from the product's image and label file of the branch `range` at `4650771` (`
 | 104-127 | Free | 0 | 196,608 |
 
 - Again no earlier bank moved: `tools/mkrom.py` places FRNG's code bank after `pzm.bin`, then its
-  data. Against `4a8a61d` (test3's code) the product's image differs in bank 7 (the range's texts in
+  data. Against `cb7c9ef` (test3's code) the product's image differs in bank 7 (the range's texts in
   FRONT), bank 45 (the HUD's two new messages: 424 B free in `HUD_BANK` + 1, 447 before) and the
   code banks where code was added:
   - the fixed area: 2 B (`fr_done`, `fr_rated`; `code_end` 7F44h, 188 B free; `PZ_TEST=2` builds
@@ -192,6 +199,54 @@ M, from the product's image and label file of the branch `range` at `4650771` (`
 - Bank 90 now holds graphics: its byte at 1800h is not an SCC test value (mkrom checks every
   build), nor bank 9's at B800h.
 - `ROM_2M=1` pads the same 104 banks to 256 with the boot guard's tag in bank 255.
+
+### 2.3 Added on 2026-10-28 to 2026-10-31: level 2
+
+M, from the product's image, `gen/banks.inc` and label file at `level2`'s head (`d092b97`: milestones
+1 and 2 accepted, milestone 3's steps 17-21 built; `docs/LEVEL2.md` 3.12): **127 of 128 banks, still 1
+MiB**.
+
+| Banks | Content | Fill or free |
+|---|---|---|
+| 0-1 | fixed code | 181 B free (46 B in the lowest option set, `DIAG=1 PZ_TEST=1`) |
+| 2-9 | LC1, LC2, `BANK_L1`, LC3, INPUT, FRONT, FIELD, MUSIC | 53; 4,842; 874; 4,866; 11; **1,381**; **143** (102 in `EXTJOY` builds); 1,331 B free |
+| 10-20 | level 1's tiles (10-17) and map (18-20) | as before |
+| **21-47** | **the global sprite pool** (`sprites.bin`: compositions 7 banks, patterns 15, colour rows 5): RoboCop, level 1's and level 2's BOB frames, one index per level | 3,604 of 3,840 patterns, 2,067 of 2,560 colour rows used |
+| 48-55 | HUD data, level 1's attributes, HUD image, level 1's tables, its atlas, the dynamic frames | as before |
+| 56-81 | title and game-over pictures, the speech, the title's music, the SCC effects | as before |
+| 82-91 | Brainstorm: code (82, `BANK_PUZL`, 4,483 B free with visit 2's out-of-line code), graphics (83-89), music (90-91) | |
+| 92-107 | the range: code (92, 264 B free), graphics (93-100), hit data (101-102), music (103-107) | |
+| **108** | **`BANK_L2`**: level 2's logic, its shared handlers' copy, its seven new types, the vats' logic and display (`msx/vats.asm`), its tables | **29 B free** |
+| **109-116** | level 2's tiles (the 64 KiB VRAM image of its 511 tiles) | |
+| **117-118** | level 2's map, 160 × 50 words | |
+| **119** | level 2's packed attributes | |
+| **120** | level 2's tables: OTILE, ATR2, its BOBHASH, the vats' tables (`L2_VATS`), its graded palette and `view_offy` | |
+| **121-122** | level 2's play-field atlas (108 lines, 9,722 B; each bank with its own table) | |
+| **123-126** | Brainstorm's visit-2 pictures (`puzl_tv2.bin`, 28,800 B: Ellen's 9 TV pictures) | |
+| 127 | free | 8,192 B |
+
+- **The banks moved once**: level 2's step 12 rebuilt the sprite pool in place (23 → 27 banks), so
+  every block after it moved 4 banks on; `tools/bstest/romdiff.py --blocks` compares the blocks by name
+  and found every data block identical at its new bank. Level 2's blocks follow the range's, and
+  Brainstorm's visit-2 pictures came last (`rd_at` reaches only 8 banks from `PUZL_GFX_BANK`, so they
+  are a blob of their own, read by visit 2's own code).
+- **The level-2 total is the plan's (3.2: 15 banks, plus the pool's 4)**: `BANK_L2` 1, tiles 8, map 2,
+  attributes 1, tables 1, atlas 2 (the "streamed big frames" went into the atlas: types 14 and 16 fit
+  once the dynamic slot moved to page 2 in level 2); the pool +4; Brainstorm's second visit +4.
+- **The code banks**: the fixed area went from 188 B free (the range's base) to 389 (level 2's step 4
+  moved the power-on init and the title's code to FRONT) and back down to 181 as level 2's start, its
+  flow, the vats' hooks, the cut's hook and the view took their bytes. FRONT went from 2,309 to 1,381
+  (the level start, the descriptors, the flow, the continue, the briefings' and the offer's scripts,
+  the cut's work). `BANK_FIELD` from 1,529 to 143. `BANK_L2` holds 8,163 B.
+- **What level 3 needs**: one more block of any size passes 128 banks, so the image becomes **2 MiB**,
+  which carries the boot guard (`cold.asm` `rom_guard`, the tag in bank 255): a device that holds less
+  shows "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM" and stops. That is the minimum device
+  for the complete game (the user's decision of 2026-10-26, `README.md`). Level 3's estimate (3.3: 17 /
+  19 / 22 banks, its pool share 4 / 5 / 6) and the rest of section 3 stand: the whole game at about
+  152-164 of the 256 banks. Level 3's logic needs a bank of its own (`BANK_L2` has 29 B left), and the
+  fixed area's 46 B in the lowest option set are the scarce part again.
+- `ROM_2M=1` pads the 127 banks to 256 with the boot guard's tag; the 2 MiB product's flow passes in
+  every gate (`docs/HARNESS.md` 5.19).
 
 ## 3. What the rest of the game needs
 

@@ -139,9 +139,10 @@ level 2's tables can be copied from either.
 
 **As built (2026-10-31).**
 - **The logic** [V]: every routine of 2.5 is ported (steps 8-9). Level 2's 23 traces (the 16
-  references of 4.1 and the four new drives, `tour` and `vat` on three machines, `trolley` at 50 Hz,
-  `cont` through the continue, `flow_l2_end` through level 1 and both stages) compare 0 differ in all
-  1,022 fields over every row; level 1's traces stay at 0 (steps 11, 16, 18, 19).
+  references: the plan's 12 and the four new drives; `tour`, `vat` and `cont` also on the MSX2+ and
+  the turbo R, `trolley` at 50 Hz, `cont` through the continue, `flow_l2_end` through level 1 and
+  both stages) compare 0 differ in all 1,022 fields over every row; level 1's traces stay at 0
+  (steps 11, 16, 18, 19).
 - **The level start** is one path for both levels (`lv_go`, a 32-byte descriptor in `lv_cur`: 3.1),
   with three recorded departures: VRAM is uploaded only when it holds another level's (`lv_vram`),
   level 1's palette left the fixed area, and the whole power-on init moved to FRONT (step 4).
@@ -1228,7 +1229,8 @@ every static column one look. Palette C is `tools/msxlvpal.py`'s (mean ΔE76 2.4
 says (mkrom checks that they do not overlap). Default 14 became its alternative (3.1): the uploads
 run only when VRAM holds another level's.
 
-**As built: the vats** (step 14; the variant at step 16; `docs/MSX_ARCHITECTURE.md` "The vats"):
+**As built: the vats** (step 14; the variant at step 16; `docs/MSX_ARCHITECTURE.md` "Levels", "The
+vats' display"):
 - **The rule** (`tiles.asm` `get_tile`): in level 2 every cell without a map patch goes to
   `field.asm` `vat_tile` (`BANK_FIELD`), which draws a vat cell at its column's look on the page being
   drawn (`vat_pg`; `vat_disp` holds a nibble per page: 8 + (look & 7), the look's half from
@@ -1246,8 +1248,8 @@ run only when VRAM holds another level's.
   T1, T2 from the cache and an overlapping HMMM that copies the T1/T2 pair down the column, cut at the
   page's line 255. On the V9938 the column is then copied onto the other page (`vat_mirror`) and the
   flip waits for it (`vat_bk`).
-- **Departures**: a column that meets a BOB waits ("the BOBs first") instead of going through
-  `fb_meetq`; the vats never keep the engines' `iw_more` (with it, every `feed_vdp` in the logic took
+- **Departures**: a column that meets a play-field BOB or its work waits (`vat_meet`) instead of
+  going through `fb_meetq`; the vats never keep the engines' `iw_more` (with it, every `feed_vdp` in the logic took
   its full path while a column waited: the MSX2+ lost 13 % of its speed); the first design's "no column
   while a play-field command runs" went too (it cut the MSX2+'s columns from 137 to 38).
 - **Zero glitches** [V, steps 14-16]: `vatcheck.py` exit 0 in all 18 guarded windows on the three

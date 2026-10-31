@@ -7,7 +7,7 @@ map, sprites and bench belong to the other areas of the phase (`space/l2/logic`,
 `sprites`, `bench`); this file gives them the interface the flow needs.
 
 Base:
-- the repository at `3c3a735` (branch `range`), read only;
+- the repository at `781005e` (branch `range`), read only;
 - `docs/MSX_ARCHITECTURE.md`, `docs/AMIGA_ANALYSIS.md`, `docs/ROM_BUDGET.md` (3.2, 4.1),
   `docs/BRAINSTORM.md`;
 - the range's design `space/range/RANGE.md`.
@@ -18,7 +18,7 @@ through the MCP tools or the REA CLI 6.7.0. The listings are in `rea/listings.tx
 in `flow_level2.sym`. `$C91A` needed one extra function seed (`rea/seeds_flow.tsv`).
 
 Tags:
-- **V**: verified, by REA, by data, or by the port's source at `3c3a735`;
+- **V**: verified, by REA, by data, or by the port's source at `781005e`;
 - **I**: inferred, not confirmed by a run;
 - **D**: a design decision for the port;
 - **E**: an estimate.
@@ -338,7 +338,7 @@ the AM mirror at every level start.
 - **The range** reads `$8050` only at `$1FBBE`: palette `$1FC2A` instead of `$1FBEA`. FRNG is
   decrunched again, so every state starts from the file (RANGE.md 2.10).
 
-## 3. The port today [V: source at `3c3a735`]
+## 3. The port today [V: source at `781005e`]
 
 ### 3.1 How level 1 starts
 
@@ -392,7 +392,7 @@ music. The current `gen/banks.inc` (Brainstorm's layout) has:
 | 88-103 | the range (RANGE.md 3.12): code 88, graphics 89-96, hit data 97-98, FRM 99-103 |
 
 The build-time values a second level must turn into per-level values (uses in `msx/*.asm` at
-`3c3a735`):
+`781005e`):
 - `MAP_ROWS` (11 uses: cold, field, hits, level1, both scroll engines, tiles, logic);
 - `rowtab` (5) and `atr_rows` (5);
 - `BANK_TILES` (3), `LEVEL_BANK` (4), `ATR_BANK` (2), `FIELD_IMG_BANK` (2), `FIELD_DYN_BANK` (2);
@@ -491,7 +491,7 @@ ml_ttl: call title
        weapon. It clears the message queue and ticker and sets the energy display to full.
   4. `display_on`, then the main loop (the test hooks of section 7 first).
 - **The descriptor** (one per level, in FRONT; ~22 bytes; copied to `lv_cur` in RAM). A candidate
-  block is `F1A0h-F1C2h`: free per `msx.inc:818` and `:878` at `3c3a735` (35 B), and absent from
+  block is `F1A0h-F1C2h`: free per `msx.inc:818` and `:878` at `781005e` (35 B), and absent from
   RANGE.md 3.2's list of the range's RAM. Other agents are editing `msx.inc` on the branch, so
   check again before taking it.
 
@@ -842,7 +842,7 @@ Open questions for the user (defaults stand meanwhile):
   Listings: `rea/listings.txt`; CLI outputs: `rea/*.json`.
 - Data: `build/extracted/files` (MADEX against DATAL1), `build/front/scripts.json`,
   `build/music/MU1.json`, `build/msx/sound.inc`, `build/msx/gen/banks.inc`.
-- The port at `3c3a735`: `msx/rc2.asm`, `objects.asm`, `level1.asm`, `cold.asm`, `front.asm`,
+- The port at `781005e`: `msx/rc2.asm`, `objects.asm`, `level1.asm`, `cold.asm`, `front.asm`,
   `frame.asm`, `puzl.asm`, `frng.asm`, `player.asm`, `msx.inc`, `tools/mkrom.py`,
   `tools/msxtext.py`, `tools/player.py`, `tools/amigaemu.py`.
 - Docs: `docs/AMIGA_ANALYSIS.md` (sections 3, 4, 5), `docs/BRAINSTORM.md`, `docs/ROM_BUDGET.md`,

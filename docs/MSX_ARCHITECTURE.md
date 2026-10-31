@@ -572,8 +572,8 @@ which as sprites were striped, cut or left out.
   level-1 enemy type, explosions (`$F080`), pickups (`$F900`), the energy can (`$89BE`), the
   random word (`$BDCE`) and the frame's end (`$8144-$82E8`, `frame.asm`: cheats, time out, the
   level's end, the death sequence, lives; `FE_RESTART` runs `level_restart`, `FE_OVER` shows
-  the game over picture, `FE_NEXT` the level's statistics; both then go to the title and a new
-  game until the next levels exist).
+  the game over picture and the continue offer, `FE_NEXT` the level's statistics, the bonus stages
+  and the next level: "Levels" below).
 - **Fewer enemies** (`tools/mkrom.py` `ENEMY_CAP`, 1 in the product): with that many enemies in
   use their spawns wait (`objects.asm` `uo_cap`): a free slot still walks the level's spawn list,
   but the enemies' entries stay as they are, and the spawn delay and the map's markers do not
@@ -752,15 +752,23 @@ which as sprites were striped, cut or left out.
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about
-  13 lines while the play area is displayed). Between the HUD split and the VBLANK interrupt
-  (`split_armed` = 0) the changed cells come first, up to `RD_BURST` (6) in a row, each
-  started through `vdp_cmd_q` (R#32-R#45 first, then the window test and the R#46 write with
-  interrupts off) after the one before (`sw_redraw`, `s38_rburst`); at other times the oldest
-  is drawn at once, as before: a change never waits. Tried and dropped: starting them only in
-  that window. Near level 1's animated mechanism (x ≈ 1016, about 100 `rd_queue` calls a
-  second) the window served about 20 a second and the queue overflowed (`rd_lost` 76 / 155 over
-  260 s); with a fallback only past 8 waiting, a changed cell still waited up to about a second
-  for a window (the main loop seldom runs there). On the V9938 a flip between a cell's two
+  13 lines while the play area is displayed). **The window**: between the HUD split and the
+  VBLANK interrupt (`split_armed` = 0) the changed cells come first, up to `RD_BURST` (6) in a
+  row, each started through `vdp_cmd_q` (R#32-R#45 first, then the window test and the R#46
+  write with interrupts off) after the one before (`sw_redraw`, `s38_rburst`); **at other times
+  they wait for that window** (`scroll9958.asm` `swr_one`, `scroll9938.asm` `s38_redraw`; level
+  2's step 16, 2026-10-31). Until then the oldest was drawn at once ("a change never waits"),
+  and a cell the beam passed while its copy ran showed half drawn for one picture, 1-4 times a
+  minute in both levels' busy places (the guard's class `dt_count`/`swr_none`, `ttp_count`/
+  `s38r_nz`: gone with the change); a cell now shows its change one picture later at most, never
+  half drawn. The V9938's other page goes on as before. The window alone had been tried earlier
+  and dropped: near level 1's animated mechanism (x ≈ 1016, about 100 `rd_queue` calls a second)
+  it served about 20 a second and the queue overflowed (`rd_lost` 76 / 155 over 260 s), before
+  `rd_bits` kept a waiting cell from being queued again (below). At step 16 the lost counters
+  stayed 0 in every level-2 job and in level 1's start checks, and the gate's field check passed
+  in level 1's windows (one of them, game frame 1490, shows the conveyor's changed cells: now a
+  picture later, the still `m2_g1490` judged so); the queue near the mechanism at x ≈ 1016 was not
+  measured again. On the V9938 a flip between a cell's two
   phases restarts it on the new displayed page (`s38_update` clears `rd_phase`): before, the
   second phase found no back page and the new displayed page could keep the tile its shifted
   copy brought before the change (seen: 4-17 pictures with an old tile after a flip). Until a
@@ -776,8 +784,8 @@ which as sprites were striped, cut or left out.
   the beams' corridor; now none, the queue at most 38). Known: a map object of several cells
   changed in one tick (a bin of 2x2) is redrawn one cell a call, so for about 2 pictures it
   shows partly changed; on the V9938 a beam cell may wait about 20 frames for its redraw (two
-  pages to draw); a cell drawn "at once" outside the blank can tear for one picture (the
-  15-machine batch: 1-6 in 40 s).
+  pages to draw); until 2026-10-31 a cell drawn "at once" outside the blank could tear for one
+  picture (the 15-machine batch: 1-6 in 40 s), which the window above ended.
 - **Verification**: test ROMs play a joystick script (`tools/mkrom.py ... JOY=F:C:KEYS,...`,
   `TELE=`, `GOD=1`), or are driven from openMSX (`EXTJOY=1`: `tools/openmsx_rc2.tcl`
   `rc2_drive_rom` / `rc2_drive_trace` feed each tick the joystick byte, teleports, god mode
@@ -815,6 +823,220 @@ which as sprites were striped, cut or left out.
   quick test, the attribute reads, the view's tables, the spawn list walk, the lifts' path
   stepping, the hazards' window, the shortcuts above (2026-10-23).
 
+## Levels: the descriptor, level 2 and the flow between them (2026-10-28 to 2026-10-31)
+
+Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As built" notes;
+`docs/level2/HANDOFF.md`: every step's account). Level 3 is not ported.
+
+### The level descriptor (`lv_cur`, `lv_desc`)
+
+- **One level start for every level** (`rc2.asm` `lv_go`, A = the level: 0 level 1, 1 level 2;
+  `level_init` `$871A`): `ld c,a` / `ld hl,lv_select` / `call front_call`, then `obj_start` (the
+  level bank's `lv_init`), `ao_start` (LC2), `engines_init` (`field_call`), `hud_start` (FRONT) and
+  `display_on`. A new game is `new_game`: `dsp_off`, then `ng_go`, whose `cold.asm` `ng_init` (FRONT)
+  clears AG, gives two lives, sets SHARP (`ac_diff` = `diff_tab`, `$8314`) and falls into
+  `lv_select` with C = 0.
+- **`lv_select`** (`cold.asm`, FRONT): `lv_copy` copies `lv_desc` + C × `LV_SIZE` into `lv_cur` and the
+  level's palette and `view_offy` into `lv_pal` (C68Ah, 32 B) and `lv_voffy` (C6AAh, 43 B), mapping
+  `lv_tab`'s bank at A000h when the pointers point there; `lvs_vram` uploads the level's tiles 0-255
+  into page 2 (`tiles_upload` E = 4) and its atlas into page 3 (`field_upload`, bank by bank) **only
+  when VRAM holds another level's** (`lv_vram`, F1C2h: the title, the stages and `vdp_setup` put back
+  the tiles of the level `lv_cur` holds, and nothing else writes the atlas); then `tiles_init` (the
+  tile cache, the map patches; a turbo R's R800 from here), `atr_load`, `pl_init`, `lvl_bank` =
+  `lv_logic`, `lv_fresh` = FFh (the level's lists copied into RAM by `lv_init`).
+- **The descriptors** (`gen/levels.inc`, `tools/mkrom.py`, assembled into FRONT: level 1's `lv_desc`,
+  level 2's `lv_desc2` right after it, `ds` lines holding the layout; level 1's palette `lv_pal1` and
+  `view_offy` `lv_voffy1` beside them, level 2's in `L2_TAB`). `lv_cur` (F1A0h, `LV_SIZE` = 32; 34 at
+  most, `lv_vram` follows) is filled with level 1's at power-on before `vdp_setup` (`cold_init`):
+
+  | Field | Offset | Level 1 / level 2 | Read by |
+  |---|---|---|---|
+  | `lv_logic` | +0 | `BANK_L1` / `BANK_L2` | `lvl_bank` (A000h during the logic) |
+  | `lv_tiles` | +1 | the tiles' first bank | `tiles_upload`, `tc_upload` |
+  | `lv_mapb`, `lv_rows` | +2, +3 | the map's first bank; 51 / 50 rows | `get_tile` (`rowtab`'s banks are relative to it); `atr_load`, `atr_rc`, `ar_after`, `atr_new`, `ttp_prep`, `dt_prep` |
+  | `lv_atr`, `lv_atrn` | +4, +5 (2) | the packed attributes | `atr_load` |
+  | `lv_tab` | +7 | the tables bank (OTILE, ATR2, BOBHASH at 8000h) | `map_write`, `ar_after`, `bf_fid`, the vats |
+  | `lv_fimg` | +8 | the atlas's first bank (level 2's two, each with a table: bit 7 of its count = another follows) | `field_upload` |
+  | `lv_dyn`, `lv_dynp` | +9, +27 | the dynamic slot: page 3 line 88 / page 2 line 224 | `field.asm` |
+  | `lv_x`, `lv_y`, `lv_ymax` | +10, +12, +14 (2 each) | RoboCop's start (144, 800) / (352, 784); the camera's lowest y 640 / 624 | `pl_init` |
+  | `lv_camy`, `lv_maph` | +16, +18 (2 each) | the view's lowest y; the map's height in pixels | `pl_view`, `field.asm` |
+  | `lv_palp`, `lv_voffp` | +20, +22 (2 each) | the palette (graded) and `view_offy` | `lv_copy` |
+  | `lv_sidx`, `lv_spark` | +24 (2), +26 | the level's BOB index in the global sprite pool (`SPR_BOB_INDEX_Ln`); its hit spark's first frame − 1 | `sprites.asm` `os_new`, `player.asm` |
+  | `lv_tcn` | +28 (2) | the tile cache's slots, negated: −256 / −224 | `tc_load`, `tiles_init` |
+  | `lv_fld` | +30 (2) | the level's play-field tables in `BANK_FIELD` (`fld_l1`, `fld_l2`: `FIELD_LATE`, `FIELD_DYN0/1`, `field_tab`, `field_look`) | `fb_init` (copies them to `fb_flate` ... `fb_flook`) |
+
+- What stays one for both levels: `CAM_X_MAX`, `VIEW_KX`, `view_offx`, `atr_rows`, the `ATR_RAM0` /
+  `ATR_RAM1` split, the dynamic frames' banks, RoboCop's flash entries, `FIELD_ID0` (D0h), and `cp 51`
+  in `map_cell`, `map_atr` and `cell_solid` (the original's `$EF8E` reads rows below 51 in every
+  level: level 2's row 50 is its BOB data after the map, `docs/AMIGA_ANALYSIS.md`).
+- **The level bank's header** (`objects.asm` equates; every level bank at A000h): `lv_htab` (53 type
+  handlers and deaths, 4 bytes each), `lv_init`, `lv_tick` (jumps), `lv_hz` (the hazard records),
+  `lv_swn1`, `lv_swlast` (the spawn list's last entry), `lv_hzxn`, `lv_hzyn`, `lv_hzxm`, `lv_hzym`,
+  `lv_hzall` (the hazards' cells and masks), `lv_noten` (code: the types `ENEMY_CAP` does not count:
+  level 1's 32, 44, 45, level 2's 45), then from `LV_HDR_END` (A0F0h) the shared code
+  (`lvshared.asm`; level 2's copy `gen/lvshared_l2.asm`, every label it defines and every level-data
+  name it uses suffixed `_l2`) at the same addresses in every bank: `tools/mkrom.py` `lvshared_check`
+  stops the build otherwise, so the fixed banks call it with no vector.
+
+### Level 2's modules and banks
+
+| Banks (the 1 MiB product) | What |
+|---|---|
+| 108 `BANK_L2` (A000h) | `msx/level2.asm`: the header, `l2_init` (`$871A`'s level part: the lists, the vat phases and looks, the specials, the header's values, `set_weapon(0)` on a fresh start), `lt1` (the vats' logic, `$91BC`); `gen/lvshared_l2.asm`; `msx/level2obj.asm`: types 1, 2, 5, 6, 14, 16, 49, `death_c33e`, `walk_d6`, `l2_fall8`, `fly_half`, `l2_flash`; **`msx/vats.asm`**, the vats' display; `at_l2.inc`, `cells_l2.inc`, `vats_l2.inc`. 29 B free |
+| 109-116 `L2_TILES` | the tiles as a VRAM image (`level2.vram`'s pages 2-3) |
+| 117-118 `L2_MAP` | the map, 50 rows, 25 a bank |
+| 119 `L2_ATR` | the packed attributes |
+| 120 `L2_TAB` | at 8000h: OTILE, ATR2, the BOBHASH (8600h), the vats' tables (`L2_VATS` 9700h: a row's vats, the 7 records, the 48 tiles of T0/T1/T2); at A000h: the graded palette (B680h) and `view_offy` (B6A0h) |
+| 121-122 `L2_ATLAS` | the play-field atlas, 108 lines in two banks |
+| 123-126 `PUZL_TV2_BANK` | Brainstorm's visit-2 pictures (not level 2's, but placed after it) |
+
+- In the shared banks: LC2 `act_0c` (`$9EE8`, the blinking mine: after `act_1c`, so level 1's LC2
+  code keeps its addresses); LC3 `sp_trolley` (`$8F02`, the special handler 4; `sp_d7` = BCh after
+  its BOB); `BANK_FIELD` the vats' cell rule and checks and `fld_l2`; FRONT the flow below.
+- `lv_htab_l2`: types 1 `t1`/`death_c31e`, 2 `t2`/`death_c2d8`, 5 `t5`/`death_none` (`$C1FA` is an
+  `rts`), 6 `t6`/`death_c33e`, 14 `t14`/`death_c2ee`, 16 `t16`/`death_c31e`, 49 `t49`/`death_c35a`;
+  3, 4, 12, 13, 15, 18, 30, 31 and 45 the `_l2` copies with level 1's deaths.
+- The sprites: one global pool for both levels (`sprites.bin`, banks 21-47; per level a BOB index,
+  ids and BOBHASH; type 1 as 16 joint compositions of legs and torso, its torso's calls `BOB_HIDDEN`).
+  Level 2's play field: types 2, 14 and 16's bodies, the trolley (frame 34, copied late as the lift),
+  the hostage and the lifts (see "Play-field BOBs").
+
+### The flow (`ml_ev`, `lv_next`, `front_brief`, `hud_lvl`)
+
+- **`ml_ev`** (fixed code; `g_event` from `frame.asm` `frame_end`): `FE_RESTART` → `ml_rst`
+  (`level_restart`, then `lr_on`: `display_on`, `g_tick` = 0, the main loop); `FE_OVER` → `ml_ov`
+  (below); `FE_NEXT` (the level done: `$81B8` made AG `$8050` + 1) → `front_stats`, `front_bonus`
+  (Brainstorm, the range, then `front_brief`, the next level's briefing), then AG `$8050` = 1 goes on
+  into **`lv_next`** (`dsp_off`, `lv_go` with A = `$8050`: level 2), anything else into `ml_ttl`
+  (`title`, `new_game`: after level 2, level 3 not being ported).
+- **`front_brief`** (FRONT, at `front_bonus`' end before `jp cpu_title`): AG `$8050` 1 shows
+  `txt_l2_brief` ("TOKUGAWA BREWERY", "ARREST CAIN"), 2 `txt_l3_brief` ("CIVIC CENTRUM", ...), else
+  nothing, through `fe_text` (the original's particle titles typed in the 8 × 8 font at their calls:
+  393 and 411, the screens 394 and 412 ticks; silent, the HUD's messages ticking below, fire from tick
+  50, TEST n in a `TAG` build). PIC4 and PIC7 are dropped (decision 5).
+- The stages' second visits read AG `$8050` = 2: the range its darker palette (`frng.asm`),
+  Brainstorm its boards and Ellen's face (`puzl.asm` `bs_v2`, out of line: visit 1 runs its old code).
+- **`hud_start`** (FRONT, from `lv_go`): `hud_init` while AG `$8050` is 0 (a new game), else
+  **`hud_lvl`**: the empty panel again (what the stages, the text screens and PIC9 left goes), then,
+  with the display off, the game's own HUD work (`hud_keep`, 24 calls, `g_tick` 0) draws AG's timer,
+  ammo and score and the heads (slot k keeps head 0 while lives > k, else graphic 5, the lost life's
+  last look); the message queue and the ticker cleared; `hud_last` cleared (else a continue whose
+  values equal it keeps the panel's 09:58); it ends with `logic_map`. The first picture of the next
+  level shows 07:30, the score, the lives, weapon 0's icon and 000, the can full.
+- A death restarts the level as before (`level_restart`: the map keeps its changes, the lists their
+  state); `level_restart` leaves the display off for its caller (`ml_rst`, `lv_cont`).
+
+### The continue (`front_over`, `front_cont`, `fo_cont`, `lv_cont`)
+
+- **`front_over`** (FRONT): `fo_cont` (C6F0h) cleared first (a continue taken earlier must not leave
+  it set), PIC9 for 30 s or fire, AG `$8032` = FFh (`high_score_entry` `$12082`'s `st.b $8032`; the
+  entry itself is not ported), then `front_cont`; it returns `fo_cont` as the flags.
+- **`front_cont`** (`$11FD2`): AG `$805E` − 1 as a word; below 0 its high byte cleared (`$11FEE`: the
+  word reads 00FFh) and `jp cpu_title`; else `cpu_title`, `front_done` (SCREEN 5), `fb_prep`,
+  `display_on` where `fb_prep` does not call it (every machine but the turbo R: after PIC9 there is no
+  HUD split otherwise), `fe_text(txt_cont)` ("YOU HAVE A GAME CREDIT." / "PRESS FIRE TO CONTINUE.",
+  304 calls, silent), `fo_cont` = 1 when the screen ended by fire or fire is held at its end, `jp
+  cpu_title`. Level 1's game over never offers it: `$805E` is 0 until Brainstorm is solved.
+- **`ml_ov`** (fixed): `front_over` through `front_call`; Z → `ml_ttl`; NZ falls into **`lv_cont`**
+  (17 B): `lv_cfront` (FRONT: two lives, `lv_vram` = FFh and `lvs_vram`'s uploads, since PIC9's G7
+  overwrote page 2, `tc_reset`: the tile cache alone, with `cpu_game`), `level_restart`, `hud_lvl`,
+  then `lr_on`. The map patches, the attribute RAM, the level's lists and the vats' state are not
+  touched: the level goes on from its last state as after a death (`level_init`'s entry 1, an `rts`
+  for level 2).
+- A script build's `title` runs `front_done` when `front_mode` is set (after a game over); the
+  product's `title` is `fr_title` as before.
+
+### The vats' display (`msx/vats.asm`, `field.asm`'s vat section)
+
+The original redraws up to 108 cells of a vat every other tick; the MSX shows them as a display
+layer over the map (no map patch, the logic exact: `lt1` keeps each column's look in `vat_shown`, 103
+columns, and marks the vat changed in `vat_chg`), whole columns at the newest look, never torn, never
+older.
+- **The cell rule** (`tiles.asm` `get_tile` → `field.asm` `vat_tile`, `BANK_FIELD`): in level 2 every
+  cell without a map patch goes there; a vat cell (`L2_VATS`' row bits and records) is drawn at its
+  column's look on the page being drawn (`vat_pg`: the V9938's `ttp_prep` and `fb_tiles` set it, the
+  V9958's ring is page 0): `vat_disp` holds a nibble per page, 8 + (look & 7) (the look's half from
+  `vat_shown`'s bit 3), and a column with no nibble on that page takes `vat_shown`'s look, which the
+  page then holds; T0 on the vat's first row, T1 and T2 alternating below. Any other cell gets the
+  map's tile (`vat_tile` reads it through the 8000h window), so the fixed area keeps only the jump.
+- **The round robin** (`vat_prep`, from the scroll engines' idle points through `tiles.asm`
+  `vat_idle` → `vat_l2`, `BANK_L2` at A000h around it): once a VBLANK on the R800, every `VAT_KZ` (4)
+  on the Z80, and only while a vat changed or a column waits, it looks from `vat_rr` on (then from 0)
+  for the first column in the view whose look on the page shown is not `vat_shown`'s, that meets no
+  play-field BOB nor their work (`vat_meet`: the item being composed, one queued, the boxes of the
+  lists, `fb_wbx`, and on the V9938 the page being built) and may be drawn in time; two tried at most.
+  It prepares that column in `vat_fr` (0860h, 41 B): its three tiles in the tile cache, the
+  destinations, the parts. `vat_run` sets `vat_rr` past the column it drew.
+- **The window** (`vat_run`, from `tiles.asm` `vat_win` at the engines' work with the VDP idle, only
+  while a column is ready): the beam outside the play area, between the HUD split and the VBLANK
+  (`split_armed` = 0) or in the blank after it (S#2's VR bit), one column a window (the Z80: one every
+  `VAT_KZ` VBLANKs). It checks again that the engines show what they showed (`vat_same`), the tiles are
+  still in their slots (`vat_valid`), no BOB came over it (`vat_meets`), and **`vat_fits`**
+  (`BANK_FIELD`): the column's rows (`VAT_LB` = 12 lines of VDP time each, `VAT_LP` = 15 a part's
+  start) end before the beam reaches its first line on the screen with the R#23 now (the list's on
+  screen and the one published for the next VBLANK, the least), started between the split and the
+  VBLANK (`VAT_LV` = 49 lines from the VBLANK to the play area, `VAT_LM` = 40 for that interrupt) or
+  in the blank after it (`VAT_LB0` = 4 at least). Then, with `cmd_lock` held, T0, T1 and T2 by HMMM
+  from the cache and one HMMM per part of the page that copies the T1/T2 pair down from 32 lines above
+  (it overlaps its source), cut at the page's line 255; the nibble of the frame's page (`VF_EP`, never
+  `vat_pg`) takes the look. A column whose checks fail is dropped; one `vat_fits` refuses waits for the
+  next window (`docs/LEVEL2.md` 8.1: the review's finding on it).
+- **The V9938's mirror**: the column is then copied onto the page being built or built (`vat_mirror`,
+  HMMM page to page, a part a call while the VDP is idle; that page is not shown), the flip waits for it
+  (`vat_bk`, `s38u_step`), and `vat_mmark` re-marks the BOBs over it there; a build's start gives its
+  page the looks of the columns its copy brings (`vat_bbinit`).
+- `vat_init` (every `engines_init` and `engines_jump`) clears the state and, in level 2, `vat_disp`,
+  and sets `vat_on`; a play-field BOB piece over a vat cell restores its background from the tiles
+  (`fp_tiles`, `vat_inbox`), never from a cache. The vats never keep the engines' `iw_more`, so that
+  `feed_vdp`'s calls in the logic stay as cheap as in level 1.
+- **`VAT_TICK=1`** (a build option, off by default): after each game tick `tiles.asm` `vat_tick` runs
+  `vat_prep` whether the engines are idle or not (the VDP busy too, but for the mirror), and while a
+  column is ready `sprites.asm` `feed_vdp` takes the engines' path between the HUD split and the
+  VBLANK, where `vat_run` draws it. Two to four times the columns for 2-8 % of the speed: the user's
+  comparison.
+- Measured (`tools/bstest/vatlog.tcl`, `vatcheck.py`): 0.7-1.2 columns a second on the MSX2, 2.4-2.7
+  on the MSX2+, 9-16 on the turbo R as built; a column of vat 0 seen standing is redrawn every 17 s,
+  5 s, 1.3 s (the original: 12.5 times a second); `vat_run` and `vat_prep` take 2-3 %, 4-5 % and 6-17 %
+  of the time; no column the beam drew into (`docs/LEVEL2.md` 3.5).
+
+### The cut at a vat's surface (`spr_cut`)
+
+On the Amiga RoboCop sinks into a vat: `level_tick_1` moves a copper WAIT (`$10356`) up, from which
+line the sprite DMA is off. `lt1` computes the same line into `vat_cut_line` (CE42h; `hz_update` sets
+CAh, no cut, every tick, as `$9150` does). `sprites.asm` `sprites_frame`, after `sat_build` and before
+`q_sat`, compares it with CAh (one compare per rebuilt SAT in every level) and, below it, keeps the
+8000h window's bank on the stack and calls `cold.asm` **`spr_cut`** through `front_call` (FRONT: 125 B,
+too many for `BANK_FIELD` in the trace builds), which puts the bank back:
+- the line's map y = the line − 1Eh (the play field's first line) + the game camera's y; its screen line
+  = that − `cam_y`, with the 9th bit kept: above the play area every entry is parked, below it nothing
+  is done;
+- over the SAT entries of RoboCop's run and the hit spark's (on the Amiga the spark is drawn into his
+  sprites): an entry whose top is on the line or below is parked (`sb_parky`); one the line crosses gets
+  colour 0 (transparent) in its colour rows from the line down in the set being prepared (`rs_colhi`),
+  and its row is marked unknown in that set (`col_held` FFFFh) so that the set's next list writes it
+  whole again;
+- the enemies are not cut (BOBs on the Amiga). A life's first lists before its first tick
+  (`vat_cut_line` 0) leave at once.
+
+### The arrest's view (`v_addx`)
+
+Type 2, the suspect, writes `$B2D8` = 500h every tick: the game's camera stays at x 0, where the
+Amiga's 288 px show the suspect whole and the MSX's 256 only his first columns. `level2obj.asm` `t2`
+eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 48; `player.asm`
+`pl_view` adds it to the view's x after `pv_add`, before `pv_keep`, which still keeps RoboCop within
+`AX_MIN`..`AX_MAX`. Display only: the logic's camera is untouched.
+
+### Test options
+
+- `LV_TEST=2` (`tools/mkrom.py`): power-on without the title, level 1's set-up, then once `rc2.asm`
+  `lv_test`: `front_l2test` writes `LV_CARRY` (`S:L:C:R`, default `10050:2:0:1`: the score, lives,
+  credits and rating) and AG `$8050` = 1, shows the level-2 briefing, and `lv_next` starts level 2 as
+  the product does; later games are the product's (`pz_first`). Refused with `PZ_TEST`.
+- `CHEAT=1`: AG `$804F` set at each new game (`ng_init`); `frame.asm` `fe_keys`, first in `frame_end`,
+  maps F5 to key code 59h (the level's end) and F4 to 58h (energy) in `$8032`, the original's F10/F9.
+  Refused with `DIAG`.
+- `VAT_TICK=1`: above.
+
 ## Front end (`msx/front.asm`, bank `BANK_FRONT` at `8000h`)
 
 - The title (TPIC) and the game over (PIC9) are SCREEN 8 pictures (`tools/msxpic.py`: 256 ×
@@ -834,10 +1056,12 @@ which as sprites were striped, cut or left out.
 - Flow: power-on → title (fire: the music fades out, then RoboCop's speech; or the tune played
   to its end, 103.68 s: the user's choices, 2026-10-25, the original loops it until fire and
   cuts it) → level 1; game over → PIC9 for 30 seconds or until fire is
-  pressed once released (the original: 128 frames; the user's choice) → title; the level's
-  end → the level's statistics → Brainstorm (its intro, the stage, its result: below) → the
-  shooting range (its intro, the stage, its result or OUT OF TIME.: below) → title (level 2 comes
-  later). Test builds with a script skip the title.
+  pressed once released (the original: 128 frames; the user's choice) → the continue offer when a
+  credit is left (level 2 on), else title; the level's end → the level's statistics → Brainstorm
+  (its intro, the stage, its result: below) → the shooting range (its intro, the stage, its result
+  or OUT OF TIME.: below) → the next level's briefing → level 2; after level 2 the same with both
+  stages' second visits → the level-3 briefing → title (level 3 is not ported: "Levels" below).
+  Test builds with a script skip the title.
 - **The level's statistics** (`front_stats`, `show_level_stats` `$85D8`: script `$1132F` through
   `$10762`): the henchmen killed (`$16C2`), the nukes collected (`$16C0`) and the hostages
   rescued (`$16BE`) typed into the play area of page 0 (a register list of its own: page 0
@@ -856,7 +1080,10 @@ which as sprites were striped, cut or left out.
   Brainstorm's code (`BANK_PUZL`, 78), its graphics (`PUZL_GFX_BANK`, 79–85) and its music and
   effects (`PZM_BANK`, 86–87), then the shooting range's code (`BANK_FRNG`, 88), its graphics
   (`RANGE_GFX_BANK`, 89–96), its hit data (`RANGE_HIT_BANK`, 97–98) and its music and effects
-  (`FRM_BANK`, 99–103): 104 banks in all (2026-10-28); the rest is free.
+  (`FRM_BANK`, 99–103): 104 banks in all (2026-10-28). Level 2's step 12 grew the sprite pool by 4
+  banks in place (every later block 4 banks on), level 2's blocks followed the range's and
+  Brainstorm's visit-2 pictures went last: **127 of the 128 banks** on 2026-10-31 (the map:
+  "Levels" below, `docs/ROM_BUDGET.md` 2.3).
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
   Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
   every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
@@ -906,10 +1133,11 @@ which as sprites were striped, cut or left out.
 
 The design, the measurements and the original's facts: `docs/BRAINSTORM.md`. Milestones 1 and 2
 are built: the original's logic and graphics, and its music and effects ("Brainstorm's music and
-effects" under Sound); the second visit (after level 2) shows visit 1's face until milestone 3.
+effects" under Sound); the second visit (after level 2) shows Ellen's face, level 2's step 20
+(`docs/LEVEL2.md` 3.9: visit 2 runs out of line, so visit 1 runs its old code).
 
-- **Flow.** `rc2.asm` `ml_ev`, FE_NEXT (the level's end): `front_stats`, then `front_bonus`, then
-  the title and a new game; FE_OVER and FE_RESTART are unchanged. `front_bonus` (FRONT) is the
+- **Flow.** `rc2.asm` `ml_ev`, FE_NEXT (the level's end): `front_stats`, then `front_bonus` (the
+  stages and the next level's briefing), then the next level or the title ("Levels" below). `front_bonus` (FRONT) is the
   original's `$8382` without its picture (decision 5): on a turbo R the Z80's hardware pause off
   and `display_on` (which measures the HUD split for the Z80, where `front_stats`' `cpu_title`
   left the game); `g_tick` = 0 (the energy can stays); the intro (`fe_text`); `BANK_PUZL` at A000h
@@ -924,7 +1152,7 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   the original's call count kept.
 - **Code and banks.** `msx/puzl.asm` is the last section of `rc2.asm`, at A000h: `tools/mkrom.py`
   places the bonus stages' code banks (`STAGES`) after the sound effects, so no earlier bank moved:
-  `BANK_PUZL` = 78 (3,582 B used at `b59a338`, 3,580 at `14bc5ef`; 3,602 with the sound's two
+  `BANK_PUZL` = 78 (3,582 B used at `ff249f6`, 3,580 at `8b89e4e`; 3,602 with the sound's two
   entries, `puzl_end` AE12h), the graphics (`tools/msxpuzl.py` `puzl_gfx.bin`, 56,704 B raw) from
   `PUZL_GFX_BANK` = 79 to 85, the music and effects (`pzm.bin`, 12,734 B) in 86-87. While the
   stage runs FRONT stays at 8000h; it maps the graphics banks only at 8000h, at its entry, and
@@ -964,7 +1192,8 @@ effects" under Sound); the second visit (after level 2) shows visit 1's face unt
   with `game_msg` as numbers 174-176 (`HUD_MSG_17738`, `HUD_MSG_17741`, `HUD_MSG_1774E`); level 1's
   21 messages keep their numbers.
 - **Build options** (`tools/mkrom.py`): `PZ_TEST=1` starts at power-on, without the title, in
-  Brainstorm (once, after level 1's set-up), then the shooting range, the title and a new game;
+  Brainstorm (once, after level 1's set-up), then the shooting range, the next level's briefing,
+  the title and a new game;
   `PZ_TEST=2` the same with the range alone (below); `PZ_LEVEL=1|2` their visit; `TAG=n` (1-99) shows TEST n below the bonus text screens of a test candidate. The trace
   harness builds `EXTJOY=1 PZ_TEST=1`. The product's flow and bytes do not depend on them.
 - **Checked** (openMSX): the stage's variables equal the original's pass by pass in nine drives on
@@ -987,8 +1216,9 @@ and FRNG, decrunched at `$1EA00`, ported routine by routine.
   POOR to SHARP; a time out gives POOR and Brainstorm's OUT OF TIME. screen (`txt_bs_time`, as
   the original shares `$11698`), else the result (`txt_rg_res` filled in `fs_buf`). The rating
   sets `ac_diff` = `diff_tab` + 24 − 8 × rating (the original's `$8060`: the next level's enemy hit
-  points). Level 1's `obj_start` still sets SHARP at every level start, so today the rating shows
-  nothing; level 2 must move that set to `ng_go`. The stage ends through `fr_done` and the rating
+  points). A new game sets SHARP (`cold.asm` `ng_init`, level 2's step 3: `obj_start` set it at every
+  level start before), so level 2 plays with the range's rating, as on the Amiga. The stage ends
+  through `fr_done` and the rating
   through `fr_rated` (fixed code, `ret`s: the trace harness's ends). `fb_prep` is the shared
   preparation (a turbo R's Z80 hardware pause off, `display_on`, `g_tick` = 0).
 - **The stage** (`msx/frng.asm`, `msx/frngview.asm`, `BANK_FRNG` = 88 at A000h, 7,492 B): one pass
@@ -1742,7 +1972,7 @@ The changed cells the engines draw at once while the play area is shown ("a chan
 `scroll9938.asm` `s38r_late`, `scroll9958.asm` `swr_late`) tear when the beam crosses them, and
 how often depends on where in the picture the main program gets to them, which the split's
 length moves. In the 15-machine keyboard plan, FS-A1FX and C-BIOS_MSX2+ together: 0-6 tears
-(2.7 on average) with 8f021e1 and 0-5 NOPs after its split, 5-11 (7.8) with 22-110 NOPs there,
+(2.7 on average) with f774932 and 0-5 NOPs after its split, 5-11 (7.8) with 22-110 NOPs there,
 5-12 (8.6) with the new split and 0-110 NOPs; over seven machines and six builds each, 1.9 tears
 a run before, 3.5 after (the commands drawn into shown lines, ~19 a run, did not change). So it
 is the interrupt time, not the sync (the old split made as long tears as often): those cells

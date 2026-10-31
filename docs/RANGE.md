@@ -1,6 +1,6 @@
 # The shooting range: the second bonus stage after level 1
 
-The shooting range's design, as built on the branch `range` (2026-10-27/28, from main `4a8a61d`).
+The shooting range's design, as built on the branch `range` (2026-10-27/28, from main `cb7c9ef`).
 This file was written on 2026-10-27 as the plan for the phase. The implementation followed it step
 by step (section 5); section 11 lists where the build departs from it, and the sizes and results
 it measured. The plan's text is kept: what a section says is what was built, unless section 11
@@ -26,13 +26,13 @@ The rules that bind the port (`docs/MSX_ARCHITECTURE.md` "Decisions", `CLAUDE.md
 - the ROM stays within 2 MiB (256 banks).
 
 Base: five area reports of the same day (flow, logic, gfx, sound, bench: section 9; scratch files,
-not in the repository) on the repository at `4a8a61d` (main, clean). They disagree in a few places; section 10 lists each and how
+not in the repository) on the repository at `cb7c9ef` (main, clean). They disagree in a few places; section 10 lists each and how
 this plan settles it.
 
 Tags:
 - **V**: verified, by REA (Ghidra provider) on the level-1 RAM image with FRNG decrunched at
   `$1EA00` (sha256 `9470791f…5f3d91a`), by a byte read, by a bench run of the original, by the
-  logic report's executable model (equal to the bench), or by the MSX source at `4a8a61d`;
+  logic report's executable model (equal to the bench), or by the MSX source at `cb7c9ef`;
 - **I**: inferred, not confirmed by a run;
 - **D**: a design decision for the port;
 - **E**: estimated.
@@ -72,7 +72,7 @@ Tags:
     Brainstorm's player (`msx/tune.asm`) with two small additions.
   - **Level 1 does not change.** `obj_start` still sets SHARP at every level start, and today a new
     game follows the range. When level 2 is ported, that set moves to `ng_go`, so that level 2
-    gets the rating.
+    gets the rating (done at level 2's step 3, 2026-10-28: `docs/LEVEL2.md` 3.8).
 - **ROM [D, E].** 1 code bank, 8 banks of raw graphics, 2 banks of hit masks for the logic, and 5
   banks of music: **104 of 128 banks**, still a 1 MiB image for the test ROMs. No Brainstorm bank
   moves. With the rest of the game's budget, the whole game comes to about **196 of the mandatory
@@ -531,7 +531,7 @@ section 8.1. The descriptors and big tables are decoded in its `tables/`.
 | music and effects | banks 99-103 (`FRM_BANK`) | 39,341 | `frm.bin` (`tools/msxtune.py`) |
 | messages | `HUD_BANK` + 1 (`tools/msxhudrt.py`) | 23 | "NO AMMO." 177, "TIME OUT." 178 |
 
-Free before the range [V: the flow report's scratch build of `4a8a61d`]:
+Free before the range [V: the flow report's scratch build of `cb7c9ef`]:
 
 | Area | Free |
 |---|---:|
@@ -559,7 +559,8 @@ front_bonus:
 
 Brainstorm's calls keep their order and behaviour. After level 2 is ported, `ml_ev`'s `call
 title` / `jp new_game` become the level-2 briefing and level 2's start; the same `front_bonus`
-then runs visit 2 (both stages read AG `$8050`).
+then runs visit 2 (both stages read AG `$8050`). Built so at level 2's step 18 (2026-10-31:
+`docs/LEVEL2.md` 3.7).
 
 **`front_range`** (FRONT): the flow report's sketch. It assembles with z80asm (148 B before the
 two `call fr_rated`). Its rating, transliterated instruction by instruction, equals the bench's
@@ -1120,7 +1121,8 @@ FF 02 30 FF 07
   `obj_start` to `ng_go`, the port of `load_level0`'s `$8314`. A new game then sets SHARP, and
   deaths and the next level's start keep the range's value, as on the Amiga (`$8314` is inside
   `load_level0` `$82EC`; REA finds no direct caller of `$82EC`, so whether a continue runs it again
-  is **I**, for level 2's plan to trace). Otherwise
+  is **I**, for level 2's plan to trace; level 2's step 3 moved the set, and its `cont` reference
+  shows the continue keeping the range's table [V: `docs/LEVEL2.md` 2.8, 3.8]). Otherwise
   level 2 loses the rating. **This belongs in level 2's plan**, with a check that level 2's spawns
   use the range's table.
 - The trace reads the rating as the word at `ac_diff` − `diff_tab`: 0 SHARP, 8 GOOD, 16 FAIR, 24
@@ -1174,7 +1176,7 @@ FF 02 30 FF 07
 
 | Item | Banks | Total |
 |---|---:|---:|
-| Today (`4a8a61d`) | 88 | 88 |
+| Today (`cb7c9ef`) | 88 | 88 |
 | `BANK_FRNG`: code and tables (≤ 7,500 B [E]) | 1 | 89 (bank 88) |
 | `range_gfx.bin`, raw (63,616 B; 1,920 B free in the last) | 8 | 97 (89-96) |
 | `range_hit.bin` (11,776 B) | 2 | 99 (97-98) |
@@ -1408,7 +1410,7 @@ Machines:
 |---|---|---|
 | Level 1's logic | `drive_cov1` and `drive_cov0` on an `EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1` build, `tools/tracecmp.py --ram` against `build/emu/trace_cov*_ram.jsonl` | 4,401 frames on C-BIOS_MSX2, 1,400 on the FS-A1FX and the FS-A1GT: 0 differ, after every step |
 | Level 1's effects | `LOCKSTEP` builds, the effect starts | write for write as before |
-| Brainstorm | the suite's 20 traces (`suite_drives`), its stills and records, its text screens | as at `4a8a61d`: 0 differ, 0 torn, pixel-exact |
+| Brainstorm | the suite's 20 traces (`suite_drives`), its stills and records, its text screens | as at `cb7c9ef`: 0 differ, 0 torn, pixel-exact |
 | The title | a fresh Gradiente Expert 2.0 from power-on: the title's VRAM, registers and palette, its music (SCC and PSG registers per tick), the game at tick 300 | identical to the base (step 0), but `$B32` (R-seeded) |
 | The image | each step's ROM against the previous step's, bank by bank (`romdiff.py`, `relocheck.py`) | data banks 10-87 never change, but bank 45 (`HUD_BANK` + 1, `hud_rt.bin`: the two new messages and PUZL's strings 4 bytes on) at step 4 only; code banks only where the step adds code |
 | The flows | the product from power-on (the title, level 1 ended by `drive_end`, the statistics, Brainstorm left to its time out, **the range left to its time out**, OUT OF TIME., the title, fire, a new game), `PZ_TEST=1` and `PZ_TEST=2`, on the Expert, the HB-F1XDJ and the FS-A1GT | the text screens pixel-exact; a HUD split at every VBLANK; the title; a new game |
@@ -1417,7 +1419,7 @@ Machines:
 | Set-ups | `make matrix` (`tools/msxmatrix.py`: MSX2, MSX2+, turbo R, 50 Hz, a disk interface first, a slot expander, an FM-PAC, a 2 MiB MegaRAM with an SCC, an SCC+, none) on the product; `--no-title` on the `PZ_TEST` builds | 10 of 10 PASS each |
 | Turbo R writes | a write watchpoint on 4000h-7FFFh from `front_bonus`' entry to the new game's tick 100 | 0 writes |
 | Bench | the game mode over 600 frames of `drive_cov1`; the puzl mode's `pz_solve1` | byte-identical |
-| Option sets | `tools/bstest/variants.sh` (41 sets) | as at `4a8a61d` |
+| Option sets | `tools/bstest/variants.sh` (41 sets) | as at `cb7c9ef` |
 | Losses | `mp_lost`, `atr_lost`, `rd_lost`, `fb_lost` | 0 |
 | Unit tests | `make test` | the known 4 failures only |
 
@@ -1429,7 +1431,7 @@ Machines:
     `bonuscheck.py` gains the range's intro and OUT OF TIME.
   - Script builds have no time out: a new proc `rc2_fr_timeout` pokes AG `$804C` (DC4Dh) = FFh at
     the range's first `fr_tick`. The range then returns at once with POOR and OUT OF TIME.
-  - The title comparison's reference becomes the title after Brainstorm at `4a8a61d` (step 0).
+  - The title comparison's reference becomes the title after Brainstorm at `cb7c9ef` (step 0).
 
 ### 4.5 Running the checks
 
@@ -1490,12 +1492,12 @@ the page's lines 0-161 and its sprites. The record, still, HUD, restore and flow
 
 One step at a time, in order, each small enough for one agent. Each ends with its acceptance test
 and one review (lean process: no multi-agent audits by default). Work goes on a branch `range`
-from `4a8a61d`, one commit per step (source and docs only), merged into main after step 12; steps
+from `cb7c9ef`, one commit per step (source and docs only), merged into main after step 12; steps
 13-14 then work on main. No tag, no release, no push: the user's order.
 
 | # | Step | Files | Acceptance |
 |---|---|---|---|
-| 0 | Baseline | none (records outside the repository) | the product and harness builds of `4a8a61d` rebuilt byte-identical; base records of the title on a fresh Expert, level 1's coverage traces, Brainstorm's 20 traces and the product flow |
+| 0 | Baseline | none (records outside the repository) | the product and harness builds of `cb7c9ef` rebuilt byte-identical; base records of the title on a fresh Expert, level 1's coverage traces, Brainstorm's 20 traces and the product flow |
 | 1 | ByteKiller and FRNG's symbols | `tools/bytekiller.py` (from the reports' `bkdec.py`: `$124A6` transcribed), `tests/test_bytekiller.py`, `analysis/frng_1ea00.sym`, `analysis/ghidra_seeds_frng.tsv` (`tools/ghidra_seeds.py`), `tools/ramimage.py` (a file decrunched by `tools/bytekiller.py` placed at its address: `ramimage.py` copies files as they are, and `FRNG_15` is crunched; the reports built the image with scratch `bkdec.py` and `overlay.py`), `docs/AMIGA_ANALYSIS.md` (the range's ledger entry and its REA image recipe) | FRNG_15 → 170,970 B, checksum 0, sha256 `2ec1d6a4…`; equal to the bench's `$124A6` output; REA applies the seeds on the image `9470791f…` with 0 failed |
 | 2 | The bench in the repository | `tools/amigaemu.py` (`frng` mode: the bench report's patch), `tools/frngbot.py` (+ `edge` and `quirk4` modes from the logic report's `scenarios.py`), `tools/frngcmp.py`, `analysis/frng_ram.tsv`, `tools/frngmock.py`, `tools/openmsx_rc2.tcl` (`rc2_fr_*`, the rating via `ac_diff` − `diff_tab`, `rc2_fr_timeout`), `tests/test_frng.py` | the 15 references of 4.1 made, with the tabulated results; replays byte-identical; `--via-8420` equal; `armed2` differs only in `$8051` and the palette pointer; `edge` holds T1 reads; `fxmask_check.py`'s rule on the new drives: no used test reads a byte an effect wrote (3.4); the mock 0 differ; the game and puzl modes byte-identical; the tests pass |
 | 3 | The converter | `tools/msxrange.py`, `tests/test_msxrange.py`, `Makefile` | the outputs of 3.11, byte-identical to the gfx prototype's where they overlap; every check passes (the sweep: 0 pixels); `range_hit.bin` equal to the image's bytes |
@@ -1516,19 +1518,19 @@ repository and no commit):
 
 | # | Commit |
 |---|---|
-| 1 | `c241299` (ByteKiller), `b1b355c` (FRNG's symbols, its seed file and REA image, the ledger) |
-| 2 | `6de52e8` |
-| 3 | `b1008cf` |
-| 4 | `073a0ad` |
-| 5 | `7451db5` |
-| 6 | `4aed67b` |
-| 7 | `3c3a735` |
-| 8 | `26a2076` |
-| 9 | `abe80d9`, `0e1d6ab` (the rates' check) |
-| 10 | `4b46bb7` (the harness in the repository, after step 11) |
-| 11 | `131797e` (the converter, before step 3), `43569f6` (the ROM) |
-| 12 | no fix needed; the milestone's review then found the sound's late stop: `4650771` |
-| 13 | `92a7dd4` (the candidates' harness: `rgflow.tcl` `rgc_chain`, `regress.sh cand`, `docs/HARNESS.md` 5.20); the candidates and their notes stay outside the repository |
+| 1 | `5500ed9` (ByteKiller), `5dd4c8e` (FRNG's symbols, its seed file and REA image, the ledger) |
+| 2 | `f7799ff` |
+| 3 | `cb23082` |
+| 4 | `0031f0e` |
+| 5 | `7eb7ad1` |
+| 6 | `5aefeed` |
+| 7 | `781005e` |
+| 8 | `8c08187` |
+| 9 | `25198de`, `68384ab` (the rates' check) |
+| 10 | `3fa102b` (the harness in the repository, after step 11) |
+| 11 | `1f55d2a` (the converter, before step 3), `56923f5` (the ROM) |
+| 12 | no fix needed; the milestone's review then found the sound's late stop: `b4fdcc3` |
+| 13 | `b2d88e9` (the candidates' harness: `rgflow.tcl` `rgc_chain`, `regress.sh cand`, `docs/HARNESS.md` 5.20); the candidates and their notes stay outside the repository |
 | 14 | the commit that adds this file, with `docs/MSX_ARCHITECTURE.md`, `docs/AMIGA_ANALYSIS.md`, `docs/ROM_BUDGET.md` and `README.md` |
 
 - If step 11 cannot pass its checks in time, step 13 delivers milestone 1's silent range, and the
@@ -1581,7 +1583,7 @@ repository and no commit):
   - the known limits: the camera hides 64 px; the original's display details are inferred;
   - the minimum hardware: a 2 MiB Konami SCC device for the complete game; these test images are
     1 MiB, or 2 MiB twins.
-- **As built** (step 13, 2026-10-28, from `4650771`): the four, `-range-noadj` and `-range-v2`, each
+- **As built** (step 13, 2026-10-28, from `b4fdcc3`): the four, `-range-noadj` and `-range-v2`, each
   built twice to the same bytes; the `noSCC` and `PSG` variants were not built (the regression's
   sound family runs those chip sets). Their checks: `docs/HARNESS.md` 5.20. The files, their notes
   (`ROBOCOP2_v0.1.3-test4-NOTES.txt`: the SHA-256s, what is new, the endings, the defaults to look
@@ -1687,7 +1689,7 @@ docstrings),
 All Amiga facts in section 2 come from REA (Ghidra provider) listings and byte reads in those
 reports, on the level-1 RAM image with FRNG decrunched at `$1EA00` (sha256 `9470791f…5f3d91a`), and
 from bench runs of the original code. The divider and end checks of `$1EA40-$1EAFA` were read again
-in the logic report's REA listing for this plan. MSX facts cite the source at `4a8a61d`.
+in the logic report's REA listing for this plan. MSX facts cite the source at `cb7c9ef`.
 
 ## 10. Where the area reports disagreed, and what this plan takes
 
@@ -1765,7 +1767,7 @@ implementation's handoff log (scratch) recorded them step by step.
   review found that on the NO AMMO end `rg_hide`'s waits and its page-2 restore (`tiles_upload`,
   32 KiB) let the VBLANK tick the tune about 13 more times (0.25 s) over the black screen, where
   the original stops it within microseconds of FRNG's return (2.9). `rg_end` now calls `snd_stop`
-  before `rg_hide` on both ends (`4650771`). `tools/bstest/frsound.tcl` logs that stop (its Q line),
+  before `rg_hide` on both ends (`b4fdcc3`). `tools/bstest/frsound.tcl` logs that stop (its Q line),
   and `frsnd/frregcmp.py` checks it: at most one tick between the last pass and the stop (0 in all
   20 logs), none after it, the chips silent at `fr_done`; the logs of the build before the fix
   fail it.
@@ -1792,8 +1794,8 @@ implementation's handoff log (scratch) recorded them step by step.
 - `BANK_FRNG`: 7,492 B (`frng_end` BD44h; the soft budget 7,500 B, 700 B to the bank's end). The
   image: 104 of 128 banks (the range's code in 88, its graphics in 89-96, its hit data in 97-98, its
   music in 99-103); `ROM_2M=1` pads the same to 256.
-- The whole regression after `4650771` (`regress.sh check`, 2026-10-28): 45 verdicts PASS. Level
-  1's traces 0 differ, the title from power-on identical to `4a8a61d`'s, Brainstorm's 20 traces 0
+- The whole regression after `b4fdcc3` (`regress.sh check`, 2026-10-28): 45 verdicts PASS. Level
+  1's traces 0 differ, the title from power-on identical to `cb7c9ef`'s, Brainstorm's 20 traces 0
   differ with its screens and records as at the base; the range's 15 drives 0 differ on C-BIOS_MSX2
   and the FS-A1GT (79 traces in all, also after a played level 1 and Brainstorm), the wanted state
   at every pass, 695 stills, the records (0 torn, 0 SAT and 0 coherence errors), the HUD's register

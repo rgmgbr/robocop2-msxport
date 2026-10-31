@@ -1,12 +1,12 @@
 # Level 2's objects and game logic: a routine-by-routine spec for the Z80 port
 
-Area "logic" of the level-2 plan, 2026-10-27. Base: the repository at `3c3a735` (branch `range`), read
+Area "logic" of the level-2 plan, 2026-10-27. Base: the repository at `781005e` (branch `range`), read
 only. Nothing here was run in an emulator.
 
 Tags:
 - **V**: verified by REA (6.7.0, Ghidra provider 12.1.4, raw-binary m68k, entry 0x0) on
   `build/ram/level2_full.bin` (sha256 `a039a158…0a88b09`), seeds `analysis/ghidra_seeds.tsv`; or by the
-  MSX source at `3c3a735`; or by the image's bytes decoded by the scripts below (data only).
+  MSX source at `781005e`; or by the image's bytes decoded by the scripts below (data only).
 - **I**: inferred, not confirmed by a run.
 - **D**: a design decision proposed for the port (section 13 lists each with its alternative).
 - **E**: an estimate.
@@ -162,7 +162,7 @@ handler offset +10 (`$C3FE`, from P+10), death offset +12 (`$C40E`, from P+12), 
 Tables `$C716` (SHARP 00 01 01 02 03 03 04 63), `$C71E` GOOD, `$C726` FAIR, `$C72E` POOR. A hit takes one
 point while the count is 0 or more; going below 0 kills (h points = h + 1 hits).
 
-## 3. The port today, routine by routine [V: `msx_refs.json` and the source at `3c3a735`]
+## 3. The port today, routine by routine [V: `msx_refs.json` and the source at `781005e`]
 
 | Amiga | What | Port | Level 2 needs |
 |---|---|---|---|

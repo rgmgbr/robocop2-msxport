@@ -1,6 +1,6 @@
 # Level 2's play field on the MSX: the map, the vats, the palette
 
-Area "map" of the level-2 plan, written on 2026-10-27 against the repository at `3c3a735` (branch
+Area "map" of the level-2 plan, written on 2026-10-27 against the repository at `781005e` (branch
 `range`), read only. No emulator was run and nothing was written into the repository.
 
 Tags:

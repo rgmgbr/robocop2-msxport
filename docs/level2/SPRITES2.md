@@ -1,6 +1,6 @@
 # Level 2 on the MSX: characters and BOBs (area "sprites")
 
-Written 2026-10-27 for the level-2 phase. Repository read at `3c3a735` (branch `range`). Nothing in the
+Written 2026-10-27 for the level-2 phase. Repository read at `781005e` (branch `range`). Nothing in the
 repository was written. No emulator was run.
 
 All paths below are relative to this folder:

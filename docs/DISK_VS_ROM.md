@@ -645,7 +645,7 @@ The 2 MiB ROM removes the storage limit without any of these costs.
 
 ## 9. Evidence and sources
 
-**Repository** (as of commit a4ec419):
+**Repository** (as of commit 5486a61):
 
 | Path | What it supports |
 |---|---|

@@ -19,7 +19,7 @@ No repository file was changed, and no emulator ran. Everything below lives in t
 | `tools/tracecmp.py` | a copy of the repository's, plus `--fields FILE` (4 lines changed) |
 | `tools/mockmsx.py` | **new**: writes a bench trace as the MSX trace a perfect port would give, to self-test a field file |
 | `tools/seek.py` | **new**: tries drive variants in one process (it was used to time the trolleys) |
-| `tools/amigaemu.py`, `amigahw.py`, `amigacov.py`, `drivejoy.py`, `bytekiller.py`, `planar.py` | copies of the repository's at 3c3a735, unchanged |
+| `tools/amigaemu.py`, `amigahw.py`, `amigacov.py`, `drivejoy.py`, `bytekiller.py`, `planar.py` | copies of the repository's at 781005e, unchanged |
 | `analysis/amiga_ram_l2.tsv` | **new**: level 2's field set (1,022 fields) |
 | `analysis/level2_bench.sym` | **new**: the names this area found |
 | `ref/l2_<name>.drive`, `ref/l2_<name>_ram.jsonl`, `.log` | the level-2 drives and their bench references (section 4) |

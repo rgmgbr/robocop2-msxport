@@ -421,12 +421,12 @@ What the code does, where it differs from the design above, and what openMSX mea
 - The stage and its text screens run on the Z80 at 3.58 MHz; its traces equal the Amiga's (0
   differ in all nine drives) and `cpu_cur` is 0, `sl_off` 0 during both screens: no hang in
   `fs_vbl` after `display_on`.
-- PAUSE before the fix (`2eefba4`): CHGCPU(80h) had written A7h = 02h and nothing else wrote A7h
+- PAUSE before the fix (`103725f`): CHGCPU(80h) had written A7h = 02h and nothing else wrote A7h
   during the bonus. PAUSE at pass 323 held the Z80 for 8.98 emulated seconds: passes, HUD splits
   and VBLANKs +0, the VDP left with the split's registers (R#2 7Fh, R#23 29h, R#8 0Ah), so every
   frame showed page 3 from line 41 (the atlas, the sprite tables) in the HUD's palette over the whole
   screen.
-- After the fix (`14bc5ef`): A7h ← 00h at `front_bonus`; PAUSE at pass 324 for 5.05 s: the stage
+- After the fix (`8b89e4e`): A7h ← 00h at `front_bonus`; PAUSE at pass 324 for 5.05 s: the stage
   ran on (splits = VBLANKs, +303); PAUSE pressed again at pass 3036 and left on: the time out and
   the result ran, then the game waited with A7h ← 01h (the LED) and the HUD split running (+161
   splits = VBLANKs in 2 s), no title; PAUSE off: A7h ← 00h, then CHGCPU's 02h, and the title 5.3 s

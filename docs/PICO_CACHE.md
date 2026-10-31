@@ -113,7 +113,7 @@ tied to the Pico+ (the user, 2026-10-26).
 | Miss cost | 880-885 T (fit, SX-2) | 860 T | 860 T | The fit, which reproduces all nine counts: 877-885 T on the two machines. 860 T assumes that every pair misses from K = 64 on. The two differ by 2-3 %, which changes no conclusion |
 | The drop at K = 32 (784 against 807) | 15 first loads at a constant 74.0 T a hit | a hit cost growing with occupancy? | eviction in the background? | The firmware replay, which is exact |
 | Level 1's set | about 48 (an earlier estimate, not checked) | 46 read in a whole level; its recordings give 47-49 selected in play, 53 with the start (M, openMSX) | busy: 44 over 5 s, banks 0-1 included | The trace |
-| The Hotbit | expected to match the SX-2 | — | — | Recorded in `docs/ROM_BUDGET.md` 6.1 (commit 71ffdb3). 55 slots fit it exactly too (2.4) |
+| The Hotbit | expected to match the SX-2 | — | — | Recorded in `docs/ROM_BUDGET.md` 6.1 (commit f8e1589). 55 slots fit it exactly too (2.4) |
 | Which image | B, from the fit | — | — | Open: the user reported every option disabled. If the menu shows image A, the budget of 53 is not safe (section 8, question 1) |
 
 ## 2. The measurement
@@ -497,7 +497,7 @@ Other phases (E, from the budget's sizes, since their code does not exist yet):
 | R2 | No speculative selects | 0 | No hold for a bank nobody reads | Always |
 | R3 | Warm-up: select the level's set before its play field shows | 0 banks; about 10-12 ms once a level | No first loads in play | With the 2 MiB work |
 | R4 | Select the speech's three banks before its PCM loop | 0 banks; a few bytes in BANK_MUSIC | No hold inside the PCM loop | Any time |
-| R5 | Bank 3Fh and the SCC (below) | 0 banks | Correct on the Pico+ and in openMSX | Its build checks are done (commit 5583758); keep them |
+| R5 | Bank 3Fh and the SCC (below) | 0 banks | Correct on the Pico+ and in openMSX | Its build checks are done (commit 12a20a0); keep them |
 | R6 | Set reducers: SFX, LC23, S1, L3, FLASH, STREAM | see the table below | 1-4 banks fewer each | Only if R1 fails |
 | R7 | Split margin: the split's first interrupt 3-4 lines earlier | 684-912 T a frame, 1.1-1.5 % of the CPU | A hold can no longer make the HUD late | Only if play still has misses |
 
@@ -532,7 +532,7 @@ if the code never reads the window. Restoring a cached bank, as the far calls do
 - Two holds then come before the speech starts, instead of inside it.
 
 **R5. Bank 3Fh and the SCC (S, D).**
-- Done at HEAD (commit 5583758): `tools/mkrom.py`'s 8000h check (lines 497-504) covers every bank
+- Done at HEAD (commit 12a20a0): `tools/mkrom.py`'s 8000h check (lines 497-504) covers every bank
   with (b & 3Fh) = 3Fh, so 63, 127, 191 and 255 may hold only data read at A000h (today only the
   pictures). Keep it.
   - On the Pico+ only 3Fh selects the SCC (M).
@@ -623,7 +623,7 @@ it does so was not checked.
 
 ## 9. Evidence
 
-**Repository** (as of commit d49294f; the Hotbit's counts were recorded in 71ffdb3):
+**Repository** (as of commit f14adfc; the Hotbit's counts were recorded in f8e1589):
 
 | Path | What it supports |
 |---|---|
@@ -637,7 +637,7 @@ it does so was not checked.
 | `msx/hud.asm` lines 34-38, 109 | hud_map on every picture |
 | `msx/sprites.asm` lines 2813-2819, 3296-3303 | pat_now and pc_rows select the pool banks |
 | `msx/isr.asm` lines 58, 87-91, 149 | the split's interrupt, the late case, sp_late |
-| `tools/mkrom.py` lines 73, 493-504, 556-560 | the 256-bank limit; the 8000h check for every bank with (b & 3Fh) = 3Fh (commit 5583758; before it, lines 470-476 checked 63 and 127 only); BANK_MUSIC's SCC-time data below B800h |
+| `tools/mkrom.py` lines 73, 493-504, 556-560 | the 256-bank limit; the 8000h check for every bank with (b & 3Fh) = 3Fh (commit 12a20a0; before it, lines 470-476 checked 63 and 127 only); BANK_MUSIC's SCC-time data below B800h |
 
 **Scratch files** of 2026-10-26 (a session's scratch directory, not kept in the repository),
 under

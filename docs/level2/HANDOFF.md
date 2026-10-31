@@ -1,8 +1,8 @@
 # Level 2 implementation: handoff log
 
-Plan: ../LEVEL2.md (sections 5-7). Branch `level2`, created on 2026-10-28 from main a969fc8
+Plan: ../LEVEL2.md (sections 5-7). Branch `level2`, created on 2026-10-28 from main 8507734
 (level 1, Brainstorm and the shooting range; the range's candidates test4 were delivered from it).
-`make test` at a969fc8: only the 4 known failures (test_line_counts_and_rank_list,
+`make test` at 8507734: only the 4 known failures (test_line_counts_and_rank_list,
 test_joystick_script_entries, test_compositions_fit_their_bank_and_the_limits,
 test_records_bits_ids_and_sat_order). The whole regression: tools/bstest/regress.sh and
 regress.tcl (docs/HARNESS.md 5.19-5.20).
@@ -12,11 +12,11 @@ command and result, the open issues.
 
 ## Step 0: the baseline (2026-10-28)
 
-**Done.** The base is a969fc8 (no msx/ or mkrom.py change since; 26c9dd9 and 3b6487e add only harness
-files and docs, so every ROM at 3b6487e equals a969fc8's). Records in `$IMPL/base`, with
+**Done.** The base is 8507734 (no msx/ or mkrom.py change since; 2eca210 and 711e4f1 add only harness
+files and docs, so every ROM at 711e4f1 equals 8507734's). Records in `$IMPL/base`, with
 `IMPL=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/impl`
-(this folder); the range's base (4a8a61d) is `$IMPL/../../range/impl/base`. Commits **26c9dd9**
-(and **3b6487e**: the job counts in HARNESS.md and l2base.sh's header): `tools/bstest/fieldcheck.py`,
+(this folder); the range's base (cb7c9ef) is `$IMPL/../../range/impl/base`. Commits **2eca210**
+(and **711e4f1**: the job counts in HARNESS.md and l2base.sh's header): `tools/bstest/fieldcheck.py`,
 `sess_fxlog.tcl` (copied in), `l2base.sh`, `l2base.tcl`, `l2base.py` (new), `docs/HARNESS.md` 5.21
 (+ the file table and the labels list).
 
@@ -62,7 +62,7 @@ range), regress.sh's flow checks must learn it first (bonuscheck.py, plan 4.4).
 - the start check: l1/start/st_{m2,fx,tr}.txt; the field records: l1/field/{430,860,1490}_{m2,fx}/
   (+ .check.txt, .png sheets); the stills: l1/still/{m2,fx}/gNNNN (+ msxframe PNG/txt);
   the LOCKSTEP records: l1/lock/disp_{m2,fx}.txt; the effects: l1/fx/{fx_scc,pw_scc,pw_psg}.txt.
-- the title on a fresh Expert: fresh/base_* (= fresh/new_*, a969fc8's; identical to 4a8a61d's in
+- the title on a fresh Expert: fresh/base_* (= fresh/new_*, 8507734's; identical to cb7c9ef's in
   every record); after the flows: O/np/tx_{ex,f1,tr}_*.
 - Brainstorm: O/st, O/tr, check_all.log; the range: O/rg, O/lt, O/snd, V/O; the product flow:
   O/flow (prod_*, pzt_*, after_*, guard_*), O/kb (kb_ex, kb_tr), O/np (p2m_ex, solved_*, two_*).
@@ -74,13 +74,13 @@ range), regress.sh's flow checks must learn it first (bonuscheck.py, plan 4.4).
   $IMPL/base/T4/rc2.rom TAG=4`: sha256 3f49a34c0435a069… = build/msx/ROBOCOP2_v0.1.3-test4.ROM (cmp
   identical); `TAG=4 ROM_2M=1` = ROBOCOP2_v0.1.3-test4-2M.ROM (cmp identical).
 - Rebuilt byte-identical: `regress.sh builds $IMPL/rebuild` + the two L builds: 25 ROMs, 0 differ;
-  the 23 regress builds equal the range's step-13 builds (`space/range/impl/s13/W`, 4650771): 0 differ.
+  the 23 regress builds equal the range's step-13 builds (`space/range/impl/s13/W`, b4fdcc3): 0 differ.
 - `sh tools/bstest/variants.sh $IMPL/base/variants`: 38 of 41 OK; DEMO_ACTORS=2, =5 and DEMO_HUD=1
   overflow the fixed area (rc2.asm:487 ds −0xdb / −0x22), as at the range's base.
 - MCP: `l2b_chain {$IMPL/base} {$IMPL/base/all.done}`: 225 jobs (the first l2base.tcl), 0 time outs;
   st_* and pw_* redone with the final l2base.tcl (5 jobs, `redo.done`).
 - `sh tools/bstest/l2base.sh check $IMPL/base $IMPL/base $IMPL/../../range/impl/base` (the range's
-  base 4a8a61d): **l2base: PASS** (`base/l2base_check.log`): regress: PASS, 45 verdicts, 0 FAIL;
+  base cb7c9ef): **l2base: PASS** (`base/l2base_check.log`): regress: PASS, 45 verdicts, 0 FAIL;
   die/over/end 901/1,249/517 rows, 948 fields, 0 differ; start check m2/fx/tr: reg pal cmd cpu vbl
   tear 0, 26,690/26,445/31,505 sprite entries 0 bad, 0 frames above 8 a line, SATs 0 bad, lost 0;
   field check 0 differ in every window but 860_m2 (3 pictures, 177 px: see issue 3); stills
@@ -121,21 +121,21 @@ DIAG=1/2 + PZ_TEST=1 **14 B**, DIAG=1/2 44, EXTJOY+LOCKSTEP+PZ_TEST 88, LOCKSTEP
    old, half new (336 old, 59 new px) for 3 pictures on the V9938; 0 on the V9958 (v0.1.1 had
    "3/6"). The gate allows at most the base's count.
 4. fieldcheck.py needed more than a copy: at the base the old copy skipped every record silently (the
-   record grew by MP_B in 46fa12c); now it reads the two pools and reports skipped files. Step 13
+   record grew by MP_B in 9eee4a3); now it reads the two pools and reports skipped files. Step 13
    adapts it for level 2 (atlas, vats).
 5. rc2_guard flags writes it cannot place: started inside an upload it reported 81 false "cpu" on
    the FS-A1GT. Level 2's start check (4.2 check 1) should start the guard at tick_start, as
    l2base.tcl l2b_st_go does.
 6. The fixed area: 14 B left in DIAG + PZ_TEST builds; step 4's "free bytes in every option set"
    starts from banks_variants.txt.
-7. regress.sh's own `base` command still makes the range's base (4a8a61d); level 2's base is made by
+7. regress.sh's own `base` command still makes the range's base (cb7c9ef); level 2's base is made by
    l2base.sh (builds, the chain, `check W W RB`, `base W`). macOS cleans the scratchpad after days
-   without access: if $IMPL/base goes, remake it from a worktree of a969fc8 the same way (RB = the
+   without access: if $IMPL/base goes, remake it from a worktree of 8507734 the same way (RB = the
    range's base, or `regress.sh base B`).
 
 ## Step 17: the texts (2026-10-28)
 
-**Done, offline (no openMSX).** Commit **8b1ca1e**: `tools/msxtext.py`, `tests/test_bonus_text.py`.
+**Done, offline (no openMSX).** Commit **178055c**: `tools/msxtext.py`, `tests/test_bonus_text.py`.
 Scratch: `S=$IMPL/s17`.
 
 ### What it does
@@ -183,7 +183,7 @@ Scratch: `S=$IMPL/s17`.
   - the calls equal rc2front's model, and the title takes 125 / 109 calls;
   - the titles' boxes, and centring within half a cell;
   - the play areas against an independent model with signed rows, plus TEST 5;
-  - text.inc's prefix pinned to a969fc8's sha256 (`TEXT_INC_A969FC8`; update the pin only if a
+  - text.inc's prefix pinned to 8507734's sha256 (`TEXT_INC_A969FC8`; update the pin only if a
     later step changes the old texts on purpose);
   - negative rows in 8 bits;
   - check_text's 9 refusals.
@@ -194,7 +194,7 @@ Scratch: `S=$IMPL/s17`.
 - `make test`: 231 tests, failures=3 errors=1. These are the 4 known failures only (the 7 new
   tests ran and passed).
 - Assembly, offline:
-  - set-up: a worktree of 3b6487e (removed after) and a cpio copy of build/msx (regress.sh's
+  - set-up: a worktree of 711e4f1 (removed after) and a cpio copy of build/msx (regress.sh's
     pattern) in `$S/msx`;
   - `SRC=$S/wt LEVEL=$S/msx/level1 sh tools/bstest/build.sh $S/rom/{old,new}/{prod,tag5,diag1}/rc2.rom
     [TAG=5 | DIAG=1]`, old with the current text.inc and new with `$S/after/text.inc`: 6 × build
@@ -218,7 +218,7 @@ Scratch: `S=$IMPL/s17`.
 
 ## Step 1: the names and the ledger (2026-10-28)
 
-**Done, offline (no openMSX).** Commit **223fd46**: `analysis/main_8000.sym`,
+**Done, offline (no openMSX).** Commit **10c2d28**: `analysis/main_8000.sym`,
 `analysis/ghidra_seeds.tsv`, `docs/AMIGA_ANALYSIS.md`. Scratch: `S=$IMPL/s01` (`names.py`: the
 reports' names and their conflicts; `merge_sym.py`, `ledger.py`: the exact edits;
 `main_8000.sym.orig`, `seeds_before.tsv`, `make_test.log`, `gaps_{orig,new}.s`).
@@ -298,7 +298,7 @@ reports' names and their conflicts; `merge_sym.py`, `ledger.py`: the exact edits
 
 ## Step 6: level 2's map data (2026-10-28)
 
-**Done**, offline (no openMSX). Commit **e074b06** (6 files, explicit paths): `tools/msxlvpal.py`
+**Done**, offline (no openMSX). Commit **8f68ef8** (6 files, explicit paths): `tools/msxlvpal.py`
 (new), `tools/mapcells.py` (`--level`), `analysis/amiga_tables.tsv` (bank `l2`), `tools/msxconv.py`
 (docstring only), `Makefile` (level 2's conversions in `msx`, after level 1's msxconv), and
 `tests/test_level2_data.py` (15 tests). Scratch: `$IMPL/s6` (logs, hashes, crops, negative controls).
@@ -341,7 +341,7 @@ What it does:
   `level2_amiga_vs_msx.png`), no existing file changed.
 - Level 1: `python3 -I tools/mapcells.py build/ram/level1_full.bin analysis/amiga_tables.tsv
   build/msx/level1.atrp 160 51` prints the same bytes as HEAD's tool (438 cells, 213/225, rc 0).
-- ROM unchanged: a worktree of HEAD 8b1ca1e (build/ram copied, since removed), `SRC=$WT sh
+- ROM unchanged: a worktree of HEAD 178055c (build/ram copied, since removed), `SRC=$WT sh
   tools/bstest/build.sh $IMPL/s6/romA/rc2.rom` and again with my TSV + mapcells.py (`romB`): both
   "build OK", 12 known warnings; A = B = `$IMPL/base/R/prod/rc2.rom` (sha256 31e09590d52dee35…); gen/
   differs only in `at_l2.inc`, which nothing includes (grep).
@@ -372,7 +372,7 @@ What it does:
 
 ## Step 2: the bench in the repository (2026-10-28)
 
-**Done.** Commit **d36f6c4** (7 files, explicit paths): `tools/amigaemu.py` (`game --level 2`:
+**Done.** Commit **37e1606** (7 files, explicit paths): `tools/amigaemu.py` (`game --level 2`:
 `Level2Bench`, `--carry`, `--pre-poke`, `--flow`, `--stop-at-end`, `--report`; `GameBench.code_blocks`,
 `CODE_BLOCKS_L2`), `tools/amigacov.py` (`--level 2`, `--carry`, scenario `level2`; run parts `poke=`,
 `frames=`), `tools/tracecmp.py` (`--fields`), `analysis/amiga_ram_l2.tsv` (1,022 fields), `tools/l2drives.py`
@@ -526,7 +526,7 @@ python3 -I tools/l2mock.py build/emu/l2_tour_ram.jsonl W/mock/v.txt --mutate 'va
 
 ## Steps 3 and 4: the SHARP set into ng_go, one level start (level 1 only) (2026-10-28)
 
-**Done.** Commits **d3ddbeb** (step 3) and **c726025** (step 4). Records in `$IMPL/s3` and `$IMPL/s4`
+**Done.** Commits **8a27a62** (step 3) and **a63858a** (step 4). Records in `$IMPL/s3` and `$IMPL/s4`
 (`s4/W`: step 4's whole l2base run, kept; the other runs keep only their logs).
 
 ### What was built
@@ -596,7 +596,7 @@ python3 -I tools/l2mock.py build/emu/l2_tour_ram.jsonl W/mock/v.txt --mutate 'va
     new game after the game over -> SHARP. The trace (poke undone at display_on) 0 differ:
     `python3 -I tools/tracecmp.py --ram --labels $IMPL/s4/W/R/trace/rc2_ext5.labels
     build/emu/trace_over_ram.jsonl $IMPL/s4/pokeng_trace.txt` -> 1,249 frames, 0 differ.
-  - negative control: a969fc8's trace build (`s3/poke_base.log`): both deaths WRONG (0, obj_start reset it).
+  - negative control: 8507734's trace build (`s3/poke_base.log`): both deaths WRONG (0, obj_start reset it).
   - the flows after the range (regress): every new game `ac_diff - diff_tab 0` after the range's 24.
 - The gate: MCP `source load.tcl; source l2base.tcl; hz_chain [concat [rgr_jobs W all] [l2b_jobs W]] W/all.done`
   then `sh tools/bstest/l2base.sh check W $IMPL/base`:
@@ -610,7 +610,7 @@ python3 -I tools/l2mock.py build/emu/l2_tour_ram.jsonl W/mock/v.txt --mutate 'va
     VDPs). FAIL, each a timing effect (below): the fresh title's polled game record (tick 302 instead
     of 300), the titles after the f1 and kb_tr flows (R#5 CF/C7), field 860_fx (6 pictures, 183 px;
     860_m2 now 0, base 3), the effects (write for write).
-- **Timing-only control** (`$IMPL/s4/nc`: a worktree of d3ddbeb + pure delays: 13 T in get_tile, 14 T
+- **Timing-only control** (`$IMPL/s4/nc`: a worktree of 8a27a62 + pure delays: 13 T in get_tile, 14 T
   in atr_rc, 10 T in ttp_prep/dt_prep; `SRC=.../nc/wt LEVEL=<repo>/build/msx/level1 sh
   tools/bstest/l2base.sh builds $IMPL/s4/nc/W`, the same chain, check): the **same four verdicts fail**
   (plus the tr title's R#5), field 860_fx with the **same 6 pictures, 183 px** (`diff` of the two
@@ -650,7 +650,7 @@ python3 -I tools/l2mock.py build/emu/l2_tour_ram.jsonl W/mock/v.txt --mutate 'va
 
 ## Step 5: the logic's level constants, level 1 only (2026-10-28)
 
-**Done.** Commit **e0399d4**. Records in `$IMPL/s5`: `W` (the whole l2base run, kept: 1.9 GB), `logic` (the
+**Done.** Commit **f2d0cf0**. Records in `$IMPL/s5`: `W` (the whole l2base run, kept: 1.9 GB), `logic` (the
 logic traces), `xfresh` (the exact fresh record), the scripts `s5logic.tcl` (the logic jobs),
 `msxcmp.py` (two MSX traces of two builds, field by field), `l2dry.py` (the level-2 dry run), and
 `variants.log`, `banks_variants.txt`, `make_test2.log`.
@@ -727,7 +727,7 @@ logic traces), `xfresh` (the exact fresh record), the scripts `s5logic.tcl` (the
   `python3 -I tools/tracecmp.py --ram --labels .../trace/rc2_ext5.labels build/emu/trace_<d>_ram.jsonl
   O/<d>.txt`: cov1 4,401, cov0 1,400 (FS-A1FX), cov0_tr 1,400 (FS-A1GT), die 901, over 1,249, end 517:
   **0 differ** (948 fields). reloc 401: 7 differ (`player_hot_x/_y`, frames 193-199), the **same 7 on
-  the base** a969fc8 (`reloc_base`) and step 5 = base field for field (`msxcmp.py`: 0 rows differ):
+  the base** 8507734 (`reloc_base`) and step 5 = base field for field (`msxcmp.py`: 0 rows differ):
   a deliberate port deviation (`player.asm` `pl_frame` keeps the state's last frame record where the
   Amiga reads on), not this step's.
 - The relocation drive is new (the old `drive_reloc_up` was lost): `python3 -I tools/drivejoy.py --joy
@@ -788,7 +788,7 @@ logic traces), `xfresh` (the exact fresh record), the scripts `s5logic.tcl` (the
 
 ## The gate made timing-blind (harness step, 2026-10-28)
 
-**Done.** Commit **cdf5bb4** (`tools/bstest/fieldcheck.py`, `l2base.py`, `l2base.sh`, `l2base.tcl`,
+**Done.** Commit **75fe00c** (`tools/bstest/fieldcheck.py`, `l2base.py`, `l2base.sh`, `l2base.tcl`,
 `regress.sh`, `regress.tcl`, new `fxcmp.py`; `docs/HARNESS.md` 5.21 "The gate's timing-blind
 verdicts", the file table, 5.19's counts). Records and scripts in `$IMPL/sg`. **The gate is used as
 before** (THE ONE CHECK at the top, now 227 jobs) **and must pass literally**; the four families
@@ -829,7 +829,7 @@ that steps 3-5 passed by hand now pass by themselves on a change of level 1's CP
   `$IMPL/sg/mcp`). Same tools, a second openMSX (2 in all). Deviation recorded: no shared target used.
 
 ### Checks (exact commands, results)
-- HEAD's build: worktree `$IMPL/sg/wt` of e0399d4 + my 7 files; `cd $IMPL/sg/wt && sh
+- HEAD's build: worktree `$IMPL/sg/wt` of f2d0cf0 + my 7 files; `cd $IMPL/sg/wt && sh
   tools/bstest/l2base.sh builds $IMPL/sg/W`: builds PASS; the 25 ROMs byte-identical to `$IMPL/s5/W`'s
   (step 5's gate builds); fixed area 389 B free in the product (= step 5: harness-only step).
 - Chain (private MCP): `source {$IMPL/sg/wt/tools/bstest/load.tcl}; source {.../l2base.tcl}; l2b_chain
@@ -872,13 +872,13 @@ that steps 3-5 passed by hand now pass by themselves on a change of level 1's CP
    check is step 21's fxcheck.
 3. `$IMPL/base` has the exact title record and the effects' sound logs (added at this step); a new
    base made by `l2base.sh base W` gets both from its run (`xnew_*` copied to `xbase_*`); the range's
-   base `4a8a61d` has neither, so `regress.sh check W <range base>` keeps the old polled title
+   base `cb7c9ef` has neither, so `regress.sh check W <range base>` keeps the old polled title
    comparison.
 4. The worktree `$IMPL/sg/wt` was removed after the commit; `$IMPL/sg/W` keeps its logs only.
 
 ## Step 10: the sprite tools for level 2 (2026-10-28)
 
-**Done**, offline (no openMSX). Commit **3b91acf** (7 files, explicit paths): `tools/bobcatalog.py`,
+**Done**, offline (no openMSX). Commit **90265b6** (7 files, explicit paths): `tools/bobcatalog.py`,
 `tools/msxsprites.py`, `tools/msxframe.py`, `tools/recframes.py`, `tools/msxchooser.py` (new),
 `msx/level2_frames.json` (new, empty), `tests/test_msxsprites.py` (new). Scratch: `$IMPL/s10` (logs,
 outputs, check scripts, pictures). The Makefile, mkrom.py and build/ are untouched: **build/msx and
@@ -984,7 +984,7 @@ $VPY -I tools/msxchooser.py build/msx/sprites build/review/quadros.html [--sheet
 
 ## Step 7: level 2 in the ROM, a stub logic bank, the test build (2026-10-28)
 
-**Done.** Commit **5f6cade**. Records in `$IMPL/s7` (`W`: the builds `W/R`, the level-2 traces `W/O/l2`,
+**Done.** Commit **24bc492**. Records in `$IMPL/s7` (`W`: the builds `W/R`, the level-2 traces `W/O/l2`,
 the stills `W/O/still`, the stubbed references `W/stub`; `G`: the gate's run; `variants`,
 `banks_variants.txt`, the logs).
 
@@ -1048,7 +1048,7 @@ All from the repository root; `S7=$IMPL/s7`, `W=$S7/W`.
 - Builds: `sh tools/bstest/build.sh $S7/b3/prod/rc2.rom` (product, **77432348263399da**, 1 MiB: 117 of
   128 banks used), `sh tools/bstest/hz.sh l2builds $W/R`: l2builds PASS (l2 **25d98a685d63a8c4**, l2s, l2f,
   l2p, l2o, l2c), `build.sh $W/R/l2t/rc2.rom LV_TEST=2` (**0e46ab3d16de601b**); rebuilt on top of
-  cdf5bb4 + 3b91acf: the same three hashes. 12 known z80asm warnings, 0 errors.
+  75fe00c + 90265b6: the same three hashes. 12 known z80asm warnings, 0 errors.
 - Refusals: `python3 -I tools/mkrom.py build/msx/level1 $S7/neg.rom <opts>` with `LV_TEST=2 PZ_TEST=1`,
   `LV_TEST=2 PZ_TEST=2`, `LV_TEST=1`, `LV_CARRY=1:2:3:1`, and the carries `1:2:3:4`,
   `123456789:2:0:1`, `1:2:3`, `1:x:3:1` with `LV_TEST=2`: exit 2 each, no ROM written.
@@ -1097,7 +1097,7 @@ All from the repository root; `S7=$IMPL/s7`, `W=$S7/W`.
   reported; Brainstorm's and the range's verdicts), die/over/end 0 differ, the start check 0 on the
   three machines, the field check within the known tear's bound (860_m2 3 = the base's, 860_fx 5),
   the stills identical to the base's, LOCKSTEP 2,998 lists 0 differ, the effects by their starts PASS.
-  Run again on the gate's committed harness (cdf5bb4: the Tcl of the first run was sourced 7 minutes
+  Run again on the gate's committed harness (75fe00c: the Tcl of the first run was sourced 7 minutes
   before that commit): `l2base.sh builds $S7/G2`, `l2b_chain` (227 jobs, 0 time outs), `l2base.sh check
   $S7/G2 $IMPL/base`: **l2base: PASS** again (`$S7/G2/l2base_check.log`; the same counts). Both runs' big
   record folders deleted, the logs kept.
@@ -1129,13 +1129,13 @@ All from the repository root; `S7=$IMPL/s7`, `W=$S7/W`.
 
 ## Step 8: the level code (2026-10-28)
 
-**Done.** Commit **76b53e2** (explicit paths: `msx/special.asm`, `msx/mapobj.asm`, `msx/level2.asm`,
+**Done.** Commit **db3a487** (explicit paths: `msx/special.asm`, `msx/mapobj.asm`, `msx/level2.asm`,
 `tools/bstest/l2stub.py`, `tools/bstest/hz.tcl`, `tools/bstest/hz.sh`, `docs/HARNESS.md`). Records in
 `$IMPL/s8` (`S8`): `W/R` (the six l2 builds), `W/stub` (the stubbed references), `W/O/mst`, `W/O/tst`
 (stills and their PNGs), `drv/` (the scratch drives `l2_h0`, `l2_h1` and their bench references), `G` (the
 gate's logs), `compare1.log`, `compare_plain5.log`, `variants`, `banks_variants.txt`, `make_test.log`,
 `tools/` (the scratch scripts below); the traces themselves deleted (1.9 GB with the gate's records).
-Built from a worktree (`$S8/wt`: HEAD 5f6cade + my files; the step-9 agent's `level2obj.asm` edits were in
+Built from a worktree (`$S8/wt`: HEAD 24bc492 + my files; the step-9 agent's `level2obj.asm` edits were in
 the shared tree), removed after the commit.
 
 ### What was built
@@ -1174,9 +1174,9 @@ the shared tree), removed after the commit.
 ### For step 9 (and the next agents)
 - **Stubbed references now**: `python3 -I tools/bstest/l2stub.py OUT` (no `--drop` for my three: they are
   gone from the table; `--drop trolley` is now an error). When you port a type, drop it with `--drop tN` or
-  from the table. A worktree made before 76b53e2 (the step-9 agent's `$IMPL/s9/wt` is at 5f6cade) still
+  from the table. A worktree made before db3a487 (the step-9 agent's `$IMPL/s9/wt` is at 24bc492) still
   stubs the trolley, the vats and `act_0c` in the port and in its l2stub.py: its traces and references agree
-  with each other, but the final check of step 9 belongs on a tree with 76b53e2 (both stub sets dropped).
+  with each other, but the final check of step 9 belongs on a tree with db3a487 (both stub sets dropped).
 - Against the **plain** references every job equals the bench in rows 0-4 (row 0's `snd_b2d` 28h included:
   `act_0c` runs in `ao_start`'s pass); from row 5 type 1's slot (`obj0_type 1/0`).
 - BANK_L2 has **3,505 B** free after `lt1` (the types' room); LC2 4,842, LC3 4,866; the fixed area unchanged.
@@ -1262,9 +1262,9 @@ target is shared with the step-9 agent, which held the second openMSX: 2 in all)
 
 ## Step 9: the new object types (2026-10-28)
 
-**Done.** Commit **eca54d9** (on top of step 8's 76b53e2; 5 files, explicit paths): `msx/level2obj.asm`,
+**Done.** Commit **a5c7648** (on top of step 8's db3a487; 5 files, explicit paths): `msx/level2obj.asm`,
 `tools/bstest/l2stub.py`, `tests/test_level2_rom.py`, `docs/HARNESS.md` 5.22, `docs/AMIGA_ANALYSIS.md`.
-Records in `$IMPL/s9` (`G/l2base_check.log` and the gate's logs, `W2/R` the six l2 builds of eca54d9,
+Records in `$IMPL/s9` (`G/l2base_check.log` and the gate's logs, `W2/R` the six l2 builds of a5c7648,
 `banks_variants.txt`, `variants.log`, `make_test2.log`, `extra.tsv`, `tools/` = my private MCP (`mcpd.py`,
 `mx.sh`), `amdiff.py`, the still/product Tcl). Big run folders deleted; the worktree removed.
 
@@ -1307,22 +1307,22 @@ Records in `$IMPL/s9` (`G/l2base_check.log` and the gate's logs, `W2/R` the six 
    the touch costs 51 (30h + 3), as designed.
 
 ### Checks (exact commands, results)
-- Builds from a worktree (5f6cade + level2obj.asm, then 76b53e2 + it): `sh tools/bstest/hz.sh l2builds
-  W/R`: PASS (12 known warnings). eca54d9's l2 build 11d325dd76f7a693, product 66e294ce1f26139c.
+- Builds from a worktree (24bc492 + level2obj.asm, then db3a487 + it): `sh tools/bstest/hz.sh l2builds
+  W/R`: PASS (12 known warnings). a5c7648's l2 build 11d325dd76f7a693, product 66e294ce1f26139c.
 - On top of step 7, MCP (private session, `$IMPL/s9/tools/mx.sh`): `hz_chain [hz_l2_jobs {W/O/l2} {W/R}
   tr] {W/O/chain2.done}`; `python3 -I tools/bstest/l2stub.py W/stub --drop t1 --drop t2 --drop t5
   --drop t6 --drop t14 --drop t16 --drop t49`; `sh tools/bstest/hz.sh compare --fields
   analysis/amiga_ram_l2.tsv W/O/l2 W/R --refs W/stub`: **level 2: PASS (20 traces)**, 0 differ.
-- **On top of step 8 (eca54d9's code), against the plain references**: the same `hz_l2_jobs` chain on
+- **On top of step 8 (a5c7648's code), against the plain references**: the same `hz_l2_jobs` chain on
   `W2`, `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv W2/O/l2 W2/R`: **level 2:
   PASS (20 traces)**: end 259, tour 2,654 (MSX2, FS-A1FX, FS-A1GT), lift 801, trolley 641 (4 ratings,
   50 Hz), vat 701 x 3, fuzz 2,501, over 109, cont 109 (step 8's game over), **barrel 901, mine 161,
   t1left 341, drone 401**: 0 differ in all 1,022 fields.
-- The gate (on 5f6cade + level2obj.asm): `sh tools/bstest/l2base.sh builds $IMPL/s9/G` (25 builds OK),
+- The gate (on 24bc492 + level2obj.asm): `sh tools/bstest/l2base.sh builds $IMPL/s9/G` (25 builds OK),
   MCP `l2b_chain {G} {G/all.done}` (227 jobs, 0 time outs), `sh tools/bstest/l2base.sh check G
   $IMPL/base`: **l2base: PASS** (regress 45 PASS, die/over/end, start 0 on three machines, field
   860_m2 3 = base, stills identical, LOCKSTEP 2,998 lists 0 differ, effects PASS). `romdiff.py`: the
-  gate's prod/ext/pzt/pz1/pz2/trace differ from step 7's (`s7/G2/R`) in bank 104 only, and eca54d9's
+  gate's prod/ext/pzt/pz1/pz2/trace differ from step 7's (`s7/G2/R`) in bank 104 only, and a5c7648's
   prod/ext/pzt from step 8's (`s8/G/R`) in bank 104 only: the gate's runs never map BANK_L2.
 - Stills (`end` drive, frames 12/30/100/150, MSX2 and turbo R) through `l2frame.py`: play area 0
   differ everywhere; sprites exact but tr g0100 (21 px where a type-5 bullet overlaps another BOB at
@@ -1343,7 +1343,7 @@ Records in `$IMPL/s9` (`G/l2base_check.log` and the gate's logs, `W2/R` the six 
 ## Step 11: milestone 1 accepted, but for 4.2 check 1's guard (2026-10-28)
 
 **Done, with one acceptance item not met literally (below).** The review's findings: none (`[]`). No
-msx/ or mkrom.py change: every ROM is eca54d9's. Commit **5d41020**: the harness only (`tools/bstest/hz.tcl`,
+msx/ or mkrom.py change: every ROM is a5c7648's. Commit **6a60af0**: the harness only (`tools/bstest/hz.tcl`,
 `tools/bstest/hz.sh`, `tools/openmsx_rc2.tcl`, `docs/HARNESS.md` 5.22 "At step 11"). Records in `$IMPL/s11`
 (`S11`): `W/R` (the six l2 builds, `l2x` = `EXTJOY=1 LV_TEST=2` with the product's caps), `b/prod`, `G` (the
 gate's logs), `W/O/l2/lost.txt`, `W/O/st2_l2`, `W/O/st2_l2x` (the start checks), `W/O/g2` (level 1 under
@@ -1460,7 +1460,7 @@ session (`$S11/tools/mcpd.py $S11/mcp` + `mx.sh`): 2 openMSX at most.
 
 ## Step 12: the global sprite pool in the ROM (2026-10-28)
 
-**Done.** Commit **db4f720** (18 files, explicit paths): `Makefile`, `tools/mkrom.py`, `msx/{msx.inc, rc2.asm,
+**Done.** Commit **c55b5c3** (18 files, explicit paths): `Makefile`, `tools/mkrom.py`, `msx/{msx.inc, rc2.asm,
 field.asm, sprites.asm, bob.asm, player.asm, level2obj.asm}`, `tools/objcmp.py`, `tools/bstest/{romdiff.py,
 relocheck.py, l2base.py, hz.tcl}`, `tests/{test_level2_rom.py, test_bstest.py}`, `docs/{HARNESS.md,
 MSX_ARCHITECTURE.md}`. Records in `$IMPL/s12` (`S12`): `A` (the relocation layer's builds), `B` and `H`
@@ -1566,7 +1566,7 @@ command; robocop.* unchanged, hashed before/after) and build/sprites/catalog_l2.
 
 ## Step 13: level 2's play field (2026-10-28)
 
-**Done** (the gate's verdict at the end of this section). Commit **1b10b8a** (17 files, explicit paths):
+**Done** (the gate's verdict at the end of this section). Commit **41facbc** (17 files, explicit paths):
 `tools/mkrom.py`, `tools/mapcells.py`, `msx/{field.asm, isr.asm, tiles.asm, cold.asm, level2.asm, msx.inc,
 rc2.asm}`, `tools/msxframe.py`, `tools/bstest/{fieldcheck.py, hz.tcl}`, `tests/{test_level2_rom.py,
 test_bstest.py, test_msxsprites.py}`, `docs/{HARNESS.md, MSX_ARCHITECTURE.md}`. Records in `$IMPL/s13`
@@ -1882,7 +1882,7 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
 `msx/puzl.asm`, `Makefile`, `tools/bstest/stepcheck.py`, `tools/bstest/check_all.sh`, `tests/test_msxpuzl.py`,
 `tests/test_bstest.py`, `docs/HARNESS.md` (5.5's rows, 7's milestone-3 note), this file. Records in `$S20` =
 `/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s20`:
-`A` (20 option-set builds of HEAD 7c8635a) and `A2` (its `regress.sh builds` and `rgr_chain all` records, made
+`A` (20 option-set builds of HEAD e0e3dc4) and `A2` (its `regress.sh builds` and `rgr_chain all` records, made
 this step's base: no new l2base path was written when it started), `C`, `C2` (the same of this commit), `B`, `B2`
 (the plan's mechanism, rejected: below), `look` (extra visit-2 runs), `png`, logs, and the scratch scripts
 `builds.sh`, `snapcmp.py`, `seqcmp.py`, `palcheck.py`, `puzldiff.py`. The worktrees `wt0`/`wt1` are removed.
@@ -1928,7 +1928,7 @@ this step's base: no new l2base path was written when it started), `C`, `C2` (th
   `PZ_CUR_COL_2` 15 -> 14; its checks pass (the renders against the Amiga's composition, 11 states a visit).
 - Builds: `sh $S20/builds.sh WT OUT` (`hz.sh builds`, `hz.sh l2builds`, and `ROM_2M=1`, `PZ_TEST=2`, `PZ_TEST=2
   PZ_LEVEL=2`, `PZ_TEST=1 PZ_LEVEL=2` (+ `ROM_2M=1`), `EXTJOY=1 LV_TEST=2`, `TAG=7`, `DIAG=1`) from a worktree
-  of 7c8635a into `A` and of this tree into `C`: 20 + 20 build OK, 12 known z80asm warnings each. The shared
+  of e0e3dc4 into `A` and of this tree into `C`: 20 + 20 build OK, 12 known z80asm warnings each. The shared
   tree's product, rebuilt after the copy and `make msx`'s converter line: byte-identical to `C`'s (sha256
   2cd25893b28f0a32; HEAD's 4194792d6a7d1585).
 - **Only Brainstorm's bank and the new blob differ**: `python3 -I tools/bstest/romdiff.py --blocks A/<b> C/<b>`
@@ -1940,9 +1940,9 @@ this step's base: no new l2base path was written when it started), `C`, `C2` (th
   298 (product), lowest DIAG+PZ_TEST 163, DEMO_HUD 76, as before. `sh tools/bstest/variants.sh C/variants`: 46
   of 48 (`DEMO_ACTORS=2`/`5`: the fixed area 6Dh over, as at HEAD).
 - Emulator: one openMSX (the in-process MCP; the step-14 agent used its private session). `sh
-  tools/bstest/regress.sh builds A2` (worktree of 7c8635a) and `... C2`; MCP `source {wt1/tools/bstest/load.tcl};
+  tools/bstest/regress.sh builds A2` (worktree of e0e3dc4) and `... C2`; MCP `source {wt1/tools/bstest/load.tcl};
   rgr_chain {A2} all {A2/all.done}`, the same on C2: 208 jobs each, 0 time outs. A2 made a base:
-  `check_all.sh A2/O m2 tr fx eu > A2/check_all.log` (7c8635a's scripts), `fresh/new_*`, `xnew_*` copied to
+  `check_all.sh A2/O m2 tr fx eu > A2/check_all.log` (e0e3dc4's scripts), `fresh/new_*`, `xnew_*` copied to
   `base_*`, `xbase_*`. **`sh tools/bstest/regress.sh check C2 A2`: regress: PASS, 20 steps, 45 verdicts, 0
   FAIL** (level 1's cov traces; the title from power-on, exact and polled; the product's and `PZ_TEST=1` flows;
   the restore; the turbo R's blank and writes; the titles after the flows; 2 MiB; the keyboard product; the
@@ -1989,22 +1989,22 @@ this step's base: no new l2base path was written when it started), `C`, `C2` (th
    risks 8 and 9).
 5. Visit 2's entry maps 8 data banks (`puzl_gfx.bin`'s first 4, `puzl_tv2.bin`'s 4), visit 1's 7.
 
-## Level 2's base made again, from main 9be19aa (2026-10-31)
+## Level 2's base made again, from main 6082d3a (2026-10-31)
 
-**Done.** macOS wiped the scratchpad on 2026-10-30: `$IMPL/base` (a969fc8) and the range's base are gone.
+**Done.** macOS wiped the scratchpad on 2026-10-30: `$IMPL/base` (8507734) and the range's base are gone.
 **The base is now `$L2/base`**, with `L2=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2`:
-main **9be19aa** (the range's two cameras: the V9958's rings, the V9938's 16-column steps), recorded
-and checked by level2 7c8635a's harness. Keep it; other agents only read it. Every "as the base" check
+main **6082d3a** (the range's two cameras: the V9958's rings, the V9938's 16-column steps), recorded
+and checked by level2 e0e3dc4's harness. Keep it; other agents only read it. Every "as the base" check
 from now on: `sh tools/bstest/l2base.sh check W $L2/base` (THE ONE CHECK at the top, with this path).
 
 ### How it was made (exact commands)
 ```sh
-git worktree add --detach $L2/wt0 9be19aa
+git worktree add --detach $L2/wt0 6082d3a
 ln -s <repo>/build/extracted $L2/wt0/build/extracted; cp -Rc build/ram build/emu $L2/wt0/build/
 (cd build/msx && find . -type f ! -name '*.rom' ! -name '*.ROM' ! -name '*.labels' ! -name '*.png' \
    ! -path './gen/*' ! -name '*.wav' -print | cpio -pdm $L2/wt0/build/msx)   # (copied 03:20, before step 20's puzl.inc)
-git -C $L2/wt0 checkout 7c8635a -- tools/bstest tools/openmsx_rc2.tcl tools/tracecmp.py tools/msxframe.py \
-   tools/recframes.py tools/objcmp.py tools/msxprof.py     # (the gate's harness; 9be19aa's sources and build tools)
+git -C $L2/wt0 checkout e0e3dc4 -- tools/bstest tools/openmsx_rc2.tcl tools/tracecmp.py tools/msxframe.py \
+   tools/recframes.py tools/objcmp.py tools/msxprof.py     # (the gate's harness; 6082d3a's sources and build tools)
 cd $L2/wt0 && sh tools/bstest/l2base.sh builds $L2/base    # builds: PASS (25 ROMs)
 # a private MSX-AI MCP session (this process's target may be another agent's): new tools/bstest/mcpd.py, mx.sh
 python3 -I tools/bstest/mcpd.py $L2/sg/mcp &               # (background; MCPD_DIR=$L2/sg/mcp sh tools/bstest/mx.sh NAME 'TCL')
@@ -2015,19 +2015,19 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
 ```
 
 ### Checks (results)
-- The build data are 9be19aa's: `build.sh ... TAG=6` and `PZ_TEST=2 TAG=6` in `$L2/wt0` give test6's files
+- The build data are 6082d3a's: `build.sh ... TAG=6` and `PZ_TEST=2 TAG=6` in `$L2/wt0` give test6's files
   byte for byte (SHA-256 6aea17e05c26dba0… and 8c8bf053d876a208…, `build/msx/ROBOCOP2_v0.1.3-test6*.ROM`);
-  `TAG=4` against `ROBOCOP2_v0.1.3-test4.ROM` (a969fc8, the old base): only bank 88 (FRNG) differs, so level 1,
+  `TAG=4` against `ROBOCOP2_v0.1.3-test4.ROM` (8507734, the old base): only bank 88 (FRNG) differs, so level 1,
   the title, Brainstorm and the fixed area are the old base's byte for byte.
 - The chain: 227 jobs, all done, no time out (`$L2/base/all.done`). `l2base.sh check $L2/base $L2/base`:
   **l2base: PASS** (regress 45 PASS; die/over/end 901/1,249/517 rows 0 differ; start m2/fx/tr all 0 (26,690 /
   26,445 / 31,505 entries); field 0 differ but `860_m2` 3 pictures / 177 px, the known hostage tear (A); stills
   10 pictures; LOCKSTEP 2,998 lists both VDPs; effects 800 starts, SCC 57,480 / PSG 33,395 sound ticks; code
-  banks: fixed 188, FIELD 1,529, FRONT 2,309 ... as a969fc8's).
+  banks: fixed 188, FIELD 1,529, FRONT 2,309 ... as 8507734's).
 - **The base against itself, a rebuild**: `l2base.sh builds $L2/rebuild` (25 ROMs, 0 differ from the base's),
   the chain again, `l2base.sh check $L2/rebuild $L2/base`: **l2base: PASS**, every record identical
   (`$L2/rebuild/l2base_check.log`).
-- **level2 7c8635a (level 1, Brainstorm, the range and the title as the base)**: worktree `$L2/wtH` (its own
+- **level2 e0e3dc4 (level 1, Brainstorm, the range and the title as the base)**: worktree `$L2/wtH` (its own
   harness), `l2base.sh builds $L2/h13`, the chain with `$L2/wtH`'s Tcl, `cd $L2/wtH && sh
   tools/bstest/l2base.sh check $L2/h13 $L2/base`: **l2base: PASS** (`$L2/h13/l2base_check.log`): regress 45
   PASS, traces 0 differ, start checks all 0, field 0 differ in every window (860_m2's hostage tear did not come
@@ -2043,8 +2043,8 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
   range's tarm_m2 row 40), 8 PASS (the same copies unmutated).
 
 ### Open issues
-1. After step 20 (244ccb8) `check_all.sh` checks `solve2`/`fuzz2` as visit 2 (Ellen), while this base's
-   `check_all.log` and records are visit 1's pictures (Murphy, 9be19aa): a later tree's run against this base
+1. After step 20 (b1d4714) `check_all.sh` checks `solve2`/`fuzz2` as visit 2 (Ellen), while this base's
+   `check_all.log` and records are visit 1's pictures (Murphy, 6082d3a): a later tree's run against this base
    shows those differences in Brainstorm's family (expected, step 20's change; see the step-14 section for how
    they were judged).
 2. `$L2/base` holds 1.8 GB; `$L2/rebuild`'s and `$L2/h13`'s big record folders can go once read.
@@ -2052,7 +2052,7 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
 ## Step 18: the flow into and out of level 2 (2026-10-31)
 
 **Done.** Branch `l2-s18` (worktree
-`scratchpad/l2/wt18`, from level2 244ccb8). Records in `$S18` =
+`scratchpad/l2/wt18`, from level2 b1d4714). Records in `$S18` =
 `/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s18`:
 `B` (level2 head's records, below), `W` (this step's gate: `W/R`, `W/X`, `W/V`, `W/S`, `W/L`, `W/L2R` the
 level-2 builds, `W/O`, `W/fresh`, `W/l1`), `T` (the first runs), `variants`, the logs.
@@ -2091,7 +2091,7 @@ level-2 builds, `W/O`, `W/fresh`, `W/l1`), `T` (the first runs), `variants`, the
 
 ### Checks (exact commands, results)
 All from the worktree's root; `S18` as above; one openMSX (the in-process MCP).
-- **Level2 head's records** (`B`): `sh tools/bstest/regress.sh builds $S18/B` at 244ccb8 (before any
+- **Level2 head's records** (`B`): `sh tools/bstest/regress.sh builds $S18/B` at b1d4714 (before any
   edit): every hash equal to step 20's C2 builds (prod 2cd25893b28f0a32, pzt ff490d845bf806c2, pz1
   16f7a1307ca63cd8, pz2 514e5fb00c302af9, trace c7d7a04389d6f130, ext 3631e1af717b6739, fr2 cf6dac2f807aee71,
   ... all 22); MCP `source {wt18/tools/bstest/load.tcl}; rgr_chain {$S18/B} all {$S18/B/all.done}`: 208 jobs,
@@ -2109,7 +2109,7 @@ All from the worktree's root; `S18` as above; one openMSX (the in-process MCP).
   [hz_l2_jobs W/O/l2 W/L2R tr]] W/all.done` (248 jobs, 0 time outs). Then:
   - `sh tools/bstest/regress.sh check $S18/W $S18/B` (**against level2 head's records**): **regress: PASS,
     45 verdicts, 0 FAIL** (`$S18/regress_check_B.log`);
-  - `sh tools/bstest/l2base.sh check $S18/W ../base` (**main 9be19aa's base**): **l2base: PASS** (regress 45
+  - `sh tools/bstest/l2base.sh check $S18/W ../base` (**main 6082d3a's base**): **l2base: PASS** (regress 45
     PASS; level 1's die/over/end 901/1,249/517 rows 0 differ; the start check; the field check; the stills
     identical; LOCKSTEP 0 differ; the effects by their starts);
   - `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv $S18/W/O/l2 $S18/W/L2R`: **level 2:
@@ -2217,7 +2217,7 @@ All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 hea
     tick 229 a second game over without a credit: no offer, `$805E` 00FFh, the title's new game); **over
     `--none`: PASS** (no offer, `$805E` 00FFh as `$11FEE` leaves it, the new game 30 s after: PIC9's time);
   - `sh tools/bstest/regress.sh check $S18/W19 $S18/B`: **regress: PASS, 45 verdicts, 0 FAIL**;
-  - `sh tools/bstest/l2base.sh check $S18/W19 ../base` (main 9be19aa): **l2base: PASS** (level 1's die 901, over
+  - `sh tools/bstest/l2base.sh check $S18/W19 ../base` (main 6082d3a): **l2base: PASS** (level 1's die 901, over
     1,249, end 517 rows 0 differ: level 1's game over unchanged; the start and field checks, the stills, LOCKSTEP,
     the effects).
 - **The first picture after the continue** (`TAG_l2g0`, `$PY -I tools/msxframe.py ... --level 2 --field`): the HUD
@@ -2752,7 +2752,7 @@ All from the worktree's root; `S21` as above.
   stages, the level-2 briefing, level 2 ended at its frame 100 as F5 ends it, both stages' second visits, the
   level-3 briefing) on the Expert, the HB-F1XDJ and the FS-A1GT: **the picture identical, the music identical
   at every tick** (5,045 / 5,045 / 5,046 ticks; 150,864 / 150,864 / 130,435 PSG writes; SCC, PSG registers
-  and PSG writes 0 differ: titlecmp2.py) against a7c465d's records; against main 9be19aa's base (the title after the old flow) the
+  and PSG writes 0 differ: titlecmp2.py) against a7c465d's records; against main 6082d3a's base (the title after the old flow) the
   picture identical and every PSG write identical at every tick, the registers that differ only ones neither
   run can hear (`titlecmp2.py --unheard`: the SCC's at every tick, on the turbo R the PSG's too: leftovers of
   what played before the title, as at steps 18-19).
@@ -2790,7 +2790,7 @@ All from the worktree's root; `S21` as above.
     `--no-fire`, over `--none`: **PASS**.
   - `sh tools/bstest/regress.sh check $S21/W $S18/I`: one FAIL, the exact title from power-on's game RAM
     (pointers DD08h, DD0Ah, DD0Ch 14 bytes apart, the `sw_*` bytes): **`s18/I/fresh/xbase_*` are main
-    9be19aa's** (its check against `../base` copied them there: `regress.sh check` copies the base's
+    6082d3a's** (its check against `../base` copied them there: `regress.sh check` copies the base's
     `xbase_*` into W's `fresh/`), while its labels are a7c465d's, so the relocated pointers cannot be
     followed; this step's record equals `s18/I`'s own `xnew_*` byte for byte. So **the base view `$S21/IB`**:
     `s18/I`'s folders linked, `fresh/` with `s18/I`'s own records as `base_*` and `xbase_*` (what
@@ -2800,7 +2800,7 @@ All from the worktree's root; `S21` as above.
     1's die, over, end 901 / 1,249 / 517 rows 0 differ; the start checks 0 on the MSX2, MSX2+, turbo R; the
     stills; LOCKSTEP 2,998 lists 0 differ; the effects identical: sess_fxlog's 800 starts, 803 / 802 starts
     each in the base's frame with 0 moves, SCC 57,480 and PSG 33,396 sound ticks 0 differ).
-  - `sh tools/bstest/l2base.sh check $S21/W ../base` (main 9be19aa's base): **l2base: PASS** (45 verdicts).
+  - `sh tools/bstest/l2base.sh check $S21/W ../base` (main 6082d3a's base): **l2base: PASS** (45 verdicts).
 
 ### Open issues
 1. **The priority rule's scope differs between the two players (pre-existing, level 1 too; not fixed: no
@@ -2835,7 +2835,82 @@ All from the worktree's root; `S21` as above.
   (23 traces)**; `contcheck.py`'s six: **PASS**; `fxcheck.py check` (with `--bench`) on tour (the cartridge's
   SCC), vat (an SCC in slot B), t1left (the PSG alone): **PASS**, their traces 0 differ; cont_scc and brief_psg:
   **PASS**, the offer and the briefing silent after their stop.
-- `sh tools/bstest/l2base.sh check $S21/X scratchpad/l2/base` (main 9be19aa): regress **45 verdicts PASS**,
+- `sh tools/bstest/l2base.sh check $S21/X scratchpad/l2/base` (main 6082d3a): regress **45 verdicts PASS**,
   everything else PASS but **the known still `m2_g1490`** (24 px, msxframe 468 against 462): step 14's open
   issue, its integration's same verdict (these ROMs are its own byte for byte).
 - `make test` (the main tree): 317 tests, the 4 known failures only.
+
+## Step 24: the documentation as built (2026-10-31)
+
+**Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), two commits (their
+subjects begin "docs/LEVEL2.md as built" and "Level 2's step 24: the docs as built"), cherry-picked onto
+`level2` (below). No msx/, tools/, tests/ or Makefile change; `analysis/*.sym` and
+`analysis/ghidra_seeds.tsv` unchanged, so REA's seeds were not run again. Records in `S24` =
+`scratchpad/l2/s24` (`prod/`: the product rebuilt from level2's head; the logs).
+
+### What it did
+- **`docs/LEVEL2.md`, as built**: the plan kept, each section with **As built** notes from this file's
+  steps, marked [V] where a step's check proved them: the state and the summary (1); 2.12, what the steps
+  found about the original (the suspect whole in the Amiga's view, the copper line after a vat death,
+  `act_0c` every frame, the controls' lock at a level start, `high_score_entry`'s `st.b $8032`, the
+  cheat handler's `st.b $804F`, the briefings' lengths, `$1822C`'s scope), Q1, Q2, Q7 answered; 3.1 the
+  level start and its 32-byte descriptor with step 4's three departures; 3.2 every module's bank and free
+  bytes; 3.3 the logic's placements and helpers; 3.4 the RAM homes added; 3.5 the vats as built with their
+  measured rates, their cost and `VAT_TICK=1`; 3.6 the pool, the play field, the cut in FRONT, the view's
+  48 px with the corrected premise, the lines above 8; 3.7 the flow and the continue; 3.8-3.13; 4.6 the
+  checks as run; section 5's steps in the order they ran with their commits and departures; section 6's
+  `CHEAT` and `VAT_TICK`; section 7's defaults with an "As taken" column (14 took its alternative); section
+  8's risks with their status, and **8.1, the open issues and the user's choices as they stand** (the
+  code review's two findings for step 22, the glitch classes left with their causes, the user's choices).
+- **`docs/MSX_ARCHITECTURE.md`**: a new section "Levels: the descriptor, level 2 and the flow between them"
+  (`lv_cur`/`lv_desc` with every field and its readers, the level bank's header, level 2's modules and
+  banks, `ml_ev`/`lv_next`/`front_brief`/`hud_start`/`hud_lvl`, the continue `front_over`/`front_cont`/
+  `fo_cont`/`ml_ov`/`lv_cont`/`lv_cfront`, the vats' display (the cell rule, the round robin, the window,
+  `vat_fits` and its constants, the V9938 mirror, `VAT_TICK=1`), the cut `spr_cut`, the arrest's view,
+  the test options); the changed cells' window (step 16) in "Game logic"; the front end's flow, the bank
+  count, Brainstorm's visit 2 and the range's rating brought up to date.
+- **`docs/AMIGA_ANALYSIS.md`**: level 2's facts the steps verified (type 1's leftover registers, the shot
+  drone's D5, the five-hit kill out of reach, `act_0c`, the controls' lock, type 6's byte 2, the suspect
+  in the Amiga's view, the copper line after a vat death, the briefings' lengths), `high_score_entry`'s
+  first instruction, the per-level loading table's briefings; inferences kept apart.
+- **`docs/ROM_BUDGET.md`**: 2.3, the bank map with level 2 (127 of 128 banks; the pool 21-47, `BANK_L2`
+  108, level 2's blocks 109-122, `puzl_tv2.bin` 123-126), the code banks' free bytes, what level 3 needs
+  (the 2 MiB image with its boot guard); the summary's rows.
+- **`README.md`**: the game's flow (level 1, the statistics, Brainstorm, the range, level 2, the
+  statistics, both stages' second visits, the level-3 briefing, the title) and the continue; level 2 in
+  development, not released; the requirement: a 2 MiB Konami SCC device for the complete game (level 2's
+  images still 1 MiB); the options `LV_TEST`, `LV_CARRY`, `CHEAT`, `VAT_TICK`; the docs list.
+- **`docs/HARNESS.md`**: 5.24, level 2's acceptance in one place (the builds, one chain, every verdict's
+  command, what is not in the chain yet); the file table's missing rows (`vatlog.tcl`, `vatcheck.py`,
+  `cutview.tcl`, `cutview.py`, `l2neg.sh`, `mcpd.py`/`mx.sh`) and `variants.sh`'s 55 sets; the vats' and
+  the view's labels; section 6's level-2 item.
+- **`docs/BRAINSTORM.md`** (step 20's open issue 4) and **`docs/RANGE.md`**: their notes on the second
+  visit and on level 2's rating marked as built.
+
+### Checks (exact commands, results)
+- The bank map and the free bytes from the source as it stands: from the main tree at `d092b97`, `sh
+  tools/bstest/build.sh S24/prod/rc2.rom`: build OK, 12 known z80asm warnings, the product
+  **dd05c76fc6d5dfe3** (step 16's, byte for byte), "1024 KiB (128 banks)", the summary line's blocks;
+  `S24/prod/gen/banks.inc` for every bank of ROM_BUDGET.md 2.3 and LEVEL2.md 3.12; `python3 -I
+  tools/bstest/l2base.py banks S24`: fixed 181, LC1 53, LC2 4,842, L1 874, LC3 4,866, INPUT 11, FRONT
+  1,381, FIELD 143, MUSIC 1,331, PUZL 4,483, FRNG 264, L2 29 (the option sets' numbers are step 16's).
+- Every routine, label, RAM home and constant the new text names read in the source (`msx/rc2.asm`,
+  `cold.asm`, `front.asm`, `tiles.asm`, `vats.asm`, `field.asm`'s vat section, `msx.inc`,
+  `scroll9958.asm`, `scroll9938.asm`) and the harness's procs and usages (`hz.tcl`, `vatlog.tcl`,
+  `cutview.tcl`, `l2neg.sh`, `mcpd.py`, `mx.sh`, `load.tcl`).
+- `make test` in the worktree with the build data copied (`build/ram`, `build/emu`, `build/sprites`,
+  `build/msx` without ROMs, labels, PNGs or gen; `build/extracted` linked): **320 tests, the 4 known
+  failures only** (failures=3, errors=1, skipped=54). (Without the build data one test errors on the
+  missing `build/ram/level1_full.bin`: `test_bonuscheck_range_command_line` reads it without a skip.)
+- REA: not run (`analysis/*.sym` and `analysis/ghidra_seeds.tsv` unchanged).
+- Read back: every changed doc's new text.
+
+### Open issues
+1. **Step 22 runs beside this step**: the review's finding 1 (`vats.asm` `vr_main`: a column `vat_fits`
+   refuses kept instead of dropped) and finding 2 (the gate's first picture of level 2) are written as
+   open in LEVEL2.md 8.1 and MSX_ARCHITECTURE.md "The vats' display"; once step 22 fixes them, those
+   lines and HARNESS.md 5.24's verdicts follow its account.
+2. `msx/msx.inc`'s `pz_tvb` (C6AAh) is allocated and unused, and its `pz_tv` comment speaks of visit 1
+   only; `tools/msxconv.py` still prints "432 VRAM slots": not docs, left to a code step.
+3. `tests/test_bstest.py` `test_bonuscheck_range_command_line` errors instead of skipping without
+   `build/ram` (a worktree without the build data).

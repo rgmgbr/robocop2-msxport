@@ -563,8 +563,8 @@ over (PIC9)**, called from `main_loop` when the lives counter `$8034` goes negat
 | Level | Files | Before the level |
 |---|---|---|
 | 1 | DATAL1 (+ resident SPERMA/PERMA) | briefing and PIC1 |
-| 2 | MADEX at `$45250` + DATAL2 | statistics, 2 bonus stages, PIC4 |
-| 3 | DATAL3 (overwrites MADEX and SPERMA) | statistics, 2 bonus stages, PIC7 |
+| 2 | MADEX at `$45250` + DATAL2 | statistics, 2 bonus stages, the briefing `$110F0`, PIC4 |
+| 3 | DATAL3 (overwrites MADEX and SPERMA) | statistics, 2 bonus stages, the briefing `$110B4`, PIC7 |
 
 The level's sound file (`MU1`, with its player code) is loaded at `$18000` by the level start
 (`$8614`, then `jmp $18000`); it holds sound effects only (see below).
@@ -724,6 +724,34 @@ bench runs); the items marked *REA 10-28* were read again on 2026-10-28. Names:
   word FFFFh into the low word before the shift and moves a little less than half (-9: FFFB.FFFFh,
   -4 - 1/65536) **[verified: the drone traces of level 2's step 9 differ in 380 of 401 rows with a
   plain half step, 0 with this one]**.
+- **What the port's steps found** (2026-10-28 to 2026-10-31; `docs/level2/HANDOFF.md`):
+  - **Type 1's leftover registers** **[verified: bench, 16 references and four new drives]**: facing
+    left it fires bullet type D6 with direction 10h, and `$EF42` leaves D6 = 2 (an upward missile)
+    only on a turn at a wall above its walkway. Both type-1 walkways of level 2 end at edges (entry
+    10: x 271-531; entry 11: x 319-931), where D6 is 0, so **the upward missile never occurs in level
+    2**: every left-facing shot writes a bullet slot that stays free (`t1left`: 15 such shots).
+  - **The shot drone** **[verified: bench, `drone`]**: `$C35A` is entered with D5 = 0198h (its
+    descriptor's offset), but clears D5 before `spawn_explosion` (`$F366`): the explosion is a normal
+    type 0 and the frames E6h-41h are never read.
+  - **The suspect's five-hit kill is out of reach** **[verified: bench, 126 runs]**: with the
+    three-way and scatter guns at the roof, firing every 2-4 frames or walking in while firing, at
+    most 3 hits land in one frame (one shot's three bullets); `$C2D8` is never reached and walking in
+    ends in the arrest. The respawn after such a kill stays **[inferred]**.
+  - `act_0c` acts on every frame RoboCop stands in the mine's cell: 5 frames in `mine`, 4 explosion
+    requests each **[verified: bench]**.
+  - A level-2 start ignores the controls for about 65 frames **[verified: bench]**.
+  - Type 6's byte 2 is the draw's D0 low byte: when the tyre is not drawn it holds `$16BA`'s low byte,
+    not FFh **[verified: the port's trace against the bench, step 9]**.
+  - **The suspect is whole in the Amiga's view**: its BOB covers map x 242-285 (drawn at 241, the
+    camera at x 0), inside the 288 px the Amiga shows **[verified: the port's atlas columns and lists,
+    step 15]**. An MSX view of 256 px shows only its first columns there.
+  - **The copper line after a vat death**: once d = cam y + 98h − y reaches 4Dh (the camera following
+    RoboCop down: game frame 56 of `vat`), `$10356` is CAh again and his sprites show whole in front of
+    the liquid until the restart **[verified: the bench's `$10356` at each frame's start equal to
+    `lt1`'s rule on all 121 rows of `vat`, step 15]**.
+  - A briefing screen lasts its script's calls plus the one that reads the end: 394 VBLs for `$110F0`
+    (393 calls) and 412 for `$110B4` (411) without fire **[verified: bench VBL count of `$110F0`; the
+    port's records, step 18]**.
 
 ### Music and sound effects (MU1 player) **[verified: REA listing of `$18000-$18B35` (level-1 image); `tools/rc2music.py --verify` runs that code in Unicorn and matches the model's Paula writes and player RAM on every tick of every tune of the five files (49986 ticks); the paths the data never takes (vibrato, 86h, 81h-83h in patterns, 83h in sequences, stop tune, the effect priority, effects over music) matched the same way on patched images and call scripts]**
 
@@ -1310,7 +1338,10 @@ and 11), as Brainstorm's are in `docs/BRAINSTORM.md`. Names: `analysis/frng_1ea0
   `$12006` (`' '`, name of 9, `' '`, score of 7 digits `'['`–`'d'`, CR) and `FF 00` at
   `$12078`. Defaults: IAN 100000, KAREN 90000, COLIN 50000, KEITH 45000, ANDY 9000, PAUL 7500
   (`hiscores.json`).
-- `high_score_entry`: the score `$8046` as 8 digit characters at `$1207A`; its low 7 against
+- `high_score_entry` starts with `st.b $8032` (the key byte FFh, no key), which a continued game's
+  `frame_keys` then takes as handled (`$8033`) **[verified: level 2's `cont` reference, `$8032` and
+  `$8033` FFh after the continue, equal in the port's trace]**. Then the score `$8046` as 8 digit
+  characters at `$1207A`; its low 7 against
   entry 6 (`$12070`), only a greater score goes on: entry 6 = the score and 9 spaces,
   `$12300` (HI1 restored or loaded, copper `$10356` meanwhile; tune 1), `$1215C`, fade out,
   24 bubble passes (18 bytes swapped when the upper score is lower: ties keep the older entry

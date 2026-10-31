@@ -74,14 +74,14 @@ The harness has two sides:
 | `frozen.py SNAP OUT.png` | python | what the VDP shows while the CPU is held (5.12) |
 | `romdiff.py [--blocks] A B [--allow NAME,...]` | python | the 8 KiB banks that differ; `--blocks`: each block of `gen/banks.inc` at its own bank in each image (5.15) |
 | `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words and one-byte operands of changed names (`NAME + k`: bank numbers); `OLD:NEW` or a name for a code bank that moved (5.15) |
-| `variants.sh OUT` | shell | the night review's 41 option sets and level 2's 7 `LV_TEST=2` sets, built (5.15, 5.22) |
+| `variants.sh OUT` | shell | the night review's 41 option sets, level 2's 7 `LV_TEST=2` sets, the candidates' 5 `CHEAT=1` sets and 2 `VAT_TICK=1` sets (55), built (5.15, 5.22, 5.24) |
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
 | `rgview.tcl` | Tcl | the shooting range's display checks (5.18): `rgv_job` (snapshots at passes, a record at every VBLANK, the camera's pokes, the HUD's register probe), `rgv_tjob` (a trace), `rgv_guard_job`, `rgv_fast_job`, `rgv_rate_job`, `rgv_after_setup` (the restore), `rgv_suite W` (all 81 jobs) |
 | `rgview.py still` / `rec` / `rate` / `probe` / `want` | python | the range's pictures against `tools/msxrange.py`'s render and the bench's states at the camera; the cut; the picture rates; the pass rate; the register probe (5.18); the wanted state at every pass (5.19) |
 | `rgview.sh builds W` / `check W` | shell | the range's four test builds; every verdict of 5.18, then "rgview: PASS" |
-| `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` / `cand W B NAME CB` | shell | the range milestone's whole regression (5.19): the base 4a8a61d rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS"; `cand`: the range's test candidates' verdicts (5.20) |
+| `regress.sh base B` / `basecheck B` / `builds W` / `check W B [FAMILY ...]` / `cand W B NAME CB` | shell | the range milestone's whole regression (5.19): the base cb7c9ef rebuilt from a worktree, the builds, every verdict against the base, then "regress: PASS"; `cand`: the range's test candidates' verdicts (5.20) |
 | `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 208 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
 | `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
@@ -102,6 +102,12 @@ The harness has two sides:
 | `cheat.tcl` | Tcl | `ch_job DIR ROM LABELS`: a `CHEAT=1` build by the keyboard from the power-on, F5 ending level 1 and level 2, F4 filling the energy, snapshots and notes (5.23) |
 | `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
 | `l2frame.py SNAP LEVEL HUD OUT.png [SPRITE_PAL]` | python (venv) | `tools/msxframe.py` on a level-2 snapshot, the sprites' expected pixels from the palette they were converted with (level 1's, until level 2's step 12) (5.22) |
+| `vatlog.tcl` | Tcl | level 2's vats (5.22, step 14; sourced after `load.tcl`): `vl_jobs` (the guard with tears and every vat column drawn: its parts' beam lines, R#23, the time in `vat_run` and `vat_prep`), `vl_speed_jobs` (game frames, ticks and pictures in SECS), `vl_snap_jobs` (`rc2_snap` at chosen game frames for `tools/mapcmp.py`) |
+| `vatcheck.py DIR` | python | `vl_jobs`' logs per machine: columns a second, each column's draws a second, the CPU's share, the least margin from the beam to a column; exit 1 when the beam drew into a vat column (5.22) |
+| `cutview.tcl` | Tcl | level 2's arrest scene (5.22, step 15; sourced after `load.tcl`): `cv_view_jobs` (at every tick the view, `v_addx`, RoboCop and the camera; at each list's split its camera, RoboCop's record and the play-field BOBs) |
+| `cutview.py cut SNAPROOT REF.jsonl`, `view DIR [--add 48]` | python (venv) | the cut at a vat's surface (stills against `tools/msxframe.py --cut LINE` at the original's copper line) and the arrest's view (`v_addx`'s steps, the view's pace, RoboCop's range, the suspect whole) (5.22) |
+| `l2neg.sh REPO BASE W OUT` | shell | the level-2 gate's negative controls on copies of a passing run's records: each mutated copy must FAIL its verdict, each unmutated one PASS (5.24) |
+| `mcpd.py DIR`, `mx.sh NAME 'TCL' [TIMEOUT_S]` | python, shell | a private MSX-AI MCP session (its own headless openMSX, the same `msx_local_*` tools) when the in-process target is another agent's: `mcpd.py` in the background serves `DIR/req/*.tcl`, `mx.sh` (`MCPD_DIR=DIR`) sends one command and prints the reply (5.24) |
 
 The Tcl reads these labels from a ROM's label file:
 
@@ -130,7 +136,11 @@ The Tcl reads these labels from a ROM's label file:
   `txt_l2_brief`, `txt_l3_brief`, `txt_cont`; `fxcheck.py` the engine's equates and RAM homes
   (`SCCFX_BANK`, `GUN_FX`, `GUN_TAB`, `SND_SFX_N`, `snd_sfx`, `fx_waves`, `TN_MARK`, `SCC_*`, `mus_v`,
   `fx_pv`, `fx_wc`, `snd_v`, ... its `LABELS_NEEDED`); the cheat (`cheat.tcl`): `front_stats`,
-  `fr_title`, `front_mode`.
+  `fr_title`, `front_mode`;
+- level 2's vats (`vatlog.tcl`): `vat_prep`, `vat_run`, `vat_pass`, `vat_mirror`, `vat_fr`, `vat_bk`,
+  the harness's marks `vr_try`, `vr_drop`, `vr_nt`, `vr_lt`, `vr_ok`, `vp_scan`, `vw_ret`, the parts'
+  starts `ve_go1`, `ve_go2`, `vmg_c`, `vmg_d`, `vmg_end`, and `fb_meetq`, `act_a000`, `BANK_L2`,
+  `iv_late`; the arrest's view (`cutview.tcl`): `tick_start`, `game_tick`, and RAM CE43h (`v_addx`).
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -161,7 +171,7 @@ None of these is committed (`build/` is git-ignored; data from the game is never
 | `build/msx/*` (conversions: `level1.*`, `hud*`, `text_bs_*.sc5`, `puzl*`, `pzm.bin`) | every build; `bonuscheck.py` (`text_bs_*.sc5`); `restorecheck.py` (`level1.vram`) | `make msx` |
 | `build/ram/level1_full.bin`, `build/extracted/files/PUZL_25.bin` | `bonuscheck.py`, `stepcheck.py`, `shots.py` (`stepcheck`'s renders) | `make ram`, `make extract` |
 | `build/emu/drive_cov1.txt`, `drive_cov0.txt` and `trace_cov1_ram.jsonl` (4,401 rows), `trace_cov0_ram.jsonl` (20,541 rows) | the level-1 regression (5.2); `drive_cov1.txt`: `ft_l1_job` (5.17 g) | made in earlier sessions. The drives are `tools/drivejoy.py` files, their bench arguments in their `.args` files (`drivejoy.py --scenario level1` makes such drives from `tools/amigacov.py`'s coverage scenario). A trace is `$PY -I tools/amigaemu.py game --gframes N --drive build/emu/drive_covK.txt --trace build/emu/trace_covK_ram.jsonl --trace-ram` (N + 1 rows); `--gframes 600` reproduced the first 601 rows of `trace_cov1_ram.jsonl` byte for byte when the harness moved. Keep them: the regression compares against them as they are |
-| `build/emu/drive_reloc.txt` (`.args`) and `trace_reloc_ram.jsonl` (401 rows) | the relocation drive (the cracked wall, `obj_relocate` `$9FC4`: RoboCop sent to (996, 640) at game frame 192), with `rc2_drive_rom` on the trace build, as `drive_die` | level 2's step 5 (the old `drive_reloc_up` was lost): `python3 -I tools/drivejoy.py --joy 110:300:u --tele 100:2072:320 --god build/emu/drive_reloc.txt`, then `$PY -I tools/amigaemu.py game --gframes 400 --drive build/emu/drive_reloc.txt --trace build/emu/trace_reloc_ram.jsonl --trace-ram`. At `a969fc8` and since, 7 rows differ: `player_hot_x`/`_y` at game frames 193-199, right after the relocation, where the port's `draw_player` keeps the state's last frame record and the Amiga reads on past them (`msx/player.asm` `pl_frame`, on purpose); every other field 0 differ |
+| `build/emu/drive_reloc.txt` (`.args`) and `trace_reloc_ram.jsonl` (401 rows) | the relocation drive (the cracked wall, `obj_relocate` `$9FC4`: RoboCop sent to (996, 640) at game frame 192), with `rc2_drive_rom` on the trace build, as `drive_die` | level 2's step 5 (the old `drive_reloc_up` was lost): `python3 -I tools/drivejoy.py --joy 110:300:u --tele 100:2072:320 --god build/emu/drive_reloc.txt`, then `$PY -I tools/amigaemu.py game --gframes 400 --drive build/emu/drive_reloc.txt --trace build/emu/trace_reloc_ram.jsonl --trace-ram`. At `8507734` and since, 7 rows differ: `player_hot_x`/`_y` at game frames 193-199, right after the relocation, where the port's `draw_player` keeps the state's last frame record and the Amiga reads on past them (`msx/player.asm` `pl_frame`, on purpose); every other field 0 differ |
 | `build/emu/drive_end.txt` | `hz_bonus ... end`, `hz6_arm`, `hz6_prod`, `hzb_setup`, `np.tcl`'s flows (5.17) | four lines: no joystick, the teleport `100:0x900:0x2d0`, no god mode, the poke `150:5826:80:2` (`tools/drivejoy.py`'s format). Level 1 ends by game frame 517 |
 | `build/emu/pz_<name>.drive` and `pz_<name>_ram.jsonl` for `solve1`, `solve2`, `fail`, `timeout`, `fuzz1`, `fuzz2`, `quirk2`, `quirk1` | the drives (5.4), stills and records (5.5); `pz_solve1.drive` and `pz_fail.drive`: the final checks' runs and keyboard moves (5.17) | `docs/BRAINSTORM.md` 4.5 (`tools/puzlsolve.py`, `tools/drivejoy.py`, then `$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_<name>.drive --trace build/emu/pz_<name>_ram.jsonl --trace-ram`; `--pframes 3000` for the fuzz drives, `--level 2 --ram build/ram/level2_full.bin` for visit 2) |
 | `build/emu/pz_opp.drive`, `pz_opp_ram.jsonl` | the `opp` drive | written by hand in `tools/drivejoy.py`'s four-line format: lines 1-2 empty (no joystick, no teleport), line 3 `0` (no god mode), line 4 the 19 pokes `40:32814:2:1 44:32814:12:1 48:32814:3:1 52:32814:15:1 56:32814:140:1 60:32814:2:1 64:32814:12:1 68:32814:8:1 72:32814:12:1 76:32814:8:1 80:32814:3:1 84:32814:12:1 88:32814:3:1 92:32814:15:1 96:32814:5:1 100:32814:10:1 104:32814:6:1 108:32814:9:1 160:32844:255:1`; then `$PY -I tools/amigaemu.py puzl --pframes 2000 --drive build/emu/pz_opp.drive --trace build/emu/pz_opp_ram.jsonl --trace-ram` (203 passes, result 1) |
@@ -432,7 +442,7 @@ Expected:
   from `bs_board`'s copies into the page on screen at the three set-ups (passes 162, 326 and
   470), with the palette black: by design, invisible. Their log lines show `f=162`, `f=326` or
   `f=470` with a return address between `bs_board` and `rd_go` on the stack (A5EEh or A5F3h at
-  `14bc5ef`; take the addresses from the build's label file). Any entry elsewhere is a glitch.
+  `8b89e4e`; take the addresses from the build's label file). Any entry elsewhere is a glitch.
   Since level 2's step 16 the guard counts nothing under an all-black palette or with the display
   off, and a tear only when a picture shows a command's lines half old, half new (5.22, "At step
   16"): those copies no longer count.
@@ -444,19 +454,19 @@ Expected:
 uploads and the exit's restore, on C-BIOS_MSX2 and the FS-A1GT at 3.58 MHz. Expected: "too fast
 VRAM accesses: 0 ...; result 0, passes 732".
 
-**The counter counts since `b59a338`.**
+**The counter counts since `ff249f6`.**
 
 - openMSX runs a callback setting's value as a command, with the event's arguments appended: it
   must name a proc. openMSX's own `share/scripts/callbackprocs.tcl` does `set
   VDP.too_fast_vram_access_callback warn_too_fast_vram_access`.
-- Before `b59a338`, `rc2_count_too_fast` set an inline script there, which failed silently: it
-  never counted, and the zeros of the night's runs before `b59a338` were not measurements. Since
-  `b59a338` it names a proc, `rc2_too_fast_cb`.
+- Before `ff249f6`, `rc2_count_too_fast` set an inline script there, which failed silently: it
+  never counted, and the zeros of the night's runs before `ff249f6` were not measurements. Since
+  `ff249f6` it names a proc, `rc2_too_fast_cb`.
 - It has been seen to move. With it, `solve1` from the power-on to `pz_done` (`ft_job`, 5.17 g):
-  - at 5.37 MHz with the code before `rs_one`'s fix (`14bc5ef`'s): 5 lost writes on the Panasonic
+  - at 5.37 MHz with the code before `rs_one`'s fix (`8b89e4e`'s): 5 lost writes on the Panasonic
     FS-A1FX and 43 on C-BIOS_MSX2+, all at `rs_one`'s two 17 T writes (C-BIOS_MSX2+ adds 1 in
     its own boot code, before the cartridge starts);
-  - at 5.37 MHz with the fix (`b59a338`): 0 in the cartridge on both;
+  - at 5.37 MHz with the fix (`ff249f6`): 0 in the cartridge on both;
   - at 3.58 MHz: 0 measured, before and after the fix (C-BIOS_MSX2, the FS-A1FX, the FS-A1GT).
 - **Another clock.** `hz_cfg` sets `z80_freq` to 3,579,545 Hz and `z80_freq_locked on` on every
   new machine, and openMSX ignores `z80_freq` while it is locked. For another clock, set
@@ -688,8 +698,8 @@ python3 -I tools/bstest/relocheck.py W/old/rc2.rom W/new/rc2.rom W/old/rc2.label
   with the other image's of the same name: "identical", a byte count, another size, or only in one
   image. Exit 1 when a data block not named in `--allow` differs or is missing in the new image.
 - `variants.sh` builds the night review's 41 option sets ("NAME OK" or "NAME FAIL: the first
-  error"). At `14bc5ef` all built except `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1`, which overflow the
-  fixed area at `52149b0` too.
+  error"). At `8b89e4e` all built except `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1`, which overflow the
+  fixed area at `1818985` too.
 
 ### 5.16 Unit tests
 
@@ -712,7 +722,7 @@ after the one before reads `done`. The builds:
   `BASE-bonus.ROM` (`PZ_TEST=1 TAG=N`) has no script: its stage takes the keyboard;
 - for b, the product of the commit before the change (5.3's base build, `W/base/rc2.rom`).
 
-Output goes to `W/O/np` and `W/O/fast`. The numbers below are the night's, at `b59a338` with
+Output goes to `W/O/np` and `W/O/fast`. The numbers below are the night's, at `ff249f6` with
 `TAG=2` candidates: the expected results (with another tag, `--tag N` and "TEST N").
 
 **Jobs.** `np_job NAME MACHINE SETUP DIR ROM LABELS [ARG ...]` makes an `hz_chain` job of a setup:
@@ -776,7 +786,7 @@ l3 --no-game`; Brainstorm's passes 100 and 400 and the range's pass 1500 in `W/O
 `stepcheck.py still --visit 2`, `shots.py`), and the title after the level-3 briefing as above
 (TAG's files); its game at tick 300 is level 1 again (SHARP, `lv_logic` `BANK_L1` in TAG2_rg.txt). `np_title0_setup` records the title that follows level 1's statistics in
 a build without Brainstorm: the approved flow. The night's reference was the product of the
-commit before Brainstorm (the night's step 0: `msx/` as at `90ca7b3`). A later milestone, whose
+commit before Brainstorm (the night's step 0: `msx/` as at `1148ea5`). A later milestone, whose
 base has Brainstorm, records its base build with `np_title_setup` instead.
 
 ```
@@ -955,7 +965,7 @@ python3 -I tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl W/O/fast/tr/fx537.txt 
 python3 -I tools/tracecmp.py --ram build/emu/trace_cov1_ram.jsonl W/O/fast/tr/l1_537_fx.txt --labels W/R/trace/rc2_ext5.labels
 ```
 
-Expected at `b59a338`:
+Expected at `ff249f6`:
 
 - `ft_job`: "too fast VRAM accesses 0: cartridge 0 {}, BIOS 0 {}" on every machine but C-BIOS_MSX2+
   at 5.37 MHz, "too fast VRAM accesses 1: cartridge 0 {}, BIOS 1 {05b3@3.491}". Every trace: 732
@@ -1118,7 +1128,7 @@ sh tools/bstest/rgview.sh check W           # last line "rgview: PASS"; exit 0
   item adds, after the range, page 3 lines 88-161: sheet S3, which `fb_init` freed, as `fe_text`
   runs it first and `engines_init` before any field use).
 
-The run of 2026-10-27 (the commit after `3c3a735`): every verdict PASS.
+The run of 2026-10-27 (the commit after `781005e`): every verdict PASS.
 
 - 45 traces 0 differ (`armed` 1,163 passes, `mixed` 1,869, `edge` 344, `timeout` 301, `armed2`
   1,163, the other ten as at step 7).
@@ -1129,9 +1139,9 @@ The run of 2026-10-27 (the commit after `3c3a735`): every verdict PASS.
 - The pass rate: 0 late passes; the worst pass 37,131 T-states at 60 Hz (a VBLANK: 59,659),
   38,603 at 50 Hz.
 - The restore PASS; the HUD at `armed`'s 39 passes equal to step 7's build (`hudcheck.py
-  W/O/st/armed_m2 REF/st/armed_m2`: a build of `3c3a735` in a worktree, the same `rgv_job`).
+  W/O/st/armed_m2 REF/st/armed_m2`: a build of `781005e` in a worktree, the same `rgv_job`).
 
-The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdict PASS.
+The run of 2026-10-27 with the camera (the commit after `8c08187`): every verdict PASS.
 
 - 79 traces 0 differ, with equal results and ratings.
 - 695 stills equal to the render, every R#18 value 00h-0Fh among them (30 at s = 7, 30 at s = 8, 3
@@ -1154,13 +1164,13 @@ The run of 2026-10-27 with the camera (the commit after `26a2076`): every verdic
 
 `docs/RANGE.md` section 4 asks for every check of
 the range, logic, display, camera and sound, and for every check of what existed before it (level
-1, the title, `front_stats`, Brainstorm), against the base `4a8a61d`, the commit before the range.
+1, the title, `front_stats`, Brainstorm), against the base `cb7c9ef`, the commit before the range.
 `regress.sh` (shell) and `regress.tcl` (Tcl) run them all; `rgflow.tcl` holds the range's flows,
 `frsound.tcl` its sound logs, `rgcheck.py` its text screens' check, `cmpcheck.py` the comparison of
 Brainstorm's check logs, and `frsnd/` the sound's Python checkers (the venv's Python: numpy).
 
 ```sh
-sh tools/bstest/regress.sh base B          # once a milestone: B/wt (4a8a61d), B/R; the product's SHA-256
+sh tools/bstest/regress.sh base B          # once a milestone: B/wt (cb7c9ef), B/R; the product's SHA-256
 ```
 ```
 msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; rgr_base_chain {B} {B/base.done}   (41 jobs)
@@ -1181,7 +1191,7 @@ One family at a time: `rgr_chain {W} FAMILY {W/FAMILY.done}`, then `regress.sh c
 (several families may follow `check W B`). `hz_chain JOBS MARK` writes MARK when the chain ends,
 done or stopped by an error: a shell waits for the file instead of polling the emulator.
 
-**The base.** `regress.sh base B` adds a worktree of `4a8a61d` in `B/wt` (`git worktree add
+**The base.** `regress.sh base B` adds a worktree of `cb7c9ef` in `B/wt` (`git worktree add
 --detach`), copies `build/ram` and `build/msx` into it (without ROMs, labels, pictures and `gen/`;
 `build/extracted` is linked, read only), rebuilds the two conversions the range changed
 (`msxhudrt.py`, `msxtext.py`) with the base's own tools, and builds `B/R` with the base's `hz.sh
@@ -1250,7 +1260,7 @@ real second is a minute of the game or more. Poll a running machine's condition 
 The first keyboard flow polled `hb_st` in real time and armed the range's keys 80 emulated seconds
 late: the range timed out with no shot (`rgk_tp` polls in emulated time).
 
-**The run of 2026-10-27** (branch `range` at `43569f6` plus the moved harness; `W` =
+**The run of 2026-10-27** (branch `range` at `56923f5` plus the moved harness; `W` =
 `impl/s10/W`): 207 jobs in about 7 minutes, no time out, then `regress.sh check W B` for every
 family: **regress: PASS**.
 
@@ -1280,7 +1290,7 @@ family: **regress: PASS**.
 - sound: the 20 logs 0 differences (1,880-1,881 ticks of the drive, 5,999 of the stages left alone;
   modes 1, 5, 6, 0 as the set-up gives; tick 0 after the first pass; 39 effects started, 9-10
   refused; the tune's end then silence; the stop); the 15 drives' traces 0 differ.
-- Again on 2026-10-28 after `4650771` (the stage's own stop, `rg_end`): every family PASS, 45
+- Again on 2026-10-28 after `b4fdcc3` (the stage's own stop, `rg_end`): every family PASS, 45
   verdicts; the sound's drives now 1,866-1,868 ticks (the 13-14 ticks after the last pass are gone),
   the Q line 0 ticks after the last pass in all 20 logs; the logs of the build before the fix FAIL
   the new rule ("no stop at the stage's end"), and `frregcmp.py --selftest` catches a missing and a
@@ -1368,7 +1378,7 @@ Then, with the MCP's openMSX shut down, `tools/msxmatrix.py` on each file (`--la
 `--no-title` for the four PZ_TEST ones): 10 of 10 each. The candidates' notes and screenshots go
 with the files; only the files actually sent go to `build/msx`.
 
-On 2026-10-28 (`4650771`, `impl/s13` of the range's scratch): the six built twice to the same
+On 2026-10-28 (`b4fdcc3`, `impl/s13` of the range's scratch): the six built twice to the same
 bytes; `rgc_chain` 15 jobs without a time out; `regress.sh cand`: PASS (the fresh titles; the
 keyboard flows 732 and 1,163 passes 0 differ, every screen pixel-exact with TEST 4, the titles
 identical; the range candidates 1,163 passes, 140 fields 0 differ, 5 stills and 600 records each
@@ -1380,7 +1390,7 @@ cleared, or R#2 changed, gives DIFFER.
 ### 5.21 Level 2's base (step 0 of its plan)
 
 Level 2's plan asks every step to keep what exists unchanged: level 1's logic and picture, the title,
-`front_stats`, Brainstorm and the range, against its step 0, the base `a969fc8` (branch `level2` =
+`front_stats`, Brainstorm and the range, against its step 0, the base `8507734` (branch `level2` =
 main). `l2base.sh` runs the range's whole regression (5.19) and level 1's records that it does not
 make (`l2base.tcl`), in one chain, and compares any later build with the base:
 
@@ -1414,7 +1424,7 @@ Brought in from level 1's scratch folders at the base: `fieldcheck.py` (2026-10-
 `build/perf_2026-10-23`) and `sess_fxlog.tcl` (2026-10-22; its scratch copy was gone, its last text
 came from the session's log). Changed only where the harness's rules or the engine since required:
 `fieldcheck.py` imports without numpy or the build's files, finds the repository from its place,
-reads the map patches' two pools (`46fa12c`, 2026-10-25: the record carries MP_B F500h since, as
+reads the map patches' two pools (`9eee4a3`, 2026-10-25: the record carries MP_B F500h since, as
 `rc2_jumprec`'s), and counts a record of another length as skipped instead of passing it in
 silence (at the base it had skipped every record); `sess_fxlog.tcl` sources
 `tools/openmsx_rc2.tcl` from its place and sets `::fl_done` instead of quitting openMSX. Its
@@ -1426,8 +1436,8 @@ VRAM 00000h (it cannot know an address set before it started): 81 false "cpu" on
 byte, the 23 of `regress.sh builds` equal to the range's step-13 builds, the product with `TAG=4`
 (and `ROM_2M=1`) equal to the delivered `ROBOCOP2_v0.1.3-test4.ROM` (`-2M`); the chain without a time out
 (the start checks and the PSG logs run again once their jobs took their final form);
-`regress.sh check` against the range's base `4a8a61d`: 45 verdicts, **regress: PASS** (the title
-from power-on identical to `4a8a61d`'s in every record); the death, game-over and end traces 0 differ;
+`regress.sh check` against the range's base `cb7c9ef`: 45 verdicts, **regress: PASS** (the title
+from power-on identical to `cb7c9ef`'s in every record); the death, game-over and end traces 0 differ;
 the start checks all 0 on the three machines (26,690 / 26,445 / 31,505 sprite entries checked); the
 field check 0 differ in every window but 860 on the MSX2: 3 pictures (`j008_f0021`-`23`, 177 pixels:
 the hostage half old, half new; 0 on the MSX2+), as level 1 had them (`0.1.1`: "3/6"); the stills'
@@ -1507,7 +1517,7 @@ LOCKSTEP records (`dispcmp.py`, 2,998 lists 0 differ at step 12).
 byte step 4's and step 5's exact base records) and `l1/fx/pw_scc_sn.txt`, `pw_psg_sn.txt` (the
 `pw_*` jobs again on the base's builds; their `pw_*.txt` came out byte-identical to the base's).
 
-**HEAD's run** (e0399d4 built from a worktree, its 25 ROMs byte-identical to step 5's gate builds;
+**HEAD's run** (f2d0cf0 built from a worktree, its 25 ROMs byte-identical to step 5's gate builds;
 227 jobs, 0 time outs, about 8 minutes): `l2base.sh check W BASE`: **l2base: PASS**: regress 45
 verdicts PASS (the exact title from power-on PASS while the polled one still differs in 24 bytes;
 the titles after the flows "registers that show: identical (sprites off: R#5 CF/C7 apart)"), the
@@ -1944,6 +1954,92 @@ statistics, both second visits, the level-3 briefing and the title; `DIR/cheat.t
 `$804F`, `$8032`, `$16D0` and the energy; snapshots `l1_100`, `l1_end`, `l1_stats`, `l2_100`, `l2_low`,
 `l2_full`, `l2_end`, `l2_stats` (`tools/msxframe.py ... --level N`) and `title` (SCREEN 8).
 
+### 5.24 Level 2's acceptance in one place (the plan's 4.1-4.4, as it stands)
+
+The checks of 5.21-5.23 in one run, as milestone 2's acceptance ran them (level 2's step 16) with
+milestone 3's sound and set-ups added: what accepts level 2 as a whole (`docs/LEVEL2.md` 4; its last
+results: 4.6). `W` is a fresh folder outside `build/msx`; `<repo>` the repository's root; `PY` =
+`~/.venvs/msxports/bin/python`. Build from a worktree of the commit under test when the shared tree
+holds another agent's uncommitted edits (5.21), with the build data copied, and regenerate
+`build/msx/text.inc` and `puzl.inc` there with the commit's own converters when it is older than
+their changes (`docs/level2/HANDOFF.md`, steps 18 and 20).
+
+**The base.** `l2base.sh check` compares level 1, the title, Brainstorm and the range with a base
+(5.21). The base in use is main `6082d3a`'s (the range's two cameras), recorded with level 2's harness
+and made with `l2base.sh base` (the commands: `docs/level2/HANDOFF.md`, "Level 2's base made again");
+`sh tools/bstest/l2neg.sh REPO BASE W OUT` runs the gate's negative controls on copies of a passing
+run's records (19 controls at the base: 11 mutated copies FAIL, the 8 unmutated PASS). Against it two verdicts read as CPU time since steps
+14-16 (the still `m2_g1490`, one PSG tick: `docs/LEVEL2.md` 8.1); a base made from an accepted level-2
+tree ends that.
+
+**1. The builds** (about 2 minutes; every log: "build OK", z80asm's 12 known warnings only):
+```sh
+sh tools/bstest/l2base.sh builds W                                   # the gate's 25 (regress.sh's, lock24, lock24p)
+sh tools/bstest/hz.sh l2builds W/L2R                                 # l2 l2s l2f l2p l2o l2c flow (4.1)
+sh tools/bstest/build.sh W/GX/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2       # the product's caps: start, field, view
+sh tools/bstest/build.sh W/GV/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_TICK=1   # the vats' variant
+sh tools/bstest/hz.sh fxbuilds W/FX                                  # 4.3's nine builds (5.23)
+sh tools/bstest/build.sh W/cheat/rc2.rom CHEAT=1                     # 4.3's cheat run
+sh tools/bstest/variants.sh W/V; python3 -I tools/bstest/l2base.py banks W/V > W/banks_variants.txt
+```
+`variants.sh` builds 55 option sets (the night review's 41, 7 `LV_TEST=2`, 5 `CHEAT=1`, 2
+`VAT_TICK=1`): 52 build, `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1` overflow the fixed area. `l2base.py banks`
+lists every set's free bytes (the fixed area's lowest: `p_pzdiag`, `DIAG=1 PZ_TEST=1`).
+
+**2. The chain** (one openMSX: `msx_local_boot` headless; a private MSX-AI MCP session,
+`python3 -I tools/bstest/mcpd.py DIR &` and `MCPD_DIR=DIR sh tools/bstest/mx.sh NAME 'TCL'`, when the
+in-process target is another agent's; one `msx_local_cmd` a line, `L` = `W/L2R/l2/rc2_l2`, `X` =
+`W/GX/l2/rc2_l2`, `E` = `<repo>/build/emu`):
+```
+source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; source {<repo>/tools/bstest/vatlog.tcl}; source {<repo>/tools/bstest/cutview.tcl}
+set J [hz_l2_jobs {W/O/l2} {W/L2R} tr]                                                          ;# 4.1: 25 jobs
+set J [concat $J [rgr_jobs {W} all] [l2b_jobs {W}]]                                             ;# 4.4: the gate, 227 jobs
+set J [concat $J [hz_l2_start_jobs {W/start} {X.rom} {X.labels}]]                               ;# 4.2 check 1
+set J [concat $J [hz_l2_field_jobs {W/fd} {X.rom} {X.labels} {E/l2_tour.drive} {1 300 150 300 495 300 735 200 960 250 1150 300 1255 350 2140 260 2385 400 2420 400 2500 300}]]
+set J [concat $J [hz_l2_field_jobs {W/fdb} {X.rom} {X.labels} {E/l2_barrel.drive} {70 300 300 300}]]   ;# check 2
+set J [concat $J [hz_l2_objs_jobs {W/objs} {W/L2R} {tour end vat trolley barrel drone}]]        ;# check 3
+set J [concat $J [hz_l2_still_jobs {W/st} {W/L2R} {10 200 520 760 1000 1230 1300 2395 2456 2464 2472 2555} l2_tour]]   ;# check 6
+set J [concat $J [hz_l2_still_jobs {W/cut} {W/L2R} FRAMES l2_vat]]                              ;# check 9: FRAMES every game frame 36-62
+set J [concat $J [cv_view_jobs {W/cvt} {L.rom} {L.labels} {tour 2654 2405 end 259 15}] [cv_view_jobs {W/cv} {X.rom} {X.labels} {end 259 15}]]   ;# check 10
+set J [concat $J [vl_jobs {W/vl/450} {L.rom} {L.labels} 25 450] [vl_jobs {W/vl/850} {L.rom} {L.labels} 25 850] [vl_jobs {W/vl/1250} {L.rom} {L.labels} 25 1250] [vl_jobs {W/vl/2130} {L.rom} {L.labels} 20 2130]]
+set J [concat $J [vl_jobs {W/vl/s540} {L.rom} {L.labels} 20 540 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_still520.drive}] [vl_jobs {W/vl/vat} {L.rom} {L.labels} 20 30 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_vat.drive}]]   ;# check 8
+set J [concat $J [fxl_jobs {W/fx} {W/FX}] [list [ch_job {W/cheat} {W/cheat/rc2.rom} {W/cheat/rc2.labels}]]]   ;# 4.3
+hz_chain $J {W/all.done}
+```
+Step 16's chain (without 4.3's jobs) ran 345 jobs with 0 time outs; `build/emu/l2_still520.drive` is
+made by 5.22's one-liner ("At step 16"). The vats' variant: the same `vl_jobs` and `vl_speed_jobs` on
+`W/GV/l2` (5.22).
+
+**3. The verdicts**, once `W/all.done` exists:
+```sh
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv W/O/l2 W/L2R      # 4.1: "level 2: PASS (23 traces)", lost 0
+for t in cont cont_fx cont_tr; do python3 -I tools/bstest/contcheck.py W/O/l2 $t --fire --gen W/L2R/l2c/gen; done
+python3 -I tools/bstest/contcheck.py W/O/l2 cont2 --again
+python3 -I tools/bstest/contcheck.py W/O/l2 cont_nf --no-fire
+python3 -I tools/bstest/contcheck.py W/O/l2 over --none
+sh tools/bstest/l2base.sh check W BASE                                               # 4.4: "l2base: PASS" (regress's 45 verdicts, level 1's records)
+for d in W/fd/* W/fdb/*; do [ -d "$d" ] && $PY -I tools/bstest/fieldcheck.py "$d" build/msx/level2 "$d.png" --level 2; done   # check 2
+python3 -I tools/objcmp.py BENCH_NAME.jsonl W/objs/NAME_M.txt --sprites build/msx/sprites_l2.json --rows N   # check 3 (BENCH: 5.22, "At step 12")
+$PY -I tools/msxframe.py W/st/M_gNNNN build/msx/level2 build/msx/hud OUT.png --sprites build/msx/sprites --level 2 --field   # check 6, each still
+$PY -I tools/bstest/cutview.py cut W/cut build/emu/l2_vat_ram.jsonl                   # check 9: "cut: PASS"
+$PY -I tools/bstest/cutview.py view W/cvt; $PY -I tools/bstest/cutview.py view W/cv  # check 10: "view: PASS"
+for d in W/vl/*; do python3 -I tools/bstest/vatcheck.py "$d"; done                     # check 8: exit 0, the rates
+```
+- Check 1: `W/start/start_<m2|fx|tr>.txt` (the guard's counts: tear, pal, cpu, vbl 0; reg and cmd are
+  the classes of 5.22 at steps 11 and 16; patcheck 0 bad; satcheck 1 at game frame 0 at most; the lost
+  counters 0; the lines above 8, which 4.2 check 7 does not meet yet).
+- Checks 11 and 13: the briefings' and the offer's records are regress's (`bonuscheck.py --brief`,
+  `--level2`) and `contcheck.py`'s; level 2's first picture in each flow, `W/O/<flow>/<TAG>_l2g0`, with
+  `tools/msxframe.py ... --level 2 --field` as above (5.22, "At step 18").
+- 4.3: `fxcheck.py check` on every `fxl_jobs` log (the table of 5.23), `fxcheck.py visits`, `selftest`,
+  and `W/cheat/cheat.txt` with its snapshots.
+- 4.4's set-ups (`msx_local_shutdown` first: the tool runs its own openMSX):
+  `python3 -I tools/msxmatrix.py W/R/prod/rc2.rom --labels W/R/prod/rc2.labels --home <msx-ai>/.openmsx-home --jobs 1`
+  (10 of 10 PASS) and the same with `--no-title` on an `LV_TEST=2` build; `make test` (the 4 known
+  failures only).
+- Not in the chain yet: the Pico+'s bank-select log over `tour` (4.4: at most 53 distinct banks at
+  8000h and A000h, a speed target) and level 2 on C-BIOS_MSX2+ at 5.37 MHz.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its
@@ -1959,6 +2055,8 @@ statistics, both second visits, the level-3 briefing and the title; `DIR/cheat.t
    against the commit before a change (5.6), 5.17 g's other speed jobs, `c8f_chain` for
    Brainstorm's test candidates (5.17 h), `rgc_chain` and `regress.sh cand` for the range's
    (5.20), the range's recordings (5.19).
+7. Level 2 as a whole: 5.24. Its chain holds 3's jobs (`rgr_jobs W all`) with level 1's records
+   (`l2b_jobs`), and its `l2base.sh check` runs 4's verdicts.
 
 One family: `rgr_chain {W} FAMILY {W/FAMILY.done}` with FAMILY `flows`, `final`, `drives`, `range`,
 `display` or `sound`, then `sh tools/bstest/regress.sh check W B FAMILY`. The older entry points
@@ -2030,7 +2128,7 @@ scripts; their outputs were compared.
   --known` PASSes on all four restore records. `shots.py`'s PNGs equal the night's screenshots.
 - **`hz.sh compare`** reproduced the night's regression verdict, and `hz.sh fresh` the seven
   title comparisons, including the 2 MiB twin's 2 bytes.
-- **`hz.sh builds`** with `SRC=` (an export of `16507dd`) gave the six suite images of the night
+- **`hz.sh builds`** with `SRC=` (an export of `6e62c74`) gave the six suite images of the night
   byte for byte (`97011aac`, `9c1f8196`, `b0346483`, `bb39c329`, `3b1c8786`, `3b868e3f`). `build.sh`
   rebuilt the candidates `test2` and `test2-bonus-2M` byte for byte.
 - **`tests/test_bstest.py`** (23 tests):
@@ -2047,7 +2145,7 @@ scripts; their outputs were compared.
 
 **Not tested without an emulator.** The Tcl procs against a real openMSX: machine switches,
 breakpoints in banked code, `rc2_guard`, `rc2_count_too_fast` (5.8: it did not count then; it
-counts since `b59a338`, and the final checks saw it move), `turborpause` (`hzp_*`),
+counts since `ff249f6`, and the final checks saw it move), `turborpause` (`hzp_*`),
 the timings `hzb_*` measures, `hz6_*`, `hz7_after_setup` / `hz7_fresh_setup`, `c8_step`'s
 snapshots, and `suite_drives`, `suite_flows` and `c8_chain` end to end. These are the night's
 procs with the changes of section 8 only; their first real run is the next milestone's suite.
