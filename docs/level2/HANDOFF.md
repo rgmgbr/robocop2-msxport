@@ -2842,9 +2842,9 @@ All from the worktree's root; `S21` as above.
 
 ## Step 24: the documentation as built (2026-10-31)
 
-**Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), two commits (their
-subjects begin "docs/LEVEL2.md as built" and "Level 2's step 24: the docs as built"), cherry-picked onto
-`level2` (below). No msx/, tools/, tests/ or Makefile change; `analysis/*.sym` and
+**Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), three commits,
+cherry-picked onto `level2` as **`5899aa1`** (LEVEL2.md as built), **`0ec16f3`** (the other docs and this
+section) and **`adc6eda`** (the review's two findings with step 22's fixes). No msx/, tools/, tests/ or Makefile change; `analysis/*.sym` and
 `analysis/ghidra_seeds.tsv` unchanged, so REA's seeds were not run again. Records in `S24` =
 `scratchpad/l2/s24` (`prod/`: the product rebuilt from level2's head; the logs).
 
@@ -2915,3 +2915,9 @@ subjects begin "docs/LEVEL2.md as built" and "Level 2's step 24: the docs as bui
    only; `tools/msxconv.py` still prints "432 VRAM slots": not docs, left to a code step.
 3. `tests/test_bstest.py` `test_bonuscheck_range_command_line` errors instead of skipping without
    `build/ram` (a worktree without the build data).
+
+### Integrated
+Cherry-picked onto level2 `d092b97` without a conflict (step 22 had not integrated yet: `level2` held
+steps 0-21 and 16's integration); the tree equal to `l2-s24`'s (`git rev-parse` of both trees). From the
+main tree: `make test`: 320 tests, **the 4 known failures only** (failures=3, errors=1, skipped=48). No
+ROM changes (docs only).
