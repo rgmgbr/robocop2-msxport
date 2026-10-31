@@ -201,6 +201,9 @@ OPTIONS = {
                   " 16-pixel steps (for a VDP that ignores R#18 or applies it once a frame: msx/frng.asm,"
                   " docs/RANGE.md section 6)"),
     "TAG": (0, "N > 0 = test candidate: the bonus text screens show TEST N below their text (msx/front.asm fe_text)"),
+    "CHEAT": (0, "1 = test build: the original's cheat mode at each new game (AG $804F FFh, msx/cold.asm ng_init) and its"
+                 " keys on F5 and F4 (key codes 59h and 58h, the Amiga's F10 and F9: msx/frame.asm fe_keys): F5 ends"
+                 " the level, F4 fills the energy; not with DIAG (no game)"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -777,6 +780,9 @@ def main(argv: list[str]) -> int:
         return 2
     if carry is not None and not opts["LV_TEST"]:
         print("LV_CARRY needs LV_TEST=2 (it is the test start's carry)", file=sys.stderr)
+        return 2
+    if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
+        print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
         return 2
     try:
         carried = lv_carry(carry or LV_CARRY)

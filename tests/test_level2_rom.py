@@ -3,8 +3,8 @@ tables (the slots, level 2's from the global sprite pool with its own play-field
 silhouettes, the hidden frames, the lines a joint composition reaches above its place), level 2's atlas
 in banks of their own tables (atlas_banks), its play-field tables beside level 1's (field_inc), the
 vats' display tables (tools/mapcells.py vat_tables), the harness's level-2 job tables
-(tools/bstest/hz.tcl hz_l2_jobs and hz.sh compare --fields agree) and tools/bstest/l2stub.py's stubs
-against the main code."""
+(tools/bstest/hz.tcl hz_l2_jobs and hz.sh compare --fields agree), tools/bstest/l2stub.py's stubs
+against the main code, and CHEAT (step 21)."""
 from __future__ import annotations
 
 import json
@@ -247,6 +247,72 @@ class HarnessTableTests(unittest.TestCase):
         for job in re.search(r'JOBS="([^"]+)"', sh)[1].split():
             _n, _b, ref, rows = job.split(":")
             self.assertEqual(l2drives.REFS[ref[3:]][3], int(rows), job)
+
+
+class CheatTests(unittest.TestCase):
+    """CHEAT=1 (level 2's step 21): the original's cheat mode at each new game and its keys on F5/F4;
+    its code only in CHEAT builds, none in the fixed area."""
+
+    def test_mkrom_refuses_a_bad_cheat_and_cheat_with_diag(self):
+        with tempfile.TemporaryDirectory() as t:
+            out = str(Path(t) / "x.rom")
+            for opts in (["CHEAT=2"], ["CHEAT=1", "DIAG=1"], ["CHEAT=1", "DIAG=2"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+            self.assertFalse(Path(out).exists())
+
+    @staticmethod
+    def blocks(path):
+        """The lines between "if CHEAT" and its endif in an asm file (no nesting there)."""
+        out, inside = [], False
+        for line in (ROOT / "msx" / path).read_text().splitlines():
+            code = line.split(";")[0].strip()
+            if code == "if CHEAT":
+                inside = True
+            elif inside and code == "endif":
+                inside = False
+            elif inside:
+                out.append(code)
+        return out
+
+    def test_the_cheat_code_is_in_its_if_blocks_and_banked(self):
+        frame = self.blocks("frame.asm")
+        self.assertIn("call fe_keys", frame)
+        self.assertIn("fe_keys:", frame)
+        self.assertIn("ld a,0x59", frame)
+        cold = self.blocks("cold.asm")
+        self.assertEqual(cold, ["ld a,0xFF", "ld (AG + (0x804F ^ 1)),a"])
+        for f in ("rc2.asm", "player.asm", "sound.asm", "isr.asm", "tiles.asm", "sprites.asm"):
+            self.assertNotIn("CHEAT", (ROOT / "msx" / f).read_text(), f)     # (the fixed area: nothing)
+        src = (ROOT / "msx" / "frame.asm").read_text()
+        self.assertEqual(src.count("fe_keys"), len([l for l in frame if "fe_keys" in l]))
+
+    @unittest.skipUnless((ROOT / "build" / "msx" / "level1.map").exists() and POOL.with_suffix(".bin").exists(),
+                         "needs the conversions (make msx)")
+    def test_a_cheat_build_spends_no_fixed_area_byte(self):
+        """The code windows' ends (msx/rc2.asm NAME_end): the fixed area's and every bank's as the
+        product's but LC3's (fe_keys and its call) and FRONT's (the $804F store). The banks may
+        differ besides in operands: the labels after the new code moved."""
+        import contextlib
+        import io
+        ends = {}
+        with tempfile.TemporaryDirectory() as t:
+            for name, opts in (("prod", []), ("cheat", ["CHEAT=1"])):
+                out = Path(t) / name / "rc2.rom"
+                out.parent.mkdir()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(mkrom.main(["mkrom.py", str(ROOT / "build" / "msx" / "level1"), str(out)] + opts), 0)
+                lab = out.with_suffix(".labels").read_text()
+                ends[name] = dict(re.findall(r"^(\w+_end):\s+equ \$([0-9a-f]+)$", lab, re.M))
+                ends[name]["size"] = len(out.read_bytes())
+        a, b = ends["prod"], ends["cheat"]
+        self.assertEqual(a["code_end"], b["code_end"])
+        self.assertEqual(a["size"], b["size"])
+        diff = {k: int(b[k], 16) - int(a[k], 16) for k in ("code_end", "lc1_end", "lc2_end", "l1_end", "lc3_end",
+                                                         "input_end", "front_end", "field_end", "music_end",
+                                                         "puzl_end", "frng_end", "l2_end")}
+        self.assertEqual(diff, {"code_end": 0, "lc1_end": 0, "lc2_end": 0, "l1_end": 0, "lc3_end": 33,
+                                "input_end": 0, "front_end": 5, "field_end": 0, "music_end": 0, "puzl_end": 0,
+                                "frng_end": 0, "l2_end": 0})
 
 
 @unittest.skipUnless(RAM2.exists(), "needs build/ram/level2_full.bin")

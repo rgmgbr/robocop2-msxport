@@ -2,8 +2,9 @@
 # variants.sh OUT: the night review's option sets (2026-10-27), built with the repository as it is
 # through build.sh, one folder each (OUT/NAME/rc2.rom, the log in OUT/NAME.out); prints NAME OK or
 # NAME FAIL with the build's first error. At 14bc5ef every set built except DEMO_ACTORS=2/5 and
-# DEMO_HUD=1, which overflow the fixed area at 52149b0 too (docs/HARNESS.md). The last seven (l2_*,
-# level 2's step 7) are the LV_TEST=2 sets: 48 in all.
+# DEMO_HUD=1, which overflow the fixed area at 52149b0 too (docs/HARNESS.md). The l2_* seven (level
+# 2's step 7) are the LV_TEST=2 sets; the last five (cheat*, its step 21) the CHEAT=1 sets of the
+# candidates (docs/LEVEL2.md section 6): 53 in all.
 if [ $# -lt 1 ]; then sed -n 2,6p "$0" >&2; exit 2; fi
 H="$(cd "$(dirname "$0")" && pwd -P)"
 OUT="$1"
@@ -57,3 +58,8 @@ v l2_lock EXTJOY=1 LOCKSTEP=24 LV_TEST=2
 v l2_tag LV_TEST=2 TAG=5
 v l2_2m LV_TEST=2 ROM_2M=1
 v l2_diag DIAG=1 LV_TEST=2
+v cheat CHEAT=1
+v cheat_t7 CHEAT=1 TAG=7
+v cheat_l2 CHEAT=1 LV_TEST=2 TAG=7
+v cheat_l2p CHEAT=1 LV_CARRY=10050:2:0:3 LV_TEST=2
+v cheat_2m CHEAT=1 ROM_2M=1 TAG=7

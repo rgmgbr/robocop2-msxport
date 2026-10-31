@@ -217,6 +217,10 @@ ng_init:
         call fill
         ld a,2
         ld (AG + 0x8034),a          ; two lives ($FFD8; hud_init draws their heads)
+        if CHEAT
+        ld a,0xFF                   ; (test build, tools/mkrom.py CHEAT=1: the cheat mode on, as the
+        ld (AG + (0x804F ^ 1)),a    ;  title's cheat handler $11F60's st.b $804F; frame.asm fe_keys)
+        endif
         ld hl,diff_tab
         ld (ac_diff),hl             ; the rating's table: SHARP ($8314: $8060 = $C716; AC_VARS,
                                     ;  which deaths and the next level keep)

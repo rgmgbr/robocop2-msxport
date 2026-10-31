@@ -15,6 +15,9 @@ FE_NEXT:    equ 3                   ; the level done ($81B8: $8050 + 1)
 ;   explosion around RoboCop (fe_boom); from 60h the head in the lost life's slot (graphics 3-5
 ;   while $16BC - 30h < 5Fh); below 100h the fade out, and once dark a life less.
 frame_end:
+        if CHEAT
+        call fe_keys                ; (test build: F5 and F4 as the original's F10 and F9)
+        endif
         ld a,(AG + (0x804F ^ 1))
         or a
         jr z,fe_time
@@ -161,3 +164,31 @@ fe_cmp: push hl
         sbc hl,de
         pop hl
         ret
+
+        if CHEAT
+; (Test build, tools/mkrom.py CHEAT=1: frame_end's first call, once a game tick.) The original's
+; cheat keys (main_loop $8144: F10 key code 59h, F9 58h in $8032) on the MSX's F5 and F4, keyboard
+; row 7 bits 1 and 0: while one is held $8032 holds its Amiga code (F5 first), once let go that
+; code + 80h, the release the Amiga's keyboard interrupt leaves; another key's code is kept.
+; frame_end acts on them while $804F is set (cold.asm ng_init sets it at each new game in these
+; builds, as the title's cheat handler $11F60 does). Here, not in player.asm key_scan, so that the
+; fixed area pays nothing for a test build (docs/LEVEL2.md step 21).
+fe_keys:
+        ld a,7
+        call kb_row                 ; (C: 1 = pressed)
+        ld hl,g_key
+        ld a,0x59
+        bit 1,c
+        jr nz,fek_s
+        dec a
+        bit 0,c
+        jr nz,fek_s
+        ld a,(hl)
+        and 0xFE
+        cp 0x58
+        ret nz
+        set 7,(hl)
+        ret
+fek_s:  ld (hl),a
+        ret
+        endif

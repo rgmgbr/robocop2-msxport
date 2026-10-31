@@ -375,6 +375,7 @@ sf_psg: ld a,SCCFX_BANK             ; (at 8000h meanwhile: the gun's PSG voices,
         ld (BANK_8000),a            ;  sq_gun; act_8000's bank back after)
         ld hl,sq_frame
         call snd_bank
+sf_back:                            ; (the VBLANK's sound work done: tools/bstest/fxlog.tcl)
         ld a,(act_8000)
         ld (BANK_8000),a
         ret

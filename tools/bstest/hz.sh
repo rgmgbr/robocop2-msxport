@@ -27,6 +27,11 @@
 #                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom; and
 #                            R/flow/rc2_flow.rom (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 without LV_TEST:
 #                            the product's way into level 2 for hz_l2's flow_l2_end, step 18)
+#   hz.sh fxbuilds R         level 2's sound logs' builds (fxlog.tcl fxl_jobs; docs/LEVEL2.md 4.3),
+#                            each R/<b>/rc2.rom: l2, l2x (+ NO_SCC_INT=1), l2n (+ NO_SCC=1) EXTJOY=1
+#                            ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2; l2c, l2cn (+ NO_SCC=1) the same with
+#                            LV_CARRY=0:0:1:1; pz1 (PZ_TEST=1), pz2 (PZ_TEST=1 PZ_LEVEL=2), pz1n, pz2n
+#                            (+ NO_SCC=1): no script
 #   hz.sh compare --fields FIELDS DIR R [--refs REFS] [JOB[:ROWS] ...]
 #                            level 2's traces (hz_l2): tools/tracecmp.py --ram --fields FIELDS
 #                            (analysis/amiga_ram_l2.tsv) on DIR/l2_<job>.txt against its reference
@@ -47,7 +52,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../.." && pwd -P)"
-usage() { sed -n 2,43p "$0" >&2; exit 2; }
+usage() { sed -n 2,48p "$0" >&2; exit 2; }
 # a folder's absolute path (the printed lines run in openMSX, whose working directory is another;
 # compare runs from the repository root); "mk" creates it first
 absdir() {
@@ -208,6 +213,22 @@ l2builds)
   echo "== flow (no LV_TEST)"
   sh "$H/build.sh" "$R/flow/rc2_flow.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 || bad=1
   [ $bad -eq 0 ] && echo "l2builds: PASS ($R)" || echo "l2builds: FAIL"
+  exit $bad
+  ;;
+fxbuilds)
+  [ $# -ge 1 ] || usage
+  R="$(absdir "$1" mk)" || exit 2
+  bad=0
+  T="EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2"
+  for spec in "l2 $T" "l2x $T NO_SCC_INT=1" "l2n $T NO_SCC=1" "l2c $T LV_CARRY=0:0:1:1" \
+              "l2cn $T LV_CARRY=0:0:1:1 NO_SCC=1" "pz1 PZ_TEST=1" "pz2 PZ_TEST=1 PZ_LEVEL=2" \
+              "pz1n PZ_TEST=1 NO_SCC=1" "pz2n PZ_TEST=1 PZ_LEVEL=2 NO_SCC=1"; do
+    set -- $spec
+    b="$1"; shift
+    echo "== $b $*"
+    sh "$H/build.sh" "$R/$b/rc2.rom" "$@" || bad=1
+  done
+  [ $bad -eq 0 ] && echo "fxbuilds: PASS ($R)" || echo "fxbuilds: FAIL"
   exit $bad
   ;;
 *)
