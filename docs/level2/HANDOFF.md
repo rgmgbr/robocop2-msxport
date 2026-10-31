@@ -2406,6 +2406,259 @@ IG itself untouched), `st`/`stb` (vat stills, new/base), `se`, `se2`, `se2b`, `s
    the restart; no event before it in either build.
 5. Room: `BANK_L2` 29 B, the fixed area's lowest set 34 B (DIAG+PZ_TEST).
 
+## Step 16: milestone 2 accepted (2026-10-31)
+
+**Done.** Branch `l2-s16` (worktree `scratchpad/l2/wt16`, from level2 a485dcf), commits **74fc092** (the
+changed cells), **6dff98c** (the timer), **c33efa7** (the vats' variant), **4b30bad** (the guard and
+HARNESS.md), this section's. Files: `msx/{scroll9958.asm, scroll9938.asm, hud.asm, tiles.asm, sprites.asm,
+rc2.asm}`, `tools/mkrom.py`, `tools/openmsx_rc2.tcl`, `tools/bstest/{variants.sh, vatlog.tcl}`,
+`tests/{test_bstest.py, test_level2_rom.py}`, `docs/HARNESS.md` (5.7, 5.22 "At step 16"), this file.
+Records in `S16` = `scratchpad/l2/s16`: `B0` (a485dcf's builds: product, X, l2 builds, ext, l2t), `N1`-`N3`
+(the fixes on the way), `V1`, `V2` (the variant's two forms), `G` (the acceptance: the gate's builds and
+records, level 2's traces, the start, field, objects, stills, cut, view and vat jobs), `GX` (`EXTJOY=1
+LV_TEST=2`), `GV` (`VAT_TICK=1` l2 build), `V` (the option sets), `g1`-`g4` (the guard over tour, the vat
+restart and level 1's `drive_cov0`), `ht` (the hostage window's commands and records), `tm`, `tp`, `tc`,
+`tc3` (the timer), `vv`, `vs` (the vats' rates and speeds), `vst` (the vat stills and strips), `tools/`
+(scratch: `ht.tcl`, `ht2.tcl`, `g1.tcl`, `sp.tcl`, `reclists.py`, `fc_dbg.py`, `tmcheck3.py`, `near.py`).
+The base: `scratchpad/l2/s15/G`'s logs (step 15's tree: its ROMs byte-identical to a485dcf's, rebuilt here:
+`B0` = `s15/IM`, product, X and the seven l2 builds, `cmp`) and the main base `scratchpad/l2/base`.
+
+### What was built, and what each glitch was
+- **The changed cells' redraws (task 1b; 74fc092).** Both scroll engines drew the oldest changed cell
+  at once whenever the beam was in the play area (`scroll9958.asm` `swr_late`, `scroll9938.asm`
+  `s38r_late`: "a change never waits"), a 16 x 16 HMMM into the page shown; now such a cell waits for the
+  window between the HUD split and the VBLANK (`vdp_cmd_q`'s rule, `RD_BURST` in a row, as it already did
+  there), and the V9938's other page goes on as before. Evidence (`g1`, `g3`: the guard on tour 450/850 and
+  on level 1's `drive_cov0` from 430, a485dcf against the fix, the guard's old tear rule): the class's
+  entries (stack `dt_count`/`swr_none` on the V9958, `ttp_count`/`s38r_nz` on the V9938) are gone; tears
+  t450 m2/fx/tr 0/4/6 -> 0/2/1, t850 2/6/0 -> 0/2/0, level 1 4/1/11 -> 1/3/4 (the rest: the classes below).
+  With the pace rule (below) most of those copies were no tear (a 16 x 16 copy runs faster than the beam:
+  the picture shows the cell old or new), but one per few minutes was (tour 450 on the turbo R at f=643:
+  13 lines old, 3 new); none is started there now. Speed: no change beyond the noise (the ticks run in
+  25-35 s within 1 %).
+- **The timer (task 1c; 6dff98c).** `hud_digits` drew one cell a frame, the timer's tens before its
+  units: 07:20 showed for a picture between 07:30 and 07:29, at every ten seconds in both levels and at a
+  level's start (the Amiga's `panel_update_digits` `$F6B8` draws the seconds' two digits together). Now a
+  timer cell before the last does not end the frame's one cell: every changed timer cell in the same
+  frame. Evidence (`tp`: the product from the power-on, SPACE, 70 s of level 1, and an `LV_TEST=2` build,
+  80 s of level 2, the shown timer cells at every HUD split, `tmcheck3.py`): a485dcf 30 of 163 / 30 of
+  162 / 23 of 127 (level 1, MSX2+/MSX2/turbo R) and 37 / 37 / 26 (level 2) changes not a one-second step,
+  every ten seconds; now 2 of 149 / 0 of 147 / 0 of 114 and 0 / 4 / 0 of 180 / 180 / 124 (see open issue 2).
+- **The guard (task 1d; 4b30bad).** HARNESS.md 5.22 "At step 16": nothing judged while the game has the
+  display off, no reg/cpu/cmd/tear under an all-black palette, the display's off/on writes logged, the
+  bookkeeping restarted after them; a tear only when a picture shows a command's lines half old, half new
+  (an even pace from its start to its end). The death's restart (`vat` from frame 30, 20 s, three
+  machines): before, reg 2-8, cmd up to 128, cpu up to 128 (the SAT written by the VBLANK interrupt that
+  comes at once when it is enabled again, under the black palette), vbl 2-10, tear up to 17; now reg, pal,
+  cpu, vbl, tear 0 (the cmd lines: the vat columns' later parts, not tears).
+- **The vats' variant (task 2; c33efa7).** `VAT_TICK=1` (mkrom; off by default, the product and every
+  other build byte-identical to the same code without the option): after each game tick `tiles.asm`
+  `vat_tick` runs `vat_prep` as the engines' idle points do (the V9938's mirror, else the next column made
+  ready, at most one every `VAT_KZ` VBLANKs on the Z80), whether the engines are idle or not, with the VDP
+  busy too but for the mirror (a tile it needs waits in `tc_load`); while a column is ready `feed_vdp`
+  takes the engines' path between the HUD split and the VBLANK, where `vat_run` draws it as before (whole
+  columns, at the look prepared, never torn: `vat_fits`; the BOBs first: `vat_meets`). Fixed area 56-62 B
+  in those builds only. A first form (V1: `vat_tick` only with the VDP idle) gave 2.9 / 5.4 columns a
+  second on the MSX2 / MSX2+ in tour 450 (this one 3.3 / 6.4).
+- **Not fixed, with their causes (open issues 1, 3): the "hostage tear" (task 1a) and the staged pieces.**
+
+### The vats: as built and with VAT_TICK=1 (the l2 build; `vl_jobs` + `vatcheck.py`, `vl_speed_jobs`)
+Builds: as built `S16/G/L2R/l2` (the gate's l2 build: N2's bytes), `VAT_TICK=1` `S16/GV/l2` (V2's bytes);
+both `EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2`. Columns: MCP `source {W/tools/bstest/load.tcl}; source
+{W/tools/bstest/vatlog.tcl}; hz_chain [concat [vl_jobs DIR/t450 ROM LABELS 25 450] [vl_jobs DIR/t850 ROM LABELS 25
+850] [vl_jobs DIR/s520 ROM LABELS 20 540 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}
+W/build/emu/l2_still520.drive]]` (`S16/vv/N2`, `S16/vs/V2`), `python3 -I tools/bstest/vatcheck.py DIR`: exit 0 in
+all 18 (no column the beam drew into: guard tears of a vat column 0; the least margin from the beam to a
+column's first line 27-85 lines as built, 14-83 with the variant). Speed:
+`hz_chain [vl_speed_jobs DIR/450 ROM LABELS 25 450] ...850... [vl_speed_jobs DIR/540 ROM LABELS 20 540 MACHINES
+W/build/emu/l2_still520.drive]` (`S16/G/sp/{built,vattick}`, the same numbers as the scratch `sp.tcl` runs in
+`S16/vs`).
+
+| columns drawn a second (each column's draws a second) | MSX2 | MSX2+ | turbo R |
+|---|---|---|---|
+| tour 450 (vats 0-1, scrolling), as built | 1.1 (0.04-0.07) | 2.7 (0.04-0.12) | 12.0 (0.30-0.43) |
+| tour 450, `VAT_TICK=1` | 3.3 (0.10-0.19) | 6.4 (0.24-0.33) | 18.8 (0.55-0.66) |
+| tour 850 (vats 1-3, the lift rides), as built | 1.2 (0.04-0.11) | 2.7 (0.08-0.11) | 15.8 (0.29-0.66) |
+| tour 850, `VAT_TICK=1` | 3.4 (0.12-0.21) | 6.2 (0.13-0.22) | 22.6 (0.34-0.91) |
+| standing at vat 0 (from 540), as built | 0.7 (0.06) | 2.4 (0.20) | 9.0 (0.75) |
+| standing at vat 0, `VAT_TICK=1` | 2.9 (0.24) | 6.4 (0.53) | 13.8 (1.15) |
+
+So a column of vat 0 seen standing is redrawn every 17 s / 5.0 s / 1.3 s as built and every 4.2 s / 1.9 s /
+0.9 s with the variant (the original: 12.5 steps a second, every column). CPU (vatcheck: `vat_run` +
+`vat_prep`, a share of the emulated time): as built 2-3 % (MSX2), 4-5 % (MSX2+), 6-17 % (turbo R: its idle
+time), with the variant 5-6 %, 8-10 %, 9-20 %.
+
+| the game's speed: ticks a second, pictures a second | MSX2 | MSX2+ | turbo R |
+|---|---|---|---|
+| tour 450, as built | 13.48, 10.64 | 16.00, 8.04 | 24.76, 29.44 |
+| tour 450, `VAT_TICK=1` | 13.28 (-1.5 %), 10.88 | 14.76 (-7.8 %), 7.36 (-8.5 %) | 24.84, 27.96 (-5.0 %) |
+| tour 850, as built | 17.76, 17.00 | 21.28, 13.44 | 24.92, 38.84 |
+| tour 850, `VAT_TICK=1` | 17.04 (-4.1 %), 16.32 (-4.0 %) | 20.64 (-3.0 %), 12.48 (-7.1 %) | 24.76, 37.16 (-4.3 %) |
+| standing at vat 0, as built | 16.30, 9.75 | 19.20, 10.05 | 25.00, 26.15 |
+| standing at vat 0, `VAT_TICK=1` | 16.05 (-1.5 %), 10.05 | 18.35 (-4.4 %), 9.35 (-7.0 %) | 25.00, 25.60 (-2.1 %) |
+
+**Looked at** (`S16/vst`: `hz_l2_still_jobs` on `l2_still520` at game frames 560-614 every 6, as built and with
+the variant, msxframe's renders, the play area exact in all but one (MSX2 g0566: 62 sprite px at the V9938's
+left edge, msxframe's known class); `strip_{N2,V2}_{m2,fx}.png`: the vat's surface row in the ten stills
+stacked): as built the MSX2's vat 0 keeps the same bubbles in all ten stills (3.4 s) and the MSX2+'s changes a
+column or two; with the variant the surface changes from still to still on both (bubbles growing and bursting
+column by column), a ripple rather than the original's whole-vat step.
+
+### Checks (exact commands, results; `S16` as above, `W` = wt16, one openMSX: the in-process MCP)
+- **Builds** (the final code, 4b30bad): `sh tools/bstest/l2base.sh builds S16/G` (PASS), `sh tools/bstest/hz.sh
+  l2builds S16/G/L2R` (PASS), `sh tools/bstest/build.sh S16/GX/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2`, `sh
+  tools/bstest/build.sh S16/GV/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_TICK=1`: build OK, z80asm's
+  12 known warnings only, nothing else in the logs. The product dd05c76fc6d5dfe3 (1 MiB, 127 of 128 banks),
+  l2 e2ef2f5864e1107a, X 1331f26cd9062f7b, the variant's l2 45ad102fcf89df08; every one of them byte-identical to
+  the builds measured on the way (N1, N2, V2: `cmp`), so the measurements above hold for this code.
+- **Option sets**: `sh tools/bstest/variants.sh S16/V` + `python3 -I tools/bstest/l2base.py banks S16/V`: **52 of 55**
+  (DEMO_ACTORS 2/5 -E2h, DEMO_HUD -29h: the known overflows, 12 B less than at a485dcf; the two new VAT_TICK sets
+  build). **Free bytes** (`S16/banks_variants.txt`, `S16/G/banks.txt`): the fixed area 169 -> **181 B** in the
+  product (the redraws -17, the timer +5), the lowest set (DIAG + PZ_TEST, `p_pzdiag`) 34 -> **46**, `l2_diag` 55,
+  `VAT_TICK=1` 119 (`vat`) and 100 (`vat_l2`: CHEAT + LV_TEST + TAG); FRONT 1,381 (lowest `l2_diag` 935), BANK_L2
+  29, BANK_FIELD 143 (102 in EXTJOY builds), LC1 53, LC2 4,842, L1 874, LC3 4,866 (4,833 with CHEAT), INPUT 11,
+  MUSIC 1,331, PUZL 4,483, FRNG 264: every bank as at a485dcf but the fixed area. 127 of 128 banks (no new block).
+- **The chain** (MCP `source {W/tools/bstest/load.tcl}; source {W/tools/bstest/l2base.tcl}; source
+  {W/tools/bstest/vatlog.tcl}; source {W/tools/bstest/cutview.tcl}; hz_chain [concat [hz_l2_jobs G/O/l2 G/L2R tr]
+  [rgr_jobs G all] [l2b_jobs G] [hz_l2_start_jobs G/start GX...] [hz_l2_field_jobs G/fd GX... l2_tour.drive {0 300
+  150 300 495 300 735 200 960 250 1150 300 1255 350 2140 260 2385 400 2420 400 2500 300}] [hz_l2_field_jobs G/fdb GX...
+  l2_barrel.drive {70 300 300 300}] [hz_l2_objs_jobs G/objs G/L2R {tour end vat trolley barrel drone}]
+  [hz_l2_still_jobs G/st G/L2R {10 200 520 760 1000 1230 1300 2395 2456 2464 2472 2555} l2_tour] [hz_l2_still_jobs
+  G/cut G/L2R {36 ... 62} l2_vat] [cv_view_jobs G/cvt l2... {tour 2654 2405 end 259 15}] [cv_view_jobs G/cv GX... {end
+  259 15}] [vl_jobs G/vl/450 l2... 25 450] ...850, 1250, 2130 (20 s), s540 (20 s, l2_still520.drive), vat (20 s from
+  30, l2_vat.drive)] G/all.done`, `G` = S16/G): **345 jobs, 0 time outs**.
+- **4.1, level 2's logic**: `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv S16/G/O/l2 S16/G/L2R`:
+  **level 2: PASS (23 traces)**, 0 differ in all 1,022 fields, lost 0 (end 259, tour 2,654 on the three machines,
+  lift 801, trolley 641 at the four ratings and on C-BIOS_MSX2_EU, vat 701 x 3, fuzz 2,501, over 109, cont 301 x 3,
+  barrel 901, mine 161, t1left 341, drone 401, flow_l2_end 259); `python3 -I tools/bstest/contcheck.py S16/G/O/l2
+  TAG MODE --gen S16/G/L2R/l2c/gen`: cont, cont_fx, cont_tr `--fire`, cont2 `--again`, cont_nf `--no-fire`, over
+  `--none`: **PASS** all six.
+- **4.4, the gate** (`sh tools/bstest/l2base.sh check S16/G scratchpad/l2/base`, `S16/G_l2base_check.out`): regress
+  **45 verdicts PASS** (level 1's cov traces, the title from power-on (exact), the product's and PZ_TEST flows with
+  the level-2 briefing and level 2, the restore, the turbo R's blank and writes (0 from `front_bonus`' entry to level
+  2's frame 100), the product's whole flow and the title after it, the 2 MiB product, the keyboard flows,
+  Brainstorm's 20 traces + stills + records + guard + HUD, the range's screens, ratings, 79 drive traces, wanted
+  state, display, guard, sound); level 1's die/over/end 901/1,249/517 rows 0 differ; the start check (40 s of level
+  1 from the product's power-on) reg, pal, cmd, cpu, vbl, tear 0, 0 bad patterns, no line above 8, SATs 0 bad,
+  lost 0 on the three machines; the field check PASS (860_m2 the known class A 3 pictures 177 px, 860_fx A 3 + B 3
+  183 px: within `TEARS`' bound, the same as a485dcf's (`S16/ht`), every other window 0); the LOCKSTEP records
+  2,998 lists 0 differ on both VDPs. **Two verdicts FAIL, judged CPU time** (`l2base: FAIL`):
+  - the still `m2_g1490`: 324 px apart from the main base (step 15's 32), msxframe 543 against 462. The pixels are
+    the conveyor's gear and chain (`S16/crop_g1490.png`: base left, new right): the snapshot (the HUD split of game
+    frame 1490's first list) shows them one animation step behind, because their changed cells are now drawn in the
+    window right after that split, where a485dcf drew them at once during the play area (the redraw fix: a cell now
+    shows its change one picture later at most, never half drawn). The LOCKSTEP lists and level 1's traces 0 differ.
+  - the effects' PSG build: 1 of 33,272 sound ticks: start 795 (effect 4, LOCKSTEP frame 731), its second tick's
+    volume 10 against 11. The game's requests are the same in the same frames (803/802 starts, every one in the
+    base's frame); at VBLANK 17763-17766 the request of effect 4 on channel 0, which restarts it while its previous
+    start still plays, came one VBLANK earlier (17765 against 17766), and the PSG player's carried state at a
+    restart gives the second tick another volume. The SCC build: 57,357 SCC and 33,278 PSG sound ticks 0 differ.
+- **4.4, set-ups**: `python3 -I tools/msxmatrix.py S16/G/R/prod/rc2.rom --labels ... --home <msx-ai>/.openmsx-home
+  --jobs 1`: **10 of 10 PASS**; the `LV_TEST=2` build (`S16/N2/l2t`, this code's bytes) `--no-title`: **10 of 10
+  PASS**.
+- `make test` (the worktree): 320 tests, **the 4 known failures only** (failures=3, errors=1; 54 skipped: the
+  ADF-based ones, as in other worktrees); `VatTickTests` 2 OK; `test_variants_build_every_option_set` (55).
+- **4.2, the visual checks on the MSX2, the MSX2+ and the turbo R** (the chain above; the X build has the
+  product's caps):
+  1. *The start check* (`S16/G/start/start_{m2,fx,tr}.txt`, 42 s from level 2's first tick on tour): RoboCop at
+     (352, 784), logic bank 108, R#1 62h, the palette black at the first tick and `lv_pal` (graded C) at the end
+     (the MSX2's sample fell in the HUD's lines: the HUD's palette); **tear 0**, pal, cpu, vbl 0; reg 0 / 5 / 4
+     (`fqs_go`'s R#46: staged pieces started in the play area, none torn here), cmd 44 / 62 / 335 (the vat
+     columns' later parts, `ve_go1`/`ve_go2`, and copies kept ahead of the beam); patcheck 0 bad; satcheck 1
+     (game frame 0, the first list not published: level 1 the same); lost 0, pools <= 6/7; **lines above 8
+     sprites 157 / 50 / 34 frames** (open issue 4).
+  2. *The field check* (`fieldcheck.py --level 2` on every picture of tour's windows from 1 (300), 150, 495, 735,
+     960, 1150, 1255, 2140, 2385, 2420, 2500 and barrel's 70 and 300, three machines: 39 windows, 11,880
+     pictures): **0 differences in every window**, every vat cell at its column's look, no "vat-older". (The window
+     from game frame 0 is the level-2 briefing since step 18, `LV_TEST`'s briefing first: its 300 records are the
+     text screen; from frame 1 it is 0.)
+  3. *Objects against the bench* (`objcmp.py`; the bench's draws made again: `$PY -I tools/amigaemu.py game
+     --level 2 --carry 10050:2:0:good --gframes N --drive build/emu/l2_NAME.drive --stop-at-end --bobs
+     S16/bench/NAME_bobs.jsonl`): tour, end, trolley, barrel, drone on the three machines: no "extra", no "no
+     frame" (exact, "missing, left out" by the budget with `ENEMY_CAP=0`, "missing" in the ticks held after the
+     drives' teleports, "loading"/"late" a picture); vat: 88 / 75 / 226 "extra" (objects at x -19..-23, left of
+     the view, during the sinking and the death), **identical on a485dcf's build** (`S16/B0/objs`): older than this
+     step, not looked into.
+  4. *Frame to frame*: the field records above check every picture of the windows against the list on screen
+     (no static pixel changes in scene coordinates); level 1's 860 window keeps its known class (open issue 1).
+  5. *The lost counters*: 0 after every drive, start, field, vat and speed job; the pools at most 48/14 (cont).
+  6. *Stills* (tour at 10 ... 2555, 36 stills, msxframe): **the play area exact in all**; sprite pixels exact but
+     msxframe's known classes: m2 g0760 13 px, m2 g2456/g2464 66/304 px (OR layers dropped in `ENEMY_CAP=0`'s crowd,
+     `drop 0x01`/`0x0b`), tr g2395 18 px (the object order), g2555 167-171 px (the HUD's can at the arrest).
+  7. *Sprites a line*: not met (open issue 4).
+  8. *The vats*: the guard over tour 450, 850, 1250 (25 s), 2130 (20 s), standing at vat 0 (20 s) and `vat`'s
+     death and restart (20 s), three machines: **tear 0 in all 18 but tour 450 on the turbo R (1: the staged piece
+     of open issue 3, not a vat column)**; `vatcheck.py`: exit 0 in all (no column the beam drew into); the rates
+     in the table above; the least margin 27-88 lines.
+  9. *The cut*: `$PY -I tools/bstest/cutview.py cut S16/G/cut build/emu/l2_vat_ram.jsonl`: **cut: PASS** (34 stills
+     with a cut, 6,623 of RoboCop's pixels left out, all exact).
+  10. *The arrest's view*: `cutview.py view S16/G/cvt` (tour, end on the l2 build) and `view S16/G/cv` (end, X):
+     **view: PASS** both (v_addx 0/2 steps up to 48, the suspect whole from list 2471 (tour) / 76 (end)).
+  11. *The text screens*: regress's briefings (every flow) and `contcheck.py`'s offer: PASS.
+  12. *The palette*: the start check's (graded C at the end, from black); not more than step 13's.
+  13. *The HUD*: `$PY -I tools/msxframe.py G/O/<flow>/<tag>_l2g0 build/msx/level2 build/msx/hud OUT.png --sprites
+     build/msx/sprites --level 2 --field` on the first picture of level 2 in the 11 flows: 0 px differ in 9, kb_ex
+     25 (the timer ticked before that picture: msxframe's 07:30), two_m2 1,212 (sprite records at frame 0, the SAT
+     not published): as at step 18.
+- **The timer** (task 1c; `S16/tools/ht2.tcl` `tp_jobs`, `tc_jobs`, `S16/tools/tmcheck3.py`): above; and **the
+  guard on the death's restart** (task 1d): `vl_jobs ... 20 30 ... l2_vat.drive` on the three machines: reg, pal,
+  cpu, vbl, tear 0 (before the change, the same build: reg up to 8, cpu up to 128, vbl up to 10, tear up to 17).
+- **Pictures looked at**: the vat strips (`S16/vst/strip_*`), the conveyor's still (`S16/crop_g1490.png`), level 2's
+  field sheets (`S16/G/fd/1255_fx.png`: RoboCop hanging from the trolley over vat 3, his hit flash; the vat's
+  columns), the frame chooser's level-2 sheet (`S16/review/level2_sheet.png`).
+- **The frame chooser page refreshed** (plan row 16): `$VPY -I tools/msxchooser.py build/msx/sprites
+  build/review/quadros.html --sheet ...`: RoboCop 35 cards, level 1 169, level 2 56 (type 1 8, type 2 2, type 5 9,
+  type 6 5, type 14 1, type 16 2 and its legs 8, type 49 15, the trolley, type 4's new aims 4, RoboCop hanging 1);
+  written into the main tree's `build/review/quadros.html` (the user's copy; build/ is not in the repository).
+
+### Open issues
+1. **The "hostage tear" of level 1's window 860 (task 1a) is no torn hostage, and is not fixed.**
+   `S16/ht` (the window's records with every play-page command and the field engine's state,
+   `tools/ht.tcl`; `reclists.py` decodes the lists; `fc_dbg.py` prints the torn pixels): in a485dcf's
+   MSX2 records j008_f0035-37 (VBLANKs 221-223) the 59 "new" pixels are at x 964-971, y 768-799: the 16 x 40
+   BOB at (961, 760) (frame 11) of the next list (138), copied onto the page shown at VBLANK 220's split
+   (its item, owner D0ECh: 16 x 8 and 16 x 32 into page 1). The hostage's own item (owner D0E4h, 50 x 28)
+   was composed meanwhile (one 64 x 64 scratch: 13 tile copies and two BOB copies over VBLANKs 221-223)
+   and copied at VBLANK 223's split; the list (the sprites) went on screen at VBLANK 226, after the item
+   of the lift (E960h) too. So for 3 pictures the page shows the next list's object at (961, 760) beside
+   the hostage's current frame: fieldcheck pairs the two as one torn hostage (class A; class B the same
+   the other way). The cause is the play field's bandwidth: one item composed at a time and about one
+   item copied per blank (a 50 x 28 copy takes about 4 ms of a window of about 6). Showing a list's items
+   together needs them composed apart (more scratch on page 3) and copied in one window, or a page to
+   compose on. Bounded by `l2base.py`'s `TEARS` as before (window 860 only, at most 6 pictures, 183 px a
+   machine), unchanged by this step (this code: m2 3 pictures A, fx 3 A + 3 B, as a485dcf's).
+2. **The timer can still show half updated in a late frame** (open issue of task 1c): `hud_frame` runs
+   at the main loop's time, right after the VBLANK in a frame on time but anywhere in a late one (the
+   frame before overran), and its cells are then drawn while the beam may show the HUD: `tc` (`tc_jobs`:
+   every timer cell's draw against the HUD split) counts 0-8 timer cells drawn after the split in 70-80
+   s per machine, and the split's records showed a half-updated timer 3 times in `tp`'s six runs (about
+   450 s of play: three machines, both levels) and 2 times in `tc`'s, against every ten seconds before (23-37
+   a run). A main-loop deferral of `hud_frame`
+   past the split was tried and left out: the late draws came from calls started before the split.
+   Drawing the cells only in the blank, or off screen and then copied in one HMMM, would end it.
+3. **The staged pieces after the first tear (task 1b, not fixed).** A play-field item larger than 64 x
+   64 (level 1's big explosions, level 2's type 16 with the lift) is composed whole in 2-4 places of page
+   3 (`fb_stage`), then its pieces are copied in a row: the first in the blank (the split's rule), the
+   others at once (`fb_mayq` -> `fst_more`), so that the item changes within 1-2 pictures. A piece copy
+   of 64 px a line runs at about a third of the beam's speed; started while the beam is above or in it,
+   that picture shows its lines half old, half new: the guard's remaining tears, all `fqs_go` with
+   `fwk_st` on the stack: level 1's `drive_cov0` from 430 (35 s) 1/3/1 (MSX2/MSX2+/turbo R), tour 450 on
+   the turbo R 1 (f=618, 64 x 32 at line 96: 18 lines old, 14 new), the other level-2 windows 0. A copy
+   of a 64 x 64 piece takes about 12 ms, the blank about 6: tear-free copies need a window a piece (the
+   item would then change over 2-4 pictures, the half-old item that the staging removed on 2026-10-21) or
+   a second page to compose on.
+4. **Lines above 8 sprites (4.2 check 7, not met; step 13's open issue 1, unchanged).** The start check on the
+   product's caps counts 157 / 50 / 34 frames in 42 s of tour with a line above 8: RoboCop beside a level-1 walker
+   drawn as legs and torso (types 3, 4, 15), whose last sprites the VDP then hides on those lines. A design choice
+   for the user (walkers as joint compositions, type 1's way, or another budget rule); no sprite code changed here.
+5. **The vats' variant waits for the user** (test7): the candidates can carry `VAT_TICK=1` twins for the comparison
+   (`vat`, `vat_l2` are among the option sets); the numbers for the notes are the tables above.
+6. The gate's two verdicts judged CPU time (the still `m2_g1490`, the PSG effect's second tick) will read the same
+   against the main base until a base is made from this tree (`l2base.sh base`); `fxcmp.py`'s per-effect rule
+   cannot tell an effect restarted on its own channel one VBLANK earlier from another sound.
+7. `hz_l2_field_jobs`' window from game frame 0 records `LV_TEST`'s briefing since step 18 (tick_n is 0 on the
+   text screen): take 1. The objects' check on `vat` (88 / 75 / 226 "extra", the same at a485dcf) is not looked into.
+
 ## Step 21: the sound checks and the cheat (2026-10-31)
 
 **Done.** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
