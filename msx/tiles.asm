@@ -91,15 +91,9 @@ gt_map: ld a,d
         call bank_a000
         pop de
         ret
-gt_vat: push bc
-        ld hl,vat_tile
-        call field_call             ; (D = row, E = column) -> HL = the vat cell's tile, FFFFh: none
-        pop bc
-        ld a,h
-        and l
-        inc a
-        jr z,gt_map
-        pop de
+gt_vat: ld hl,vat_tile
+        call field_call             ; (D = row, E = column; keeps BC, DE) -> HL = the tile: a vat
+        pop de                      ; cell's, else the map's
         ret
 
 ; The vats' display (level 2: vats.asm; docs/LEVEL2.md 3.5): the scroll engines' hooks, Z (nothing)
@@ -109,32 +103,21 @@ gt_vat: push bc
 ; (vat_prep). The vats never keep iw_more: their work waits for wait_frame's loop or for the engines'
 ; own work, so that feed_vdp's calls in the game's logic stay as cheap as in the other levels.
 vat_win:
-        ld a,(vat_fr + VF_RDY)      ; (none ready: nothing to draw, no bank switched)
-        or a
-        ret z
         ld hl,vat_run
-        jr vat_hk
+        ld a,(vat_fr + VF_RDY)      ; (none ready: nothing to draw, no bank switched; always so in
+        jr vat_go                   ;  the other levels, vat_init clearing it at every start)
 vat_idle:
         ld hl,vat_prep
-vat_hk: ld a,(lv_logic)
-        cp BANK_L2
-        jr nz,vw_no
-        call l2_call
-vw_ret: ld a,l                      ; (vw_ret: the harness's mark)
-        or a
-        ret
-vw_no:  xor a
-        ret
-
-; HL = a routine of level 2's logic bank (vats.asm: the level's lv_logic at A000h around it, the
-; bank that was there comes back). Keeps nothing but what the routine returns in BC, DE, HL.
-l2_call:
-        ld a,(act_a000)
+        ld a,(vat_on)               ; (vat_init: level 2; the engines ignore vat_idle's flags)
+vat_go: or a
+        ret z
+vat_l2: ld a,(act_a000)             ; (BANK_L2 at A000h around the call)
         push af
-        ld a,(lv_logic)
+        ld a,BANK_L2
         call bank_a000
         call fc_hl
-        pop af
+vw_ret: pop bc                      ; (vw_ret: the harness's mark; the routine's flags kept)
+        ld a,b
         jp bank_a000
 
 ; D = row, E = column (-1..160: the neighbours wrap into the rows above and below, as the

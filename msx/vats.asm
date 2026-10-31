@@ -1,5 +1,5 @@
 ; Level 2's vats on the screen (docs/LEVEL2.md 3.5, default 18; level 2's step 14), in level 2's
-; logic bank (BANK_L2 at A000h around the calls: tiles.asm l2_call).
+; logic bank (BANK_L2 at A000h around the calls: tiles.asm vat_l2).
 ;
 ; The logic (level2.asm lt1) keeps each vat column's look in vat_shown and marks the vat changed
 ; (vat_chg); the screen shows them here, whole columns, never torn, never an older look.
@@ -67,7 +67,7 @@ vwn_1:  and 0x0F
         ld (hl),a
         ret
 
-; (tiles.asm vat_idle through l2_call: the scroll engines' idle points, the VDP idle; level 2) The
+; (tiles.asm vat_idle through vat_l2: the scroll engines' idle points, the VDP idle; level 2) The
 ; V9938's mirror (its next part), else, once a tick, a column made ready for the next window (vat_run):
 ; the first one (from vat_rr on, then from 0) whose look on the page shown is not vat_shown's, that
 ; meets no play-field BOB nor their work (on the V9938 where the page being built holds it either) and
@@ -128,11 +128,16 @@ vp_e:   pop af
         ld l,(ix+VF_RDY)
         ret
 
-; (tiles.asm vat_win through l2_call: the scroll engines' work with the VDP idle; level 2) The column
+; (tiles.asm vat_win through vat_l2: the scroll engines' work with the VDP idle; level 2) The column
 ; vat_prep made ready, drawn now (one a tick) when the beam is outside the play area and it still may
 ; be: the engines as then, its tiles in their places, no BOB come over it, the time with the R#23 now
-; (vat_fits) -> L = 1 when its commands run, else 0.
+; (vat_fits) -> L = 1 and NZ when its commands run, else 0 and Z.
 vat_run:
+        call vr_main
+        ld a,l
+        or a
+        ret
+vr_main:
         ld ix,vat_fr
         ld l,0
         ld a,(ix+VF_RDY)

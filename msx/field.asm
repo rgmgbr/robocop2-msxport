@@ -3587,9 +3587,13 @@ vin_c:  ld (hl),a
         ld a,(tick)
         dec a
         ld (vat_wtk),a
+        xor a
+        ld (vat_on),a
         ld a,(lv_logic)
         cp BANK_L2
         ret nz
+        ld a,1
+        ld (vat_on),a
         ld hl,vat_disp
         ld bc,VAT_COLS_l2
         xor a
@@ -3638,10 +3642,12 @@ vfw_1:  and 0x0F
         ld (hl),a
         ret
 
-; (tiles.asm get_tile through field_call) D = row, E = column of a cell without a map patch -> HL = its
-; tile when a vat covers it: T0, T1 or T2 at its column's look on page vat_pg (that page's nibble;
-; none yet: vat_shown's, which the page then holds), else FFFFh. Keeps DE (and the 8000h window).
+; (tiles.asm get_tile through field_call, level 2) D = row, E = column of a cell without a map patch
+; -> HL = its tile: when a vat covers it T0, T1 or T2 at its column's look on page vat_pg (that page's
+; nibble; none yet: vat_shown's, which the page then holds), else the map's (gt_map's way, through the
+; 8000h window). Keeps BC, DE (and the 8000h window).
 vat_tile:
+        push bc
         ld a,(act_8000)
         push af
         ld a,(lv_tab)
@@ -3662,10 +3668,35 @@ vt_nx:  inc a
         inc c
         dec c
         jr nz,vt_lp
-vt_no:  pop af
+vt_no:  ld a,d                      ; (no vat: the map's tile, as tiles.asm gt_map reads it)
+        ld l,a
+        ld h,0
+        ld c,a
+        ld b,h
+        add hl,hl
+        add hl,bc                   ; row * 3 (rowtab: bank, address at A000h)
+        ld bc,rowtab
+        add hl,bc
+        ld a,(lv_mapb)
+        add a,(hl)
         call bank_8000
-        ld hl,0xFFFF
-        ret
+        inc hl
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        ld c,e
+        ld b,0
+        add hl,bc
+        add hl,bc
+        res 5,h                     ; (A000h-BFFFh: at 8000h-9FFFh here)
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        pop af
+        pop bc
+        jp bank_8000
 vt_v:   push af                     ; (the vat's index)
         call vf_recp
         ld a,e
@@ -3729,6 +3760,7 @@ vt_t:   ld d,0
         ld l,a
         pop de
         pop af
+        pop bc
         jp bank_8000
 
 ; (fb_piece, level 2) -> NZ when the piece's cells (fb_cc) hold a vat cell: its background then
