@@ -160,6 +160,33 @@ class HelperTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(vatcheck.main(["vatcheck.py", str(d)]), 1)
 
+    def test_cutview_takes_the_copper_rule_and_flags_a_view_that_jumps_or_hides_the_suspect(self):
+        import contextlib
+        import io
+        import cutview
+        row = {"player_x": 936, "camera_x": 672, "camera_y": 521}
+        self.assertEqual(cutview.copper_line(row), 0xAA)                       # vat 0, d = 33
+        self.assertEqual(cutview.copper_line(dict(row, camera_y=565)), 0xCA)   # d = 4Dh: no cut
+        self.assertEqual(cutview.copper_line(dict(row, player_x=1100)), 0xCA)  # beside the vat
+        saved = cutview.suspect_columns
+        cutview.suspect_columns = lambda: {9: (9, 44), 10: (1, 44)}
+        try:
+            def record(path: Path, step: int = 2, jump: int = 0, hide: int = 0) -> None:
+                lines, add = [], 0
+                for g in range(20, 60):
+                    vx = add + (4 if g == jump else 0)
+                    lines.append(f"T {g} {vx} 500 {add} 260 0 470")
+                    lines.append(f"L {g} {40 if g == hide else vx} 500 128 100 50 1 10 256 56")
+                    add = min(56, add + step)
+                path.write_text("\n".join(lines) + "\n")
+            f = self.tmp / "view_end_fx.txt"
+            for kw, want in (({}, 0), ({"jump": 30}, 1), ({"step": 3}, 1), ({"hide": 55}, 1)):
+                record(f, **kw)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(cutview.main(["cutview.py", "view", str(self.tmp)]), want, kw)
+        finally:
+            cutview.suspect_columns = saved
+
     def roms(self, stray: bool) -> list[Path]:
         """Two 2-bank images and their labels: foo moved from 4010h to 4013h, its word at bank 1 + 100h."""
         a, b = bytearray(b"\xff" * 16384), bytearray(b"\xff" * 16384)

@@ -202,6 +202,97 @@ spr_init:
         ld (spr_dsp),a
         ret
 
+; ----- the cut at a vat's surface (level 2; FRONT for the room it takes) -----
+
+; (sprites.asm sprites_frame, while vat_cut_line < CAh: the 8000h window's bank it found on the
+; stack under the return, front_call) The SAT just built (sat_nb) and the colour rows of the set
+; being prepared (rows_sync: rs_held, rs_colhi): RoboCop's sprites and the hit spark's (SAT entries
+; 0 to RC_RUN + his entries - 1; on the Amiga the spark is drawn into his sprites) end where the
+; Amiga's copper turns the sprites off ($10356 = vat_cut_line: he sinks into the liquid), through
+; the view's y mapping: the line's map y is the line - 1Eh (the play field's first line) + the game
+; camera's y, its screen line that - cam_y. An entry wholly below it is parked; one it crosses gets
+; colour 0 (transparent) in its rows from the line down, and its row is marked unknown in that set
+; (col_held FFFFh: the set's next list writes it whole again). The enemies are not cut (BOBs on the
+; Amiga; docs/LEVEL2.md 3.6, default 30). Then the 8000h window's bank back.
+spr_cut:
+        ld hl,(gcam_y)
+        ld a,(vat_cut_line)
+        sub 0x1E - 16
+        jr c,spc_x                  ; (0, G_VARS', before a life's first tick: no cut; the vats'
+        ld e,a                      ;  lines are 7Fh or more)
+        ld d,0
+        add hl,de
+        ld de,(cam_y)
+        sbc hl,de                   ; (no carry before) the line's screen line + 16
+        ld a,h
+        or a
+        jr z,spc_c
+        jp p,spc_x                  ; (below the play area: nothing to cut)
+        ld l,0                      ; (above it: every entry parked)
+spc_c:  ld c,l                      ; C = the line + 16
+        ld a,e
+        cpl
+        add a,18
+        ld d,a                      ; D = 17 - cam_y: an entry's SAT y + D = its first line + 16
+        exx
+        ld hl,(rs_held)             ; HL' = the entry's col_held,
+        ld a,(rs_colhi)
+        ld d,a
+        ld e,0                      ; DE' = its colour row (port 99h form)
+        exx
+        ld a,(disp + V_ON)
+        or a
+        jr z,spc_n                  ; (RoboCop shows nothing: the spark's entries only)
+        ld a,(disp + V_N)
+spc_n:  add a,RC_RUN
+        ld b,a
+        ld hl,(sat_nb)
+spc_lp: ld a,(hl)
+        add a,d
+        sub c
+        jr nc,spc_pk                ; (it starts on the line or below: parked)
+        add a,16
+        jr nc,spc_nx                ; (it ends above the line: whole)
+        jr z,spc_nx
+        exx
+        ld b,a                      ; B' = its lines from the line down
+        ld (hl),0xFF
+        inc l
+        ld (hl),0xFF                ; its row unknown in this set (each col_held within a
+        dec l                       ;  256-byte page)
+        push de
+        ld a,e
+        add a,16
+        sub b
+        ld e,a                      ; (its first line below the line)
+        call spr_wr
+        pop de
+        xor a
+spc_z:  out (VDP_DATA),a            ; (colour 0)
+        djnz spc_z
+        exx
+        jr spc_nx
+spc_pk: ld a,(sb_parky)
+        ld (hl),a
+spc_nx: inc l
+        inc l
+        inc l
+        inc l
+        exx
+        inc l
+        inc l
+        ld a,e
+        add a,16
+        ld e,a
+        jr nc,spc_nd
+        inc d
+spc_nd: exx
+        djnz spc_lp
+spc_x:  pop hl
+        pop af
+        push hl
+        jp bank_8000
+
 ; ----- a level's start (docs/LEVEL2.md 3.1) -----
 
 ; A new game's part (rc2.asm ng_go, through front_call; $FFC4, $FFD8, load_level0's $8314): the

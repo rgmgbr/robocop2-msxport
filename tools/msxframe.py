@@ -38,12 +38,17 @@ Level 2's vat cells (LEVEL_PREFIX level2, a snapshot with ramf.bin) are expected
 on the page shown (tools/mapcmp.py vat_look: vat_disp's nibble, else vat_shown's; the V9958's ring
 page 0), a map patch first with --field, as msx/tiles.asm get_tile draws them.
 
+With --cut LINE (level 2's vats: msx/cold.asm spr_cut), RoboCop's and the hit spark's sprites are
+expected to end above screen line LINE (their pixels from it down are not shown: the Amiga's copper
+turns the sprites off there while he sinks); the other objects are expected whole. The caller gives
+the line (tools/bstest/cutview.py cut: the original's copper line for the tick the list shows).
+
 Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
 tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
 index; RoboCop's is both levels'), and the silhouettes from level N's colour rows; without it they
 are level 1's, converted again from build/msx/robocop.json as tools/msxsprites.py cut them.
 
-usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N] [--field]
+usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N] [--field] [--cut LINE]
        (e.g. build/snap build/msx/level1 build/msx/hud build/png/frame.png)
 """
 from __future__ import annotations
@@ -311,13 +316,17 @@ def converted(obj: dict, joint_pal: bytes) -> list:
     return cols
 
 
-def expected_sprites(objs: list[dict], joint_pal: bytes) -> dict[tuple[int, int], int]:
+def expected_sprites(objs: list[dict], joint_pal: bytes, cut: int | None = None,
+                     removed: list[int] | None = None) -> dict[tuple[int, int], int]:
     """Screen pixel -> joint palette index of the sprite objects shown (SAT order: the first in
-    front)."""
+    front). With cut, RoboCop's and the spark's pixels on screen lines from cut down are left out
+    (their count added to removed[0])."""
     out: dict[tuple[int, int], int] = {}
-    for obj in [objs[k] for k in reversed(SAT_ORDER)]:
+    for k in reversed(SAT_ORDER):
+        obj = objs[k]
         if not obj["shown"]:
             continue
+        line_end = cut if cut is not None and k in (0, SPARK_OBJ) else None
         sil = silhouette_colours(joint_pal)[obj.get("sil", 0)]
         lay = converted(obj, joint_pal)
         for j, (y0, boxes) in enumerate(lay):
@@ -327,6 +336,10 @@ def expected_sprites(objs: list[dict], joint_pal: bytes) -> dict[tuple[int, int]
                 for y in range(16):
                     for i in range(16):
                         if im[y, i]:
+                            if line_end is not None and obj["y"] + y0 + y >= line_end:
+                                if removed is not None:
+                                    removed[0] += 1
+                                continue
                             out[(obj["x"] + c["x"] + i, obj["y"] + y0 + y)] = sil or int(im[y, i])
     return out
 
@@ -428,8 +441,10 @@ def main() -> int:
     prgb, hrgb = rgb9(pal_play), rgb9(pal_hud)
     hud_want = hud_expected(ram)
     sat_pending = ram[SPR_VBLANK - RAM_BASE] and ram[PUB_SEQ - RAM_BASE] == ram[APP_SEQ - RAM_BASE]
+    cut = int(sys.argv[sys.argv.index("--cut") + 1]) if "--cut" in sys.argv else None
+    cut_removed = [0]
     try:
-        spr = {} if sat_pending else expected_sprites(objs, pal_play)
+        spr = {} if sat_pending else expected_sprites(objs, pal_play, cut, cut_removed)
     except (IndexError, struct.error):      # a product build records no pub_spr: render only
         print("no sprite record (product build): sprites not checked")
         spr, sat_pending = {}, True
@@ -495,6 +510,8 @@ def main() -> int:
              + (f" drop {o['drop']:#04x}" if o["drop"] else "") for o in objs if o["shown"]]
     n_spr = sum(1 for (x, y) in spr if 8 <= x < 256 and 0 <= y < VIEW and y not in over)
     print(f"  sprites: {'; '.join(shown) or 'none'}; {spr_ok}/{n_spr} sprite pixels exact")
+    if cut is not None:
+        print(f"  cut at screen line {cut}: {cut_removed[0]} of RoboCop's and the spark's pixels below it left out")
     if hud_want is None:
         print("  HUD job pending: HUD not checked")
     if over:

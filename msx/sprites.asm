@@ -3818,7 +3818,14 @@ sf_set: ld (rs_held),hl
         call rows_sync              ; its colour rows
         call feed_vdp
         call sat_build
-        call feed_vdp
+        ld a,(vat_cut_line)         ; (level 2: RoboCop sinking into a vat, his sprites cut at its
+        cp 0xCA                     ;  surface: cold.asm spr_cut, which puts the 8000h window's
+        jr nc,sf_sat                ;  bank back; CAh, no cut, in the other levels)
+        ld a,(act_8000)
+        push af
+        ld hl,spr_cut
+        call front_call
+sf_sat: call feed_vdp
         call q_sat                  ; and its SAT
         ld a,1
         ld (spr_vblank),a           ; (the list switches sets: tools/msxframe.py reads it)

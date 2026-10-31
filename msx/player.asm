@@ -604,6 +604,9 @@ ps_pos: ld hl,(p_x)
 ; way a tick in x, 1/8 in y) that its wider view hides: the MSX's keeps him within AX_MIN..
 ; AX_MAX of the screen (his place as pl_show puts him) and his feet within AY_MIN..AY_MAX of
 ; the play area. dir_x follows the view (the V9938 engine builds its next page on that side).
+; In level 2's arrest scene the view's x goes v_addx further right (level2obj.asm t2: the camera
+; pinned at the map's left edge would leave the suspect beyond the MSX's narrower view;
+; docs/LEVEL2.md 3.6, default 31), RoboCop still kept within AX_MIN..AX_MAX.
 AX_MIN:     equ 48
 AX_MAX:     equ 160
 AY_MIN:     equ 76
@@ -612,6 +615,8 @@ pl_view:
         ld hl,(gcam_x)
         ld de,view_offx
         call pv_add
+        ld a,(v_addx)
+        call pva_a                  ; (0 but in level 2's arrest scene)
         ld de,(p_x)
         ld bc,SPR_X_OFS + 8 - AX_MAX
         ld a,AX_MAX - AX_MIN
@@ -694,7 +699,7 @@ pk_de:  ex de,hl
         ret
 
 ; HL = a camera coordinate, DE = its offset table (tools/mkrom.py, rowtab.inc: c * VIEW_K /
-; 65536 per 16 pixels) -> HL = c + the entry for c / 16.
+; 65536 per 16 pixels) -> HL = c + the entry for c / 16. (pva_a: HL + A, A unsigned.)
 pv_add: push hl
         ld a,l
         srl h
@@ -711,7 +716,7 @@ pv_add: push hl
         inc d
 pva_n:  ld a,(de)
         pop hl
-        add a,l
+pva_a:  add a,l
         ld l,a
         ret nc
         inc h

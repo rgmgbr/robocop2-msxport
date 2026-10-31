@@ -210,7 +210,19 @@ wd_turn:
 ; with bit 3 (E04h). Then always ($C91A, its pushed return): the hit points back to 4 (five hits
 ; in one frame would still kill it: $C2D8); touched by RoboCop, "ARREST SUCESSFUL.", sound 21h,
 ; the level done ($16D0, $16C4 = 40h) and the slot freed; never freed by clipping.
-t2:     ld a,(g_frame)
+; The MSX's view (display only, the logic's camera untouched): the Amiga's 288 pixels at the
+; pinned camera show the suspect's left 32, the MSX's 248 (screen x 8-255) none, so the view goes
+; right of the camera by 2 pixels a tick up to VU_ADD (v_addx: player.asm pl_view adds it, still
+; keeping RoboCop within AX_MIN..AX_MAX): map x 56-303, the suspect's pixels (x 257-300) whole on
+; both VDPs (docs/LEVEL2.md 3.6, default 31; its 48 would leave his right 5 columns behind the
+; screen's right edge). v_addx is 0 again at every life (pl_init: G_VARS).
+VU_ADD:     equ 56
+t2:     ld a,(v_addx)
+        cp VU_ADD
+        jr nc,t2_v
+        add a,2
+        ld (v_addx),a
+t2_v:   ld a,(g_frame)
         and 0x3F
         jr nz,t2_c
         ld a,HUD_MSG_DC76           ; "ARREST ARMED EMEMY."
