@@ -879,6 +879,17 @@ proc rc2_sprset_col {} {
 #        the split's line interrupt (rc2_rg_isr: a late match taken in the blank), or
 #        a split at another line than split_line (an early one shows the HUD's page over the
 #        play area).
+# While the game has the display off (R#1's BL bit 0 as the game last wrote it, not the HUD split's
+# own blank: a level's start, a death's restart, the continue, the split's calibration) nothing
+# shows and nothing is judged, and while the play field's palette is all black (the fades: a
+# death's, a level's end, a start's fade in) nothing of the play area shows, so no reg, cpu, cmd or
+# tear is counted then (pal and vbl still are); the writes that turn the display off and on again
+# (rc2.asm dsp_off, display_on: R#0's line interrupt bit, R#1's display and VBLANK interrupt bits)
+# are logged as "display off" / "display on" lines, not counted, and the VBLANK and split
+# bookkeeping starts again once it is on, from the second VBLANK interrupt (the first comes at once
+# when the VBLANK interrupt is enabled again: the VDP's F was set while it was off). 2026-10-31: a
+# death's restart redrew the screen with the display off for about 10,500 lines and read as tens
+# of tears, commands, register, CPU and VBLANK events.
 # Pauses when done (::rg_done).
 proc rc2_guard {secs split_line nl vis labels} {
 	catch {set split_line [expr {[rc2_label $labels SPLIT_LINE]}]}   ;# (the build's own split line and play area)
@@ -901,6 +912,9 @@ proc rc2_guard {secs split_line nl vis labels} {
 	set ::rg_cmd {}
 	set ::rg_vpend 0
 	set ::rg_tv -1
+	set ::rg_r0 [debug read "VDP regs" 0]
+	set ::rg_r1 [debug read "VDP regs" 1]
+	set ::rg_von 0
 	set ::rg_log {}
 	set ::rg_done 0
 	set ::rg_frames 0
@@ -948,6 +962,53 @@ proc rc2_rg_bad {kind msg} {
 	if {[llength $::rg_log] < 300} { lappend ::rg_log "f=[rc2_w 0xD000] $kind $msg" }
 }
 
+# 1 while the game has the display off (R#1's BL bit as the game last wrote it: rc2_rg_dsp).
+proc rc2_rg_off {} {
+	return [expr {!($::rg_r1 & 0x40)}]
+}
+
+# 1 while nothing of the play area can show: the display off, or the palette all black (every
+# colour 0: a fade's black; checked only for an event that would be counted).
+proc rc2_rg_blind {} {
+	if {!($::rg_r1 & 0x40)} { return 1 }
+	binary scan [debug read_block "VDP palette" 0 32] cu* p
+	foreach v $p { if {$v} { return 0 } }
+	return 1
+}
+
+# A write of R#0 or R#1 by the game (rc2_rg_99; 'lo' the value): tracked (::rg_r0, ::rg_r1); one
+# that turns the display off or on (R#1's display and VBLANK interrupt bits alone, BL changed) or
+# turns the line interrupt off (R#0's IE1 bit alone: dsp_off writes it first) -> 1, logged, not
+# counted; a display turned on starts the VBLANK and split bookkeeping again (::rg_von: the first
+# VBLANK interrupt then comes at once and is not a frame's).
+proc rc2_rg_dsp {r lo line pc} {
+	if {$r == 1} {
+		set d [expr {$::rg_r1 ^ $lo}]
+		set ::rg_r1 $lo
+		if {($d & 0x9F) != 0 || ($d & 0x40) == 0} { return 0 }
+		if {$lo & 0x40} {
+			set ::rg_tv -1
+			set ::rg_tsplit -1
+			set ::rg_vpend 0
+			set ::rg_tc {}
+			set ::rg_cmd {}
+			set ::rg_von 1
+			set what on
+		} else {
+			set what off
+		}
+		if {[llength $::rg_log] < 300} { lappend ::rg_log [format "f=%d display %s at line %d (R#1 = %02x pc %04x)" [rc2_w 0xD000] $what $line $lo $pc] }
+		return 1
+	}
+	set d [expr {$::rg_r0 ^ $lo}]
+	set ::rg_r0 $lo
+	if {($d & 0xEF) == 0 && ($d & 0x10) && !($lo & 0x10) && ($::rg_r1 & 0x40)} {
+		if {[llength $::rg_log] < 300} { lappend ::rg_log [format "f=%d line interrupt off at line %d (R#0 = %02x pc %04x)" [rc2_w 0xD000] $line $lo $pc] }
+		return 1
+	}
+	return 0
+}
+
 proc rc2_rg_99 {} {
 	set v $::wp_last_value
 	if {$::rg_latch < 0} { set ::rg_latch $v; return }
@@ -964,7 +1025,12 @@ proc rc2_rg_99 {} {
 	set pc [reg pc]
 	if {($pc >= $::rg_split0 && $pc < $::rg_split1) || ($pc >= $::rg_ram0 && $pc < $::rg_ram1)} { return }
 	set line [rc2_rg_line]
-	if {$line >= 0 && $line < $::rg_vis} {
+	if {$r <= 1 && [rc2_rg_dsp $r $lo $line $pc]} { return }
+	if {[rc2_rg_off]} {
+		if {$r == 46} { set ::rg_tc {}; set ::rg_cmd {} }
+		return
+	}
+	if {$line >= 0 && $line < $::rg_vis && ![rc2_rg_blind]} {
 		rc2_rg_bad reg [format "line %d R#%d = %02x pc %04x" $line $r $lo $pc]
 	}
 	if {$r == 46} { rc2_rg_cmd $lo }
@@ -973,14 +1039,15 @@ proc rc2_rg_99 {} {
 proc rc2_rg_98 {} {
 	set a $::rg_addr
 	set ::rg_addr [expr {($a + 1) & 0x1FFFF}]
+	if {[rc2_rg_off]} { return }
 	if {$a < 0x10000} {
-		rc2_rg_bad cpu [format "line %d VRAM %05x pc %04x" [rc2_rg_line] $a [reg pc]]
+		if {![rc2_rg_blind]} { rc2_rg_bad cpu [format "line %d VRAM %05x pc %04x" [rc2_rg_line] $a [reg pc]] }
 		return
 	}
 	set c [rc2_sprset_col]
 	if {$a >= $c && $a < $c + 0x280} {
 		set line [rc2_rg_line]
-		if {$line >= 0 && $line < $::rg_vis} {
+		if {$line >= 0 && $line < $::rg_vis && ![rc2_rg_blind]} {
 			rc2_rg_bad cpu [format "line %d sprite table %05x pc %04x" $line $a [reg pc]]
 		}
 	}
@@ -989,6 +1056,7 @@ proc rc2_rg_98 {} {
 proc rc2_rg_9a {} {
 	set pc [reg pc]
 	if {($pc >= $::rg_split0 && $pc < $::rg_split1) || ($pc >= $::rg_ram0 && $pc < $::rg_ram1)} { return }
+	if {[rc2_rg_off]} { return }
 	set line [rc2_rg_line]
 	if {$line >= 0 && $line < $::rg_vis} { rc2_rg_bad pal [format "line %d pc %04x" $line $pc] }
 }
@@ -996,7 +1064,10 @@ proc rc2_rg_9a {} {
 proc rc2_rg_9b {} {
 	set r $::rg_r17
 	if {$::rg_ai} { set ::rg_r17 [expr {($r + 1) & 0x3F}] }
-	if {$r == 46} { rc2_rg_cmd $::wp_last_value }
+	if {$r == 46} {
+		if {[rc2_rg_off]} { set ::rg_tc {}; set ::rg_cmd {}; return }
+		rc2_rg_cmd $::wp_last_value
+	}
 }
 
 # A command (op = R#46) starts with R#32-R#45 in place: its destination lines.
@@ -1020,9 +1091,10 @@ proc rc2_rg_cmd {op} {
 		return
 	}
 	set shown [rc2_rg_shown]
-	set ::rg_tc [expr {[llength $shown] && $line >= 0 ? [list $line $shown] : {}}]
+	set ::rg_tc [expr {[llength $shown] && $line >= 0 ? [list $line $shown [machine_info time] $ny] : {}}]
 	if {$line >= $::rg_vis && $line < $::rg_nl - 4} { return }
 	set hit [rc2_rg_hits]
+	if {$hit >= 0 && [rc2_rg_blind]} { set ::rg_tc {}; return }
 	if {$hit >= 0} {
 		set stk ""
 		for {set i 0} {$i < 8} {incr i 2} { append stk [format " %04x" [rc2_w [expr {[reg sp] + $i}]]] }
@@ -1031,22 +1103,44 @@ proc rc2_rg_cmd {op} {
 	}
 }
 
-# A command that ended: a tear when the beam drew one of the play-area lines it wrote while it ran
-# (that line shows the cell half drawn for one picture).
+# A command that ended: a tear when a picture the beam drew while it ran shows some of its lines
+# on the screen new and others old (that picture shows the cell half drawn). The command writes its
+# lines in order at an even pace from its start to its end (each line k of NY done at t0 + (k + 1)
+# (t1 - t0) / NY): a line the beam drew before its write is old in that picture, after it new; so a
+# copy that keeps ahead of the beam, or one the beam passed before it began, is no tear. (Until
+# 2026-10-31 any beam line between the command's start and end over one of its lines counted: a part
+# started in the blank that ended as the beam reached its first line read as a tear.)
 proc rc2_rg_cend {} {
 	if {$::rg_tc eq {}} { return }
-	lassign $::rg_tc ls shown
+	lassign $::rg_tc ls shown t0 ny
 	set ::rg_tc {}
+	if {[rc2_rg_blind] || $::rg_tsplit < 0} { return }
+	set t1 [machine_info time]
+	set tl [expr {228.0 / 3579545.0}]
+	set tf [expr {$::rg_nl * $tl}]
+	set dt [expr {($t1 - $t0) / double($ny)}]
+	set f [expr {$::rg_tsplit - $::rg_split * $tl}]       ;# (the line 0 of the last split's picture)
+	while {$f + $::rg_vis * $tl < $t0} { set f [expr {$f + $tf}] }
+	while {$f - $tf + $::rg_vis * $tl >= $t0} { set f [expr {$f - $tf}] }
 	set le [rc2_rg_line]
-	foreach y $shown {
-		if {($ls <= $le && $y >= $ls && $y <= $le) || ($ls > $le && ($y >= $ls || $y <= $le))} {
-			rc2_rg_bad tear [format "beam lines %d-%d over shown line %d of command %s" $ls $le $y $::rg_cmd]
+	for {} {$f <= $t1} {set f [expr {$f + $tf}]} {
+		set old 0
+		set new 0
+		set yo -1
+		foreach ky $shown {
+			lassign $ky k y
+			set tb [expr {$f + $y * $tl}]
+			if {$tb < $t0 + ($k + 1) * $dt} { incr old; set yo $y } else { incr new }
+		}
+		if {$old && $new} {
+			rc2_rg_bad tear [format "beam lines %d-%d over shown line %d of command %s (%d lines old, %d new)" $ls $le $yo $::rg_cmd $old $new]
 			return
 		}
 	}
 }
 
-# The play-area lines (0..vis-1) the last command's destination shows on (rc2_rg_hits' rules).
+# The play-area lines (0..vis-1) the last command's destination shows on (rc2_rg_hits' rules): {k y}
+# pairs, k its line (in the order the command writes them), y the screen line.
 proc rc2_rg_shown {} {
 	set out {}
 	set first [rc2_rg_hits]
@@ -1056,7 +1150,7 @@ proc rc2_rg_shown {} {
 	set step [expr {($arg & 8) ? -1 : 1}]
 	for {set k 0} {$k < $ny} {incr k} {
 		set y [expr {((($dy + $step * $k) & 255) - $r23) & 255}]
-		if {$y < $::rg_vis} { lappend out $y }
+		if {$y < $::rg_vis} { lappend out [list $k $y] }
 	}
 	return $out
 }
@@ -1095,7 +1189,7 @@ proc rc2_rg_hits {} {
 # interrupt; a late match taken when the VBLANK has re-armed it (in the blank) shows the next
 # picture all HUD page.
 proc rc2_rg_isr {} {
-	if {$::rg_tv < 0} { return }
+	if {$::rg_tv < 0 || [rc2_rg_off]} { return }
 	set n [expr {int(([machine_info time] - $::rg_tv) * 3579545.0 / 228.0 + 0.5)}]
 	set want [expr {$::rg_nl - 212 + $::rg_split}]
 	if {$n < $want - 1 || $n > $want + 4} { rc2_rg_bad vbl [format "the split routine ran %d lines after the VBLANK (%d expected)" $n $want] }
@@ -1104,6 +1198,7 @@ proc rc2_rg_isr {} {
 proc rc2_rg_split {} {
 	if {[info exists ::rg_isa] && ![info exists ::rg_isk]} { set ::rg_isk [list [peek $::rg_isa] [peek [expr {$::rg_isa + 1}]]] }   ;# (a line interrupt: only the game enables IE1, after isr_init's RAM copy)
 	if {[peek 0xC002] == 0} { return }
+	if {[rc2_rg_off]} { set ::rg_tv -1; set ::rg_tsplit -1; return }   ;# (split_cal's line interrupts)
 	set t [machine_info time]
 	if {$::rg_tv >= 0} {
 		set n [expr {int(($t - $::rg_tv) * 3579545.0 / 228.0 + 0.5)}]
@@ -1117,6 +1212,7 @@ proc rc2_rg_split {} {
 }
 
 proc rc2_rg_virq {} {
+	if {[rc2_rg_off] || $::rg_von} { set ::rg_von 0; set ::rg_tv -1; set ::rg_vpend 0; return }
 	set ::rg_tv [machine_info time]
 	if {$::rg_vpend} { rc2_rg_bad vbl [format "line %d: VBLANK with the last one's list not applied" [rc2_rg_line]] }
 	if {[peek 0xC002] && [peek 0xEC44] == 0 && $::rg_tsplit >= 0} { rc2_rg_bad vbl "a frame without its HUD split" }
@@ -1139,7 +1235,7 @@ proc rc2_rg_vbl {} {
 # A command that was running into what the new list shows when it went in: flagged only when it
 # still runs as the picture starts (line 0).
 proc rc2_rg_run {line hit} {
-	if {$::rg_cmd eq $::rg_runcmd && ([debug read "VDP status regs" 2] & 1)} {
+	if {$::rg_cmd eq $::rg_runcmd && ([debug read "VDP status regs" 2] & 1) && ![rc2_rg_blind]} {
 		rc2_rg_bad cmd [format "line %d command %s still running into shown line %d as the picture starts" $line $::rg_cmd $hit]
 	}
 }

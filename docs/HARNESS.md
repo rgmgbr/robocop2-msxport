@@ -433,6 +433,9 @@ Expected:
   470), with the palette black: by design, invisible. Their log lines show `f=162`, `f=326` or
   `f=470` with a return address between `bs_board` and `rd_go` on the stack (A5EEh or A5F3h at
   `14bc5ef`; take the addresses from the build's label file). Any entry elsewhere is a glitch.
+  Since level 2's step 16 the guard counts nothing under an all-black palette or with the display
+  off, and a tear only when a picture shows a command's lines half old, half new (5.22, "At step
+  16"): those copies no longer count.
 
 ### 5.8 VRAM access speed
 
@@ -1850,6 +1853,46 @@ python3 -I tools/bstest/contcheck.py W/O/l2 cont --fire --gen W/R/l2c/gen      #
 python3 -I tools/bstest/contcheck.py W/O/l2 cont2 --again
 python3 -I tools/bstest/contcheck.py W/O/l2 cont_nf --no-fire
 python3 -I tools/bstest/contcheck.py W/O/l2 over --none
+```
+
+At step 16 (2026-10-31, milestone 2's acceptance: the display's remaining glitches, the vats'
+variant), **the guard judges what the screen shows** (`tools/openmsx_rc2.tcl` `rc2_guard`):
+- **The display off, the palette black.** While the game has the display off (R#1's BL bit as the game
+  last wrote it, `::rg_r1`: not the HUD split's own blank) nothing is judged, and while the play field's
+  palette is all black (the fades of a death, of a level's end, a start's fade in) no reg, cpu, cmd or
+  tear is counted (pal and vbl still are). The writes that turn the display off and on (`dsp_off`,
+  `display_on`: R#1's display and VBLANK interrupt bits, R#0's line interrupt bit alone) are logged as
+  `display off at line L`, `display on`, `line interrupt off`, not counted; once on, the VBLANK and split
+  bookkeeping starts again from the second VBLANK interrupt (the first comes at once: the VDP's F was set
+  while the interrupt was off). A death's restart (the screen redrawn with the display off for about
+  10,500 lines) read as tens of tears, commands, register, CPU (the SAT written by that first interrupt
+  under the black palette) and VBLANK events; it now reads clean (`vat` from frame 30, three machines:
+  reg, pal, cpu, vbl, tear 0; the cmd lines are a vat column's later parts).
+- **A tear is a picture that shows a command's lines half old, half new.** `rc2_rg_cend` takes the
+  command's lines as written at an even pace from its start to its end (line k of NY done at t0 + (k + 1)
+  (t1 - t0) / NY) and, for each picture the beam drew while it ran, a line the beam drew before its write
+  as old, after it as new: a tear when one picture has both ("(N lines old, M new)"). Until now any beam
+  line between the start and the end over one of its lines counted: a copy that keeps ahead of the beam
+  (the V9958's part started in the blank that ended as the beam reached its first line) or one the beam
+  passed before it began read as a tear, while a copy across the beam's whole pass did not. The pace is an
+  average (the VDP copies faster in the blank): a copy that ends a line or two from the beam may be judged
+  either way.
+- Effects on the gate's guards: Brainstorm's `guard_*` loses the tears of `bs_board`'s copies under the
+  black palette (its verdict needs reg, pal, cpu, vbl 0 only, as before); the range's stay 0.
+
+The engines' changed cells wait for the window between the HUD split and the VBLANK (`scroll9958.asm`
+`swr_one`, `scroll9938.asm` `s38_redraw`: no 16 x 16 copy into the page shown during the play area), and
+the HUD's timer cells change in one frame (`hud.asm` `hud_digits`). **The vats' variant** `VAT_TICK=1`
+(`tools/mkrom.py`; `tiles.asm` `vat_tick` after each game tick, `sprites.asm` `feed_vdp` in the window
+while a column is ready; off by default: the product's bytes as before) is measured with the step-14 jobs,
+`vl_speed_jobs` now also counting the pictures (lists put on screen) and taking a drive: tour from 450 and
+850, and standing at vat 0 (`build/emu/l2_still520.drive`: tour's joystick bytes to frame 520, none after,
+no teleport, tour's pokes; `python3 -I -c "l=open('build/emu/l2_tour.drive').read().split('\n');
+open('build/emu/l2_still520.drive','w').write('\n'.join([l[0][:1042]+'00'*(len(l[0])//2-521),'']+l[2:]))"`)
+from 540.
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/vatlog.tcl}; hz_chain [concat [vl_jobs {W/t450} ROM LABELS 25 450] [vl_jobs {W/s540} ROM LABELS 20 540 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} <repo>/build/emu/l2_still520.drive] [vl_speed_jobs {W/sp450} ROM LABELS 25 450]] {W/v.done}
+python3 -I tools/bstest/vatcheck.py W/t450          # columns a second, each column's draws a second, tear 0
 ```
 
 ### 5.23 Level 2's sound checks and the cheat (step 21 of its plan)
