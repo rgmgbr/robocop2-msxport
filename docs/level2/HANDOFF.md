@@ -1800,3 +1800,63 @@ this step's base: no new l2base path was written when it started), `C`, `C2` (th
    "Not yet", 3.1 step 3, 3.3, 3.9's `--visits 1,2`, 3.10's 92 banks and 85,504-byte blob, 5's step 13, 8's
    risks 8 and 9).
 5. Visit 2's entry maps 8 data banks (`puzl_gfx.bin`'s first 4, `puzl_tv2.bin`'s 4), visit 1's 7.
+
+## Level 2's base made again, from main 9be19aa (2026-10-31)
+
+**Done.** macOS wiped the scratchpad on 2026-10-30: `$IMPL/base` (a969fc8) and the range's base are gone.
+**The base is now `$L2/base`**, with `L2=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2`:
+main **9be19aa** (the range's two cameras: the V9958's rings, the V9938's 16-column steps), recorded
+and checked by level2 7c8635a's harness. Keep it; other agents only read it. Every "as the base" check
+from now on: `sh tools/bstest/l2base.sh check W $L2/base` (THE ONE CHECK at the top, with this path).
+
+### How it was made (exact commands)
+```sh
+git worktree add --detach $L2/wt0 9be19aa
+ln -s <repo>/build/extracted $L2/wt0/build/extracted; cp -Rc build/ram build/emu $L2/wt0/build/
+(cd build/msx && find . -type f ! -name '*.rom' ! -name '*.ROM' ! -name '*.labels' ! -name '*.png' \
+   ! -path './gen/*' ! -name '*.wav' -print | cpio -pdm $L2/wt0/build/msx)   # (copied 03:20, before step 20's puzl.inc)
+git -C $L2/wt0 checkout 7c8635a -- tools/bstest tools/openmsx_rc2.tcl tools/tracecmp.py tools/msxframe.py \
+   tools/recframes.py tools/objcmp.py tools/msxprof.py     # (the gate's harness; 9be19aa's sources and build tools)
+cd $L2/wt0 && sh tools/bstest/l2base.sh builds $L2/base    # builds: PASS (25 ROMs)
+# a private MSX-AI MCP session (this process's target may be another agent's): new tools/bstest/mcpd.py, mx.sh
+python3 -I tools/bstest/mcpd.py $L2/sg/mcp &               # (background; MCPD_DIR=$L2/sg/mcp sh tools/bstest/mx.sh NAME 'TCL')
+#   source {$L2/wt0/tools/bstest/load.tcl}; source {$L2/wt0/tools/bstest/l2base.tcl}; l2b_chain {$L2/base} {$L2/base/all.done}
+sh tools/bstest/l2base.sh check $L2/base $L2/base          # one FAIL only: the title from power-on (no base_* yet)
+sh tools/bstest/l2base.sh base $L2/base                     # "base: ready" (fresh/new_* -> base_*, xnew_* -> xbase_*)
+sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/base/l2base_check.log)
+```
+
+### Checks (results)
+- The build data are 9be19aa's: `build.sh ... TAG=6` and `PZ_TEST=2 TAG=6` in `$L2/wt0` give test6's files
+  byte for byte (SHA-256 6aea17e05c26dba0… and 8c8bf053d876a208…, `build/msx/ROBOCOP2_v0.1.3-test6*.ROM`);
+  `TAG=4` against `ROBOCOP2_v0.1.3-test4.ROM` (a969fc8, the old base): only bank 88 (FRNG) differs, so level 1,
+  the title, Brainstorm and the fixed area are the old base's byte for byte.
+- The chain: 227 jobs, all done, no time out (`$L2/base/all.done`). `l2base.sh check $L2/base $L2/base`:
+  **l2base: PASS** (regress 45 PASS; die/over/end 901/1,249/517 rows 0 differ; start m2/fx/tr all 0 (26,690 /
+  26,445 / 31,505 entries); field 0 differ but `860_m2` 3 pictures / 177 px, the known hostage tear (A); stills
+  10 pictures; LOCKSTEP 2,998 lists both VDPs; effects 800 starts, SCC 57,480 / PSG 33,395 sound ticks; code
+  banks: fixed 188, FIELD 1,529, FRONT 2,309 ... as a969fc8's).
+- **The base against itself, a rebuild**: `l2base.sh builds $L2/rebuild` (25 ROMs, 0 differ from the base's),
+  the chain again, `l2base.sh check $L2/rebuild $L2/base`: **l2base: PASS**, every record identical
+  (`$L2/rebuild/l2base_check.log`).
+- **level2 7c8635a (level 1, Brainstorm, the range and the title as the base)**: worktree `$L2/wtH` (its own
+  harness), `l2base.sh builds $L2/h13`, the chain with `$L2/wtH`'s Tcl, `cd $L2/wtH && sh
+  tools/bstest/l2base.sh check $L2/h13 $L2/base`: **l2base: PASS** (`$L2/h13/l2base_check.log`): regress 45
+  PASS, traces 0 differ, start checks all 0, field 0 differ in every window (860_m2's hostage tear did not come
+  this time), stills identical, effects PASS (802/802 starts, 57,435 and 33,352/33,356 sound ticks 0 differ);
+  LOCKSTEP fx 2,998 lists 0 differ, m2 906 lists 0 differ, then `dispcmp.py`'s rule stops at game frame 1812
+  ("the displayed cameras differ (1567/654 vs 1551/654; scroll engine timing)": the V9938 engine's idle-time
+  camera, which LOCKSTEP does not pin; reported, not a FAIL).
+- **Negative controls** (new `tools/bstest/l2neg.sh`, on copies of the rebuild's records; `sh
+  tools/bstest/l2neg.sh $L2/wt0 $L2/base $L2/rebuild $L2/neg/out`, `$L2/neg/neg.log`): **19 as expected, 0
+  wrong**: 11 FAIL (die trace's camera_x in one row; start tear 0->1, cpu 0->1; a field record's page zeroed:
+  1 picture, 34,712 px, "a new class: other"; a still's play pages zeroed; one LOCKSTEP SAT byte; an effect
+  start 30 VBLANKs late; another effect at a start; the exact title's VRAM byte, the game's RAM D100h; the
+  range's tarm_m2 row 40), 8 PASS (the same copies unmutated).
+
+### Open issues
+1. After step 20 (244ccb8) `check_all.sh` checks `solve2`/`fuzz2` as visit 2 (Ellen), while this base's
+   `check_all.log` and records are visit 1's pictures (Murphy, 9be19aa): a later tree's run against this base
+   shows those differences in Brainstorm's family (expected, step 20's change; see the step-14 section for how
+   they were judged).
+2. `$L2/base` holds 1.8 GB; `$L2/rebuild`'s and `$L2/h13`'s big record folders can go once read.
