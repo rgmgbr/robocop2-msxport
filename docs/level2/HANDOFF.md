@@ -2659,6 +2659,15 @@ column by column), a ripple rather than the original's whole-vat step.
 7. `hz_l2_field_jobs`' window from game frame 0 records `LV_TEST`'s briefing since step 18 (tick_n is 0 on the
    text screen): take 1. The objects' check on `vat` (88 / 75 / 226 "extra", the same at a485dcf) is not looked into.
 
+### Integrated
+Cherry-picked onto level2 6b6c5d3 as **0ae4b69, 84223a8, 805763d, c73ab00, a5cdf15** (678d135, 6b6c5d3's own
+change in the branch, left out; no conflict); the tree equal to `l2-s16`'s. From the main tree: `sh
+tools/bstest/build.sh S16/IM/prod/rc2.rom`, the X and `VAT_TICK=1` builds, `sh tools/bstest/hz.sh l2builds
+S16/IM/L2R`: build OK, **byte-identical to the branch's** (product dd05c76fc6d5dfe3, X, the variant, the seven
+l2 builds); MCP `hz_chain [hz_l2_jobs S16/IM/O/l2 S16/IM/L2R tr]` (the main tree's Tcl), `hz.sh compare --fields`:
+**level 2: PASS (23 traces)**, `contcheck.py`'s six PASS; `make test`: 320 tests, the 4 known failures only. The
+frame chooser page written to `build/review/quadros.html`.
+
 ## Step 21: the sound checks and the cheat (2026-10-31)
 
 **Done.** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
