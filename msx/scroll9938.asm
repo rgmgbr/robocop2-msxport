@@ -346,9 +346,10 @@ s38b_lp:
         ret
 
 ; One step of the oldest cell the game changed (tiles.asm rd_queue), when it is in the kept
-; rows: the page on screen (between the HUD split and the VBLANK through vdp_cmd_q, at other
-; times at once), then the other one: the page being built, or during a flip not on screen yet
-; the new displayed page (each draws only the columns it holds; a flip in between starts the
+; rows: the page on screen (only between the HUD split and the VBLANK, through vdp_cmd_q: until
+; 2026-10-31 at other times at once, and a cell the beam passed while its copy ran showed half
+; drawn for one picture), then the other one: the page being built, or during a flip not on screen
+; yet the new displayed page (each draws only the columns it holds; a flip in between starts the
 ; cell again: s38_update). NZ when it took this call.
 s38_redraw:
         call rd_peek
@@ -368,7 +369,7 @@ s38_redraw:
         jr nz,s38r_vis              ; (the play-field BOBs compose it there: tiles.asm)
         ld a,(split_armed)
         or a
-        jr nz,s38r_late
+        jr nz,s38r_wait             ; (the beam in the play area: the window, the other work first)
         call s38_shown
         ld b,d
         ld d,a
@@ -387,11 +388,6 @@ s38r_vis:
 s38r_wait:
         xor a                       ; (not now: Z, the other work goes on)
         ret
-s38r_late:
-        ld a,1                      ; (at other times at once: a change never waits)
-        ld (rd_phase),a
-        call s38_shown
-        jr s38r_draw
 s38r_back:
         call rd_pop
         ld a,(s38_flip_wait)
