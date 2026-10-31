@@ -1763,6 +1763,33 @@ msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstes
 python3 -I tools/bstest/vatcheck.py W/vl
 ```
 
+At step 15 (2026-10-31, the cut at a vat's surface and the arrest scene's view: `cold.asm` `spr_cut`
+behind `sprites.asm`'s hook, `level2obj.asm` `t2`'s `v_addx`, `player.asm` `pl_view`), **the cut's and
+the view's checks** (the plan's 4.2 checks 9 and 10). `tools/msxframe.py --cut LINE` expects RoboCop's
+and the hit spark's sprites to end above screen line LINE (their pixels from it down left out of the
+expected picture and counted: "cut at screen line N: K of RoboCop's ... left out"), every other object
+whole. `tools/bstest/cutview.py cut SNAPROOT REF.jsonl` takes `hz_l2_still_jobs`' stills on `l2_vat`
+(every list from the frames asked), the bench's row of each list's tick (its game frame near the still's
+`tick_n`: the game frame starts again after a death), the original's copper line there (`lt1`'s rule:
+equal to the bench's own `$10356` on every row of `vat`) and its screen line on the MSX (the line - 1Eh
++ the camera's y - the list's camera y), and runs msxframe with it: PASS when every still with a cut is
+exact and the cut left out some of RoboCop's pixels; the stills without a cut are reported (msxframe's
+own classes: compare them with the base's). `tools/bstest/cutview.tcl` (sourced after `load.tcl`)
+`cv_view_jobs DIR ROM LABELS ?SPEC? ?MACHINES?`: per drive (default `end` from frame 15, `tour` from
+2405) and machine, at every tick_start the view the game asks for, `v_addx`, RoboCop's x and the
+camera, and at each new list's HUD split its camera, RoboCop's record and its play-field BOBs
+(`DIR/view_<name>_<m>.txt`); `cutview.py view DIR [--add 48]` checks the suspect's scene: `v_addx`
+steps 0 or 2 up to 48, the view at most 2 px a tick but where it follows RoboCop at his range's edge
+(`pv_keep`) or stays at the map's edge, RoboCop within `AX_MIN`..`AX_MAX` but at the map's left edge,
+and the suspect's pixels (their columns from the atlas) within the map x the screen shows from the
+view's arrival at its target to the arrest. `tour` needs the trace build (`ENEMY_CAP=0`): with the
+product's cap the drive's teleports leave an enemy in the one slot and the suspect never comes.
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/cutview.tcl}; hz_chain [concat [hz_l2_still_jobs {W/st} {W/R} {36 37 ... 62} l2_vat] [cv_view_jobs {W/cv} {W/R/l2/rc2_l2.rom} {W/R/l2/rc2_l2.labels}]] {W/cv.done}
+$PY -I tools/bstest/cutview.py cut W/st build/emu/l2_vat_ram.jsonl
+$PY -I tools/bstest/cutview.py view W/cv
+```
+
 At step 18 (2026-10-31, the flow into and out of level 2), **the product goes on from the range into
 the level-2 briefing and level 2** (`front.asm` `front_brief` at `front_bonus`' end, `rc2.asm` `ml_ev`,
 `lv_next`), and after level 2's stages into the level-3 briefing and the title (default 5); `PZ_TEST=1`

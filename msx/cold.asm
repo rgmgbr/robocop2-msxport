@@ -218,8 +218,8 @@ spr_cut:
         ld hl,(gcam_y)
         ld a,(vat_cut_line)
         sub 0x1E - 16
-        jr c,spc_x                  ; (0, G_VARS', before a life's first tick: no cut; the vats'
-        ld e,a                      ;  lines are 7Fh or more)
+        jr c,spc_x                  ; (0 before a life's first tick, G_VARS cleared: no cut; the
+        ld e,a                      ;  vats' lines are 7Fh or more)
         ld d,0
         add hl,de
         ld de,(cam_y)

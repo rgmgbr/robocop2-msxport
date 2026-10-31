@@ -2244,6 +2244,161 @@ All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 hea
 4. The title after a game over is seen only in the product (script builds skip it); no regress record covers it
    (the plan's 4.4 game-over row: checked here on EXTJOY builds through the new game).
 
+## Step 15: the cut and the arrest's view (2026-10-31)
+
+**Done; committed locally, not pushed (the user's order).** Branch `l2-s15` (worktree `scratchpad/l2/wt15`, from
+level2 0b63ec2), commits **b8b7490** (the code and the harness), **c456d4c** (the view's 48 px), this section's;
+integrated into level2 by cherry-pick onto step 21's head 96e2172 (below). Files: `msx/{cold.asm, sprites.asm, player.asm, level2obj.asm, msx.inc}`, `tools/msxframe.py`,
+`tools/bstest/{cutview.py, cutview.tcl}` (new), `tests/test_bstest.py`, `docs/HARNESS.md` (5.22), this file. Records
+in `S15` = `scratchpad/l2/s15`: `W/R` (the six l2 builds), `X/l2` (`EXTJOY=1 LV_TEST=2`, product caps), `B0`/`B1` (the
+product before/after), `V` (the option sets), `G` (the gate), `IGB` (a clone of step 14's `s14/IG`, made a base there:
+IG itself untouched), `st`/`stb` (vat stills, new/base), `se`, `se2`, `se2b`, `se2x` (the arrest scene's stills),
+`cv`, `cvt` (view records), `fd` (field records), `vl/*` (guards), `copper.py`, `cutscan.py`, `crop.py` (scratch),
+`crop_*.png` (the pictures looked at).
+
+### What was built
+- **The cut** (plan 3.6, default 30): `sprites.asm` `sprites_frame`, after `sat_build` and before `q_sat`: while
+  `vat_cut_line` < CAh (level 2's vats only; CAh in every other level: one compare per rebuilt SAT) the 8000h window's
+  bank goes on the stack and `front_call` runs **`cold.asm` `spr_cut`**, which puts the bank back at its end.
+  `spr_cut`: the original's copper line (`$10356`: from that beam line the sprite DMA is off) through the view's y
+  mapping (map y = the line - 1Eh + the game camera's y; screen line = that - `cam_y`; the 9th bit kept: above the
+  play area every entry parked, below it nothing done); over SAT entries 0 to `RC_RUN` + RoboCop's shown entries - 1
+  (RoboCop's run and the hit spark's two: on the Amiga the spark is drawn into his sprites; a BOB is never in that
+  range while his version is shown): an entry whose top is on or below the line is parked (`sb_parky`), one the line
+  crosses gets colour 0 (transparent, CC 0) in its colour rows from the line down in the set being prepared
+  (`rs_colhi`) and its row is marked unknown in that set (`col_held` FFFFh), so that the set's next list writes it
+  whole again. The enemies are not cut (BOBs on the Amiga). A life's first lists before its first tick (`vat_cut_line`
+  0, `G_VARS` cleared) call it and it leaves at once (level 1 too: a FRONT call of about 150 T-states, until the first
+  tick sets CAh).
+- **The arrest's view** (plan 3.6, default 31): `level2obj.asm` `t2` eases **`v_addx`** (CE43h, `G_VARS`: 0 at every
+  life) by 2 a tick up to `VU_ADD` = 48 while it runs (type 2 writes `ac_camdx` = 500h every tick); `player.asm`
+  `pl_view` adds it to the view's x right after `pv_add` (`pva_a`, `pv_add`'s tail), before `pv_keep`, which still
+  keeps RoboCop within `AX_MIN`..`AX_MAX`. Display only: the logic's camera is untouched.
+- **Two deviations, recorded**: (1) the cut's work is in FRONT (`cold.asm`), not `BANK_FIELD` (plan 3.2/3.6): the
+  routine takes 125 B (116 B in `BANK_FIELD`'s form) and `BANK_FIELD` has 143 B in the product but only 102 B in every EXTJOY build (`fb_visrec`):
+  the trace and harness builds would not assemble; FRONT keeps 935 B or more in every set; the 8000h bank kept around it
+  costs 6 more fixed bytes than a `field_call` would. (2) The hit spark is cut with RoboCop (his sprites on the
+  Amiga). The view's 48 is the plan's: the suspect's play-field BOB lies at map x 241 (its pixels 242-285), so map x
+  48-295 shows him whole on both VDPs (the plan's premise "map x 256-303, the Amiga shows his left 32 px" was off: the
+  Amiga's 288 px at camera 0 show him whole, the MSX's 248 his first 6 columns). A first build took 56 from that
+  premise; c456d4c set it back to 48.
+- **Room** (`python3 -I tools/bstest/l2base.py banks S15/V`): the fixed area product 192 -> **169** (the cut's hook
+  17, the view 6), the lowest set DIAG+PZ_TEST 57 -> **34** (no fallback needed), `l2_diag` 66 -> 43, EXTJOY builds
+  105-124; FRONT 1,506 -> **1,381** (lowest `l2_diag` 1,060 -> 935); `BANK_L2` 41 -> **29**; `BANK_FIELD` unchanged
+  (143, EXTJOY 102); every other bank as before. No new block: 127 of 128 banks, the 1 MiB image. Option sets: **45 of
+  48** (DEMO_ACTORS 2/5 -EEh, DEMO_HUD -35h: the known overflows, 23 B further).
+- **Harness**: `tools/msxframe.py --cut LINE`; `tools/bstest/cutview.py cut|view` and `cutview.tcl` `cv_view_jobs`
+  (HARNESS.md 5.22, "At step 15");
+  `test_cutview_takes_the_copper_rule_and_flags_a_view_that_jumps_or_hides_the_suspect`.
+
+### Checks (exact commands, results; `S15` as above, `W` = wt15, one openMSX: the in-process MCP)
+- **Builds**: `sh tools/bstest/build.sh S15/B1/rc2.rom` (the product), `sh tools/bstest/hz.sh l2builds S15/W/R`
+  (PASS), `sh tools/bstest/build.sh S15/X/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2`, `sh tools/bstest/l2base.sh builds S15/G`
+  (PASS), `sh tools/bstest/hz.sh l2builds S15/G/L2R`: build OK, z80asm's 12 known warnings only, nothing else in the
+  logs. `sh tools/bstest/variants.sh S15/V` + `python3 -I tools/bstest/l2base.py banks S15/V`: 45 of 48 (above).
+- **Level 2's logic** (the gate's first 25 jobs): `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv
+  S15/G/O/l2 S15/G/L2R`: **level 2: PASS (23 traces)**, 0 differ in all 1,022 fields, lost 0 (`cont` 301 rows on the
+  three machines, `over` 109, `flow_l2_end` 259, `tour`/`vat` on the three); `python3 -I tools/bstest/contcheck.py
+  S15/G/O/l2 TAG MODE --gen S15/G/L2R/l2c/gen`: cont, cont_fx, cont_tr `--fire`, cont2 `--again`, cont_nf `--no-fire`,
+  over `--none`: **PASS** all six.
+- **4.2 check 9, the cut**: MCP `source {W/tools/bstest/load.tcl}; source {W/tools/bstest/cutview.tcl}; hz_chain
+  [hz_l2_still_jobs {S15/st} {S15/W/R} {36 37 ... 62} l2_vat]` (a still at the first new list from each of those game
+  frames: 9 lists of the sinking on the MSX2 and the MSX2+, 17 on the turbo R), then `$PY -I tools/bstest/cutview.py
+  cut S15/st build/emu/l2_vat_ram.jsonl`: **cut: PASS**: 35 stills with the original's line below CAh (game frames
+  39-55: the line from C9h down to 85h; RoboCop under it from frame 48), all exact (RoboCop's and the spark's pixels
+  from the line down absent, every other pixel as msxframe's model, the play area exact), 7,329 of RoboCop's pixels
+  left out in all (57 at frame 48, up to 822 at frame 55); the enemies on screen meanwhile (MSX2 BOBs 65 and 20, V9958
+  BOB 166) whole. The 4 stills without a cut that are not exact are the base's classes: msxframe at the V9938's left
+  edge (3 px, frames 58-61) and around the death's objects near the play area's bottom (53 px at frame 79: the base
+  35-161 px at 67-71), and on the turbo R a tile upload caught half done by the snapshot (lines 0-11 of slot 95 new) —
+  the same stills of the base build (`S15/stb`) show those classes, and none of the sinking frames differs there (the
+  base shows him whole). The line's rule against the original: `$PY -I S15/copper.py build/emu/l2_vat.drive 120` (the
+  bench's own `$10356` at each game frame's start): equal to `cutview.copper_line` on all 121 rows.
+- **The cut forced through the enemies** (a control): `vat_cut_line` forced to 6Eh at every `sprites_frame` (a cut at
+  screen line 80 through RoboCop and the two enemy sprites beside him in `end`; scratch `S15/ctl.tcl` `s15_ctl_jobs`,
+  stills at frames 40-60 on the three machines), `$PY -I tools/msxframe.py STILL ... --field --cut 80`: RoboCop's
+  423-506 pixels left out, the enemies (BOB 68 at y 57, BOB 20 at y 85: across and below the line) whole, 12 of 15
+  stills exact; without `--cut` all 15 differ by 300-330 px (the check sees the cut). The 3 others (frame 40-41, 9 px
+  on line 87) are the two enemies' overlap: the cut parked RoboCop's entries from line 87 down, so line 87 went from
+  10 sprites (not checked: above 8) to 6 and msxframe now checks it, putting the enemies in front by object number
+  while the VDP puts the lower SAT run (enemy 2, entries 21-23, before enemy 1's 29-31) in front: msxframe's known
+  object-order limit (step 12).
+- **4.2 check 10, the arrest's view**: MCP `hz_chain [concat [cv_view_jobs {S15/cvt} {S15/W/R/l2/rc2_l2.rom}
+  {S15/W/R/l2/rc2_l2.labels} {tour 2654 2405 end 259 15}] [cv_view_jobs {S15/cv} {S15/X/l2/rc2_l2.rom}
+  {S15/X/l2/rc2_l2.labels} {end 259 15}]]`, `$PY -I tools/bstest/cutview.py view S15/cvt` and `... view S15/cv`:
+  **view: PASS** both: `v_addx` steps 0 and 2 only, at 48 from 24 ticks after the suspect's spawn (end tick 45, tour
+  2435); the view at its target from tick 83 (end) / 2476 (tour), the suspect whole in every list from 76-77 (end) /
+  2471-2472 (tour) to the arrest (164 / 2559), on the three machines; RoboCop within 48..160 on every tick but 25 of
+  `tour`'s at the map's left edge (the view at 0, RoboCop at x 173 after the drive's teleport); the view's steps at
+  most 3 px a tick, 11-12 (end) and 20-21 (tour) of them above 2, all where the view follows RoboCop at his range's
+  edge (open issue 2). With the product's caps `tour` has no suspect (open issue 3), so it runs on the trace build.
+- **Pictures looked at** (msxframe's renders, zoomed: `S15/crop_cut_m2.png`, `crop_cut_fx.png`, `crop_cut_tr.png`,
+  `crop_after_m2.png`, `crop_arrest_m2.png`, `crop_arrest_v58.png`): RoboCop sinking into vat 0, cut at the original's
+  line (6 lines below the liquid's top edge: the line is the vat's y + 21) down to his head, on the MSX2, the MSX2+
+  and the turbo R; after the line is CAh again (frame 56) he stands whole in the vat while he dies (open issue 1); the
+  roof at game frame 100 on the MSX2, base and new side by side: the base's view at 0 leaves the suspect beyond the
+  right edge, the new shows him whole (his white blink); the MSX2+ and the turbo R with the suspect firing.
+- **Frame to frame** (field records of every picture, the X build: MCP `hz_chain [concat [hz_l2_field_jobs {S15/fd}
+  {S15/X/l2/rc2_l2.rom} {...labels} {W/build/emu/l2_end.drive} {15 220}] [hz_l2_field_jobs ... l2_vat.drive {30
+  120}]]`, `$PY -I tools/bstest/fieldcheck.py S15/fd/W build/msx/level2 S15/fd/W.png --level 2`): **0 differences** in
+  all six windows: the arrest scene from frame 15 (220 pictures a machine: the view easing and following RoboCop, the
+  play field exact in every picture: no static pixel changes in scene coordinates) and the vat's window from frame 30
+  (120 pictures a machine, the vats' columns at their looks, none older). With the sinking's stills exact (9 lists a
+  machine on the Z80 machines, 17 on the turbo R), no picture checked shows a pixel of RoboCop below the line. The scene's stills every 5 frames
+  from 95 to 160 (`S15/se2`, base `S15/se2b`, product caps `S15/se2x`): the same small differences on both builds at
+  the same frames (explosion sprites with a dropped OR layer at the suspect, 1-37 px: msxframe's model), nothing else.
+- **The tear guard on those windows** (MCP `hz_chain [vl_jobs DIR ROM LABELS SECS FROM MACHINES DRIVE]`: `vat` 6 s
+  from frame 30 (MSX2+, turbo R) and 5 s from 33 (MSX2: the V9938 first catches up with the drive's teleport), `end` 9
+  s from 15 (three machines), on this l2 build and on IG's (0b63ec2) `s14/IG/L2R/l2`; `S15/vl/*`): **no tear, CPU,
+  VBLANK or palette event before the death's restart in either build**; the one extra line, `end` MSX2+ `reg R#46 = d0
+  pc b8e9` (`field.asm` `fqs_go` starting a play-field BOB's copy), is in step 14's records of the same code
+  (`s14/ivl/450`, `ivl/850`, `vl/s520`): not new. At and after the restart (the display off about 10,500 lines while
+  the screen is redrawn) both builds show tears and register events at different phases (open issue 4).
+- **The gate** (nothing else changes): `sh tools/bstest/l2base.sh builds S15/G`, `sh tools/bstest/hz.sh l2builds
+  S15/G/L2R`; MCP `source {W/tools/bstest/load.tcl}; source {W/tools/bstest/l2base.tcl}; hz_chain [concat [hz_l2_jobs
+  {S15/G/O/l2} {S15/G/L2R} tr] [rgr_jobs {S15/G} all] [l2b_jobs {S15/G}]] {S15/G/all.done}` (252 jobs, 0 time outs).
+  The base: step 14's integrated records `s14/IG` (0b63ec2), cloned into `S15/IGB` (`cp -Rc`) and made a base there
+  (`sh tools/bstest/l2base.sh base S15/IGB`: its own title records as `base_*`/`xbase_*`; IG untouched). `sh
+  tools/bstest/l2base.sh check S15/G S15/IGB` (`S15/G/l2base_check_IG.log`, `regress_check_IG.log`): **regress: PASS,
+  45 verdicts, 0 FAIL**; level 1's die/over/end 901/1,249/517 rows 0 differ; the start check m2/fx/tr all 0 (25,217 /
+  24,861 / 31,505 patterns, 0 bad, no line above 8, SATs 0 bad, lost 0); the field check PASS (860_m2 the known
+  hostage tear A, 3 pictures 177 px, 860_fx A/B 6 pictures 183 px: within `TEARS`' bound); **LOCKSTEP 2,998 lists 0
+  differ on both VDPs**; the effects PASS (800 / 803 / 802 starts in their frames; SCC 57,473, PSG 33,395 / 33,401
+  sound ticks 0 differ); **the stills 9 of 10 identical, `m2_g1490` 8 PNG pixels apart (msxframe 470 against IG's
+  468): FAIL, judged CPU time**: the snapshot is the same instant and list as IG's (304.28722 s, seq 235: both a
+  VBLANK after the main base's, step 14's shift), and the 2 screen pixels are one link of the conveyor's chain beside
+  its gear one redraw step apart (the engines' idle-time cell redraws, moved by the hooks' few T-states in level 1:
+  32 a rebuilt SAT, 49 a tick; `S15/crop_g1490.png`: IG, new, main base); level 1's traces and LOCKSTEP's lists
+  0 differ, as step 14's evidence. Against the main base (`sh tools/bstest/l2base.sh check S15/G scratchpad/l2/base`,
+  `S15/G/l2base_check_base.log`): regress: PASS (45 verdicts), every other verdict PASS, the same still `m2_g1490`
+  FAILs (32 px; msxframe 470 against the main base's 462; IG's 468, 24 px: the VBLANK shift step 14 recorded, plus the
+  2 pixels above).
+- `make test`: 300 tests, the 4 known failures only (failures=3, errors=1); `test_bstest.py` 41 OK.
+- **Integrated** (step 21 integrated first: level2 96e2172): the step's code commits applied onto 96e2172 without a
+  conflict (`test_bstest.py` merged); from that tree (a detached worktree `S15/wti`, the build data copied: equal to
+  the main tree's, 105 files) the product, the `EXTJOY=1 LV_TEST=2` build, the six l2 builds and the flow build
+  (`S15/IR`) and every ROM of `l2base.sh builds S15/IG2` (32) are **byte-identical** to this branch's (step 21 changed
+  only `CHEAT` builds), so every emulator check above holds for the integrated tree as it is; `sh
+  tools/bstest/variants.sh S15/IV` + `l2base.py banks`: **50 of 53** (the 5 `CHEAT` sets build: fixed 150-169, LC3
+  4,833; DEMO_ACTORS 2/5 and DEMO_HUD as before); `make test`: 318 tests, the 4 known failures only.
+
+### Open issues
+1. **After the death in a vat RoboCop shows whole inside it**: the original's line goes back to CAh once d = camera y
+   + 98h - the vat's y reaches 4Dh (frame 56 of `vat`, the camera following him down: the bench's `$10356` is CAh from
+   there), so from then to the restart he stands at the vat's bottom in front of the liquid, dying, as the original's
+   copper rule gives. Faithful; for the user's eye (MSX2 crop `S15/crop_after_m2.png`).
+2. **The view's steps above 2 px a tick**: its own easing is 2 px a tick, but where RoboCop's place reaches `AX_MIN`
+   (the drives' teleports put him at x 173-200, left of the scene) the view follows his walk at his speed (3 px on
+   some ticks), as `pv_keep` does everywhere in the game; check 10's "at most 2 px a tick" holds for the easing, not
+   for that following (20-21 ticks in `tour`, 11-12 in `end`).
+3. **`tour` with the product's `ENEMY_CAP` 1 never spawns the suspect**: after the drive's teleports an enemy keeps
+   the one slot (decision 25, risk 11: e.g. a homing drone, never freed by clipping); in real play the slot must be
+   free when Cain's entry comes. Pre-existing; the user's call if it shows in play.
+4. The guard's view of a death's restart (the display off for about 10,500 lines while the screen is redrawn) counts
+   tears, CPU writes, VBLANK and register events at different phases in both builds (`S15/vl/*`): it does not model
+   the restart; no event before it in either build.
+5. Room: `BANK_L2` 29 B, the fixed area's lowest set 34 B (DIAG+PZ_TEST).
+
 ## Step 21: the sound checks and the cheat (2026-10-31)
 
 **Done; committed locally, not pushed (the user's order).** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
@@ -2415,4 +2570,3 @@ All from the worktree's root; `S21` as above.
   everything else PASS but **the known still `m2_g1490`** (24 px, msxframe 468 against 462): step 14's open
   issue, its integration's same verdict (these ROMs are its own byte for byte).
 - `make test` (the main tree): 317 tests, the 4 known failures only.
-

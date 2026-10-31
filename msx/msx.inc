@@ -605,7 +605,7 @@ ht_n:       equ 0xCE40              ; hit_test: the boxes in ht_box,
 ht_ok:      equ 0xCE41              ;   1 once they are worked out this tick
 vat_cut_line: equ 0xCE42            ; the screen line RoboCop's sprites are cut from ($9150 sets the
                                     ;   copper's $10356 to CAh every tick, level 2's vats higher:
-                                    ;   special.asm hz_update; field.asm spr_cut draws it)
+                                    ;   special.asm hz_update; cold.asm spr_cut cuts his sprites there)
 v_addx:     equ 0xCE43              ; the pixels the MSX's view goes right of the game's camera in level
                                     ;   2's arrest scene (level2obj.asm t2: 0 up to VU_ADD, 2 a tick;
                                     ;   player.asm pl_view adds it; display only, 0 at every life)
