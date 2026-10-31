@@ -454,6 +454,10 @@ proc rgk_setup {dir tag rom labels fdrive pdrive} {
 	set ::rgk_end 0
 	set ::rgk_fdrive "$::hz_root/build/emu/fr_$fdrive.drive"
 	set ::rgk_pdrive "$::hz_root/build/emu/pz_$pdrive.drive"
+	# (this job's notes even when its flow breaks before the range: rgx_init comes there)
+	set ::rgx_dir $dir
+	set ::rgx_tag $tag
+	set ::rgx_hb 0
 	set ::nt_rom $rom
 	set ::nt_labels $labels
 	set ::nt_exact 1

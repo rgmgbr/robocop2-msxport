@@ -66,10 +66,15 @@ sfd_lp: halt
 ; ----- the game over -----
 
 ; PIC9 with GAME OVER below it (tools/msxtext.py) for 30 seconds, or until fire is pressed once
-; released (the fire held as RoboCop fell does not skip it); then the title. (The original:
-; 128 VBLs, main_loop $82A8: show_picture D0 = 8; the user's choice: longer, and a way out.)
+; released (the fire held as RoboCop fell does not skip it); then the continue offer when a credit
+; is left (front_cont), and the answer (fo_cont) also as the flags: NZ continues (rc2.asm ml_ov:
+; lv_cont), Z the title. (The original: 128 VBLs, main_loop $82A8: show_picture D0 = 8; the user's
+; choice: longer, and a way out; the high-score entry $12082 is not ported.)
 FO_TICKS:   equ 30 * 50             ; 50 Hz ticks (fs_tick: the same time at 60 Hz)
 front_over:
+        xor a
+        ld (fo_cont),a              ; (first: a continue taken earlier in this power-on must not
+                                    ;  leave it set for a game over without a credit)
         call snd_stop               ; (show_picture $11E06: $FE14)
         ld a,PIC_GAMEOVER_BANK
         ld b,PIC_GAMEOVER_LINES
@@ -92,7 +97,49 @@ fo_n:   dec hl
         ld a,h
         or l
         jr nz,fo_lp
-fov_x:  jp cpu_title                ; (a turbo R: the Z80 again for the title, cold.asm)
+fov_x:  ld a,0xFF                   ; ($82C4: high_score_entry $12082, not ported (default 6): its
+        ld (g_key),a                ;  st.b $8032 (the key byte: FFh, no key), which a continued
+                                    ;  game's frame_keys then takes as handled ($8033))
+        call front_cont             ; ($82CA: $11FD2; a turbo R: the Z80 again, cold.asm cpu_title)
+        ld a,(fo_cont)
+        or a
+        ret
+
+; $11FD2 after the game over (docs/LEVEL2.md 3.7, default 6): a credit used, AG $805E - 1 (a word);
+; still 0 or more: the game's display again and the offer, $11590 ("YOU HAVE A GAME CREDIT." /
+; "PRESS FIRE TO CONTINUE.", 304 calls) through fe_text, silent ($11FDA's load_level_music only
+; initialises MU1), and fo_cont set when the screen ended by fire or fire is held at its end ($82D0
+; tests $802E right after $10768); below 0 its high byte cleared ($11FEE: 00FFh) and no offer
+; ($11FE8 clears the joystick byte: the title). Level 1 never shows it: $805E is 0 there ($83FA,
+; Brainstorm solved, is its only + 1, after level 1). After PIC9 (G7, the split and the line
+; interrupt off): a turbo R on the Z80 as after front_stats (cpu_title), front_done's SCREEN 5,
+; fb_prep, which measures the split and turns the display on on a turbo R, and display_on on the
+; other machines (else no HUD split: lines 162-211 would show PIC9's bytes, fs_clear clears 162).
+front_cont:
+        ld hl,(AG + 0x805E)
+        dec hl
+        ld (AG + 0x805E),hl
+        bit 7,h
+        jr z,fc_on
+        xor a
+        ld (AG + (0x805E ^ 1)),a    ; ($11FEE: clr.b $805E, the word's high byte)
+        jp cpu_title
+fc_on:  call cpu_title
+        call front_done
+        call fb_prep
+        ld a,(cpu_tr)
+        or a
+        call z,display_on
+        ld hl,txt_cont
+        call fe_text
+        ld a,(fs_done)
+        or a
+        jr z,fc_yes                 ; (ended by fire)
+        call ff_bits
+        jr z,fc_x                   ; (no fire held at its end: the title)
+fc_yes: ld a,1
+        ld (fo_cont),a
+fc_x:   jp cpu_title
 
 ; ----- the level's statistics -----
 

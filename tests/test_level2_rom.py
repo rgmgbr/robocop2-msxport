@@ -238,7 +238,7 @@ class HarnessTableTests(unittest.TestCase):
                          body, re.S)
         self.assertIsNotNone(flow)
         from_tcl.append(f"{flow[1]}:{flow[2]}:l2_{flow[1]}:{flow[3]}")
-        self.assertEqual(len(spec), 20)
+        self.assertEqual(len(spec), 22)
         self.assertEqual(sorted(from_tcl), sorted(jobs))
 
     def test_the_jobs_rows_are_the_references(self):

@@ -85,6 +85,7 @@ The harness has two sides:
 | `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 208 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
 | `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
+| `contcheck.py DIR TAG (--fire \| --again \| --no-fire \| --none) [--tag N] [--gen GEN]` | python | level 2's continue (its step 19, 5.22): the offer's screen against `tools/msxtext.py`'s render of `txt_cont`, R#0/R#1, the HUD split, its length, the continue or the new game, AG `$805E`; with the continue the map patches, attribute RAM, level's lists, vat state and tile cache equal before PIC9 and at `lv_cont`'s entry |
 | `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game] [--level2 \| --new-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game, or (the product's flow since level 2's step 18) level 2 with the range's rating kept (5.19, 5.22); `bonuscheck.py --range` calls it |
 | `cmpcheck.py BASE.log NEW.log [OUT]` | python | two `check_all.sh` logs job by job; a torn cell accepted only under a black palette (5.19) |
 | `frsnd/frregcmp.py ROOT LOG...` | python (venv) | FRM's registers per tick in an `frsound.tcl` log against `frm.bin`'s streams decoded apart; `--selftest` (5.19) |
@@ -1759,6 +1760,32 @@ shows the briefing after the range, then the title. The flows learnt it:
   (`hz_l2_flow_setup`: `drive_end`'s 200 rows, Brainstorm by `pz_fail`, the range by `fr_good`, then
   `rc2_l2_arm` with `l2_end` from level 2's first tick, 259 rows, the lost counters); `hz.sh compare
   --fields analysis/amiga_ram_l2.tsv DIR R flow_l2_end` against `build/emu/l2_flow_l2_end_ram.jsonl`.
+
+At step 19 (2026-10-31, the continue: `front.asm` `front_over` (clears `fo_cont`, sets the key byte as
+`high_score_entry`'s start), `front_cont`, `rc2.asm` `ml_ov`, `lv_cont`, `cold.asm` `lv_cfront`, `tc_reset`),
+`hz_l2`'s `cont` job is whole again (301 rows, the others' done condition; `hz.sh compare` has no
+`cont:109` any more) and, with `over`, runs `hz_l2_cont_arm` (hz.tcl): the 64 KiB at `front_over`'s entry
+(`DIR/l2/TAG_over_ram.bin`), the offer's screen at `fs_n` 50 (`TAG_cont.sc5` and hb_snap's files), its
+VBLANKs and HUD splits to `fe_end`, SPACE held from its tick 60 (`cont`), the 64 KiB at `lv_cont`'s entry
+(`TAG_lvc_ram.bin`), level 2's first picture after it (`TAG_l2g0`), or the new game (notes
+`TAG_cont.txt`). New jobs: `cont_fx` and `cont_tr` (the same on the FS-A1FX and the FS-A1GT, traced and
+compared: `hz.sh compare` lists them), and `hz_l2_cont_jobs`' `cont_nf` (the offer left alone) and
+`cont2` (`hz_l2_cont2_drive`: the lives poked to 0 and vat 0 again at frame 150 after the continue: a
+second game over without a credit). A script build's `title` now ends the front end (`front_done`, as
+the product's title does at its end) when `front_mode` is set, i.e. after a game over (PIC9 left it set
+and the new game waited for lists the VBLANK no longer applied); at the power-on and after the stages it
+still does nothing, so that level 1's start in those builds keeps its timing. `hb_step` takes the
+intro's and the result's records at the next `iv_late` too, within `fs_n` windows (intro 150-280,
+result 80-125, briefing 170-300): `fe_text` sets `fs_ptr` before it clears `fs_n`, and a poll in that
+window took the screen before for this one (a keyboard flow on the turbo R lost its stage's trace and
+keys that way), or read R#1 inside the split's blank lines (22h).
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_l2 {W/O/l2} {W/R} tr
+python3 -I tools/bstest/contcheck.py W/O/l2 cont --fire --gen W/R/l2c/gen      # also cont_fx, cont_tr
+python3 -I tools/bstest/contcheck.py W/O/l2 cont2 --again
+python3 -I tools/bstest/contcheck.py W/O/l2 cont_nf --no-fire
+python3 -I tools/bstest/contcheck.py W/O/l2 over --none
+```
 
 ## 6. The whole suite in order
 

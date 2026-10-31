@@ -34,9 +34,8 @@
 #                            with the port's stubs, tools/bstest/l2stub.py) with its build's labels
 #                            (R/<b>/rc2_<b>.labels): exit 0 only when every trace compared has its
 #                            rows and 0 frames differ. JOB:ROWS compares the job's first ROWS rows
-#                            only; without JOBs, every job whose trace is in DIR, whole, but cont
-#                            as cont:109 until the port has the continue (level 2's step 19: its
-#                            game over ends the trace at row 108, the plan's milestone 1). With
+#                            only; without JOBs, every job whose trace is in DIR, whole (cont,
+#                            cont_fx, cont_tr through the continue since level 2's step 19). With
 #                            DIR/lost.txt (hz_l2's), each job's lost counters too: mp, atr, rd
 #                            and fb 0 (the pools' use printed)
 #
@@ -84,7 +83,7 @@ compare)
       poor:l2p:l2_trolley_poor:641 over:l2o:l2_over:109 cont:l2c:l2_cont:301 barrel:l2:l2_barrel:901
       mine:l2:l2_mine:161 t1left:l2:l2_t1left:341 drone:l2:l2_drone:401 tour_fx:l2:l2_tour:2654
       vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701
-      flow_l2_end:flow:l2_flow_l2_end:259"
+      flow_l2_end:flow:l2_flow_l2_end:259 cont_fx:l2c:l2_cont:301 cont_tr:l2c:l2_cont:301"
     want_jobs="$*"
     bad=0; seen=0
     cd "$ROOT" || exit 2
@@ -99,8 +98,6 @@ compare)
         [ -n "$hit" ] || continue
       elif [ ! -f "$D/l2_$n.txt" ]; then
         continue
-      elif [ "$n" = cont ]; then
-        upto=109                    # (until level 2's step 19, the continue: see the usage)
       fi
       seen=$((seen + 1))
       [ -f "$D/l2_$n.txt" ] || { echo "$n: no trace"; bad=1; continue; }

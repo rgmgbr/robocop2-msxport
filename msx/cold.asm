@@ -22,6 +22,11 @@ hud_lvl:
         push af
         xor a
         ld (g_tick),a               ; (hud_energy: no step on a frame without a tick)
+        ld hl,hud_last
+        ld bc,8
+        ld a,0xFF
+        call fill                   ; (hud_digits looks at every cell again: the panel's digits are
+                                    ;  not the values it drew last, which a continue may repeat)
         ld hl,(AG + 0x8034)
         ld de,2
         call hl_head                ; slot 1
@@ -40,7 +45,7 @@ hl_lp:  push bc
 hl_q:   ld (hl),a
         inc hl
         djnz hl_q                   ; queue, indices, column, count (as hud_init)
-        ret
+        jp logic_map                ; (the game's banks for the fixed caller: rc2.asm lv_cont, lv_go)
 HL_CALLS:   equ 2 * HUD_HEAD_LINES / HUD_JOB_LINES + 14 + 2  ; the two heads' jobs, the 14 digit
                                     ; cells (one a call), two to spare
 ; HL = lives, DE = the slot + 1: the lost life's head asked in that slot when HL < DE (signed).
@@ -224,19 +229,8 @@ ng_init:
 ; but vdp_setup and this writes the atlas); the tile cache and the map patches (a turbo R's R800
 ; from here), the attributes, RoboCop and the camera, its logic bank, its lists into RAM.
 lv_select:
-        ld a,(lv_vram)
-        cp c
-        push af                     ; (Z: VRAM holds the level's tiles and atlas already)
-        ld a,c
-        ld (lv_vram),a
-        call lv_copy
-        pop af
-        jr z,lvs_in
-        ld e,4
-        call tiles_upload
-        ld hl,field_upload
-        call field_call             ; (field.asm)
-lvs_in: call tiles_init
+        call lvs_vram
+        call tiles_init
         call atr_load
         call pl_init
         ld a,(lv_logic)
@@ -244,6 +238,37 @@ lvs_in: call tiles_init
         ld a,0xFF
         ld (lv_fresh),a             ; (the level's lists into RAM)
         ret
+; (C = the level: lv_copy, and its tiles and atlas into VRAM unless lv_vram says they are there)
+lvs_vram:
+        ld a,(lv_vram)
+        cp c
+        push af                     ; (Z: VRAM holds the level's tiles and atlas already)
+        ld a,c
+        ld (lv_vram),a
+        call lv_copy
+        pop af
+        ret z
+        ld e,4
+        call tiles_upload
+        ld hl,field_upload
+        jp field_call               ; (field.asm)
+
+; rc2.asm lv_cont's part in this bank (the continue, docs/LEVEL2.md 3.7, default 50): $FFD8's two
+; lives (hud_lvl draws both heads), the level's tiles and atlas into VRAM again (PIC9's G7 overwrote
+; page 2: lv_vram FFh, then lv_select's copy and uploads), the tile cache as the uploads leave it
+; (tc_reset, which sets the game's CPU: a turbo R's R800 again). The map patches, the attribute RAM
+; and the level's lists stay as the game left them (level_init's entry 1 for level 2: the map keeps
+; its changes); level_restart restarts the level on them as after a death.
+lv_cfront:
+        call dsp_off
+        ld hl,2
+        ld (AG + 0x8034),hl
+        ld a,0xFF
+        ld (lv_vram),a
+        ld a,(AG + 0x8050)
+        ld c,a
+        call lvs_vram
+        jp tc_reset
 
 ; C = the level: its descriptor (lv_desc, LV_SIZE bytes a level: gen/levels.inc) into lv_cur, its
 ; palette into lv_pal and its view_offy into lv_voffy (from FRONT, or from its tables' bank at
@@ -277,6 +302,32 @@ lvc_m:  add hl,de
 ; the level's slots (lv_tcn: 256, or 224 in level 2) hold its first tiles (uploaded by
 ; vdp_setup or lv_select: page 2), no patch, nothing to redraw.
 tiles_init:
+        call tc_reset
+        ld hl,MP_ROW
+        ld bc,256
+        ld a,0xFF
+        call fill                   ; no patch in any row
+        ld h,(MP_A + MPF_NEXT)/256
+        call mp_init
+        ld h,(MP_B + MPF_NEXT)/256
+        call mp_init
+        ld hl,rd_bits
+        ld bc,40
+        xor a
+        call fill                   ; (nothing waits to be redrawn)
+        xor a
+        ld (atr_lost),a
+        ld (mp_lost),a
+        ld (rd_head),a
+        ld (rd_tail),a
+        ld (rd_phase),a
+        ld (rd_lost),a
+        ld (tc_loads),a
+        ret
+
+; The tile cache alone (tiles_init's first part; lv_cfront: the continue keeps the map patches): the
+; level's slots hold its first tiles, as tiles_upload left page 2.
+tc_reset:
         call cpu_game               ; (a turbo R: the game on its R800 from here, docs/TURBO_R.md)
         ld hl,(lv_tcn)
         ex de,hl
@@ -334,26 +385,6 @@ ti_t:   ld (hl),e                   ; slot s: tile s
         call fill
         ld hl,0
         ld (tc_hand),hl
-        ld hl,MP_ROW
-        ld bc,256
-        ld a,0xFF
-        call fill                   ; no patch in any row
-        ld h,(MP_A + MPF_NEXT)/256
-        call mp_init
-        ld h,(MP_B + MPF_NEXT)/256
-        call mp_init
-        ld hl,rd_bits
-        ld bc,40
-        xor a
-        call fill                   ; (nothing waits to be redrawn)
-        xor a
-        ld (atr_lost),a
-        ld (mp_lost),a
-        ld (rd_head),a
-        ld (rd_tail),a
-        ld (rd_phase),a
-        ld (rd_lost),a
-        ld (tc_loads),a
         ret
 
 ; H = a map patch pool's MPF_NEXT page: its patches all free, chained 0, 1 .. MP_N - 1 (entry n

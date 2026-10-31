@@ -1964,3 +1964,94 @@ All from the worktree's root; `S18` as above; one openMSX (the in-process MCP).
    from its first tick.
 3. For integration: `build/msx/text.inc` of every tree that builds this code must be regenerated (the
    Makefile's `msxtext.py` line) or the build fails on `txt_l2_brief`.
+
+## Step 19: the continue (2026-10-31)
+
+**Done; committed locally, not pushed (the user's order).** Branch `l2-s18` (on step 18's 038ddbf: the
+history was rewritten to the author rgmgbr meanwhile). Records in `$S18/W19` (the gate) and `$S18/W19/T*`
+(the first runs).
+
+### What was built
+- **`msx/front.asm`**: `front_over` clears `fo_cont` first, and after PIC9 sets the key byte as
+  `high_score_entry` `$12082`'s start does (`st.b $8032`: AG `$8032` = FFh, not ported otherwise: default
+  6), then calls **`front_cont`** and returns `fo_cont` as the flags (NZ: continue). `front_cont`
+  (`$11FD2`): AG `$805E` - 1 as a word; below 0 its high byte cleared (`$11FEE`: 00FFh) and no offer
+  (`jp cpu_title`); else `cpu_title` (a turbo R on the Z80, as after `front_stats`), `front_done`,
+  `fb_prep`, `display_on` where `fb_prep` does not call it, `fe_text(txt_cont)` (silent, the HUD's split
+  on), `fo_cont` = 1 when the screen ended by fire or fire is held at its end, `jp cpu_title`.
+- **`msx/rc2.asm`** (fixed area): `ml_ev`'s game over goes to `ml_ov` (`front_over` through
+  `front_call`, `jr z,ml_ttl`), falling into **`lv_cont`**: `lv_cfront` (FRONT), `level_restart`,
+  `hud_lvl` (which now ends with `logic_map`), then `lr_on`, the death restart's own tail (`display_on`,
+  `g_tick` 0, the main loop). `level_restart` no longer calls `display_on` itself: `ml_rst` does (the same
+  order). A script build's `title` runs `front_done` when `front_mode` is set (after a game over: PIC9
+  left it set and the new game hung waiting for lists; a test-build fault that only the continue's
+  harness reached); at the power-on and after the stages it does nothing, as before. **The product's
+  bytes for `title` are unchanged.**
+- **`msx/cold.asm`**: `lv_cfront` (two lives, `lv_vram` = FFh, `lvs_vram`: `lv_select`'s copy and uploads,
+  page 2 and the atlas again after PIC9: default 50; `tc_reset`: the tile cache alone, with `cpu_game`);
+  `lv_select` and `tiles_init` split into those parts (the same work for every level start). The map
+  patches, the attribute RAM, the level's lists and the vats' state are not touched: the map keeps its
+  changes (level_init's entry 1 for level 2).
+- Harness: `hz.tcl` (`hz_l2_cont_arm` and its procs: the 64 KiB at `front_over`'s entry and at `lv_cont`'s,
+  the offer's record at `iv_late` from `fs_n` 50, SPACE from its tick 60, the first picture after the
+  continue, the new game; `hz_l2_jobs`: `cont` whole again (301 rows), `cont_fx`, `cont_tr`, `over` then
+  its new game; `hz_l2_cont_jobs`: `cont_nf`, `cont2` with `hz_l2_cont2_drive`; `hb_step`'s intro and result
+  records at `iv_late` within `fs_n` windows, below), `hz.sh` (no `cont:109`; `cont_fx`, `cont_tr`),
+  `rgflow.tcl` (the keyboard flow's notes stay its own), **`tools/bstest/contcheck.py`** (new),
+  `tests/test_level2_rom.py` (22 jobs), `docs/HARNESS.md` (5.22 "At step 19", the file table).
+- **A harness fault found and fixed**: `hb_step` recorded Brainstorm's intro and result by an `after time`
+  poll: twice in one gate it took the previous screen's end for the intro (`fe_text` sets `fs_ptr` before
+  it clears `fs_n`: `kb_tr` then removed its stage's breakpoints and lost the trace and the keys), and three
+  times it read R#1 inside the split's blank lines (22h: `prod_m2`, `tx_ex`, `kb_ex`). Both records now
+  come at the next `iv_late` with `fs_n` windows (intro 150-280, result 80-125, briefing 170-300).
+
+### Checks (exact commands, results)
+All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 head's records (step 18).
+- Builds: `sh tools/bstest/l2base.sh builds $S18/W19` (PASS: prod 01ab7ffa2794be0a, pzt 8f1f9288f11037dd, trace
+  57b40762725a694a, ext bd14a3ed6e895e93), `sh tools/bstest/hz.sh l2builds $S18/W19/L2R` (PASS: l2 c7d59acca481f0b8,
+  l2c d691c89e8b9a9c03, l2o 9d16b2789ddac7df, flow = trace), 12 known z80asm warnings, nothing else in the logs.
+  `sh tools/bstest/variants.sh $S18/variants19`: 46 of 48 (DEMO_ACTORS 2/5: the fixed area -8Ch, -76h at step 18).
+- **Free bytes** (`python3 -I tools/bstest/l2base.py banks $S18/variants19`): fixed area product 289 -> **267**,
+  lowest DIAG+PZ_TEST 154 -> **132**, DEMO_HUD 67 -> 45 (step 19: 22 B: `lv_cont` 17, `ml_ov` 5 net; a script
+  build's `title` 10 more in script builds only); FRONT product 1,622 -> **1,506**, lowest `l2_diag` 1,176 ->
+  1,060; BANK_L2 1,441; every other bank as before.
+- **The gate** (the final code): MCP `hz_chain [concat [hz_l2_jobs W19/O/l2 W19/L2R tr] [rgr_jobs W19 all]
+  [l2b_jobs W19]] W19/all.done` (252 jobs, 0 time outs), then:
+  - `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv $S18/W19/O/l2 $S18/W19/L2R`: **level 2:
+    PASS (23 traces)**, 0 differ in all 1,022 fields, lost 0: **`cont` 301 rows on C-BIOS_MSX2, the FS-A1FX and
+    the FS-A1GT** (the game over at row 108, PIC9, the offer, fire, level 2 again from row 109 with two lives and
+    `$805E` 0, `$8032`/`$8033` FFh as the bench's), **`over` 109 rows**, `flow_l2_end` 259, the others whole;
+  - `python3 -I tools/bstest/contcheck.py $S18/W19/O/l2 TAG MODE --gen $S18/W19/L2R/l2c/gen`: **cont, cont_fx,
+    cont_tr `--fire`: PASS** (the offer equal to `msxtext.py`'s render of `txt_cont`, R#0 16h R#1 62h, 12 VBLANKs
+    and 12 HUD splits to its end, ended by fire at its tick 61-62, `lv_cont` with `$805E` 0000h and `fo_cont` 1;
+    **the map patches, the attribute RAM, the level's lists, the vat state and the tile cache equal before PIC9
+    and at `lv_cont`'s entry**); **cont_nf `--no-fire`: PASS** (305 ticks, the whole length: 304 calls; 304
+    VBLANKs, 304 HUD splits; the new game with the credit used); **cont2 `--again`: PASS** (the continue, then at
+    tick 229 a second game over without a credit: no offer, `$805E` 00FFh, the title's new game); **over
+    `--none`: PASS** (no offer, `$805E` 00FFh as `$11FEE` leaves it, the new game 30 s after: PIC9's time);
+  - `sh tools/bstest/regress.sh check $S18/W19 $S18/B`: **regress: PASS, 45 verdicts, 0 FAIL**;
+  - `sh tools/bstest/l2base.sh check $S18/W19 ../base` (main 9be19aa): **l2base: PASS** (level 1's die 901, over
+    1,249, end 517 rows 0 differ: level 1's game over unchanged; the start and field checks, the stills, LOCKSTEP,
+    the effects).
+- **The first picture after the continue** (`TAG_l2g0`, `$PY -I tools/msxframe.py ... --level 2 --field`): the HUD
+  07:30, two heads, score and ammo, the can full (shown digits 0730, heads 0 0, icon 3, no job), the play area
+  equal to the map; msxframe's sprite pixels at that frame 0 come from the records before the SAT is published
+  (as level 2's frame 0 in two_m2: the screen shows none): a still at game frame 50 after the continue, MSX2 and
+  turbo R (a scratch job, `$S18/W19/T3`): **0 pixels differ, every sprite pixel exact**.
+- Found and fixed on the way: `hud_lvl` left `hud_last` (the values every digit cell was last right for) as it
+  was, so after a continue whose values equalled it the digits stayed the panel's 09:58 (the first such run);
+  `hud_lvl` now clears it (the next level's start redraws the same as before).
+- `make test`: 298 tests, the 4 known failures only (`test_bstest`'s mocked sessions fire `iv_late` now).
+- Pictures looked at: the offer on the FS-A1FX (the lost lives' heads, 07:30), the first picture after the
+  continue on the turbo R (07:30, two heads, the brewery's start), the MSX2 one before the `hud_last` fix (09:58).
+
+### Open issues
+1. The fixed area is down to 132 B in the lowest set (DIAG+PZ_TEST) and 267 in the product; the plan's 3.2
+   budget for steps 14-15 is 140-220 B: the DIAG builds' `dg_probe`/`dg_rec` (~45 B) may have to move to
+   BANK_MUSIC (risk 3).
+2. The high-score entry (`$12082`) stays unported (default 6); only its `st.b $8032` is kept, for the trace.
+3. In one gate run the lost counters of `cont_fx`/`cont_tr` stopped at tick 30 (a chain artifact: run alone, and
+   in the final gate, both reach tick 300 with 0); `hz_clean` does not remove probe breakpoints, which jobs
+   remove themselves.
+4. The title after a game over is seen only in the product (script builds skip it); no regress record covers it
+   (the plan's 4.4 game-over row: checked here on EXTJOY builds through the new game).

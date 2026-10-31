@@ -941,11 +941,15 @@ puts "fresh $::hz_state | [join $::hz_msgs |]"
 array unset ::mem
 hz_bonus [file join $tmp b] bt [file join $tmp x.rom] $lab M2
 mset 0xCFB8 0x9000; mset 0xCFBE 150
+run_until {[info exists ::hb_st] && $::hb_st == 30}
+fire 0x0123
 puts "bonus_intro [run_until {[info exists ::hb_st] && $::hb_st == 1}]"
 for {set i 0} {$i < 120} {incr i} { fire 0x38; fire 0x39 }
 mset 0xCFBE 10
 puts "bonus_s6 [run_until {$::hb_st == 6}]"
 mset 0xCFB8 0x9300; mset 0xCFBE 80
+run_until {$::hb_st == 60}
+fire 0x0123
 puts "bonus_s2 [run_until {$::hb_st == 2}]"
 mset 0xEC44 1
 puts "bonus_s4 [run_until {$::hb_st == 4}]"
@@ -1065,6 +1069,8 @@ stage_code
 hz_chain [list [np_job sv SV np_solved_setup $np $rom $lab 1]]
 run_until {$::machine eq "SV"}
 mset 0xCFB8 0x9000; mset 0xCFBE 150
+run_until {$::hb_st == 30}
+fire 0x0123
 run_until {$::hb_st == 1}
 foreach p {0 1 2 3} { mset 0xD000 $p; fire 0xA123 }
 fire 0x7F10
@@ -1072,6 +1078,8 @@ run_until {[string match "*stage done*" [readf [file join $np sv_bonus.txt]]]}
 mset 0xCFBE 10
 run_until {$::hb_st == 6}
 mset 0xCFB8 0x9100; mset 0xCFBE 80
+run_until {$::hb_st == 60}
+fire 0x0123
 run_until {$::hb_st == 2}
 mset 0xEC44 1
 run_until {[llength $::keys] >= 6}
@@ -1117,10 +1125,14 @@ hz_chain [list [np_job tx TX np_title_setup $np $rom $lab 1]]
 run_until {$::machine eq "TX"}
 to_game
 mset 0xCFB8 0x9000; mset 0xCFBE 150
+run_until {$::hb_st == 30}
+fire 0x0123
 run_until {$::hb_st == 1}
 mset 0xCFBE 10
 run_until {$::hb_st == 6}
 mset 0xCFB8 0x9300; mset 0xCFBE 80
+run_until {$::hb_st == 60}
+fire 0x0123
 run_until {$::nt_st == 1}
 mset 0xC202 1; mset 0xCEE0 3640; mset 0xEC44 1
 puts "tx [title_record tx] $::hz_state | [join $::hz_msgs |] | $::hf_ticks $::hb_st"

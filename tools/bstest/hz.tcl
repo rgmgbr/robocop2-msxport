@@ -193,10 +193,11 @@ proc hz_regress {dir rom labels {tr ""}} {
 # Each job also keeps, at every tick_start, the port's lost counters and the map patches' pools in
 # use (hz_l2_drive), and appends them to DIR/lost.txt when it ends (hz_l2_lost; docs/LEVEL2.md 4.2
 # check 5): "hz.sh compare --fields" takes each job's last line there and wants mp, atr, rd, fb 0.
-# (cont: since level 2's step 8 RoboCop dies in the vat, and until the port has the continue (its
-# step 19) the game over ends the trace at row 108: the job ends once those 109 rows are written
-# (its lost counters those of row 108's tick; 60 s at most), and "hz.sh compare" takes it as
-# cont:109, the plan's milestone 1; step 19 gives it the others' condition again)
+# (cont, cont_fx, cont_tr: the game over at row 108, then the continue offer, taken by fire (hz.tcl
+# hz_l2_cont_arm, level 2's step 19: SPACE from its tick 60; its screen and the RAM before PIC9 and at
+# lv_cont recorded: tools/bstest/contcheck.py DIR/l2 cont --fire), then level 2 again from row 109;
+# over: its 109 rows, then the title's new game (no credit: contcheck.py --none); hz_l2_cont_jobs adds
+# the offer left alone and a second game over after a continue)
 proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
@@ -208,6 +209,7 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 		sharp l2s l2_trolley 641 C-BIOS_MSX2     fair l2f l2_trolley 641 C-BIOS_MSX2 \
 		poor l2p l2_trolley 641 C-BIOS_MSX2      over l2o l2_over 109 C-BIOS_MSX2 \
 		cont l2c l2_cont 301 C-BIOS_MSX2         barrel l2 l2_barrel 901 C-BIOS_MSX2 \
+		cont_fx l2c l2_cont 301 Panasonic_FS-A1FX  cont_tr l2c l2_cont 301 Panasonic_FS-A1GT \
 		mine l2 l2_mine 161 C-BIOS_MSX2          t1left l2 l2_t1left 341 C-BIOS_MSX2 \
 		drone l2 l2_drone 401 C-BIOS_MSX2        tour_fx l2 l2_tour 2654 Panasonic_FS-A1FX \
 		vat_fx l2 l2_vat 701 Panasonic_FS-A1FX   trolley_eu l2 l2_trolley 641 C-BIOS_MSX2_EU]
@@ -219,13 +221,16 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
 		set tmo 1800
 		set done "\$::rc2_trace_done && \[hz_l2_lost {$lost}\]"
-		if {$name eq "cont"} {
-			set tmo 60
-			set done "\$::rd_left <= [expr {$n - 109}] && \[hz_l2_lost {$lost}\]"
+		set setup [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" "$dir/l2_$name.txt" $n "$e/$drive.drive"]
+		if {[string match cont* $name]} {
+			set setup [list hz_l2_cont_setup $setup "$R/$b/rc2_$b.labels" $dir $name 1]
+		} elseif {$name eq "over"} {
+			set setup [list hz_l2_cont_setup $setup "$R/$b/rc2_$b.labels" $dir $name 0]
+			set done "\[hz_l2c_after\] && \[hz_l2_lost {$lost}\]"
 		}
-		lappend jobs [list l2_$name $m [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
-			"$dir/l2_$name.txt" $n "$e/$drive.drive"] $done $tmo]
+		lappend jobs [list l2_$name $m $setup $done $tmo]
 	}
+	set jobs [concat $jobs [hz_l2_cont_jobs $dir $R $only]]
 	# (the product's way into level 2, level 2's step 18: the flow build, R/flow, from the power-on)
 	if {($only eq "" || [lsearch -exact $only flow_l2_end] >= 0) && [file exists "$R/flow/rc2_flow.rom"]} {
 		lappend jobs [list l2_flow_l2_end C-BIOS_MSX2 [list hz_l2_flow_setup "$R/flow/rc2_flow.rom" \
@@ -320,6 +325,37 @@ proc hz_l2_objs_done {rows} {
 
 proc hz_l2 {dir R {tr ""} {only ""}} {
 	hz_chain [hz_l2_jobs $dir $R $tr $only]
+}
+
+# hz_l2_jobs' continue jobs without a reference (level 2's step 19), on the l2c build (one credit):
+# cont_nf, the offer left alone (its whole length, then the title's new game: contcheck.py --no-fire);
+# cont2, the continue taken, then a second game over (hz_l2_cont2_drive: the lives poked to 0 and vat
+# 0 again at frame 150) without a credit: no offer, the title's new game (contcheck.py --again)
+proc hz_l2_cont_jobs {dir R {only ""}} {
+	set e "$::hz_root/build/emu"
+	set lost [file join $dir lost.txt]
+	set l "$R/l2c/rc2_l2c.labels"
+	set rom "$R/l2c/rc2_l2c.rom"
+	set jobs {}
+	if {![file exists $rom]} { return $jobs }
+	if {$only eq "" || [lsearch -exact $only cont_nf] >= 0} {
+		set d [list hz_l2_drive $rom $l "$dir/l2_cont_nf.txt" 109 "$e/l2_cont.drive"]
+		lappend jobs [list l2_cont_nf C-BIOS_MSX2 [list hz_l2_cont_setup $d $l $dir cont_nf 0] \
+			"\[hz_l2c_after\] && \[hz_l2_lost {$lost}\]" 1800]
+	}
+	if {$only eq "" || [lsearch -exact $only cont2] >= 0} {
+		set d2 [hz_l2_cont2_drive "$e/l2_cont.drive" "$dir/l2_cont2.drive"]
+		set d [list hz_l2_drive $rom $l "$dir/l2_cont2.txt" 200 $d2]
+		lappend jobs [list l2_cont2 C-BIOS_MSX2 [list hz_l2_cont_setup $d $l $dir cont2 1] \
+			"\[hz_l2c_after\] && \[hz_l2_lost {$lost}\]" 1800]
+	}
+	return $jobs
+}
+
+# a level-2 drive's set-up (DRIVE: hz_l2_drive's call) with the continue's records (hz_l2_cont_arm)
+proc hz_l2_cont_setup {drive labels dir tag fire} {
+	uplevel #0 $drive
+	hz_l2_cont_arm $labels $dir $tag $fire
 }
 
 # hz_l2_drive ROM LABELS OUT N DRIVE: rc2_drive_rom from 0 and, at every tick_start, the port's lost
@@ -521,6 +557,174 @@ proc hz_l2_still_hit {} {
 	}
 }
 
+# ----- level 2's continue (its step 19: front.asm front_over, front_cont; rc2.asm lv_cont; docs/LEVEL2.md
+# 3.7, 4.2 check 11, 4.4's game-over row)
+#
+# hz_l2_cont_arm LABELS DIR TAG FIRE: armed with a level-2 drive (hz_l2_drive) on a build whose game
+# ends in level 2. Records into DIR (notes DIR/TAG_cont.txt): TAG_over_ram.bin, the CPU's 64 KiB at
+# front_over's entry (before PIC9); the offer's screen (front_cont's fe_text with txt_cont) at the next
+# iv_late once fs_n reaches 50 (its text typed: hz.tcl hb_snap's files TAG_cont.sc5, _regs, _pal, _hud,
+# _ram), the VBLANKs and HUD splits from there to its fe_end, and there fs_n (the screen's length) and
+# fs_done; with FIRE 1 SPACE held from fs_n 60 (the screen ends by fire; the continue), released at
+# lv_cont; TAG_lvc_ram.bin, the 64 KiB at lv_cont's entry, with the lives, the credits and fo_cont, and
+# the level's first picture after it (TAG_l2g0, hb_l2_snap: tools/msxframe.py); the new game when one
+# comes instead (no credit, or no fire: the title, which a script build skips).
+# tools/bstest/contcheck.py checks them.
+proc hz_l2_cont_arm {labels dir tag fire} {
+	set ::hc_dir $dir
+	set ::hc_tag $tag
+	set ::hc_fire $fire
+	set ::hc_st 0
+	set ::hc_ng 0
+	set ::hc_held 0
+	set ::hb_dir $dir
+	set ::hb_tag $tag
+	set ::hb_labels $labels
+	foreach n {txt_cont iv_late fe_end isr_split isr_vblank BANK_FRONT front_over lv_cont new_game} {
+		set ::hc_$n [rc2_label $labels $n]
+	}
+	set f [open "$dir/${tag}_cont.txt" w]
+	catch {puts $f "# $tag: [file tail $labels] on [machine_info config_name], fire [expr {$fire ? {held from fs_n 60} : {none}}]"}
+	close $f
+	set fo $::hc_front_over
+	set ::hc_bps [list [debug set_bp $fo "\[peek 0xC07C\] == $::hc_BANK_FRONT" hz_l2c_over]]
+	lappend ::hz_afters [after time 0.1 hz_l2c_poll]
+}
+
+proc hz_l2c_note {m} {
+	set f [open "$::hc_dir/${::hc_tag}_cont.txt" a]
+	catch {puts $f $m}
+	close $f
+}
+
+proc hz_l2c_file {name data} {
+	set f [open "$::hc_dir/${::hc_tag}_$name" w]
+	catch {
+		fconfigure $f -translation binary
+		puts -nonewline $f $data
+	}
+	close $f
+}
+
+proc hz_l2c_state {} {
+	return "tick_n [rc2_w 0xCEE0], AG 8034h [rc2_w 0xDC34], 805Eh [format %04X [rc2_w 0xDC5E]], 8050h [rc2_w 0xDC50], fo_cont [peek 0xC6F0], lv_logic [peek 0xF1A0]"
+}
+
+proc hz_l2c_over {} {
+	if {$::hc_st != 0} return
+	set ::hc_st 1
+	hz_l2c_file over_ram.bin [debug read_block memory 0 0x10000]
+	hz_l2c_note "front_over at [machine_info time] s: [hz_l2c_state]"
+	# (lv_cont's and new_game's breakpoints check their first byte, read now: the game's fixed area is
+	#  in page 1, which at the job's reset it was not yet)
+	set lc $::hc_lv_cont
+	lappend ::hc_bps [debug set_bp $lc "\[peek $lc\] == [peek $lc]" hz_l2c_lvc]
+	set ng $::hc_new_game
+	lappend ::hc_bps [debug set_bp $ng "\[peek $ng\] == [peek $ng]" hz_l2c_ng]
+}
+
+# the offer's screen: recorded at fs_n 50, SPACE from fs_n 60 (FIRE)
+proc hz_l2c_poll {} {
+	set p [rc2_w 0xCFB8]
+	set n [rc2_w 0xCFBE]
+	set on [expr {$p >= $::hc_txt_cont && $p < $::hc_txt_cont + 64}]
+	if {$::hc_st == 1 && $on && $n >= 50} {
+		set ::hc_st 2
+		set ::hc_ilbp [debug set_bp $::hc_iv_late {} hz_l2c_rec]
+	}
+	if {$::hc_st == 3 && $::hc_fire && !$::hc_held && $n >= 60} {
+		keymatrixdown 8 1
+		set ::hc_held 1
+		hz_l2c_note "SPACE down at [machine_info time] s, fs_n $n"
+	}
+	if {$::hc_st < 5} { lappend ::hz_afters [after time 0.05 hz_l2c_poll] }
+}
+
+proc hz_l2c_rec {} {
+	catch {debug remove_bp $::hc_ilbp}
+	hb_snap cont
+	hz_l2c_note "cont at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], [hz_l2c_state]"
+	set ::hc_nsplit 0
+	set ::hc_nvbl 0
+	lappend ::hc_bps [debug set_bp $::hc_isr_split {} {incr ::hc_nsplit}]
+	lappend ::hc_bps [debug set_bp $::hc_isr_vblank {} {incr ::hc_nvbl}]
+	set fe $::hc_fe_end
+	set ::hc_febp [debug set_bp $fe "\[peek 0xC07C\] == $::hc_BANK_FRONT" hz_l2c_end]
+	set ::hc_st 3
+}
+
+proc hz_l2c_end {} {
+	if {$::hc_st != 3} return
+	catch {debug remove_bp $::hc_febp}
+	set ::hc_st 4
+	hz_l2c_note "cont end at [machine_info time] s: fs_n [rc2_w 0xCFBE], fs_done [peek 0xCFC0]; from the record: $::hc_nvbl VBLANKs, $::hc_nsplit HUD splits"
+}
+
+proc hz_l2c_lvc {} {
+	if {$::hc_st >= 5} return
+	set ::hc_st 5
+	if {$::hc_held} { keymatrixup 8 1; set ::hc_held 0 }
+	hz_l2c_file lvc_ram.bin [debug read_block memory 0 0x10000]
+	hz_l2c_note "lv_cont at [machine_info time] s: [hz_l2c_state]"
+	# (the level's first picture after the continue: TAG_l2g0, as hb_l2_go's, notes TAG_bonus.txt)
+	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
+	set ::hb_l2seq -1
+	set ::hb_l2sbp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hb_l2_snap]
+	# (the new game's breakpoint stays: a later game over without a credit ends in one; front_over's
+	#  and lv_cont's go)
+	foreach b [lrange $::hc_bps 0 1] { catch {debug remove_bp $b} }
+	set ::hc_bps [lrange $::hc_bps 2 end]
+	foreach v {::hc_ilbp ::hc_febp} { if {[info exists $v]} { catch {debug remove_bp [set $v]} } }
+}
+
+proc hz_l2c_ng {} {
+	if {$::hc_ng} return
+	set ::hc_ng 1
+	if {$::hc_held} { keymatrixup 8 1; set ::hc_held 0 }
+	set ::hc_st 5
+	hz_l2c_note "new game at [machine_info time] s: [hz_l2c_state]"
+	hz_l2c_disarm
+}
+
+proc hz_l2c_disarm {} {
+	foreach b $::hc_bps { catch {debug remove_bp $b} }
+	set ::hc_bps {}
+	foreach v {::hc_ilbp ::hc_febp} { if {[info exists $v]} { catch {debug remove_bp [set $v]} } }
+}
+
+# a job's done condition after a drive that ends in a game over without a continue: the drive's rows
+# written (rc2_drive_rom paused there), then the machine resumed until the new game is noted
+proc hz_l2c_after {} {
+	if {$::hc_ng} { return 1 }
+	if {$::rc2_trace_done && [info exists ::pause] && $::pause} { set ::pause off }
+	return 0
+}
+
+# hz_l2_cont2_drive SRC DST: SRC (build/emu/l2_cont.drive) with a second death after the continue: at
+# game frame 150 the lives poked to 0 ($8034) and RoboCop sent onto vat 0 again (936, 600), so that
+# the next game over comes without a credit (DST: the drive's four lines, tools/drivejoy.py's format)
+proc hz_l2_cont2_drive {src dst} {
+	set f [open $src r]
+	set rc [catch {
+		set joy [string trim [gets $f]]
+		set tele [string trim [gets $f]]
+		set god [string trim [gets $f]]
+		set poke [string trim [gets $f]]
+	} err]
+	close $f
+	if {$rc} { error "hz_l2_cont2_drive: $src: $err" }
+	set f [open $dst w]
+	set rc [catch {
+		puts $f $joy
+		puts $f [string trim "$tele 150:936:600"]
+		puts $f $god
+		puts $f [string trim "$poke 150:[expr {0x8034}]:0:2"]
+	} err]
+	close $f
+	if {$rc} { error "hz_l2_cont2_drive: $dst: $err" }
+	return $dst
+}
+
 # ----- a fresh machine: the title, its music, the start of the game
 
 proc hz_fresh {dir tag rom labels {m Gradiente_Expert20_64K} {ticks 300}} {
@@ -674,6 +878,7 @@ proc hb_wait_end {} {
 # the job drives it itself (::hb_range 0 after its set-up)
 proc hb_init_range {labels} {
 	set ::hb_labels $labels
+	set ::hb_iv_late [rc2_label $labels iv_late]
 	set ::hb_range 1
 	set ::rgh_on 0
 	set ::hb_l2 0
@@ -827,20 +1032,44 @@ proc hb_snap {name} {
 	hb_file ${name}_ram.bin [debug read_block memory 0xC000 0x4000]
 }
 
+proc hb_intro_rec {} {
+	catch {debug remove_bp $::hb_ilbp}
+	hb_snap intro
+	hb_note "intro at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], AG 8050h [rc2_w 0xDC50], 805Eh [rc2_w 0xDC5E]"
+	set ::hb_nsplit 0
+	set ::hb_nvbl 0
+	debug set_bp $::hb_isr_split {} hb_split
+	debug set_bp $::hb_isr_vblank {} hb_vbl
+	set ::hb_st 1
+}
+
+proc hb_result_rec {} {
+	set sc $::hb_rsc
+	hb_snap result
+	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
+	hb_note "result $sc at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], AG 805Eh [rc2_w 0xDC5E]"
+	hb_note "between the records: $::hb_nvbl VBLANKs, $::hb_nsplit HUD splits"
+	set ::hb_tn [rc2_w 0xCEE0]
+	set ::hb_st [expr {$::hb_INPUT_SCRIPT ? 4 : 2}]
+	# (the shooting range comes next: its screens recorded, then on as before, the next level's
+	#  briefing first: state 7; a job that drives the range itself follows it on its own,
+	#  rgflow.tcl rgx_arm_setup, rgk_setup)
+	if {[rgh_arm]} { set ::hb_st 7 }
+}
+
 proc hb_split {} { incr ::hb_nsplit }
 proc hb_vbl {} { incr ::hb_nvbl }
 
 proc hb_step {} {
 	switch -- $::hb_st {
 		0 {
-			if {[hb_script] eq "intro" && [rc2_w 0xCFBE] >= 150} {
-				hb_snap intro
-				hb_note "intro at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], AG 8050h [rc2_w 0xDC50], 805Eh [rc2_w 0xDC5E]"
-				set ::hb_nsplit 0
-				set ::hb_nvbl 0
-				debug set_bp $::hb_isr_split {} hb_split
-				debug set_bp $::hb_isr_vblank {} hb_vbl
-				set ::hb_st 1
+			# (each screen recorded at the next iv_late, as the briefing: R#0 and R#1 the list's,
+			#  not a poll's inside the split's blank lines; fs_n bounded: fe_text sets fs_ptr before
+			#  it clears fs_n, so the screen before, at its end, can read as this one's)
+			set n [rc2_w 0xCFBE]
+			if {[hb_script] eq "intro" && $n >= 150 && $n <= 280} {
+				set ::hb_st 30
+				set ::hb_ilbp [debug set_bp $::hb_iv_late {} hb_intro_rec]
 			}
 		}
 		1 {
@@ -850,17 +1079,11 @@ proc hb_step {} {
 		}
 		6 {
 			set sc [hb_script]
-			if {$sc ne "intro" && $sc ne "-" && [rc2_w 0xCFBE] >= 80} {
-				hb_snap result
-				foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
-				hb_note "result $sc at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], AG 805Eh [rc2_w 0xDC5E]"
-				hb_note "between the records: $::hb_nvbl VBLANKs, $::hb_nsplit HUD splits"
-				set ::hb_tn [rc2_w 0xCEE0]
-				set ::hb_st [expr {$::hb_INPUT_SCRIPT ? 4 : 2}]
-				# (the shooting range comes next: its screens recorded, then on as before, the next
-				#  level's briefing first: state 7; a job that drives the range itself follows it
-				#  on its own, rgflow.tcl rgx_arm_setup, rgk_setup)
-				if {[rgh_arm]} { set ::hb_st 7 }
+			set n [rc2_w 0xCFBE]
+			if {$sc ne "intro" && $sc ne "-" && $n >= 80 && $n <= 125} {
+				set ::hb_rsc $sc
+				set ::hb_st 60
+				set ::hb_ilbp [debug set_bp $::hb_iv_late {} hb_result_rec]
 			}
 		}
 		7 {
@@ -874,7 +1097,8 @@ proc hb_step {} {
 		}
 		8 {
 			set b [hb_brief]
-			if {$b ne "-" && [rc2_w 0xCFBE] >= 170} {
+			set n [rc2_w 0xCFBE]
+			if {$b ne "-" && $n >= 170 && $n <= 300} {
 				# (recorded at the next iv_late, as rgflow.tcl rgx_late: R#0 and R#1 the list's)
 				set ::hb_bname $b
 				set ::hb_st 80

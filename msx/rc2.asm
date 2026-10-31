@@ -149,8 +149,7 @@ ml_ev:  ld a,(g_event)
         cp FE_RESTART
         jr z,ml_rst
         cp FE_OVER
-        ld hl,front_over            ; game over: PIC9 ($82A8)
-        jr z,ml_fe
+        jr z,ml_ov
         ld hl,front_stats           ; the level done ($81B8: $8050 + 1 already): its statistics
         call front_call             ;  ($85D8; a turbo R: the Z80 again, front.asm), then the
         ld hl,front_bonus           ;  bonus stages and the next level's briefing (load_level1
@@ -169,9 +168,25 @@ ml_fe:  call front_call
 ml_ttl: call title
         jp new_game
 ml_rst: call level_restart
+lr_on:  call display_on
         xor a
         ld (g_tick),a               ; (no picture of the ticks before the restart)
         jp mainloop
+ml_ov:  ld hl,front_over            ; game over: PIC9 ($82A8), then the continue offer ($11FD2),
+        call front_call             ;  NZ when it was taken (front.asm fo_cont)
+        jr z,ml_ttl
+; The continue (main_loop $82D0-$82E0: fire on $11FD2's offer): $FFD8 (two lives, both heads), then
+; the same level again as after a death (level_init's entry 1 for level 2: nothing reloaded, the map
+; keeps its changes; docs/LEVEL2.md 3.7): cold.asm lv_cfront (the lives, the level's VRAM again,
+; the tile cache, the R800), the death's restart (level_restart), the HUD (cold.asm hud_lvl: two
+; heads, the score, the timer), then the display and the main loop as after a death.
+lv_cont:
+        ld hl,lv_cfront
+        call front_call
+        call level_restart
+        ld hl,hud_lvl
+        call front_call             ; (hud_lvl ends with logic_map)
+        jr lr_on
 
         if PZ_TEST
 ; (Test build, tools/mkrom.py PZ_TEST=1 or 2) Once after the power-on, instead of level 1's main
@@ -271,7 +286,8 @@ pz_done:
 ; After a death with lives left (main_loop $82E4: level_init again, without reloading the
 ; level): the map keeps its changes and the lists their state (ao_start resets the object
 ; list's entries but type 58h's), RoboCop and the camera at the start, weapon 0; the display
-; and the VDP's interrupts off meanwhile; the HUD as it is.
+; and the VDP's interrupts off meanwhile (its caller turns them on: ml_rst, lv_cont's HUD first);
+; the HUD as it is.
 level_restart:
         call dsp_off
         ld hl,pl_init
@@ -285,18 +301,22 @@ level_restart:
         xor a
         call set_weapon             ; ($8844)
         ld hl,engines_init
-        call field_call
-        jp display_on
+        jp field_call
 
 ; The title (front end) before a new game (front.asm fr_title); test builds with a script start
-; the game at once.
+; the game at once: after a game over with the front end's end alone (front_done, fr_title's: PIC9
+; left front_mode set, and the new game would wait for lists the VBLANK no longer applies), else
+; with nothing, as before (the power-on, the stages).
 title:
         if INPUT_SCRIPT
-        ret
+        ld a,(front_mode)
+        or a
+        ret z
+        ld hl,front_done
         else
         ld hl,fr_title
-        jp front_call
         endif
+        jp front_call
 
 ; The display and the VDP's interrupts off (a new game, a death's restart).
 dsp_off:
