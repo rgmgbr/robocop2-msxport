@@ -30,7 +30,9 @@ EXTRA (VATX: vat_shown, vat_disp, vat_chg; tools/bstest/l2base.tcl l2b_fd_setup)
 is expected at the look its column has on the page shown (vat_disp's nibble, tools/mapcmp.py vat_look),
 so that a column showing two looks or a half-drawn one differs ("CLASS picture vat-look"); and a column
 seen in two pictures in a row never shows an older look than the one before ("CLASS picture vat-older":
-its look's age, the latest record in which vat_shown became it, goes back)."""
+when it changes look, the new look's age, the latest record up to then in which vat_shown became it, is
+before the age of its change before; the looks recur every cycle, so a look kept unchanged keeps its
+age and the first one a column shows has none)."""
 import json
 import struct
 import sys
@@ -256,6 +258,7 @@ def main():
     VATS = mapcmp.vat_layout(level) if level.name == "level2" else None
     VATS_N = len({v[0] for v in VATS["cells"].values()}) if VATS else 0
     vat_hist, vat_age, vat_older, vat_recs, vat_cols = {}, {}, 0, 0, set()
+    vat_last = {}                               # (each column seen: the look it showed last)
     prev_low = None
     sheet, total_bad, pics_bad = [], 0, 0
     hist = []                                   # the last VOLATILE_N records' patch maps
@@ -450,18 +453,27 @@ def main():
         prev_patches = patches
         older = []                              # (a vat column seen again at an older look)
         if vat_on:
+            # A column's look changes only when it is drawn, at a look vat_shown had then: its age is
+            # the last record (up to this one) in which vat_shown became it. The looks recur every
+            # cycle, so a look kept from before (the column first seen, or not drawn since) has no
+            # age: only a change is dated, and compared with the change before it.
             for idx in vat_seen:
                 lk = mapcmp.vat_look(vram_f, idx, vpage)
-                ages = [k for k, l2 in vat_hist[idx] if l2 == lk]
-                if not ages:
-                    vat_age.pop(idx, None)      # (a look from before the record: no age known)
+                if vat_last.get(idx) == lk:
+                    continue                    # (not drawn again: its age, if known, stays)
+                first = idx not in vat_last
+                vat_last[idx] = lk
+                ages = [k for k, l2 in vat_hist[idx] if l2 == lk and k <= len(sheet)]
+                if first or not ages:
+                    vat_age.pop(idx, None)      # (seen first, or a look from before the record)
                     continue
                 if idx in vat_age and ages[-1] < vat_age[idx]:
                     older.append(idx)
                 vat_age[idx] = ages[-1]
-            for idx in list(vat_age):
+            for idx in list(vat_last):
                 if idx not in vat_seen:
-                    del vat_age[idx]            # (not seen in this picture: a new start)
+                    del vat_last[idx]           # (not seen in this picture: a new start)
+                    vat_age.pop(idx, None)
         if older:
             vat_older += 1
             print(f"{p.stem}: vat column(s) {sorted(older)} at an older look than the picture before")

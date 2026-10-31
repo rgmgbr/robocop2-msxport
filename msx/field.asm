@@ -3724,7 +3724,7 @@ vt_hit: pop bc
         ld b,(hl)                   ; B = vat_shown's look (its half: bit 3)
         ld hl,vat_disp
         add hl,de
-        ld a,(vat_pg)
+        call vt_page
         call vf_nib
         bit 3,a
         jr nz,vt_has
@@ -3732,7 +3732,7 @@ vt_hit: pop bc
         and 7
         or 8
         ld e,a
-        ld a,(vat_pg)
+        call vt_page
         call vf_wnib
         ld a,e
 vt_has: and 7
@@ -3762,6 +3762,15 @@ vt_t:   ld d,0
         pop af
         pop bc
         jp bank_8000
+
+; -> A = the page whose looks a tile drawn now shows: vat_pg (the V9938's page being drawn), or 0
+; on the V9958 (its ring: page 0's nibbles, whatever page an item names). Keeps BC, DE, HL.
+vt_page:
+        ld a,(fb_eng)
+        or a
+        ret z
+        ld a,(vat_pg)
+        ret
 
 ; (fb_piece, level 2) -> NZ when the piece's cells (fb_cc) hold a vat cell: its background then
 ; comes from the tiles (the vat rule's look on its page), never from a cache (a vat cell's tile

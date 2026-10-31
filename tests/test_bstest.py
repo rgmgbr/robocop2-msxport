@@ -141,6 +141,25 @@ class HelperTests(unittest.TestCase):
         finally:
             fieldcheck.FT = old_ft
 
+    def test_vatcheck_flags_a_vat_column_the_beam_drew(self):
+        import contextlib
+        import io
+        import vatcheck
+        d = self.tmp
+        ok = ("C 1.000000 200 260 60 0 3 0 8 0 0 64\np 0 64 16 144\n"   # (ended in the blank)
+              "C 1.500000 210 30 60 1 3 0 8 0 0 64\n")                 # (34 lines before its first)
+        (d / "vat_m2.txt").write_text(ok)
+        (d / "guard_m2.txt").write_text("guard: reg 0, pal 0, cmd 1, cpu 0, vbl 0, tear 0\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(vatcheck.main(["vatcheck.py", str(d)]), 0)
+        (d / "vat_m2.txt").write_text(ok + "C 2.000000 220 100 60 2 3 0 8 0 0 64\n")   # (the beam at 100)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(vatcheck.main(["vatcheck.py", str(d)]), 1)
+        (d / "vat_m2.txt").write_text(ok)
+        (d / "guard_m2.txt").write_text("guard: tear 1\n  tear beam lines 70-80 of command 36 0 64 16 144\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(vatcheck.main(["vatcheck.py", str(d)]), 1)
+
     def roms(self, stray: bool) -> list[Path]:
         """Two 2-bank images and their labels: foo moved from 4010h to 4013h, its word at bank 1 + 100h."""
         a, b = bytearray(b"\xff" * 16384), bytearray(b"\xff" * 16384)

@@ -54,6 +54,7 @@ proc vl_go {} {
 	debug remove_bp $::vl_go_bp
 	set lab $::vl_lab
 	rc2_guard $::vl_secs 159 262 163 $lab
+	catch {puts $::vl_f "G [rc2_w 0xD000] [rc2_w 0xCEE0] [format %.6f [machine_info time]]"}
 	set a0 [rc2_label $lab act_a000]
 	set b $::vl_bank
 	set ::vl_bps [list \

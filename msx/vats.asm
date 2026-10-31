@@ -162,7 +162,7 @@ vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harnes
         ld a,l
         or a
         jr nz,vr_drop
-        ld a,(vat_pg)
+        ld a,(ix+VF_EP)             ; (the frame's page: vat_win0)
         call vat_meets
         jr nz,vr_drop
         ld hl,vat_fits
@@ -181,7 +181,7 @@ vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harnes
         and 7
         or 8
         ld e,a
-        ld a,(vat_pg)
+        ld a,(ix+VF_EP)             ; (the frame's page: vat_win0)
         call vat_wnib
         ld a,(ix+VF_IX)
         inc a
@@ -212,9 +212,10 @@ vr_nt:  ld l,0
 vr_lt:  ld l,0
         ret
 
-; -> vat_pg = the page shown, the frame's window (VF_W0, VF_WN: the page's columns, the ring's kept
-; ones) and the engines' state (VF_EC, VF_EY, VF_EP); NZ when no column may be drawn now (the V9938's
-; old page still on screen).
+; -> the frame's page (VF_EP: the page shown, the ring's 0; never vat_pg, which the engines' tile draws
+; set before each), its window (VF_W0, VF_WN: the page's columns, the ring's kept ones) and the
+; engines' state (VF_EC, VF_EY); NZ when no column may be drawn now (the V9938's old page still on
+; screen).
 vat_win0:
         ld a,(prev_cy)
         ld (ix+VF_EY),a
@@ -225,7 +226,6 @@ vat_win0:
         or a
         ret nz
         ld a,(s38_vis_page)
-        ld (vat_pg),a
         ld (ix+VF_EP),a
         ld a,(s38_vis_c0)
         ld (ix+VF_EC),a
@@ -234,7 +234,6 @@ vat_win0:
         xor a
         ret
 vw0_r:  xor a
-        ld (vat_pg),a
         ld (ix+VF_EP),a
         ld a,(prev_cx)
         ld (ix+VF_EC),a
@@ -303,7 +302,7 @@ vsp_k:  ld a,d
         ld c,(hl)                   ; C = its look wanted
         ld hl,vat_disp
         add hl,de
-        ld a,(vat_pg)
+        ld a,(ix+VF_EP)             ; (the frame's page: vat_win0)
         call vat_nib
         bit 3,a
         jr z,vsp_st
@@ -405,7 +404,7 @@ vat_try:
         ld (ix+VF_WT),a
         ld (ix+VF_IX),e
         ld (ix+VF_CC),d
-        ld a,(vat_pg)
+        ld a,(ix+VF_EP)             ; (the frame's page: vat_win0)
         call vat_meets
         jr nz,vtr_no
         ld a,(fb_eng)

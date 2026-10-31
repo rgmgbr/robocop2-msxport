@@ -1725,6 +1725,32 @@ parts meet, no silhouette among them); step 12's build on the same route 827 (MS
 field's, left to milestone 2. Note: `hz_l2_start_jobs` with a time past the drive's end pauses at the
 drive's end (`rc2_drive_rom`): the guard's `after time` waits for `set ::pause off`.
 
+At step 14 (2026-10-31, the vats' display: `msx/vats.asm`, `field.asm`'s vat section, `tiles.asm`'s
+`get_tile` rule and hooks), **the vats' checks** (the plan's 4.2 check 8 and the rates):
+`tools/bstest/vatlog.tcl` (sourced after `load.tcl`) `vl_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES?
+?DRIVE?`: from the power-on on DRIVE (default `tour`'s), from level 2's first tick past game frame FROM
+for SECS seconds, `rc2_guard` (tears counted) and every vat column `vats.asm` draws (its parts' beam
+lines, R#23, its destinations), the time spent in `vat_run` and `vat_prep`, the window's tries and the
+V9938's mirrors, into `DIR/vat_<m>.txt` and `DIR/guard_<m>.txt`; `tools/bstest/vatcheck.py DIR` sums
+them per machine (columns a second, each column's look changes a second, the CPU's share, the least
+margin from the beam to a column ending in the next picture's display, the guard's tears and play-area
+commands that are a vat column's) and exits 1 when the beam drew into a vat column (a negative margin or
+a guard tear whose command is a vat column's part). The guard's "cmd" lines of a vat column are its
+later parts, started while the beam is above the column (each waits for the one before): not tears.
+`vl_speed_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES?`: the game frames and ticks reached in SECS seconds
+from FROM (`DIR/speed_<m>.txt`: the vats' cost against another build's). `vl_snap_jobs DIR ROM LABELS
+FRAMES ?MACHINES?`: `rc2_snap` at the start of each game frame F of FRAMES (`DIR/<m>_gF`) for
+`tools/mapcmp.py BENCH DIR/<m>_gF build/msx/level2`, which now takes a vat cell's tile from its column's
+look in the snapshot (`vat_disp`'s nibble of the page shown, else `vat_shown`'s; "N vat cells by the vat
+rule"), as `tools/msxreal.py` does. `l2b_fd_setup`'s records hold the vats' RAM (F012h-F0E6h:
+`vat_shown`, `vat_disp`, `vat_chg`) and `fieldcheck.py --level 2` checks every vat cell against its
+column's look on the page recorded (`vat-look`) and never older than the look a picture before showed
+(`vat-older`).
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/vatlog.tcl}; hz_chain [vl_jobs {W/vl} {W/R/l2/rc2_l2.rom} {W/R/l2/rc2_l2.labels} 25 450] {W/vl/all.done}
+python3 -I tools/bstest/vatcheck.py W/vl
+```
+
 At step 18 (2026-10-31, the flow into and out of level 2), **the product goes on from the range into
 the level-2 briefing and level 2** (`front.asm` `front_brief` at `front_bonus`' end, `rc2.asm` `ml_ev`,
 `lv_next`), and after level 2's stages into the level-3 briefing and the title (default 5); `PZ_TEST=1`

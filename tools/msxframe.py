@@ -34,6 +34,9 @@ with its patches (msx/tiles.asm map_write: page-0 RAM and F500h-F8FFh) and the p
 the list on screen (fb_vis at F248h: the first in the list on top, as msx/field.asm fb_bobs
 composes) as the level's atlas and dynamic frames hold them (FieldLooks: the bytes the ROM
 uploads); without it the static map alone, as before (a BOB or a patch counts as a difference).
+Level 2's vat cells (LEVEL_PREFIX level2, a snapshot with ramf.bin) are expected at their column's look
+on the page shown (tools/mapcmp.py vat_look: vat_disp's nibble, else vat_shown's; the V9958's ring
+page 0), a map patch first with --field, as msx/tiles.asm get_tile draws them.
 
 Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
 tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
@@ -139,6 +142,18 @@ class FieldLooks:
                 if c:
                     return c
         return None
+
+
+def patched(patches: bytes, row: int, col: int) -> bool:
+    """(--field) Whether the cell has a map patch (tools/recframes.py tile_at's walk): get_tile takes the
+    patch before level 2's vat rule (msx/tiles.asm)."""
+    import recframes
+    p, pool = patches[row], recframes.MP_POOL[row & 1]
+    while p != 0xFF:
+        if patches[pool + recframes.MPF_COL + p] == col:
+            return True
+        p = patches[pool + recframes.MPF_NEXT + p]
+    return False
 
 
 def fb_vis(ramf: bytes) -> list[tuple[int, int, int]]:
@@ -404,6 +419,12 @@ def main() -> int:
     mp = level.with_suffix(".map").read_bytes()
     til = level.with_suffix(".til").read_bytes()
     rows_map = len(mp) // (COLS * 2)
+    vats = None
+    if ramf is not None and level.name == "level2":            # (the vat rule: tools/mapcmp.py)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import mapcmp
+        vats = mapcmp.vat_layout(level)
+        vpage = 0 if 26 in play else (regs_play[2] >> 5) & 1  # (the V9958's ring: page 0's looks)
     prgb, hrgb = rgb9(pal_play), rgb9(pal_hud)
     hud_want = hud_expected(ram)
     sat_pending = ram[SPR_VBLANK - RAM_BASE] and ram[PUB_SEQ - RAM_BASE] == ram[APP_SEQ - RAM_BASE]
@@ -432,7 +453,10 @@ def main() -> int:
                     continue
                 c = looks.at(lst, wx, wy) if field else None
                 if c is None:
-                    if field:
+                    v = vats["cells"].get((wy // 16, wx // 16)) if vats else None
+                    if v and not (field and patched(patches, wy // 16, wx // 16)):
+                        t = mapcmp.vat_tile(vats, v, mapcmp.vat_look(ramf, v[0], vpage))
+                    elif field:
                         t = recframes.tile_at(mp, patches, wy // 16, wx // 16)
                     else:
                         t = mp[2 * ((wy // 16) * COLS + wx // 16)] | mp[2 * ((wy // 16) * COLS + wx // 16) + 1] << 8
