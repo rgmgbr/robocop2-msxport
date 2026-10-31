@@ -1742,10 +1742,12 @@ from FROM (`DIR/speed_<m>.txt`: the vats' cost against another build's). `vl_sna
 FRAMES ?MACHINES?`: `rc2_snap` at the start of each game frame F of FRAMES (`DIR/<m>_gF`) for
 `tools/mapcmp.py BENCH DIR/<m>_gF build/msx/level2`, which now takes a vat cell's tile from its column's
 look in the snapshot (`vat_disp`'s nibble of the page shown, else `vat_shown`'s; "N vat cells by the vat
-rule"), as `tools/msxreal.py` does. `l2b_fd_setup`'s records hold the vats' RAM (F012h-F0E6h:
+rule"), as `tools/msxreal.py` and `tools/msxframe.py` (a map patch first with `--field`) do.
+`l2b_fd_setup`'s records hold the vats' RAM (F012h-F0E6h:
 `vat_shown`, `vat_disp`, `vat_chg`) and `fieldcheck.py --level 2` checks every vat cell against its
-column's look on the page recorded (`vat-look`) and never older than the look a picture before showed
-(`vat-older`).
+column's look on the page recorded (`vat-look`: a column of two looks, half drawn, or a page whose
+nibble is not its pixels') and, when a column's look changes, never to a look older than the one it
+showed (`vat-older`; the looks recur every cycle, so only the changes are dated).
 ```
 msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/vatlog.tcl}; hz_chain [vl_jobs {W/vl} {W/R/l2/rc2_l2.rom} {W/R/l2/rc2_l2.labels} 25 450] {W/vl/all.done}
 python3 -I tools/bstest/vatcheck.py W/vl

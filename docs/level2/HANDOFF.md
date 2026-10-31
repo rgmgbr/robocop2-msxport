@@ -1688,6 +1688,171 @@ X), `still` (36 snapshots + msxframe PNG/txt), `objs`, `start` (the whole tour u
 5. The HUD's can at the arrest frame differs from msxframe's model (171 px, three machines): look at it with
    step 18/19's HUD check (4.2 check 13).
 
+## Step 14: the vats' display (2026-10-31)
+
+**Done, but the rates disappoint on the Z80 machines** (the plan's 5: step 16 stops for the user's choice
+among default 18's alternatives; the numbers below). Branch `l2-s14` (worktree `scratchpad/l2/wt14`),
+commits **0d4471f, ed9c119, 9a7e0e2, 659742e, 51cca83, e074a78** and this section's, all committed locally,
+not pushed (the user's order), integrated into `level2` by fast-forward. Files: `msx/{tiles.asm,
+scroll9938.asm, scroll9958.asm, field.asm, vats.asm (new), level2.asm, msx.inc}`, `tools/{mapcmp.py,
+msxreal.py, msxframe.py}`, `tools/bstest/{fieldcheck.py, l2base.tcl, vatlog.tcl (new), vatcheck.py (new)}`,
+`tests/test_bstest.py`, `docs/HARNESS.md` (5.22), this file. Records in `scratchpad/l2/s14` (`S14`): `W/R`
+(the six l2 builds), `X/l2` (`EXTJOY=1 LV_TEST=2`, product caps), `P` (the product), `V` (the option
+sets), `G` (the gate), `vl/<window>` (the vats' logs and the guard), `hR`, `hg` (the same windows' guard
+on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map against the bench), `st`, `stp`
+(stills and their renders), `fd`, `fdx` (field records and checks), `dbg` (the scratch tracers).
+
+### What was built
+- **The rule (tiles.asm `get_tile`)**: in level 2 (`lv_logic` = BANK_L2) every cell without a map patch
+  goes to `field.asm` `vat_tile` (BANK_FIELD): a vat cell (`L2_VATS`' row bits and records) is drawn at
+  its column's look on the page drawn (`vat_pg`: `vat_disp`'s nibble of that page, `8 | look & 7`, the
+  look's half from `vat_shown`'s bit 3; no nibble yet: `vat_shown`'s look, which the page then holds),
+  T0 on the vat's first row, T1/T2 alternating below; any other cell gets the map's tile, which
+  `vat_tile` reads itself through the 8000h window (gt_map's way), so that the fixed area keeps only
+  the jump. `vat_pg` is set by the V9938's `ttp_prep` (the page it draws on) and `fb_tiles` (the BOBs'
+  restores); on the V9958 `vt_page` takes page 0 (its ring) whatever page a BOB item names.
+- **The column refresher (msx/vats.asm, new, BANK_L2; field.asm's vat section)**: the map report's way
+  (whole columns at the newest look). `vat_prep`, at the scroll engines' idle points (once a VBLANK on
+  the R800, every `VAT_KZ` = 4 on the Z80; only when a vat changed, `vat_chg`), looks from `vat_rr`
+  round robin for the first column in the view whose look on the page shown is not `vat_shown`'s,
+  that meets no play-field BOB nor their work (the boxes of `fb_cur`, the queue, the page list,
+  `fb_wbx`, and on the V9938 the page being built) and may be drawn in time; it prepares it in `vat_fr`
+  (0860h, 41 bytes): its three tiles in the tile cache, the destinations, the parts. `vat_run`, when
+  the beam is outside the play area (between the HUD split and the VBLANK, or in the blank after the
+  VBLANK: S#2 VR), checks again that the column is still the newest, its tiles still in their slots,
+  no BOB came over it, and that it ends before the beam reaches its first line with R#23 now
+  (`vat_fits`: `VAT_LB` lines a row, `VAT_LP` a part's start, `VAT_LM` for the VBLANK interrupt,
+  `VAT_LV`/`VAT_LB0` the blank's lines), then draws it with `cmd_lock` held: T0, T1, T2 (HMMM from
+  the cache) and an overlapping HMMM that copies the T1/T2 pair down the column, cut at the page's
+  line 255 (the ring); the nibble of the frame's page (`VF_EP`, never `vat_pg`) takes the look. On the V9938 the column is then copied onto
+  the other page (`vat_mirror`, HMMM page to page; the flip waits for it: `s38u_step` `vat_bk`), and
+  `vat_mmark` re-marks the BOBs over it there. `vat_init` (every level's `engines_init` and
+  `engines_jump`) clears the state and, in level 2, `vat_disp`; `vat_bbinit` (`fb_bbinit`) gives the
+  page being built the shown page's nibbles where both views hold the column. A play-field BOB piece
+  with a vat cell restores its background by tiles (`fb_piece` -> `fp_tiles`, `vat_inbox`).
+- **The hooks (fixed area, 75 B in the product)**: `vat_win` at `scroll_work`'s and `s38_work`'s entry
+  (the VDP idle; no bank switched unless a column is ready), `vat_idle` at `sw_idle` and `s38w_idle`
+  (level 2 only: `vat_on`, set by `vat_init`), one tail `vat_l2` (BANK_L2 at A000h, the routine's flags
+  kept); `s38_copy_chunk` makes 1-slot chunks while a column is ready. The vats never keep `iw_more`:
+  their work waits for `wait_frame`'s loop or the engines' own work (see "the cost" below).
+- RAM (msx.inc): `vat_pg` F0E7h, `vat_wtk` F0E8h, `vat_rr` F0E9h, `vat_bk` F0EAh, `vat_bkc` F0EBh,
+  `vat_bky` F0ECh, `vat_cmd` F0EDh (15 B; F0FCh-F0FFh free), `vat_fr` 0860h (41 B), `vat_on` 088Fh
+  (page-0 RAM that TC_REF leaves free with 256 slots at most).
+- **Tools**: `tools/mapcmp.py` (the map's rows from its size; vat cells at their column's look in the
+  snapshot: `vat_layout`, `vat_tile`, `vat_look`), `tools/msxreal.py` (the same rule, the page from R#2
+  on the V9938), `tools/bstest/fieldcheck.py` (the vats' RAM in the record, vat cells at the recorded
+  page's look: class `vat-look`; never older than the look shown a picture before: `vat-older`; the four
+  record lengths), `tools/bstest/l2base.tcl` (`l2b_fd_setup` records F012h-F0E6h),
+  `tools/bstest/vatlog.tcl` (new: `vl_jobs`, `vl_speed_jobs`, `vl_snap_jobs`), `tools/bstest/vatcheck.py`
+  (new), `tests/test_bstest.py` (`test_vatcheck_flags_a_vat_column_the_beam_drew`), docs/HARNESS.md 5.22.
+
+### The cost, and the choices made for it
+- **The game's speed** (`vl_speed_jobs`: game ticks in 25 s of `tour` from game frame 450, the l2 trace
+  build, vats 0-2 in view; level2 7aecb40's code: MSX2+ 424, MSX2 351, turbo R 621). The first design
+  (the vats kept `iw_more` while a column waited, so that every `feed_vdp` in the game's logic took its
+  full path; "the BOBs first" in `vat_run`) cost the MSX2+ 13 % and the MSX2 4 %. Isolated: the hooks off
+  with `get_tile`'s rule on 416 / 353, both off 427 / 348 (the noise is about 3 ticks), so the rule costs
+  the MSX2+ about 2 % and the rest was the waiting column's `feed_vdp` path. Now the vats never keep
+  `iw_more` (their work runs from `wait_frame`'s loop and the engines' own work); "the BOBs first" went
+  too (it cut the MSX2+'s columns from 137 to 38 for 1 % of speed). Final: see the checks.
+- **Zero glitches first**: a column is drawn whole, at the look prepared (the newest when prepared; a
+  column's look cannot move on while its frame waits, so never older), started only where the beam is
+  outside the play area and ended before the beam reaches its first line (`vat_fits` with R#23 now);
+  later parts of its chain start while the beam is above the column (the guard's "cmd" lines, no tear).
+- **The fixed area**: 75 B in the product (298 -> 223 free; 3.2's budget for step 14: 60-100 B):
+  `get_tile`'s level-2 path is a jump into BANK_FIELD (`vat_tile` reads the map's tile itself), the two
+  hooks share one tail. Lowest real option set p_pzdiag 88 B (step 13: 163); `DEMO_HUD=1` 1 B free.
+  BANK_FIELD 143 B free (1,183 at step 13), BANK_L2 45 B (1,445): tight for step 15. No new bank: still
+  127 of 128 banks, the 1 MiB image (the vats need no block of their own).
+
+### Checks (exact commands, results; `S14` = scratchpad/l2/s14, `W` = wt14)
+- Builds: `sh tools/bstest/hz.sh l2builds $S14/W/R` (PASS), `sh tools/bstest/build.sh $S14/X/l2/rc2_l2.rom
+  EXTJOY=1 LV_TEST=2`, `sh tools/bstest/build.sh $S14/P/rc2.rom`: build OK, z80asm 12 known warnings only.
+  `sh tools/bstest/variants.sh $S14/V` + `python3 -I tools/bstest/l2base.py banks $S14/V`: 46 of 48 (DEMO_ACTORS
+  2/5 as before); free bytes above.
+- **Level 2's logic**: MCP `hz_chain [hz_l2_jobs {$S14/W/O/l2} {$S14/W/R} tr]`; `sh tools/bstest/hz.sh compare
+  --fields analysis/amiga_ram_l2.tsv $S14/W/O/l2 $S14/W/R`: **level 2: PASS (20 traces)**, 0 differ, lost 0.
+- **The map against the bench, with the vat rule**: the bench's maps `$S14/map/tour_F.bin` (`python3 -I
+  tools/amigaemu.py game --level 2 --carry 10050:2:0:good --gframes F --drive build/emu/l2_tour.drive
+  --stop-at-end --dump ...`), MCP `hz_chain [vl_snap_jobs {$S14/snap} ROM LABELS {600 1000 1400 2300} {m2
+  C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}]`, `python3 -I tools/mapcmp.py $S14/map/tour_F.bin
+  $S14/snap/<m>_gF build/msx/level2`: **0 differ in all 12** (8,000 cells, 604 vat cells by the vat rule).
+- **4.2 check 8 (tear 0 under rc2_guard) and the rates**: MCP `source {W/tools/bstest/vatlog.tcl}; hz_chain
+  [vl_jobs {$S14/vl/F} ROM LABELS SECS F ?MACHINES? ?DRIVE?]` for tour from frames 450, 850, 1250 (25 s),
+  2130 (20 s) and standing still (`tour` cut at frame 520 or 2200, then no input: `$S14/still520.drive`,
+  `still2200.drive`; 20 s from 540, 15 s from 2220), on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT;
+  `python3 -I tools/bstest/vatcheck.py $S14/vl/F`: **exit 0 in all 18: no vat column's tear, no column the
+  beam drew into** (the least margin to a column's first line 10-90 lines). The guard's other tears are
+  the classes level2 7aecb40's code shows over the same windows (`hg`: a guard-only job on its l2 build):
+  the engines' changed-cell redraws (16 x 16, `sw_redraw` and `s38_redraw`), play-field pieces (the turbo
+  R's staged item, the MSX2+'s piece across the ring's x 256 started late in the blank); 23 there, 26
+  here over the 450/850/1250 windows.
+
+  | columns drawn a second (each column's redraws a second) | MSX2 | MSX2+ | turbo R |
+  |---|---|---|---|
+  | tour 450 (vats 0-2, scrolling) | 1.3 (0.04-0.08) | 2.7 (0.04-0.13) | 12.8 (0.31-0.47) |
+  | tour 850 (vats 1-3, the lift rides) | 1.3 (0.04-0.08) | 2.2 (0.04-0.09) | 16.4 (0.31-0.66) |
+  | tour 1250 (vat 3) | 1.0 (0.11) | 1.0 (0.10) | 10.5 (0.65) |
+  | standing at vat 0 (frame 540) | 0.8 (0.08) | 2.9 (0.24) | 8.0 (0.67) |
+
+  (vats 4-6: seen for a second in tour 2130, none changed standing at 2200.) The original steps every
+  odd tick (12.5 steps a second, LOGIC2.md 4.2): a column of a vat in view is redrawn every 4-25 s on
+  the Z80 machines and every 1.5-3 s on the turbo R; the plan's expectation (2-3 steps a second on a
+  scrolling V9938) is not met. CPU: vat_run + vat_prep 2-4 % (Z80), 6-17 % (R800, its idle time).
+- **The game's speed**: MCP `hz_chain [vl_speed_jobs {DIR} ROM LABELS 25 450 ...]` on the l2 builds: MSX2+
+  843 frames / 393 ticks (level2 7aecb40's code, `$S14/hR`: 874 / 424: **-7 %**; the same design one
+  commit before measured 403, -5 %), MSX2 791 / 341 (801 / 351: **-3 %**), turbo R 1068 / 618 (1071 / 621).
+- **4.2 check 2 on the vat windows, scrolling up and down** (the four lift rides and vats 4-5): MCP `hz_chain
+  [hz_l2_field_jobs {$S14/fd} {$S14/W/R/l2/rc2_l2.rom} {...labels} {W/build/emu/l2_tour.drive} {495 300 735
+  200 960 250 1255 350 2140 260}]` and the same on X (`$S14/fdx`); `$PY -I tools/bstest/fieldcheck.py DIR/W
+  build/msx/level2 DIR/W.png --level 2`: **0 differences in all 30 windows** (both builds, three machines,
+  9,180 pictures; every vat cell at its column's look on the page shown, no "vat-look", no "vat-older").
+  On the way it caught a real fault: on the MSX2 the page shown kept an older nibble than its column
+  (13-22 pictures a window: `vat_run` wrote the nibble of `vat_pg`, which the V9938's tile draws had
+  meanwhile set to the page being built), fixed in e074a78; and its first "vat-older" rule took the
+  looks' recurrence for steps back (fixed: only a change of a column's look is dated).
+- **Stills, looked at** (MCP `hz_chain [hz_l2_still_jobs {$S14/st} {$S14/W/R} {520 900 1000 1300 2200 2380}
+  l2_tour]`; `$PY -I tools/msxframe.py SNAP build/msx/level2 build/msx/hud OUT.png --sprites build/msx/sprites
+  --level 2 --field`, now with the vat rule): the play area exact in all 18 (sprite pixels exact but
+  msxframe's object order on the MSX2 at g0900, g1000: 44 and 25 px, step 13's note). Looked at, zoomed
+  (`$S14/stp/crop_*.png`): vat 0 on the MSX2 (g0520), vat 3 on the MSX2+ (g1300), vats 1-2 on the turbo R
+  (g1000): whole columns, each at one look, the surface's bubbles at a different phase column by column.
+- `make test`: 299 tests, the 4 known failures only (failures=3, errors=1).
+- **The gate** (`l2base.sh builds $S14/G`; MCP `source {W/tools/bstest/load.tcl}; source
+  {W/tools/bstest/l2base.tcl}; l2b_chain {$S14/G} {$S14/G/all.done}`; `sh tools/bstest/l2base.sh check
+  $S14/G scratchpad/l2/base`), on step 14 over level2 7aecb40 before the integration: **l2base: FAIL on one
+  level-1 still, all else PASS**: regress 45 verdicts PASS; level 1's traces, the start check, the field
+  check (the known hostage tear only), the LOCKSTEP records (3,000 lists, 0 differ) and the effects PASS;
+  the stills 9 of 10 identical, `m2_g1490` 24 px apart (the conveyor's gear one animation frame later) and
+  msxframe 468 against the base's 462. That snapshot (the HUD split of game frame 1490's first new list)
+  came one VBLANK later (304.2872 s against 304.2705 s): the hooks' few T-states in level 1's V9938 engine
+  pushed that frame's list past a VBLANK, so the picture is the display one step on. No level-1 logic or
+  list differs (the traces, LOCKSTEP's 3,000 lists); the stills are the one verdict of the gate that is not
+  blind to CPU time (a level-1 still taken a fixed VBLANK count after its frame's start would be).
+  @@GATE2@@
+
+### Open issues (for step 16 and the user)
+1. **The rates disappoint on the Z80 machines** (the table above): the plan's 5 applies, step 16 stops
+   for the user's choice among default 18's alternatives (a fixed half rate; tearing allowed, about twice
+   the rate on the V9958; only the surface row while a V9938 scrolls; the logic report's surface row at full
+   rate and the body round robin). What limits them: one column a window, made ready only at the engines'
+   idle points (the vats never keep `iw_more`), each 40-120 lines of VDP time (T0, T1, T2 and the overlap
+   copy) with the CPU waiting part by part. Measured and left: keeping `iw_more` while a column waits
+   (MSX2+ about 2.5 x the columns, -13 % speed).
+2. **The game's speed** in the vats' stretch: MSX2+ -5 to -7 %, MSX2 -3 %, turbo R 0 (the checks). About
+   2 % of the MSX2+'s is `get_tile`'s rule (every level-2 cell without a patch goes through BANK_FIELD);
+   a RAM row filter in the fixed area (about 10 B) would take the cells off the vats' rows out of it.
+3. **Room**: BANK_L2 45 B and BANK_FIELD 143 B free (step 15 is field.asm's), the fixed area 223 B in the
+   product, 88 B at the lowest real set, `DEMO_HUD=1` 1 B.
+4. The guard's other tears are older than this step (the same classes on level2 7aecb40's code over the
+   same windows): the engines' changed-cell redraws (16 x 16: `sw_redraw`, `s38_redraw`) and play-field
+   pieces started late (the MSX2+'s piece across the ring's x 256 at the picture's top line; the turbo R's
+   staged item). Not from code this step touched: left to step 16.
+5. On the turbo R with no vat changing in view, `vat_prep`'s calls take 8-12 % of the time in
+   `wait_frame`'s loop (idle time: the game's speed unchanged); a `vat_chg` test before the bank switch
+   would cost fixed-area bytes.
+6. Vat 6 never comes into `tour`'s view, vats 4-5 for about a second (tour 2130): checked only there.
+
 ## Step 20: Brainstorm's second visit (2026-10-31)
 
 **Done.** One commit (10 files, explicit paths: its hash is in `git log`): `tools/msxpuzl.py`, `tools/mkrom.py`,
