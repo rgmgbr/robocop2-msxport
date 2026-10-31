@@ -371,8 +371,9 @@ fs_clear:
 
 ; load_level1 $8582 after the statistics: Brainstorm ($8382, D0 = 2 after level 1; PIC3 dropped,
 ; decision 5 of the port): its intro, the stage (msx/puzl.asm, BANK_PUZL at A000h), a continue
-; when it is solved ($805E), its result; then the shooting range ($8590: front_range). Level 2
-; comes later. From the state front_stats leaves: the play area black, the HUD below it; a turbo R
+; when it is solved ($805E), its result; then the shooting range ($8590: front_range) and the next
+; level's briefing (front_brief; rc2.asm ml_ev then starts level 2 after level 1, or the title after
+; level 2). From the state front_stats leaves: the play area black, the HUD below it; a turbo R
 ; on the Z80 with the display and the interrupts off (cpu_title), the HUD split measured for the
 ; R800 only (fb_prep).
 front_bonus:
@@ -402,6 +403,7 @@ fb_res: add a,a
         ld l,a
         call fe_text                ; ($8400: the result through $10762)
         call front_range            ; ($8590: moveq #1,D0 / bsr $8420; visit 2 runs the same code)
+        call front_brief            ; ($859E: the next level's briefing; load_level2's $8548)
         jp cpu_title                ; (a turbo R: the hardware pause on again, the display off)
 fb_texts:
         dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)
@@ -544,9 +546,20 @@ front_l2test:
         jp cpu_title
         endif
 
-; The next level's briefing (load_level1 $8582's $110F0 before level 2, load_level2's $110B4
-; before level 3; docs/LEVEL2.md 3.7), at front_bonus' end: not yet (the plan's step 18).
+; The next level's briefing at front_bonus' end (docs/LEVEL2.md 3.7): load_level1 $8582's $110F0
+; ("TOKUGAWA BREWERY" / "ARREST CAIN") before level 2 (AG $8050 = 1), load_level2's $110B4 ("CIVIC
+; CENTRUM" ...) before level 3 (2), else nothing: fe_text with tools/msxtext.py's txt_l2_brief or
+; txt_l3_brief (their particle titles typed in the game's font, the original's calls: 393 and 411
+; ticks, fire ends them from tick 50 on). Silent, the HUD's messages ticking on below; PIC4 and
+; PIC7 after them are dropped (decision 5 of the port).
 front_brief:
+        ld a,(AG + 0x8050)          ; (the word's low byte)
+        ld hl,txt_l2_brief
+        dec a
+        jp z,fe_text
+        ld hl,txt_l3_brief
+        dec a
+        jp z,fe_text
         ret
 
 ; A text screen of the bonus stages ($10762: $10768's screen and loop, then $FE14), HL = its

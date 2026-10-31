@@ -24,7 +24,9 @@
 #                            EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2: R/l2/rc2_l2.rom (the
 #                            default carry 10050:2:0:1, GOOD), R/l2s, R/l2f, R/l2p (LV_CARRY
 #                            10050:2:0:0, :2, :3: SHARP, FAIR, POOR), R/l2o (0:0:0:1: the game over
-#                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom
+#                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom; and
+#                            R/flow/rc2_flow.rom (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 without LV_TEST:
+#                            the product's way into level 2 for hz_l2's flow_l2_end, step 18)
 #   hz.sh compare --fields FIELDS DIR R [--refs REFS] [JOB[:ROWS] ...]
 #                            level 2's traces (hz_l2): tools/tracecmp.py --ram --fields FIELDS
 #                            (analysis/amiga_ram_l2.tsv) on DIR/l2_<job>.txt against its reference
@@ -81,7 +83,8 @@ compare)
       vat:l2:l2_vat:701 fuzz:l2:l2_fuzz:2501 sharp:l2s:l2_trolley_sharp:641 fair:l2f:l2_trolley_fair:641
       poor:l2p:l2_trolley_poor:641 over:l2o:l2_over:109 cont:l2c:l2_cont:301 barrel:l2:l2_barrel:901
       mine:l2:l2_mine:161 t1left:l2:l2_t1left:341 drone:l2:l2_drone:401 tour_fx:l2:l2_tour:2654
-      vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701"
+      vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701
+      flow_l2_end:flow:l2_flow_l2_end:259"
     want_jobs="$*"
     bad=0; seen=0
     cd "$ROOT" || exit 2
@@ -204,6 +207,9 @@ l2builds)
     echo "== $b $*"
     sh "$H/build.sh" "$R/$b/rc2_$b.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 "$@" || bad=1
   done
+  # (the product's way into level 2 for flow_l2_end: level 1, the stages and the briefing first)
+  echo "== flow (no LV_TEST)"
+  sh "$H/build.sh" "$R/flow/rc2_flow.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 || bad=1
   [ $bad -eq 0 ] && echo "l2builds: PASS ($R)" || echo "l2builds: FAIL"
   exit $bad
   ;;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rgcheck.py DIR TAG (--counts C,D,M | --time) [--tag N] [--no-game]: checks a record of the shooting
+"""rgcheck.py DIR TAG (--counts C,D,M | --time) [--tag N] [--no-game] [--level2 | --new-game]: checks a record of the shooting
 range's screens (rgflow.tcl: rgx_job, rgx_arm_job, rgk_job, and the range inside Brainstorm's flows,
 hb_step's rgh_arm; docs/HARNESS.md 5.19).
 
@@ -13,7 +13,10 @@ hb_step's rgh_arm; docs/HARNESS.md 5.19).
 - the notes (DIR/TAG_rg.txt): the screen shown; the stage's result at fr_done (dummy, correct,
   $804C) and the rating at fr_rated (ac_diff - diff_tab: 24 - 8 x rating, 24 after a time out)
   as expected; the new game reached (its frame 100, level 1's trace done, or the game a title
-  starts) with ac_diff - diff_tab = 0 again (SHARP: obj_start), and the lost counters 0 when noted.
+  starts) with ac_diff - diff_tab = 0 again (SHARP: ng_init), and the lost counters 0 when noted;
+  or, in the product's flow since level 2's step 18 (the level-2 briefing, then lv_next: notes
+  "level 2 at tick_n", rgflow.tcl rgx_l2 or hz.tcl hb_l2_100), level 2 at its game frame 100 with
+  the range's rating kept (the rating at fr_rated) and no new game.
 Exit 0 when every check passes. Reads build/ram/level1_full.bin and build/msx of the repository this
 file is in (tools/bstest/). bonuscheck.py --range calls check().
 """
@@ -30,7 +33,7 @@ import msxtext  # noqa: E402
 
 
 def check(d: Path, tag: str, counts: tuple[int, int, int] | None, ntag: int = 0, game: bool = True,
-          out=print) -> int:
+          out=print, level2: bool | None = None) -> int:
     """The range's records DIR/TAG_rgintro, _rgres and TAG_rg.txt; counts None: OUT OF TIME.
     Returns 0 when every check passes."""
     ram = (REPO / "build" / "ram" / "level1_full.bin").read_bytes()
@@ -106,7 +109,23 @@ def check(d: Path, tag: str, counts: tuple[int, int, int] | None, ntag: int = 0,
             bad = 1
         else:
             out(f"the rating at fr_rated: ac_diff - diff_tab = {m_[4]}, as expected")
-    if game:
+    # (level2 None: as the notes say; True: level 2 must follow, False: a new game must)
+    l2 = re.search(r"^level 2 at tick_n .*ac_diff - diff_tab (\d+)", notes, re.M)
+    if level2 is None:
+        level2 = bool(l2) or bool(re.search(r"^level 2 at lv_next", notes, re.M))
+    if game and level2:
+        if not l2:
+            out("no level 2 after the range (its game frame 100)")
+            bad = 1
+        elif int(l2[1]) != want_rating:
+            out(f"level 2 runs with ac_diff - diff_tab {l2[1]}, the range's {want_rating} expected")
+            bad = 1
+        else:
+            out(f"level 2 runs with the range's rating (ac_diff - diff_tab {l2[1]})")
+        if re.search(r"^game tick_n", notes, re.M):
+            out("a new game after the range, not level 2")
+            bad = 1
+    elif game:
         m_ = re.search(r"^game tick_n", notes, re.M)
         sharp = re.search(r"^(game tick_n|level-1 trace done).*ac_diff - diff_tab 0\b", notes, re.M)
         if not m_:
@@ -115,6 +134,7 @@ def check(d: Path, tag: str, counts: tuple[int, int, int] | None, ntag: int = 0,
         elif not sharp:
             out("the new game does not run with SHARP (ac_diff - diff_tab 0)")
             bad = 1
+    if game:
         for lm in re.finditer(r"lost: mp (\d+) atr (\d+) rd (\d+) fb (\d+)", notes):
             if any(int(v) for v in lm.groups()):
                 out(f"lost counters not 0: {lm[0]}")
@@ -139,8 +159,14 @@ def main() -> int:
     g.add_argument("--time", action="store_true", help="the time out: OUT OF TIME.")
     ap.add_argument("--tag", dest="ntag", type=int, default=0, help="the build's TAG")
     ap.add_argument("--no-game", action="store_true", help="the record has no new game (stopped before)")
+    g2 = ap.add_mutually_exclusive_group()
+    g2.add_argument("--level2", dest="level2", action="store_const", const=True,
+                    help="level 2 follows the range (the product's flow); default: as the notes say")
+    g2.add_argument("--new-game", dest="level2", action="store_const", const=False,
+                    help="a new game follows the range (a PZ_TEST build's flow)")
     a = ap.parse_args()
-    bad = check(a.dir, a.tag, None if a.time else parse_counts(a.counts), a.ntag, not a.no_game)
+    bad = check(a.dir, a.tag, None if a.time else parse_counts(a.counts), a.ntag, not a.no_game,
+                level2=a.level2)
     print("range check:", "PASS" if not bad else "FAIL")
     return bad
 

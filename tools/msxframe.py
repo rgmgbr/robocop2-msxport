@@ -409,7 +409,7 @@ def main() -> int:
     sat_pending = ram[SPR_VBLANK - RAM_BASE] and ram[PUB_SEQ - RAM_BASE] == ram[APP_SEQ - RAM_BASE]
     try:
         spr = {} if sat_pending else expected_sprites(objs, pal_play)
-    except IndexError:                      # a product build records no pub_spr: render only
+    except (IndexError, struct.error):      # a product build records no pub_spr: render only
         print("no sprite record (product build): sprites not checked")
         spr, sat_pending = {}, True
     over = set() if sat_pending else over_lines(vram, regs_play)

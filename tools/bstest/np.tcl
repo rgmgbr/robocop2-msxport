@@ -23,7 +23,13 @@
 #       statistics, the stage left to time out, OUT OF TIME.); at the title that follows, hz.tcl
 #       hz_fresh's record: DIR/TAG_title_vram.bin, _regs, _pal, _music.txt, _psg.txt, and the game
 #       the title starts by itself at its tick 300 (DIR/TAG_game_vram.bin, _game_ram.bin); with
-#       EXACT = 1 the exact record instead (np_hf_step: _music2.txt, _game2_*; titlecmp2.py)
+#       EXACT = 1 the exact record instead (np_hf_step: _music2.txt, _game2_*; titlecmp2.py).
+#       Since level 2's step 18 the product goes from the range into the level-2 briefing and level
+#       2 (hb_step's records under TAG, its game frame 100 noted); there the level is ended as a
+#       CHEAT build's F5 ends it ($16D0 = FFh, $16C4 = 40h: np_t_l2), and hb_step records the
+#       statistics' way on under TAG2: Brainstorm's and the range's second visits left to time out
+#       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); the title
+#       after it is the record above (still under TAG), its game noted in TAG2_rg.txt
 #   np_title0_setup DIR TAG ROM LABELS ?EXACT?
 #       the same record at the title that follows level 1's statistics, in a build without
 #       Brainstorm (the approved flow: the commit before Brainstorm)
@@ -45,7 +51,8 @@
 #       ended, the statistics, the second stage, its screens' records, the title, fire, the new game
 #   np_wp_job NAME MACHINE DIR ROM LABELS
 #       hz6_prod_setup's flow with every write to 4000h-7FFFh counted from front_bonus' entry to
-#       the new game's tick 100: DIR/NAME_wp.txt
+#       the end of hb_step's records: level 2's game frame 100 since level 2's step 18 (before it,
+#       the new game's tick 100): DIR/NAME_wp.txt
 #
 # Rules kept: no exit, vwait, max or min; files opened once per write and closed on every path;
 # breakpoints at pz_tick carry its byte condition (they fire only where BANK_PUZL is mapped).
@@ -152,15 +159,64 @@ proc np_title_setup {dir tag rom labels {exact 0}} {
 	set ::nt_rom $rom
 	set ::nt_labels $labels
 	set ::nt_exact $exact
+	set ::nt_tag $tag
+	set ::nt_gnote 0
+	set ::nt_rgarm 0
 	set ::nt_st 0
+	set ::hb_l2next np_t_l2
+	set ::hb_tjob 1
 	lappend ::hz_afters [after time 0.5 np_t_poll]
+}
+
+# (hb_step's level 2 at its game frame 100) the level's end as the cheat key ends it (frame.asm
+# frame_end: $16D0 FFh, $16C4 40h: 65 frames of 100 points, the fade, AG $8050 = 2), asked again at
+# each tick of level 2 while $16D0 is 0 (a death restarts the level with it cleared); then hb_step's
+# records under TAG2 from the statistics on, np_t_poll waiting for the title after them
+proc np_t_l2 {} {
+	set ts [rc2_label $::nt_labels tick_start]
+	set gt [rc2_label $::nt_labels game_tick]
+	set b [rc2_label $::nt_labels BANK_L2]
+	set ::nt_endbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $b && \[peek 0xDBD1\] == 0" np_t_end]
+	set ::hb_tag "${::nt_tag}2"
+	hb_init_range $::nt_labels
+	set ::hb_tjob 1
+	set f [open "$::hb_dir/${::hb_tag}_bonus.txt" w]
+	close $f
+	set ::nt_gnote 1
+	set ::nt_st 0
+	set ::hb_st 0
+	# (pictures of the second visits in play for the eye: Brainstorm's passes 100 and 400, hz7.tcl's
+	#  snapshots, stepcheck.py still --visit 2 and shots.py; the range's pass 1500)
+	hz7_arm "$::hb_dir/st_${::hb_tag}" $::nt_labels {100 400}
+	set ::nt_rgarm 1
+}
+
+# (the range's snapshot armed once hb_step records the range: its state 6 removes every breakpoint)
+proc np_t_rgarm {} {
+	set ::nt_rgarm 0
+	set a [rc2_label $::nt_labels fr_tick]
+	set t [rc2_label $::nt_labels fr_frame]
+	set ::nt_rgbp [debug set_bp $a "\[peek $a\] == 0xCD && \[rc2_w [expr {$a + 1}]\] == $t && \[rc2_w 0xD000\] == 1500" np_t_rgsnap]
+}
+
+proc np_t_rgsnap {} {
+	catch {debug remove_bp $::nt_rgbp}
+	hz7_snap "$::hb_dir/st_${::hb_tag}" rg1500
+}
+
+proc np_t_end {} {
+	poke 0xDBD1 0xFF
+	rc2_wset 0xDBC4 0x40
+	hb_note "the level's end asked at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], energy [format %04X [rc2_w 0xDB9A]]"
 }
 
 # (hz_fresh's variables for hf_step or np_hf_step, from the title shown now: the game's tick 300 is
 #  tick_n + 300)
 proc np_t_record {} {
 	set ::hf_dir $::hb_dir
-	set ::hf_tag $::hb_tag
+	set ::hf_tag [expr {[info exists ::nt_tag] ? $::nt_tag : $::hb_tag}]
+	if {[info exists ::nt_endbp]} { catch {debug remove_bp $::nt_endbp}; unset ::nt_endbp }
+	if {[info exists ::nt_rgbp]} { catch {debug remove_bp $::nt_rgbp}; unset ::nt_rgbp; hz7_disarm }
 	set ::hf_ticks [expr {[rc2_w 0xCEE0] + 300}]
 	set ::hf_rom [file tail $::nt_rom]
 	set ::hf_mus [rc2_label $::nt_labels BANK_MUSIC]
@@ -173,7 +229,8 @@ proc np_t_record {} {
 }
 
 proc np_t_poll {} {
-	if {$::nt_st == 0 && $::hb_st == 2} {
+	if {[info exists ::nt_rgarm] && $::nt_rgarm && $::hb_st == 7} { np_t_rgarm }
+	if {$::nt_st == 0 && ($::hb_st == 2 || $::hb_st == 99)} {
 		# (the result recorded: hb_step stops here, no fire on the title)
 		set ::hb_st 99
 		set ::nt_st 1
@@ -297,6 +354,10 @@ proc np_hf_game {} {
 	set f [open "$::hf_dir/${::hf_tag}_game2.txt" w]
 	catch {puts $f "time [machine_info time] tick_n [rc2_w 0xCEE0] (the title's game tick [expr {[rc2_w 0xCEE0] - $::hf_ticks + 300}]) g_frame [rc2_w 0xD000]"}
 	close $f
+	if {[info exists ::nt_gnote] && $::nt_gnote && [info exists ::rgx_tag]} {
+		# (np_title_setup after level 2: the range's second visit's notes get the new game)
+		rgx_note "game tick_n [rc2_w 0xCEE0] at [machine_info time] s (the title's game at its tick 300), g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [rgx_rating], lv_logic [peek 0xF1A0]; [rgx_lost]"
+	}
 	set ::hf_st 4
 	set ::hz_done 1
 	set ::pause on
@@ -500,7 +561,7 @@ proc np_wp_setup {dir tag rom labels} {
 	set ::nw_t0 -1
 	set ::nw_wp ""
 	set f [open $::nw_file w]
-	catch {puts $f "# $tag: [file tail $rom] on [machine_info config_name]: writes to 4000h-7FFFh from front_bonus' entry to the new game's tick 100"}
+	catch {puts $f "# $tag: [file tail $rom] on [machine_info config_name]: writes to 4000h-7FFFh from front_bonus' entry to level 2's game frame 100 (the new game's tick 100 in a flow without level 2)"}
 	close $f
 	set fb [rc2_label $labels front_bonus]
 	set ::nw_bp [debug set_bp $fb {[peek 0xC07C] == 7} np_wp_on]
@@ -523,7 +584,8 @@ proc np_wp_hit {} {
 proc np_wp_done {} {
 	if {!$::hz_done} { return 0 }
 	set f [open $::nw_file a]
-	catch {puts $f [format "watch from %.3f s (front_bonus) to %.3f s (the new game's tick 100, g_frame %d, cpu_tr %d): %d writes %s" $::nw_t0 [machine_info time] [rc2_w 0xD000] [peek 0xC2A6] $::nw_n $::nw_l]}
+	set to [expr {[info exists ::hb_l2] && $::hb_l2 ? "level 2's game frame 100" : "the new game's tick 100"}]
+	catch {puts $f [format "watch from %.3f s (front_bonus) to %.3f s (%s, g_frame %d, cpu_tr %d): %d writes %s" $::nw_t0 [machine_info time] $to [rc2_w 0xD000] [peek 0xC2A6] $::nw_n $::nw_l]}
 	close $f
 	if {$::nw_wp ne ""} { catch {debug remove_watchpoint $::nw_wp} }
 	return 1

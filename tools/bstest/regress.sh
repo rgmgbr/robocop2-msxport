@@ -149,11 +149,11 @@ check)
     else
       sh "$H/hz.sh" fresh "$W/fresh" base new; verdict $?
     fi
-    step "the product's and PZ_TEST=1 flows: Brainstorm's screens, then the range's (its real 2:00, OUT OF TIME.), the title, the new game"
+    step "the product's and PZ_TEST=1 flows: Brainstorm's screens, then the range's (its real 2:00, OUT OF TIME.), the level-2 briefing, then level 2 (the product) or the title and the new game (PZ_TEST=1)"
     for t in prod_m2 prod_tr pzt_m2 pzt_tr; do
-      case $t in prod*) g=prod ;; *) g=pzt ;; esac
-      python3 -I "$H/bonuscheck.py" "$O/flow" $t --result time --gen "$W/R/$g/gen" --range time > "$W/bonus_$t.txt" 2>&1; rc=$?
-      grep -E 'equal|DIFFER|VBLANKs|^title at|^game tick_n|bonus check|the range:|rating at fr_rated' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
+      case $t in prod*) g=prod; l2=--level2 ;; *) g=pzt; l2="" ;; esac
+      python3 -I "$H/bonuscheck.py" "$O/flow" $t --result time --gen "$W/R/$g/gen" --range time --brief l2 $l2 > "$W/bonus_$t.txt" 2>&1; rc=$?
+      grep -E 'equal|DIFFER|VBLANKs|^title at|^game tick_n|^level 2 at|^brief|bonus check|the range:|rating at fr_rated|level 2 runs' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
       verdict $rc
     done
     step "the restore and the new game against a fresh start (the range timed out by rc2_fr_timeout)"
@@ -164,11 +164,15 @@ check)
     done
     step "the turbo R's HUD blank at the switch to the Z80 (6 frames at the base)"
     python3 -I "$H/fixblank.py" "$O/flow/blank_tr_blank.txt" | tail -1
-    step "the turbo R: writes to 4000h-7FFFh from front_bonus' entry to the new game's tick 100"
+    step "the turbo R: writes to 4000h-7FFFh from front_bonus' entry to level 2's game frame 100"
     tail -1 "$O/np/wp_tr_wp.txt" | cut -c1-200
     tail -1 "$O/np/wp_tr_wp.txt" | grep -q ': 0 writes'; verdict $?
-    step "the title after the bonus flows (exact records) against the base's title after Brainstorm"
+    step "the product's whole flow (level 1, both stages, the level-2 briefing, level 2 ended at its frame 100 as F5 ends it, both stages' second visits, the level-3 briefing) and the title after it (exact records) against the base's title after Brainstorm"
     for m in ex f1 tr; do
+      python3 -I "$H/bonuscheck.py" "$O/np" tx_$m --result time --gen "$W/R/prod/gen" --range time --brief l2 --level2 > "$W/bonus_tx_$m.txt" 2>&1; c5=$?
+      python3 -I "$H/bonuscheck.py" "$O/np" tx_${m}2 --result time --gen "$W/R/prod/gen" --range time --brief l3 --no-game > "$W/bonus_tx_${m}2.txt" 2>&1; c6=$?
+      grep -E 'DIFFER|^brief|^level 2 at|bonus check|the range:|level 2 runs' "$W/bonus_tx_$m.txt" | sed "s/^/  $m (visit 1): /" | cut -c1-200
+      grep -E 'DIFFER|^brief|bonus check|the range:|^game tick_n' "$W/bonus_tx_${m}2.txt" "$O/np/tx_${m}2_rg.txt" | sed "s|^[^:]*:|  $m (visit 2): |" | cut -c1-200
       for f in "$B"/O/np/tx_${m}_*; do cp "$f" "$O/np/b$(basename "$f")"; done
       python3 -I "$H/titlecmp.py" "$O/np" btx_$m tx_$m > "$W/title_$m.txt" 2>&1
       unseen_regs "$O/np/btx_${m}_title_regs.bin" "$O/np/tx_${m}_title_regs.bin" >> "$W/title_$m.txt"
@@ -176,30 +180,23 @@ check)
       python3 -I "$H/titlecmp2.py" "$O/np" btx_$m tx_$m --unheard > "$W/title2_$m.txt" 2>&1; rc=$?
       grep -E 'common ticks|titlecmp2' "$W/title2_$m.txt" | sed "s/^/  $m: /"
       p=$(grep -c -E "picture.*: identical|palette: identical|registers that show: identical" "$W/title_$m.txt")
-      [ "$rc" -eq 0 ] && [ "$p" -ge 3 ]; verdict $?
+      [ "$rc" -eq 0 ] && [ "$p" -ge 3 ] && [ "$c5" -eq 0 ] && [ "$c6" -eq 0 ]; verdict $?
     done
-    step "the 2 MiB product (ROM_2M=1) through both bonus stages, the title, the new game"
-    python3 -I "$H/bonuscheck.py" "$O/np" p2m_ex --result time --gen "$W/X/p2m/gen" --range time > "$W/bonus_p2m_ex.txt" 2>&1; rc=$?
-    grep -E 'equal|DIFFER|VBLANKs|^title at|^game tick_n|bonus check|the range:' "$W/bonus_p2m_ex.txt" | sed "s/^/  /" | cut -c1-200
+    step "the 2 MiB product (ROM_2M=1) through both bonus stages, the level-2 briefing, level 2"
+    python3 -I "$H/bonuscheck.py" "$O/np" p2m_ex --result time --gen "$W/X/p2m/gen" --range time --brief l2 --level2 > "$W/bonus_p2m_ex.txt" 2>&1; rc=$?
+    grep -E 'equal|DIFFER|VBLANKs|^level 2 at|^brief|bonus check|the range:' "$W/bonus_p2m_ex.txt" | sed "s/^/  /" | cut -c1-200
     verdict $rc
-    step "the product from the keyboard (row 8, no EXTJOY): level 1 ended, Brainstorm solved, the range's 25 shots, the result, the title"
+    step "the product from the keyboard (row 8, no EXTJOY): level 1 ended, Brainstorm solved, the range's 25 shots, the result, the level-2 briefing, level 2 (the title after the range: the tx jobs above)"
     for m in ex tr; do
       t=kb_$m; K="$O/kb"
       [ -f "$K/${t}_bonus.txt" ] || { echo "  $t: no record"; bad=1; continue; }
       r1=$(python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec,score build/emu/pz_solve1_ram.jsonl "$K/${t}_pz.txt" 2>&1); c1=$?
       r2=$(python3 -I tools/frngcmp.py --skip joy,timer_min,timer_sec,score build/emu/fr_armed_ram.jsonl "$K/${t}_fr.txt" 2>&1); c2=$?
-      python3 -I "$H/bonuscheck.py" "$K" $t --result ok --no-game --gen "$W/R/prod/gen" --range 25,0,1 > "$W/bonus_$t.txt" 2>&1; c3=$?
-      for f in "$B"/O/np/tx_${m}_*; do cp "$f" "$K/b$(basename "$f" | sed "s/^tx_${m}_/kb_${m}_/")"; done
-      python3 -I "$H/titlecmp.py" "$K" b$t $t > "$W/title_$t.txt" 2>&1
-      unseen_regs "$K/b${t}_title_regs.bin" "$K/${t}_title_regs.bin" >> "$W/title_$t.txt"
-      python3 -I "$H/titlecmp2.py" "$K" b$t $t --unheard > "$W/title2_$t.txt" 2>&1; c4=$?
-      p=$(grep -c -E "picture.*: identical|palette: identical|registers that show: identical" "$W/title_$t.txt")
+      python3 -I "$H/bonuscheck.py" "$K" $t --result ok --no-game --gen "$W/R/prod/gen" --range 25,0,1 --brief l2 --level2 > "$W/bonus_$t.txt" 2>&1; c3=$?
       echo "  $t: Brainstorm $(echo "$r1" | grep -E 'frames compared' | head -1) | $(echo "$r1" | grep '^result' | head -1)"
       echo "  $t: the range $(echo "$r2" | grep -E 'frames compared' | head -1) | $(echo "$r2" | grep '^result' | head -1)"
-      grep -E 'equal|DIFFER|bonus check|the range:|rating at fr_rated|^game tick_n|keys' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
-      grep -E 'picture|palette|registers' "$W/title_$t.txt" | head -4 | sed "s/^/  $t: /"
-      grep -E 'common ticks|titlecmp2' "$W/title2_$t.txt" | sed "s/^/  $t: /"
-      [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ] && [ $c4 -eq 0 ] && [ "$p" -ge 3 ]; verdict $?
+      grep -E 'equal|DIFFER|bonus check|the range:|rating at fr_rated|^level 2 at|^brief|level 2 runs|keys' "$W/bonus_$t.txt" | sed "s/^/  $t: /" | cut -c1-200
+      [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ]; verdict $?
     done
     ;;
   final)
@@ -207,13 +204,13 @@ check)
     step "the final checks' flows through the range (docs/HARNESS.md 5.17 a, d, e, g)"
     for t in solved_m2 solved_tr; do
       r=$(python3 -I tools/puzlcmp.py build/emu/pz_solve1_ram.jsonl "$O/np/${t}_pz.txt" 2>&1); c1=$?
-      python3 -I "$H/bonuscheck.py" "$O/np" $t --result ok --gen "$W/R/pz1/gen" --range time > "$W/bonus_$t.txt" 2>&1; c2=$?
-      echo "  $t: $(echo "$r" | grep -E 'frames compared' | head -1); $(grep -E 'bonus check|the range:' "$W/bonus_$t.txt" | tr '\n' ' ')"
+      python3 -I "$H/bonuscheck.py" "$O/np" $t --result ok --gen "$W/R/pz1/gen" --range time --brief l2 > "$W/bonus_$t.txt" 2>&1; c2=$?
+      echo "  $t: $(echo "$r" | grep -E 'frames compared' | head -1); $(grep -E 'bonus check|the range:|^brief' "$W/bonus_$t.txt" | tr '\n' ' ')"
       [ $c1 -eq 0 ] && [ $c2 -eq 0 ]; verdict $?
     done
     t=solved_cand_ex
     r=$(python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec build/emu/pz_solve1_ram.jsonl "$O/np/${t}_pz.txt" 2>&1); c1=$?
-    python3 -I "$H/bonuscheck.py" "$O/np" $t --tag 4 --result ok --gen "$W/X/cand/gen" --range time > "$W/bonus_$t.txt" 2>&1; c2=$?
+    python3 -I "$H/bonuscheck.py" "$O/np" $t --tag 4 --result ok --gen "$W/X/cand/gen" --range time --brief l2 > "$W/bonus_$t.txt" 2>&1; c2=$?
     echo "  $t: $(echo "$r" | grep -E 'frames compared' | head -1); $(grep -E 'bonus check|the range:' "$W/bonus_$t.txt" | tr '\n' ' ')"
     [ $c1 -eq 0 ] && [ $c2 -eq 0 ]; verdict $?
     t=fire_ex
@@ -226,13 +223,13 @@ check)
     t=two_m2
     r1=$(python3 -I tools/puzlcmp.py build/emu/pz_fail_ram.jsonl "$O/np/${t}_pz1.txt" 2>&1); c1=$?
     r2=$(python3 -I tools/puzlcmp.py --skip score build/emu/pz_solve1_ram.jsonl "$O/np/${t}_pz2.txt" 2>&1); c2=$?
-    python3 -I "$H/bonuscheck.py" "$O/np" $t --result ok --gen "$W/R/pz1/gen" --range time > "$W/bonus_$t.txt" 2>&1; c3=$?
+    python3 -I "$H/bonuscheck.py" "$O/np" $t --result ok --gen "$W/R/pz1/gen" --range time --brief l2 --level2 > "$W/bonus_$t.txt" 2>&1; c3=$?
     echo "  $t: $(echo "$r1" | grep -E 'frames compared' | head -1); $(echo "$r2" | grep -E 'frames compared' | head -1); $(grep -E 'bonus check|the range:' "$W/bonus_$t.txt" | tr '\n' ' ')"
     [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ]; verdict $?
     t=two_title_ex
     r1=$(python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec build/emu/pz_fail_ram.jsonl "$O/np/${t}_pz1.txt" 2>&1); c1=$?
     r2=$(python3 -I tools/puzlcmp.py --skip joy,last_joy,timer_min,timer_sec,score build/emu/pz_solve1_ram.jsonl "$O/np/${t}_pz2.txt" 2>&1); c2=$?
-    python3 -I "$H/bonuscheck.py" "$O/np" $t --tag 4 --result ok --gen "$W/X/cand/gen" --range time > "$W/bonus_$t.txt" 2>&1; c3=$?
+    python3 -I "$H/bonuscheck.py" "$O/np" $t --tag 4 --result ok --gen "$W/X/cand/gen" --range time --brief l2 --level2 > "$W/bonus_$t.txt" 2>&1; c3=$?
     echo "  $t: $(echo "$r1" | grep -E 'frames compared' | head -1); $(echo "$r2" | grep -E 'frames compared' | head -1); $(grep -E 'bonus check|the range:' "$W/bonus_$t.txt" | tr '\n' ' ')"
     [ $c1 -eq 0 ] && [ $c2 -eq 0 ] && [ $c3 -eq 0 ]; verdict $?
     t=ftflow_fx
@@ -256,7 +253,7 @@ check)
     ;;
   range)
     [ -d "$O/rg" ] && ls "$O"/rg/*_rg.txt >/dev/null 2>&1 || { echo; echo "== range: no records in $O/rg"; bad=1; continue; }
-    step "the range: its screens (PZ_TEST=2 and the product's flow), the ratings, the new game"
+    step "the range: its screens (PZ_TEST=2 and the product's flow), the ratings, the new game (PZ_TEST=2) or level 2 with the rating (the product's flow)"
     n=0; nb=0
     for f in "$O"/rg/*_rg.txt; do
       t=$(basename "$f" _rg.txt)
@@ -270,7 +267,8 @@ check)
         *_time_*|*_time) ex="--time" ;;
         *) c=$(echo "$t" | sed -E 's/^[a-z0-9]+_c([0-9]+)_d([0-9]+)_m([0-9]+)_.*/\1,\2,\3/'); ex="--counts $c" ;;
       esac
-      python3 -I "$H/rgcheck.py" "$O/rg" "$t" $ex $tg > "$O/rg/${t}_check.txt" 2>&1; rc=$?
+      case $t in ar_*) l2=--level2 ;; *) l2=--new-game ;; esac
+      python3 -I "$H/rgcheck.py" "$O/rg" "$t" $ex $tg $l2 > "$O/rg/${t}_check.txt" 2>&1; rc=$?
       n=$((n + 1)); [ $rc -eq 0 ] || { nb=$((nb + 1)); echo "  $t: FAIL"; grep -E 'DIFFER|expected|not|no ' "$O/rg/${t}_check.txt" | head -5; }
     done
     echo "  $n record(s), $nb failing"
