@@ -392,8 +392,9 @@ scn_at:     equ 0xC684              ; 2: the timed RAM block's scn_inc (split.as
 sp8_tmo:    equ 0xC686              ; 2: the R800's wait for the split's match at most (split8.asm)
 key_tp:     equ 0xC688              ; the turbo R's PAUSE flip-flop as last seen (player.asm key_scan)
 sp8_cnt:    equ 0xC689              ; the R800 split's waits that timed out (split8.asm; tests: 0)
-pz_first:   equ 0xC6FF              ; PZ_TEST builds: 1 from the power-on until Brainstorm ran once
-                                    ;   (rc2.asm pz_test; C68Ah-C6FEh: the stage's own, docs/BRAINSTORM.md 3.2)
+pz_first:   equ 0xC6FF              ; PZ_TEST and LV_TEST builds: 1 from the power-on until their
+                                    ;   one shot ran (rc2.asm pz_test, lv_test; C68Ah-C6FEh: the
+                                    ;   stage's own, docs/BRAINSTORM.md 3.2)
 ; The level's (C68Ah-C6D4h: the stages' scratch while they run; lv_copy writes them again at each
 ; level's start, docs/LEVEL2.md 3.4)
 lv_pal:     equ 0xC68A              ; 32: the level's palette (logic.asm pal_fade, the flashes)

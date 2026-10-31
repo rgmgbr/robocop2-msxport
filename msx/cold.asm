@@ -2,6 +2,63 @@
 ; front end's bank (BANK_FRONT at 8000h through front_call) to leave room in 4000h-7FFFh. They
 ; call only fixed code and never map the 8000h window themselves.
 
+; The HUD at a level's start (rc2.asm lv_go): a new game's (hud_init) while AG $8050 is 0 (ng_init
+; cleared AG: level 1), else the next level's (hud_lvl).
+hud_start:
+        ld a,(AG + 0x8050)          ; (the word's low byte)
+        or a
+        jr z,hud_init
+; The HUD at the next level's start (hud_start) and after a continue (rc2.asm lv_cont): the level
+; start's panel without a new game's reset (docs/LEVEL2.md 3.7). The empty panel and its state again
+; (hud_init: what the stages, the text screens and PIC9 left there goes; weapon 0's icon and the
+; full can are the panel's), then, with the display off, what the game's values ask drawn at once by
+; the game's own HUD work (hud_keep: hud_frame, its jobs and digit cells): the timer, the ammo and
+; the score from AG, and the heads of the lives ($8034: slot k keeps head 0 while lives > k, else it
+; shows the lost life's last graphic, 5, as frame.asm left it); then the message queue and the
+; ticker cleared (no message from the levels before; the idle ticker moved its indices).
+hud_lvl:
+        call hud_init               ; (no request left: the level's set-up asked set_weapon's icon,
+        ld a,(g_tick)               ;  which is the panel's)
+        push af
+        xor a
+        ld (g_tick),a               ; (hud_energy: no step on a frame without a tick)
+        ld hl,(AG + 0x8034)
+        ld de,2
+        call hl_head                ; slot 1
+        ld de,1
+        call hl_head                ; slot 0
+        ld b,HL_CALLS
+hl_lp:  push bc
+        call hud_keep               ; (fixed code: the HUD's banks, then this bank again)
+        pop bc
+        djnz hl_lp
+        pop af
+        ld (g_tick),a
+        ld hl,msg_queue
+        ld b,8 + 4
+        xor a
+hl_q:   ld (hl),a
+        inc hl
+        djnz hl_q                   ; queue, indices, column, count (as hud_init)
+        ret
+HL_CALLS:   equ 2 * HUD_HEAD_LINES / HUD_JOB_LINES + 14 + 2  ; the two heads' jobs, the 14 digit
+                                    ; cells (one a call), two to spare
+; HL = lives, DE = the slot + 1: the lost life's head asked in that slot when HL < DE (signed).
+hl_head:
+        push hl
+        or a
+        sbc hl,de
+        pop hl
+        ret p
+        ld a,e
+        dec a
+        add a,JOB_HEAD0
+        ld c,5
+        push hl
+        call hud_request
+        pop hl
+        ret
+
 ; State of the static HUD (hud.asm) at a new game: timer 09:58, ammo 000, score 0000000, full can,
 ; two RoboCop heads, the icon of weapon 0, empty message line; then the panel as the game starts
 ; (vdp.asm hud_upload, the last thing done here: it maps the 8000h window and puts this bank back).

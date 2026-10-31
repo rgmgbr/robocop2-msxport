@@ -68,8 +68,8 @@ lv_gs:  call front_call
         if DEMO_ACTORS
         call spr_demo_init
         endif
-        ld hl,hud_init
-        call front_call             ; (cold.asm)
+        ld hl,hud_start
+        call front_call             ; (cold.asm: a new game's HUD, or the next level's)
         call logic_map
         if DEMO_HUD
         call demo_init
@@ -149,13 +149,24 @@ ml_ev:  ld a,(g_event)
         cp FE_RESTART
         jr z,ml_rst
         cp FE_OVER
-        ld hl,front_over            ; game over: PIC9
+        ld hl,front_over            ; game over: PIC9 ($82A8)
         jr z,ml_fe
-        ld hl,front_stats           ; the next level: its statistics ($85D8; a turbo R: the Z80
-        call front_call             ;  again, front.asm), then load_level1's bonus stage
-        ld hl,front_bonus           ;  (Brainstorm $8382, then the range $8420; level 2 later),
-ml_fe:  call front_call             ;  then (for now) the title and a new game
-        call title
+        ld hl,front_stats           ; the level done ($81B8: $8050 + 1 already): its statistics
+        call front_call             ;  ($85D8; a turbo R: the Z80 again, front.asm), then the
+        ld hl,front_bonus           ;  bonus stages and the next level's briefing (load_level1
+        call front_call             ;  $8588-$85A4, load_level2 $8524-$8548: front.asm)
+        ld a,(AG + 0x8050)          ; (the word's low byte: the mirror keeps words little-endian)
+        dec a
+        jr nz,ml_ttl                ; (after level 2: level 3 is not ported, the title and a new
+                                    ;  game: docs/LEVEL2.md default 5)
+; The next level (load_level1's tail $85B8-$85C4 and level_init $871A: AG $8050 its number, 1 for
+; level 2): the display and the VDP's interrupts off (as a new game), then its start (lv_go).
+lv_next:
+        call dsp_off
+        ld a,(AG + 0x8050)
+        jp lv_go
+ml_fe:  call front_call
+ml_ttl: call title
         jp new_game
 ml_rst: call level_restart
         xor a
@@ -166,8 +177,8 @@ ml_rst: call level_restart
 ; (Test build, tools/mkrom.py PZ_TEST=1 or 2) Once after the power-on, instead of level 1's main
 ; loop: the bonus stages as after level PZ_LEVEL ($8050; AG as ng_go cleared it: score 0, two
 ; lives, no continue) from the state front_stats leaves (a turbo R: the Z80 again), then the title
-; and a new game as after a level. PZ_TEST=1: Brainstorm, then the shooting range (front_bonus);
-; PZ_TEST=2: the range alone (front.asm front_rgtest).
+; and a new game as after a level. PZ_TEST=1: Brainstorm, the shooting range and the next level's
+; briefing (front_bonus); PZ_TEST=2: the range alone (front.asm front_rgtest).
 pz_test:
         xor a
         ld (pz_first),a
@@ -193,13 +204,8 @@ lv_test:
         ld (pz_first),a
         ld hl,front_l2test
         call front_call
+        jr lv_next
         endif
-; The next level (load_level1's tail $85B8-$85C4 and level_init $871A: AG $8050 its number, 1 for
-; level 2): the display and the VDP's interrupts off (as a new game), then its start (lv_go).
-lv_next:
-        call dsp_off
-        ld a,(AG + 0x8050)          ; (the word's low byte: the mirror keeps words little-endian)
-        jp lv_go
 
 ; The CIA-B interrupt ($1015E, an alarm of 15625 lines: once a second) unless paused: the timer's
 ; seconds - 1 (BCD), at the bottom its minutes - 1 and seconds 59; below 0:00 time out ($804C,

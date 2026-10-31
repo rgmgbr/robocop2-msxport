@@ -1860,3 +1860,107 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
    shows those differences in Brainstorm's family (expected, step 20's change; see the step-14 section for how
    they were judged).
 2. `$L2/base` holds 1.8 GB; `$L2/rebuild`'s and `$L2/h13`'s big record folders can go once read.
+
+## Step 18: the flow into and out of level 2 (2026-10-31)
+
+**Done; committed locally, not pushed (the user's order).** Branch `l2-s18` (worktree
+`scratchpad/l2/wt18`, from level2 244ccb8). Records in `$S18` =
+`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s18`:
+`B` (level2 head's records, below), `W` (this step's gate: `W/R`, `W/X`, `W/V`, `W/S`, `W/L`, `W/L2R` the
+level-2 builds, `W/O`, `W/fresh`, `W/l1`), `T` (the first runs), `variants`, the logs.
+
+### What was built
+- **`msx/rc2.asm`**: `ml_ev` as the plan's 3.7 (step 19 adds the continue): after `front_stats` and
+  `front_bonus`, AG `$8050` = 1 goes on into `lv_next` (moved right after it: `dsp_off`, `lv_go` with A =
+  `$8050`), anything else to the title and a new game (`ml_ttl`: after level 2, default 5). `lv_test`
+  jumps to `lv_next`. `lv_go` calls `hud_start` (FRONT) where it called `hud_init`.
+- **`msx/front.asm`**: `front_brief` (AG `$8050` 1: `fe_text(txt_l2_brief)`, 2: `txt_l3_brief`, else
+  nothing) at `front_bonus`' tail before `jp cpu_title`: silent, the HUD's messages ticking below, TEST n
+  at row 10, fire from tick 50 (all `fe_text`'s). `PZ_TEST=1` thus shows the briefing after the range, then
+  the title; `LV_TEST`'s `front_l2test` shows it too (default 9).
+- **`msx/cold.asm`**: `hud_start` (AG `$8050` 0: `hud_init`, a new game; else `hud_lvl`) and **`hud_lvl`**:
+  `hud_init`'s empty panel and state, then with the display off the game's own HUD work (`hud_keep`, 24
+  calls, `g_tick` 0 meanwhile) draws AG's timer, ammo and score and the heads (slot k keeps head 0 while
+  lives > k, else graphic 5, the lost life's last look: `hud_request`), then the message queue and ticker
+  cleared. The first picture of level 2 shows 07:30, the score, the lives, weapon 0's 000 and icon, the
+  full can (below).
+- **`msx/level2.asm`**: `l2_init`'s fresh path calls `set_weapon(0)` (`$8844`, level_init's: step 7's open
+  issue 2: a level 1 played with a weapon left it set). **Deviation (recorded)**: the plan put it in
+  `lv_next`; here it costs no byte of the fixed area (4 B of `BANK_L2`), runs for `LV_TEST` too (AG
+  already weapon 0 / ammo 0: `wpn_ammo[0]` = 0, the traces unchanged), and a death keeps
+  `level_restart`'s own call.
+- `msx/msx.inc`: `pz_first`'s comment (`LV_TEST` too; step 7's open issue 6). `build/msx/text.inc`
+  regenerated with the Makefile's `msxtext.py` line (step 17's labels; its first 16,117 bytes unchanged,
+  1,728 appended): **the integrated tree's build/msx needs the same** (any build of this commit does).
+- Harness (docs/HARNESS.md 5.9, 5.17 b and f, 5.22 "At step 18", the file table): `hz.tcl` (`hb_step`'s
+  briefing and level 2: `hb_brief_arm`, `hb_l2_go`, `hb_l2_snap`, `hb_l2_100`; `flow_l2_end`:
+  `hz_l2_flow_setup`), `hz.sh` (`l2builds` adds `R/flow`; `compare --fields` lists `flow_l2_end`),
+  `rgflow.tcl` (`rgx_l2`: the `ar_*` jobs into level 2; the keyboard flow to level 2), `np.tcl` (the title
+  job through level 2 and the second visits: `np_t_l2`, `np_t_end`, the snapshots; `np_wp_done`'s line),
+  `regress.sh` (the verdicts above), `bonuscheck.py` (`--brief`, `--level2`), `rgcheck.py` (`--level2`,
+  `--new-game`), `tools/msxframe.py` (a product snapshot without sprite records renders instead of
+  failing), `tests/test_bstest.py`, `tests/test_level2_rom.py` (the new job and wording).
+
+### Checks (exact commands, results)
+All from the worktree's root; `S18` as above; one openMSX (the in-process MCP).
+- **Level2 head's records** (`B`): `sh tools/bstest/regress.sh builds $S18/B` at 244ccb8 (before any
+  edit): every hash equal to step 20's C2 builds (prod 2cd25893b28f0a32, pzt ff490d845bf806c2, pz1
+  16f7a1307ca63cd8, pz2 514e5fb00c302af9, trace c7d7a04389d6f130, ext 3631e1af717b6739, fr2 cf6dac2f807aee71,
+  ... all 22); MCP `source {wt18/tools/bstest/load.tcl}; rgr_chain {$S18/B} all {$S18/B/all.done}`: 208 jobs,
+  0 time outs; made a base (fresh `new_*` -> `base_*`, `xnew_*` -> `xbase_*`; `check_all.sh $S18/B/O m2 tr fx
+  eu > $S18/B/check_all.log`: its one torn cell, solve2_m2's set-up, as at step 20).
+- Builds: `sh tools/bstest/l2base.sh builds $S18/W` (PASS: prod cd7ee1199de2b82b, pzt 278958fc28a5540b,
+  trace 7613737a7cca2c8d, ext 038237e7a47e3fe9), `sh tools/bstest/hz.sh l2builds $S18/W/L2R` (PASS, flow =
+  the trace build's bytes), 12 known z80asm warnings each, nothing else in the logs. `sh
+  tools/bstest/variants.sh $S18/variants`: 46 of 48 (DEMO_ACTORS 2/5: the fixed area -76h, -6Dh before: +9 B).
+- **Free bytes** (`python3 -I tools/bstest/l2base.py banks $S18/variants`, against level2 head): fixed area
+  product 298 -> **289**, PZ_TEST 270 -> 261, lowest DIAG+PZ_TEST 163 -> **154**, DEMO_HUD 76 -> 67; FRONT
+  product 1,897 -> **1,622** (text.inc's three scripts 181 B, `front_brief`, `hud_start`/`hud_lvl` 94 B), lowest
+  `l2_diag` 1,176; BANK_L2 1,445 -> 1,441; every other bank as before.
+- **The gate**: MCP `source {load.tcl}; source {l2base.tcl}; hz_chain [concat [rgr_jobs W all] [l2b_jobs W]
+  [hz_l2_jobs W/O/l2 W/L2R tr]] W/all.done` (248 jobs, 0 time outs). Then:
+  - `sh tools/bstest/regress.sh check $S18/W $S18/B` (**against level2 head's records**): **regress: PASS,
+    45 verdicts, 0 FAIL** (`$S18/regress_check_B.log`);
+  - `sh tools/bstest/l2base.sh check $S18/W ../base` (**main 9be19aa's base**): **l2base: PASS** (regress 45
+    PASS; level 1's die/over/end 901/1,249/517 rows 0 differ; the start check; the field check; the stills
+    identical; LOCKSTEP 0 differ; the effects by their starts);
+  - `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv $S18/W/O/l2 $S18/W/L2R`: **level 2:
+    PASS (21 traces)**, 0 differ in all 1,022 fields, lost 0; **`flow_l2_end` 259 rows, 0 differ**
+    (`rc2_l2_arm` after level 1 by `drive_end`, Brainstorm `pz_fail`, the range `fr_good`); `cont` 109
+    (step 19).
+- **4.2 check 11, the briefings** (bonuscheck in regress.sh): the level-2 briefing equal to
+  `msxtext.py`'s render in every flow (prod_m2/tr, pzt_m2/tr, p2m_ex, tx_ex/f1/tr, kb_ex/tr, solved_*,
+  two_*; with TEST 4 in `solved_cand_ex`, `two_title_ex`), the level-3 briefing in tx_ex2/f12/tr2; R#0 16h
+  R#1 62h; **394 and 412 ticks** without fire (the scripts' 393 and 411 calls and the call that reads the
+  end: the original's 394 VBLs, docs/LEVEL2.md 2.1); a HUD split at every VBLANK (e.g. 267/267, 289/289).
+- **4.2 check 13, the HUD at level 2's start**: `$PY -I tools/msxframe.py W/O/.../TAG_l2g0 build/msx/level2
+  build/msx/hud OUT.png --sprites build/msx/sprites --level 2 --field` on the first picture of the 11 flows
+  into level 2: **0 pixels differ** (play area and HUD) on the Expert, the HB-F1XDJ, the FS-A1GT, the 2 MiB
+  product, wp_tr, kb_tr, two_title_ex; kb_ex 25 (the timer had ticked once before the picture: the HUD's
+  one-cell-a-frame catch-up, below), two_m2 1,212 (all sprite pixels msxframe expects from the EXTJOY
+  records at frame 0, where the SAT is not published yet: the screen shows none). The notes: timer 0730,
+  score and lives as level 1 left them, `$805E` kept, weapon 0, ammo 0000, heads 0 0, icon 3, can 0100, no
+  HUD job.
+- **4.4's flows, on the Expert (MSX2), the HB-F1XDJ (MSX2+) and the FS-A1GT (turbo R)**: `tx_*`, the
+  product's whole flow from the power-on: level 1 (`drive_end`), the statistics, Brainstorm and the range
+  left to time out, the level-2 briefing, level 2 (the range's rating kept: POOR 24), its end at game frame
+  100 as F5 ends it, the statistics, **Brainstorm's second visit** (`stepcheck.py still --visit 2` on passes
+  100 and 400 of the three machines: 6 snapshots equal to the render), **the range's second visit**, the
+  level-3 briefing, **the title** (exact record against the base's title after Brainstorm: picture, palette,
+  registers that show identical, the music identical per tick) and **a new game** at its tick 300 (level
+  1: `lv_logic` BANK_L1, SHARP, lost 0).
+- Turbo R writes: `wp_tr` 0 writes from `front_bonus`' entry to level 2's game frame 100.
+- `make test`: 298 tests, the 4 known failures only.
+- Pictures looked at: the level-2 briefing (prod_m2), the level-3 briefing (tx_ex2), level 2's first picture
+  (prod_m2, two_m2: the brewery's start, 07:30, the score), Brainstorm's second visit (tx_ex2 p0400, tx_f12
+  p0100: visit 2's board 0), the range's second visit (tx_tr2 pass 1500: its visit-2 colours).
+
+### Open issues
+1. The timer's first second at a level start can be short (`sec_tick` adds the VBLANKs since the last
+   main-loop frame, `wf_n`, which spans the set-up): level 1's start does the same; the original re-arms its
+   CIA-B timer at each start (`setup_ciab_timer`). With the HUD's one cell a frame, a picture can show the
+   timer half updated (07:20 between 07:30 and 07:29), as at every ten seconds in play. Not changed here.
+2. The flows' text records count VBLANKs and splits from the record (fs_n 170) to the screen's end, not
+   from its first tick.
+3. For integration: `build/msx/text.inc` of every tree that builds this code must be regenerated (the
+   Makefile's `msxtext.py` line) or the build fails on `txt_l2_brief`.

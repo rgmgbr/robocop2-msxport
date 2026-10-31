@@ -232,9 +232,14 @@ class HarnessTableTests(unittest.TestCase):
         sh = (ROOT / "tools" / "bstest" / "hz.sh").read_text()
         jobs = re.search(r'JOBS="([^"]+)"', sh)[1].split()
         refs = {"l2s": "l2_trolley_sharp", "l2f": "l2_trolley_fair", "l2p": "l2_trolley_poor"}
-        from_tcl = sorted(f"{n}:{b}:{refs.get(b, d)}:{rows}" for n, b, d, rows, _m in spec)
+        from_tcl = [f"{n}:{b}:{refs.get(b, d)}:{rows}" for n, b, d, rows, _m in spec]
+        # (level 2's step 18: the product's way into level 2 on the flow build, its own set-up)
+        flow = re.search(r'\[list l2_(flow_\w+) [\w-]+ \[list hz_l2_flow_setup "\$R/(\w+)/rc2_\w+\.rom".*?\.txt" (\d+) ',
+                         body, re.S)
+        self.assertIsNotNone(flow)
+        from_tcl.append(f"{flow[1]}:{flow[2]}:l2_{flow[1]}:{flow[3]}")
         self.assertEqual(len(spec), 20)
-        self.assertEqual(from_tcl, sorted(jobs))
+        self.assertEqual(sorted(from_tcl), sorted(jobs))
 
     def test_the_jobs_rows_are_the_references(self):
         import l2drives

@@ -226,7 +226,58 @@ proc hz_l2_jobs {dir R {tr ""} {only ""}} {
 		lappend jobs [list l2_$name $m [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" \
 			"$dir/l2_$name.txt" $n "$e/$drive.drive"] $done $tmo]
 	}
+	# (the product's way into level 2, level 2's step 18: the flow build, R/flow, from the power-on)
+	if {($only eq "" || [lsearch -exact $only flow_l2_end] >= 0) && [file exists "$R/flow/rc2_flow.rom"]} {
+		lappend jobs [list l2_flow_l2_end C-BIOS_MSX2 [list hz_l2_flow_setup "$R/flow/rc2_flow.rom" \
+			"$R/flow/rc2_flow.labels" "$dir/l2_flow_l2_end.txt" 259 "$e/l2_end.drive"] \
+			"\$::hz_l2f_st == 3 && \$::rc2_trace_done && \[hz_l2_lost {$lost}\]" 900]
+	}
 	return $jobs
+}
+
+# The bench's flow reference (tools/l2drives.py flow_l2_end: level 1 by build/emu/drive_end.txt,
+# Brainstorm by pz_fail.drive, the range by fr_good.drive, then level 2 by l2_end.drive) on the flow
+# build (hz.sh l2builds: R/flow, EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 without LV_TEST, the product's way
+# into level 2): level 1 by rc2_drive_rom (its first 200 rows; the level ends on its own), Brainstorm
+# by rc2_pz_arm, the range by rc2_fr_arm (DIR's OUT with _l1, _pz, _fr), the statistics, the stages'
+# screens and the level-2 briefing run their whole length (ext_joy cleared), then rc2_l2_arm from
+# level 2's first tick: OUT, N rows (hz.sh compare --fields ... flow_l2_end), with the lost counters
+# at every tick as hz_l2_drive's.
+proc hz_l2_flow_setup {rom labels out n drive} {
+	set ::hz_l2f_labels $labels
+	set ::hz_l2f_out $out
+	set ::hz_l2f_n $n
+	set ::hz_l2f_drive $drive
+	set ::hz_l2f_st 0
+	set ::hz_l2_lv {}
+	set base [file rootname $out]
+	rc2_drive_rom $rom $labels "${base}_l1.txt" 200 0 "$::hz_root/build/emu/drive_end.txt"
+	lappend ::hz_afters [after realtime 0.5 hz_l2f_poll]
+}
+
+proc hz_l2f_poll {} {
+	if {$::rc2_trace_done} {
+		set base [file rootname $::hz_l2f_out]
+		switch -- $::hz_l2f_st {
+			0 {
+				rc2_pz_arm $::hz_l2f_labels "${base}_pz.txt" 3000 0 "$::hz_root/build/emu/pz_fail.drive"
+				set ::hz_l2f_st 1
+			}
+			1 {
+				rc2_fr_arm $::hz_l2f_labels "${base}_fr.txt" 3000 0 "$::hz_root/build/emu/fr_good.drive"
+				set ::hz_l2f_st 2
+			}
+			2 {
+				rc2_l2_arm $::hz_l2f_labels $::hz_l2f_out $::hz_l2f_n $::hz_l2f_drive
+				set ts [rc2_label $::hz_l2f_labels tick_start]
+				set gt [rc2_label $::hz_l2f_labels game_tick]
+				debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \$::rl2_tick0 >= 0" hz_l2_lv_hit
+				set ::hz_l2f_st 3
+				return
+			}
+		}
+	}
+	lappend ::hz_afters [after realtime 0.5 hz_l2f_poll]
 }
 
 # Level 2's objects against the bench (the plan's 4.2 check 3, step 12): rc2_objs_rom (each new
@@ -625,6 +676,122 @@ proc hb_init_range {labels} {
 	set ::hb_labels $labels
 	set ::hb_range 1
 	set ::rgh_on 0
+	set ::hb_l2 0
+	set ::hb_l2next ""
+	set ::hb_tjob 0
+}
+
+# ----- the next level's briefing and level 2's start (level 2's step 18: front.asm front_brief at
+# front_bonus' end, then rc2.asm lv_next after level 1, or the title and a new game after a PZ_TEST
+# stage or after level 2)
+#
+# hb_brief_arm NEXT (hb_step, after the stage's or the range's last record, in a build with the
+# briefings): state 8 waits for the briefing's text (fs_n 170: both titles and their lines typed),
+# records it at the next iv_late as TAG_brief (hb_snap's files) with the notes' "brief l2|l3 at"
+# line, counts the VBLANKs and HUD splits from there to its fe_end ("brief ... end at": fs_n there,
+# the screen's length in ticks, 393 or 411 without fire, and fs_done), then goes to state NEXT (the
+# title, or the new game in a script build). A breakpoint at lv_next (its first instruction: call
+# dsp_off) sets ::hb_l2 and arms level 2's records: states 2 and 4 then go to state 9, where
+# TAG_l2g0 (rc2_snap at the HUD split of level 2's first list with the display on: tools/msxframe.py)
+# and, at its game frame 100, the "level 2 at tick_n" line with the game's state and the lost counters
+# end the job, or run ::hb_l2next (a job's next steps) instead.
+proc hb_brief_arm {next} {
+	foreach n {txt_l2_brief txt_l3_brief txt_cont iv_late} { set ::hb_$n [rc2_label $::hb_labels $n] }
+	set ::hb_bnext $next
+	set ::hb_l2 0
+	set ln [rc2_label $::hb_labels lv_next]
+	set ds [rc2_label $::hb_labels dsp_off]
+	set ::hb_l2bp [debug set_bp $ln "\[peek $ln\] == 0xCD && \[rc2_w [expr {$ln + 1}]\] == $ds" hb_l2_go]
+	set fe [rc2_label $::hb_labels fe_end]
+	set ::hb_febp [debug set_bp $fe "\[peek 0xC07C\] == [rc2_label $::hb_labels BANK_FRONT]" hb_fe_end]
+	set ::hb_st 8
+}
+
+# 1 when the build has the briefings (level 2's step 18)
+proc hb_has_brief {} {
+	return [expr {![catch {rc2_label $::hb_labels txt_l2_brief}]}]
+}
+
+# the briefing fe_text shows: l2, l3 or "-"
+proc hb_brief {} {
+	set p [rc2_w 0xCFB8]
+	if {$p >= $::hb_txt_l2_brief && $p < $::hb_txt_l3_brief} { return l2 }
+	if {$p >= $::hb_txt_l3_brief && $p < $::hb_txt_cont} { return l3 }
+	return "-"
+}
+
+proc hb_rating {} {
+	return [expr {([rc2_w [rc2_label $::hb_labels ac_diff]] - [rc2_label $::hb_labels diff_tab]) & 0xFFFF}]
+}
+
+proc hb_brief_rec {} {
+	catch {debug remove_bp $::hb_ilbp}
+	hb_snap brief
+	hb_note "brief $::hb_bname at [machine_info time] s, fs_n [rc2_w 0xCFBE], R#0 [format %02X [debug read {VDP regs} 0]] R#1 [format %02X [debug read {VDP regs} 1]], AG 8050h [rc2_w 0xDC50], 8034h [rc2_w 0xDC34], 805Eh [rc2_w 0xDC5E], ac_diff - diff_tab [hb_rating]"
+	set ::hb_bnsplit 0
+	set ::hb_bnvbl 0
+	set ::hb_bsbp [debug set_bp $::hb_isr_split {} {incr ::hb_bnsplit}]
+	set ::hb_bvbp [debug set_bp $::hb_isr_vblank {} {incr ::hb_bnvbl}]
+	set ::hb_st 81
+}
+
+# fe_text's end (any text screen: only the briefing's after its record counts)
+proc hb_fe_end {} {
+	if {$::hb_st != 81} return
+	foreach v {::hb_febp ::hb_bsbp ::hb_bvbp} { catch {debug remove_bp [set $v]} }
+	hb_note "brief $::hb_bname end at [machine_info time] s: fs_n [rc2_w 0xCFBE], fs_done [peek 0xCFC0]; from the record: $::hb_bnvbl VBLANKs, $::hb_bnsplit HUD splits"
+	set ::hb_tn [rc2_w 0xCEE0]
+	set ::hb_st $::hb_bnext
+}
+
+proc hb_l2_go {} {
+	catch {debug remove_bp $::hb_l2bp}
+	set ::hb_l2 1
+	hb_note "lv_next at [machine_info time] s, tick_n [rc2_w 0xCEE0], AG 8050h [rc2_w 0xDC50]"
+	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
+	set ::hb_l2seq -1
+	set ::hb_l2sbp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hb_l2_snap]
+	set ts [rc2_label $::hb_labels tick_start]
+	set gt [rc2_label $::hb_labels game_tick]
+	set ::hb_l2tbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $::hb_l2bank && \[rc2_w 0xD000\] >= 100" hb_l2_100]
+}
+
+# the game's state for the notes: RoboCop's place, the camera's, the timer, the score, the lives, the
+# credits, the weapon and its ammo, the rating, the HUD's shown digits, heads and icon
+proc hb_l2_state {} {
+	binary scan [debug read_block memory 0xC608 14] H* shown
+	return "RoboCop [rc2_w 0xDAD0] [rc2_w 0xDAD4], camera [rc2_w 0xD004] [rc2_w 0xD006], timer [format %04X [rc2_w 0xDC4A]], score [format %04X%04X [rc2_w 0xDC46] [rc2_w 0xDC48]], lives [rc2_w 0xDC34], 805Eh [rc2_w 0xDC5E], weapon [rc2_w 0xDC5C], ammo [format %04X [rc2_w 0xDC30]], ac_diff - diff_tab [hb_rating], HUD shown $shown heads [peek 0xC63B] [peek 0xC63C] icon [peek 0xC63D] can [format %04X [rc2_w 0xC618]] jobs [peek 0xC646]/[peek 0xC63E]"
+}
+
+# (a split with the display on and a new list, lv_cur's logic bank level 2's: its first picture)
+proc hb_l2_snap {} {
+	if {[peek 0xC002] == 0 || ([debug read "VDP regs" 1] & 0x40) == 0} return
+	set seq [peek 0xC006]
+	if {$seq == $::hb_l2seq} return
+	set ::hb_l2seq $seq
+	if {[peek 0xF1A0] != $::hb_l2bank} return
+	catch {debug probe remove_bp $::hb_l2sbp}
+	rc2_snap "$::hb_dir/${::hb_tag}_l2g0"
+	hb_note "level 2's first picture at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], [hb_l2_state]"
+}
+
+proc hb_l2_100 {} {
+	catch {debug remove_bp $::hb_l2tbp}
+	catch {debug probe remove_bp $::hb_l2sbp}
+	set lost "lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C]"
+	hb_note "level 2 at tick_n [rc2_w 0xCEE0], game frame [rc2_w 0xD000], [machine_info time] s: [hb_l2_state]; $lost"
+	if {[info exists ::rgx_hb] && $::rgx_hb && [info exists ::rgx_tag] && $::rgx_tag eq $::hb_tag} {
+		rgx_note "level 2 at tick_n [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [hb_rating]; $lost"
+	}
+	set ::hb_st 5
+	if {$::hb_l2next ne ""} {
+		set n $::hb_l2next
+		set ::hb_l2next ""
+		uplevel #0 $n
+		return
+	}
+	set ::hz_done 1
+	set ::pause on
 }
 
 proc hb_note {m} {
@@ -690,7 +857,9 @@ proc hb_step {} {
 				hb_note "between the records: $::hb_nvbl VBLANKs, $::hb_nsplit HUD splits"
 				set ::hb_tn [rc2_w 0xCEE0]
 				set ::hb_st [expr {$::hb_INPUT_SCRIPT ? 4 : 2}]
-				# (the shooting range comes next: its screens recorded, then on as before)
+				# (the shooting range comes next: its screens recorded, then on as before, the next
+				#  level's briefing first: state 7; a job that drives the range itself follows it
+				#  on its own, rgflow.tcl rgx_arm_setup, rgk_setup)
 				if {[rgh_arm]} { set ::hb_st 7 }
 			}
 		}
@@ -698,10 +867,24 @@ proc hb_step {} {
 			if {$::rgx_st == 2} {
 				set ::hb_tn [rc2_w 0xCEE0]
 				set ::hb_st $::rgh_next
+				# (a job that records the title itself, np.tcl np_title_setup: state 99 after the
+				#  briefing, so that the title is its own)
+				if {[hb_has_brief]} { hb_brief_arm [expr {$::hb_tjob ? 99 : $::rgh_next}] }
+			}
+		}
+		8 {
+			set b [hb_brief]
+			if {$b ne "-" && [rc2_w 0xCFBE] >= 170} {
+				# (recorded at the next iv_late, as rgflow.tcl rgx_late: R#0 and R#1 the list's)
+				set ::hb_bname $b
+				set ::hb_st 80
+				set ::hb_ilbp [debug set_bp $::hb_iv_late {} hb_brief_rec]
 			}
 		}
 		2 {
-			if {[peek 0xEC44] == 1} {
+			if {[info exists ::hb_l2] && $::hb_l2} {
+				set ::hb_st 9
+			} elseif {[peek 0xEC44] == 1} {
 				hb_note "title at [machine_info time] s"
 				set ::hb_st 3
 				lappend ::hz_afters [after time 1.5 hb_step]
@@ -717,7 +900,9 @@ proc hb_step {} {
 			set ::hb_st 4
 		}
 		4 {
-			if {[peek 0xEC44] == 0 && [rc2_w 0xCEE0] >= $::hb_tn + 100} {
+			if {[info exists ::hb_l2] && $::hb_l2} {
+				set ::hb_st 9
+			} elseif {[peek 0xEC44] == 0 && [rc2_w 0xCEE0] >= $::hb_tn + 100} {
 				hb_file game_vram.bin [debug read_block "physical VRAM" 0 0x20000]
 				hb_note "game tick_n [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34]"
 				if {[info exists ::rgh_on] && $::rgh_on} { rgh_game }

@@ -1412,7 +1412,8 @@ class TclTests(unittest.TestCase):
             self.assertEqual(out["wp0"], "0 1")
             self.assertTrue(out["wp"].startswith("1 done | wp (WP): done in ") and out["wp"].endswith("| 0"), out["wp"])
             wp = (np_dir / "wp_wp.txt").read_text().splitlines()
-            self.assertEqual(wp[0], "# wp: x.rom on WP: writes to 4000h-7FFFh from front_bonus' entry to the new game's tick 100")
+            self.assertEqual(wp[0], "# wp: x.rom on WP: writes to 4000h-7FFFh from front_bonus' entry to level 2's game "
+                                    "frame 100 (the new game's tick 100 in a flow without level 2)")
             self.assertRegex(wp[1], r"^watch from [\d.]+ s \(front_bonus\) to [\d.]+ s \(the new game's tick 100, g_frame 0, "
                                     r"cpu_tr 0\): 1 writes \{4100<-12 pc 1234 at [\d.]+ s\}$")
             # g: the speed jobs

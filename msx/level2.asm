@@ -112,6 +112,8 @@ l2_init:
         xor a
         call fill
         call l2i_sp0
+        xor a                       ; weapon 0 ($8844: level_init's, after the levels before;
+        call set_weapon             ;  a death's restart has rc2.asm level_restart's own)
 l2i_hdr:
         ld hl,(l2_hdr + 2)          ; (header +0: the object list, $9C18)
         ld (ac_objlA),hl

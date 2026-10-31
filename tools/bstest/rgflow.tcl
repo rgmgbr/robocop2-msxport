@@ -12,7 +12,8 @@
 #   rgx_arm_job NAME MACHINE DIR ROM LABELS DRIVE
 #       an EXTJOY=1 build (the product's flow): level 1 ended by build/emu/drive_end.txt, Brainstorm
 #       by build/emu/pz_fail.drive (hz6.tcl hz6_arm_setup: its screens' records), then the range as
-#       above.
+#       above; since level 2's step 18 the level-2 briefing and level 2 follow (rgx_l2: lv_next, then
+#       level 2's game frame 100 with the range's rating) instead of a new game.
 #   rgx_tarm_job NAME MACHINE DIR ROM LABELS DRIVE
 #       docs/RANGE.md 4.1 "after a played level 1 and Brainstorm": an EXTJOY=1 build, level 1 by
 #       rc2_drive_rom with drive_end (200 rows, DIR/NAME_l1.txt), Brainstorm by rc2_pz_arm with
@@ -29,7 +30,9 @@
 #       of its screens), the range played from the keyboard with fr_FDRIVE's moves (default armed: 25
 #       shots; rc2_fr_arm's trace DIR/NAME_fr.txt, the screens' records below), its result, the title
 #       (np.tcl np_hf_step's exact record: DIR/NAME_title_*, _music2.txt, _game2_*: titlecmp.py and
-#       titlecmp2.py against the base's title) and the game the title starts at its tick 300.
+#       titlecmp2.py against the base's title) and the game the title starts at its tick 300. Since
+#       level 2's step 18: the level-2 briefing and level 2's game frame 100 instead of the title
+#       (hz.tcl hb_brief_arm, hb_l2_100; the title after the range comes only in a PZ_TEST build).
 #
 # The range inside Brainstorm's flows (hz.tcl hb_step, np.tcl, hz6.tcl, c8.tcl, run8f.tcl): rgh_arm.
 # After Brainstorm's result, a build with the range records the range's screens into the flow's own
@@ -70,6 +73,7 @@ proc rgx_init {dir tag labels drive l1} {
 	}
 	set ::rgx_st 0
 	set ::rgx_dn 0
+	set ::rgx_l2n 0
 	set ::rgx_bps {}
 	set ::hz_done 0
 	set f [open "$dir/${tag}_rg.txt" w]
@@ -239,7 +243,25 @@ proc rgx_res_rec {} {
 	}
 	set a $::rgx_new_game
 	set ::rgx_ngbp [debug set_bp $a "\[peek $a\] == [peek $a]" rgx_ng]
+	# (the product's flow, level 2's step 18: the level-2 briefing, then lv_next instead of a new game)
+	if {![catch {rc2_label $::rgx_labels lv_next} ln]} {
+		set ds [rc2_label $::rgx_labels dsp_off]
+		set ::rgx_l2bp [debug set_bp $ln "\[peek $ln\] == 0xCD && \[rc2_w [expr {$ln + 1}]\] == $ds" rgx_l2]
+	}
 	set ::rgx_st 2
+}
+
+# the next level after the range (the product's flow): ac_diff noted (the range's rating, kept), then
+# level 2's game frame 100 (rgx_g100_hit, lv_cur's logic bank level 2's), the lost counters
+proc rgx_l2 {} {
+	catch {debug remove_bp $::rgx_l2bp}
+	catch {debug remove_bp $::rgx_ngbp}
+	rgx_note "level 2 at lv_next at [machine_info time] s, tick_n [rc2_w 0xCEE0], AG 8050h [rc2_w 0xDC50], ac_diff - diff_tab [rgx_rating]"
+	set ::rgx_l2n 1
+	set a $::rgx_tick_start
+	set t $::rgx_game_tick
+	set b [rc2_label $::rgx_labels BANK_L2]
+	set ::rgx_g100 [debug set_bp $a "\[peek $a\] == 0xCD && \[rc2_w [expr {$a + 1}]\] == $t && \[peek 0xF1A0\] == $b && \[rc2_w 0xD000\] >= 100" rgx_g100_hit]
 }
 
 # rc2_fr_arm's end: fr_rated paused the emulation (the rating noted in the trace's file): noted
@@ -257,6 +279,7 @@ proc rgx_rt {} {
 # the new game (EXTJOY builds: no title): its game frame 100, or level 1's trace
 proc rgx_ng {} {
 	catch {debug remove_bp $::rgx_ngbp}
+	if {[info exists ::rgx_l2bp]} { catch {debug remove_bp $::rgx_l2bp} }
 	set k [rc2_w 0xCEE0]
 	rgx_note "new game at [machine_info time] s, tick_n $k, ac_diff - diff_tab [rgx_rating]"
 	if {$::rgx_l1 ne ""} {
@@ -274,7 +297,8 @@ proc rgx_ng {} {
 proc rgx_g100_hit {} {
 	catch {debug remove_bp $::rgx_g100}
 	rgx_file game_vram.bin [debug read_block "physical VRAM" 0 0x20000]
-	rgx_note "game tick_n [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [rgx_rating]; [rgx_lost]"
+	set what [expr {$::rgx_l2n ? "level 2 at tick_n" : "game tick_n"}]
+	rgx_note "$what [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [rgx_rating]; [rgx_lost]"
 	set ::rgx_st 3
 	set ::hz_done 1
 	set ::pause on
@@ -526,6 +550,9 @@ proc rgk_tp {} {
 		6 {
 			if {$::rgx_st == 2} {
 				rgk_keys_disarm
+				# (the next level's briefing and level 2, level 2's step 18: hb_step records them,
+				#  and level 2's game frame 100 ends the job; the title only after a PZ_TEST stage)
+				if {[hb_has_brief]} { hb_brief_arm 99 }
 				set ::rgk_st 7
 				lappend ::hz_afters [after time 0.05 rgk_step]
 				return
@@ -541,6 +568,8 @@ proc rgk_done {} {
 	if {!$::hz_done} { return 0 }
 	if {!$::rgk_end} {
 		set ::rgk_end 1
+		# (level 2's line is hb_l2_100's)
+		if {$::hb_l2} { return 1 }
 		rgx_note "game tick_n [rc2_w 0xCEE0] at [machine_info time] s (the title's game at its tick 300), g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [rgx_rating]; [rgx_lost]"
 	}
 	return 1

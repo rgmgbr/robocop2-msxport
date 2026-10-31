@@ -66,7 +66,7 @@ The harness has two sides:
 | `run8f.tcl` | Tcl | `c8f_chain`: `c8_chain`'s jobs and the solved ending from the keyboard (5.17 h) |
 | `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` (`solve2` and `fuzz2` with `--visit 2`) |
 | `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5); `--visit 2`: visit 2's (Ellen's pictures and cursor colours; a snapshot's AG `$8050` must be 2 or more) |
-| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game` |
+| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game`; `--brief l2\|l3`: the next level's briefing after the range, `--level2`: level 2 after it instead of a new game (level 2's step 18, 5.22) |
 | `restorecheck.py DIR AFTER FRESH [--known]` | python | what the stage leaves: page 2, the atlas, the SATs; the next game against a fresh start (5.10) |
 | `hudcheck.py NEW_DIR REF_DIR` | python | the HUD during the stage against a reference build's at the same passes (5.6) |
 | `shots.py OUT SNAP...` | python | whole-screen PNGs of snapshots (play area, blank lines, HUD; 2x) |
@@ -85,7 +85,7 @@ The harness has two sides:
 | `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 208 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
 | `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
-| `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game (5.19); `bonuscheck.py --range` calls it |
+| `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game] [--level2 \| --new-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game, or (the product's flow since level 2's step 18) level 2 with the range's rating kept (5.19, 5.22); `bonuscheck.py --range` calls it |
 | `cmpcheck.py BASE.log NEW.log [OUT]` | python | two `check_all.sh` logs job by job; a torn cell accepted only under a black palette (5.19) |
 | `frsnd/frregcmp.py ROOT LOG...` | python (venv) | FRM's registers per tick in an `frsound.tcl` log against `frm.bin`'s streams decoded apart; `--selftest` (5.19) |
 | `frsnd/frsim.py ROOT ROM LABELS` | python (venv) | the range's sound on a ROM image in a Z80 interpreter (`frsnd/z80.py`, `frsnd/pzsim.py`: Brainstorm's), offline (5.19) |
@@ -461,7 +461,8 @@ msx_local_cmd: hz_chain [suite_flows {W/R} {W/O} {W/fresh} suite]      (13 jobs;
 - the title record into `W/fresh` as `suite` (5.3);
 - `prod_m2` and `prod_tr` (`hz6_prod_setup`): the product from power-on, the title, fire, level 1
   ended by `drive_end`'s teleport and poke, the statistics, the intro, the stage left alone to
-  its real time-out, OUT OF TIME., the title, fire and a new game;
+  its real time-out, OUT OF TIME., the range (its real 2:00), the level-2 briefing and level 2 to
+  its game frame 100 (level 2's step 18: before it, the title, fire and a new game);
 - `pzt_m2` and `pzt_tr` (`hz_bonus_setup`): the `PZ_TEST=1` build from power-on;
 - the restore jobs (5.10);
 - the turbo R's blank (5.12).
@@ -471,10 +472,10 @@ The checks:
 ```sh
 sh tools/bstest/hz.sh compare W/O/trace W/R/trace/rc2_ext5.labels
 sh tools/bstest/hz.sh fresh W/fresh base suite
-python3 -I tools/bstest/bonuscheck.py W/O/flow prod_m2 --result time --gen W/R/prod/gen
-python3 -I tools/bstest/bonuscheck.py W/O/flow prod_tr --result time --gen W/R/prod/gen
-python3 -I tools/bstest/bonuscheck.py W/O/flow pzt_m2 --result time --gen W/R/pzt/gen
-python3 -I tools/bstest/bonuscheck.py W/O/flow pzt_tr --result time --gen W/R/pzt/gen
+python3 -I tools/bstest/bonuscheck.py W/O/flow prod_m2 --result time --gen W/R/prod/gen --range time --brief l2 --level2
+python3 -I tools/bstest/bonuscheck.py W/O/flow prod_tr --result time --gen W/R/prod/gen --range time --brief l2 --level2
+python3 -I tools/bstest/bonuscheck.py W/O/flow pzt_m2 --result time --gen W/R/pzt/gen --range time --brief l2
+python3 -I tools/bstest/bonuscheck.py W/O/flow pzt_tr --result time --gen W/R/pzt/gen --range time --brief l2
 ```
 
 `bonuscheck.py` checks:
@@ -752,7 +753,14 @@ form that compares two runs whose titles start at different emulated times (EXAC
 
 `np_title_setup` runs the product's flow (`hz6_prod_setup`: the title, fire, level 1 ended by
 `drive_end`, the statistics, Brainstorm left to its time out, OUT OF TIME.) and records the title
-that follows the result. `np_title0_setup` records the title that follows level 1's statistics in
+that follows the result. Since level 2's step 18 the product goes on from the range into the
+level-2 briefing and level 2, and the title follows level 2's stages instead: the job records the
+briefing and level 2's start under TAG (`hb_step`, 5.22), ends level 2 at its game frame 100 as a
+`CHEAT` build's F5 would (`np_t_l2`: `$16D0` FFh, `$16C4` 40h), records the second visits' screens
+and the level-3 briefing under TAG2 (`bonuscheck.py W/O/np TAG2 --result time --range time --brief
+l3 --no-game`; Brainstorm's passes 100 and 400 and the range's pass 1500 in `W/O/np/st_TAG2/`:
+`stepcheck.py still --visit 2`, `shots.py`), and the title after the level-3 briefing as above
+(TAG's files); its game at tick 300 is level 1 again (SHARP, `lv_logic` `BANK_L1` in TAG2_rg.txt). `np_title0_setup` records the title that follows level 1's statistics in
 a build without Brainstorm: the approved flow. The night's reference was the product of the
 commit before Brainstorm (the night's step 0: `msx/` as at `90ca7b3`). A later milestone, whose
 base has Brainstorm, records its base build with `np_title_setup` instead.
@@ -887,7 +895,7 @@ fields, 0 differ, result 0; "bonus check: PASS".
 On a turbo R the fixed area runs from a RAM copy in page 1, and nothing may write 4000h-7FFFh
 after the copy (`docs/TURBO_R.md` 6). `np_wp_job` runs the product's flow with a write watchpoint
 on 4000h-7FFFh from `front_bonus`' entry (its breakpoint needs `act_8000` = 7) to the new game's
-tick 100.
+tick 100 (since level 2's step 18: to level 2's game frame 100, the plan's 4.4).
 
 ```
 msx_local_cmd: hz_chain [list [np_wp_job wp_tr Panasonic_FS-A1GT {W/O/np} {W/R/prod/rc2.rom} {W/R/prod/rc2.labels}]]
@@ -1715,6 +1723,42 @@ RoboCop beside a level-1 walker drawn as legs and torso (types 3, 4, 15: 3 + 3 o
 parts meet, no silhouette among them); step 12's build on the same route 827 (MSX2): not the play
 field's, left to milestone 2. Note: `hz_l2_start_jobs` with a time past the drive's end pauses at the
 drive's end (`rc2_drive_rom`): the guard's `after time` waits for `set ::pause off`.
+
+At step 18 (2026-10-31, the flow into and out of level 2), **the product goes on from the range into
+the level-2 briefing and level 2** (`front.asm` `front_brief` at `front_bonus`' end, `rc2.asm` `ml_ev`,
+`lv_next`), and after level 2's stages into the level-3 briefing and the title (default 5); `PZ_TEST=1`
+shows the briefing after the range, then the title. The flows learnt it:
+
+- **`hz.tcl` `hb_step`** (every Brainstorm flow): after the range's records, `hb_brief_arm` (state 8)
+  records the briefing at the next `iv_late` once `fs_n` reaches 170 (`TAG_brief.sc5` and hb_snap's other
+  files; notes "brief l2|l3 at"), counts the VBLANKs and HUD splits to its `fe_end` ("brief ... end at":
+  `fs_n` there, the screen's length in ticks, 394 and 412 without fire: the scripts' 393 and 411 calls
+  and the call that reads the end, the original's VBLs; `fs_done`), then goes on to the title or the new
+  game as before (states 2, 4), unless `lv_next` came (`hb_l2_go`): then `TAG_l2g0` (`rc2_snap` at the
+  HUD split of level 2's first list with the display on: `tools/msxframe.py ... --sprites
+  build/msx/sprites --level 2 --field`, which renders a product snapshot without its sprite records
+  now) and, at level 2's game frame 100, "level 2 at tick_n" (the game's state, the HUD's shown digits,
+  heads, icon and can, the lost counters) end the job, or run `::hb_l2next` (a job's next steps).
+- **`bonuscheck.py --brief l2|l3`** (the record against `msxtext.py`'s render with TEST N, R#0 16h
+  R#1 62h, the length, the split at every VBLANK) and **`--level2`** (level 2 instead of a new game, its
+  first picture recorded, its lost counters 0; with `--range` the range's rating kept: `rgcheck.py`
+  `level2=True`). `rgcheck.py` takes the notes' "level 2 at tick_n" line (`--level2`, `--new-game`, or
+  as the notes say).
+- **`regress.sh check`**: `prod_m2`, `prod_tr`, `p2m_ex`, `two_m2`, `two_title_ex` (the second stage is
+  the product's) with `--brief l2 --level2`; `pzt_*`, `solved_*` with `--brief l2`; the `ar_*` range
+  records (`rgflow.tcl` `rgx_l2`: `lv_next` instead of `new_game`, level 2's frame 100) with
+  `rgcheck.py --level2`, the PZ_TEST=2 ones with `--new-game`; `wp_tr` to level 2's game frame 100;
+  `kb_*` (the keyboard product) through the briefing to level 2 (the title after the range no longer
+  comes: the `tx_*` jobs compare the title); **`tx_ex`, `tx_f1`, `tx_tr` run the product's whole flow**
+  (`np_title_setup`, 5.17 b): level 1, both stages, the level-2 briefing, level 2 to its game frame 100,
+  where `np_t_l2` ends the level as F5 would, the statistics, both stages' second visits (Brainstorm's
+  passes 100 and 400, the range's pass 1500 in `W/O/np/st_tx_M2/`), the level-3 briefing, then the title
+  (exact, against the base's title after Brainstorm) and its game at tick 300 (level 1, SHARP).
+- **`flow_l2_end`** (the plan's 4.1 flow reference): `hz.sh l2builds` adds `R/flow/rc2_flow.rom`
+  (`EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1` without `LV_TEST`) and `hz_l2` the job `l2_flow_l2_end`
+  (`hz_l2_flow_setup`: `drive_end`'s 200 rows, Brainstorm by `pz_fail`, the range by `fr_good`, then
+  `rc2_l2_arm` with `l2_end` from level 2's first tick, 259 rows, the lost counters); `hz.sh compare
+  --fields analysis/amiga_ram_l2.tsv DIR R flow_l2_end` against `build/emu/l2_flow_l2_end_ram.jsonl`.
 
 ## 6. The whole suite in order
 
