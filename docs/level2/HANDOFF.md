@@ -3004,6 +3004,51 @@ in-process MCP (chain A: `l2b_chain`) and a private session (`tools/bstest/mcpd.
 4. Step 16's open issues 1-4 and 6-7 stand (the hostage tear, the timer in a late frame, the staged pieces, lines
    above 8 sprites, the gate's two CPU-time verdicts, the objects' `vat` check).
 
+## Step 23: the test7 candidates (2026-10-31)
+
+**Done.** Built from step 22's tree (the code of 6eab0e8; the integrated tree's rebuild below gives the same bytes),
+outside the repository and outside `build/msx`: `S22/test7/` holds the five files and
+`ROBOCOP2_v0.1.3-test7-NOTES.txt` (`S22` = `scratchpad/l2/s22`); the main thread copies them to `build/msx` once
+it has read the notes. Scratch: `S22/tools/cands.sh`, `S22/tools/c7.tcl`; records `S22/c7a`, `S22/c7b` (the two
+builds), `S22/c7v`, `S22/c7w` (the runs), `S22/matrix`, `S22/guard`.
+
+| File | Options | SHA-256 | Size |
+|---|---|---|---|
+| `ROBOCOP2_v0.1.3-test7.ROM` | `TAG=7` | a9da1f91b8ee715794bf60b68379e94f973a2ebd34f659d72c2a69cbdba5fa01 | 1 MiB |
+| `ROBOCOP2_v0.1.3-test7-2M.ROM` | `TAG=7 ROM_2M=1` | d8bcf100164b6b7b24ba9dd75282bbe4366a078148a3556484ca777414c8f102 | 2 MiB |
+| `ROBOCOP2_v0.1.3-test7-cheat.ROM` | `TAG=7 CHEAT=1` | 13afb80ee331a9bc659a1d73818fc5dc852897c66c06f0ea6fff345434813e8f | 1 MiB |
+| `ROBOCOP2_v0.1.3-test7-l2.ROM` | `TAG=7 LV_TEST=2 CHEAT=1` | c79b1274338fb1bbc7958e7b013b54eb4c3418002dbb648090115c052e5d4fc7 | 1 MiB |
+| `ROBOCOP2_v0.1.3-test7-l2-vats.ROM` | `TAG=7 LV_TEST=2 CHEAT=1 VAT_TICK=1` | 21938991f2f283c0a26927a4755fba06c7b7c3957b5c7366cdf2bf08328cd284 | 1 MiB |
+
+### Checks (exact commands, results)
+- **Twice to the same bytes**: `sh S22/tools/cands.sh S22/c7a`, `sh S22/tools/cands.sh S22/c7b` (each file
+  `sh tools/bstest/build.sh OUT/NAME/ROBOCOP2_v0.1.3-NAME.ROM OPTIONS`), `cmp`: **the same bytes, all five**; the
+  12 known warnings each.
+- **The matrix**: `python3 -I tools/msxmatrix.py ROM --labels LABELS --home <msx-ai>/.openmsx-home --jobs 1`
+  (`--no-title` for the two `-l2` files): **10 of 10 on each** (`S22/matrix/*.txt`).
+- **Looked at** (in-process MCP: `source S22/tools/c7.tcl`; `hz_chain [list [c7_l2_job S22/c7w t7l2 ROM LABELS]
+  [c7_l2_job S22/c7w t7l2v ROM LABELS Panasonic_FS-A1FX] [c7_cheat_job S22/c7w t7c ROM LABELS
+  Gradiente_Expert20_64K]]`): `-l2` (C-BIOS_MSX2) and `-l2-vats` (FS-A1FX) from the power-on: the level-2 briefing
+  recorded at `fs_n` 180 (`hb_snap`), SPACE, level 2, at its game frame 50 RoboCop teleported onto the rim at
+  (1087, 624) (the game camera as the harness's teleports set it), snapshots 60, 150 and 240 game frames later;
+  `-cheat` on a fresh Expert: `cheat.tcl`'s run (the title, SPACE, level 1, F5, the statistics, the stages left
+  alone, the briefing recorded, level 2, F4, F5, the statistics, both second visits, the level-3 briefing, the
+  title at 464 s). **The three briefings** against `msxtext.py`'s render of `txt_l2_brief` with TEST 7: **equal
+  pixel for pixel**, R#0 16h R#1 62h. **The vats change in both `-l2` files**: of vat 0's 2,790 pixels on the screen
+  (view at (834, 523), the rim), 534 and 285 changed between the snapshots as built, 519 and 505 with `VAT_TICK=1`;
+  `S22/c7w/sheet.png` (looked at): the briefing (TOKUGAWA BREWERY, ARREST CAIN, TEST 7, the HUD with 0003200),
+  level 1 at frame 100, level 2 at frame 100 (07:26, the score carried) and after F4, and `-l2-vats` on the rim with
+  vat 0 bubbling (07:20 -> 07:12, 0010050).
+- **The 2 MiB file and the guard** (in-process MCP, a fresh Expert): the whole file: the title (R#0 0Eh, R#1 62h) at
+  12 s; its first 1 MiB alone (`head -c 1048576`): the guard's message in SCREEN 0 (`msx_local_screen`).
+- The level-2 flows, the continue and the sound with these options' code: step 22's checks (the candidates differ
+  from the gate's builds only by `TAG`, `CHEAT`, `LV_TEST`, `ROM_2M` and `VAT_TICK`, each checked there).
+
+### Open issues
+1. `-l2-vats` carries step 22's open issue 1 (a vat column a few lines into the beam, rarely, near vat 3 on the
+   MSX2 and the MSX2+); the notes say it under "Known issues".
+2. The notes' "Built from" names the integrated commit (filled in at the integration below).
+
 ## Step 24: the documentation as built (2026-10-31)
 
 **Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), three commits,
