@@ -120,6 +120,41 @@ vw_ret: pop bc                      ; (vw_ret: the harness's mark; the routine's
         ld a,b
         jp bank_a000
 
+        if VAT_TICK
+; (VAT_TICK builds: the vats' variant, docs/LEVEL2.md default 18; rc2.asm after each game tick) The
+; vats' time at every tick: vat_prep as at the engines' idle points (the V9938's mirror, else the next
+; column made ready, at most one every VAT_KZ VBLANKs on the Z80), whether the engines are idle or not
+; and with the VDP busy too but for the mirror (its parts are commands; a tile the column needs waits
+; for the VDP in tc_load); the window's first feed_vdp then draws the column (sprites.asm). Keeps
+; nothing but IX, IY and the banks in both windows (the tile cache maps its own).
+vat_tick:
+        ld a,(vat_on)
+        or a
+        ret z
+        call vdp_busy
+        jr z,vtk_go
+        ld a,(vat_bk)
+        or a
+        ret nz
+vtk_go:
+        push ix
+        ld hl,(act_8000)
+        push hl
+        ld hl,vat_prep
+        call vat_l2
+        pop hl
+        ld a,(act_8000)
+        cp l
+        ld a,l
+        call nz,bank_8000
+        ld a,(act_a000)
+        cp h
+        ld a,h
+        call nz,bank_a000
+        pop ix
+        ret
+        endif
+
 ; D = row, E = column (-1..160: the neighbours wrap into the rows above and below, as the
 ; Amiga's linear map does) -> A = the cell's attributes (the two rows after the level's lv_rows:
 ; the bits of the words after the map, ATR2; 0 further out). Keeps BC, DE, HL

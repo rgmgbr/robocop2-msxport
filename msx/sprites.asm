@@ -140,6 +140,15 @@ feed_vdp:
         ld a,(iw_more)
         or a
         jr nz,fv_chk
+        if VAT_TICK
+        ld a,(vat_fr + VF_RDY)      ; (VAT_TICK: a vat column ready and the beam between the HUD
+        or a                        ;  split and the VBLANK: the engines' work, which draws it,
+        jr z,fv_nv                  ;  tiles.asm vat_win)
+        ld a,(split_armed)
+        or a
+        jr z,fv_chk
+fv_nv:
+        endif
         pop af
         ret
 fv_chk: di                          ; (both engines' work starts with vdp_busy: while a command

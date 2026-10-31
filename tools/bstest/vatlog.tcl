@@ -195,16 +195,17 @@ proc vl_done {} {
 	return 1
 }
 
-# vl_speed_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES?: the game's speed (no guard, no logger) on tour
-# from level 2's first tick past game frame FROM for SECS seconds: DIR/speed_<m>.txt "speed: frames F0 F1
-# ticks T0 T1 secs S" (the game frames and ticks run; compare a build with the vats' display with one
-# without, e.g. the commit before it: the vats' CPU share as the game sees it).
-proc vl_speed_jobs {dir rom labels {secs 25} {from 450} {machines {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}}} {
+# vl_speed_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES? ?DRIVE?: the game's speed (no guard, no logger) on
+# DRIVE (default tour's) from level 2's first tick past game frame FROM for SECS seconds:
+# DIR/speed_<m>.txt "speed: frames F0 F1 ticks T0 T1 secs S lost: ... pictures P" (the game frames and
+# ticks run, and the pictures: the lists put on screen; compare a build with the vats' display with one
+# without, e.g. the commit before it, or VAT_TICK=1 with 0: the vats' CPU share as the game sees it).
+proc vl_speed_jobs {dir rom labels {secs 25} {from 450} {machines {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}} {drive ""}} {
 	file mkdir $dir
-	set e "$::hz_root/build/emu"
+	if {$drive eq ""} { set drive "$::hz_root/build/emu/l2_tour.drive" }
 	set jobs {}
 	foreach {t m} $machines {
-		lappend jobs [list sp_$t $m [list vl_speed_setup [file join $dir speed_$t.txt] $rom $labels "$e/l2_tour.drive" $secs $from] {$::vl_sp_done} 1800]
+		lappend jobs [list sp_$t $m [list vl_speed_setup [file join $dir speed_$t.txt] $rom $labels $drive $secs $from] {$::vl_sp_done} 1800]
 	}
 	return $jobs
 }
@@ -212,6 +213,7 @@ proc vl_speed_setup {out rom labels drive secs from} {
 	set ::vl_sp_out $out
 	set ::vl_sp_secs $secs
 	set ::vl_sp_done 0
+	set ::vl_sp_late [rc2_label $labels iv_late]
 	hz_l2_drive $rom $labels [file join [file dirname $out] sp_trace.txt] 2654 $drive
 	set ts [rc2_label $labels tick_start]
 	set gt [rc2_label $labels game_tick]
@@ -221,12 +223,16 @@ proc vl_speed_setup {out rom labels drive secs from} {
 proc vl_sp_go {} {
 	debug remove_bp $::vl_sp_bp
 	set ::vl_sp0 [list [rc2_w 0xD000] [rc2_w 0xCEE0] [machine_info time]]
+	set ::vl_sp_pics 0                  ;# (the pictures: lists put on screen, app_seq at iv_late)
+	set ::vl_sp_app [peek 0xC006]
+	set ::vl_sp_lbp [debug set_bp $::vl_sp_late {} {if {[peek 0xC006] != $::vl_sp_app} {incr ::vl_sp_pics; set ::vl_sp_app [peek 0xC006]}}]
 	after time $::vl_sp_secs vl_sp_end
 }
 proc vl_sp_end {} {
+	catch {debug remove_bp $::vl_sp_lbp}
 	lassign $::vl_sp0 f0 t0 s0
 	set f [open $::vl_sp_out w]
-	catch {puts $f "speed: frames $f0 [rc2_w 0xD000] ticks $t0 [rc2_w 0xCEE0] secs [format %.3f [expr {[machine_info time] - $s0}]] lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C]"}
+	catch {puts $f "speed: frames $f0 [rc2_w 0xD000] ticks $t0 [rc2_w 0xCEE0] secs [format %.3f [expr {[machine_info time] - $s0}]] lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C] pictures $::vl_sp_pics"}
 	close $f
 	set ::vl_sp_done 1
 }

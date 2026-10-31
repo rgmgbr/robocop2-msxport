@@ -204,6 +204,10 @@ OPTIONS = {
     "CHEAT": (0, "1 = test build: the original's cheat mode at each new game (AG $804F FFh, msx/cold.asm ng_init) and its"
                  " keys on F5 and F4 (key codes 59h and 58h, the Amiga's F10 and F9: msx/frame.asm fe_keys): F5 ends"
                  " the level, F4 fills the energy; not with DIAG (no game)"),
+    "VAT_TICK": (0, "1 = the vats' variant (level 2, docs/LEVEL2.md default 18, for the user's comparison): their"
+                    " columns get time at every game tick, a column made ready after each tick whether the scroll"
+                    " engines are idle or not (msx/tiles.asm vat_tick) and drawn in the next window between the HUD"
+                    " split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle points"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -783,6 +787,9 @@ def main(argv: list[str]) -> int:
         return 2
     if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
         print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
+        return 2
+    if opts["VAT_TICK"] not in (0, 1):
+        print("VAT_TICK must be 0 or 1", file=sys.stderr)
         return 2
     try:
         carried = lv_carry(carry or LV_CARRY)

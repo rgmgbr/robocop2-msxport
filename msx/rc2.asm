@@ -125,6 +125,9 @@ ml_tk:  ld a,(g_tn)
         ld (bob_skip),a             ; (a tick before the frame's last one: its BOBs are not shown)
 tick_start:
         call game_tick              ; the game's logic: RoboCop, the camera (the view)
+        if VAT_TICK
+        call vat_tick               ; (the vats' variant: their time at every tick, tiles.asm)
+        endif
         ld a,(g_event)
         or a
         jr nz,ml_tkd                ; (a death, the end: no more ticks this frame)

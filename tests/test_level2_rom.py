@@ -249,6 +249,39 @@ class HarnessTableTests(unittest.TestCase):
             self.assertEqual(l2drives.REFS[ref[3:]][3], int(rows), job)
 
 
+class VatTickTests(unittest.TestCase):
+    """VAT_TICK=1 (level 2's step 16): the vats' variant for the user's comparison; its code only in
+    VAT_TICK builds, so that the product stays as built."""
+
+    def test_mkrom_refuses_a_bad_vat_tick(self):
+        with tempfile.TemporaryDirectory() as t:
+            out = str(Path(t) / "x.rom")
+            for opts in (["VAT_TICK=2"], ["VAT_TICK=-1"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+            self.assertFalse(Path(out).exists())
+
+    def test_the_variant_is_in_its_if_blocks(self):
+        def blocks(path):
+            out, inside = [], False
+            for line in (ROOT / "msx" / path).read_text().splitlines():
+                code = line.split(";")[0].strip()
+                if code == "if VAT_TICK":
+                    inside = True
+                elif inside and code == "endif":
+                    inside = False
+                elif inside:
+                    out.append(code)
+            return out
+        self.assertEqual(blocks("rc2.asm"), ["call vat_tick"])
+        self.assertIn("vat_tick:", blocks("tiles.asm"))
+        self.assertIn("call vat_l2", blocks("tiles.asm"))
+        self.assertIn("ld a,(vat_fr + VF_RDY)", blocks("sprites.asm"))
+        for f in ("rc2.asm", "tiles.asm", "sprites.asm"):
+            src = (ROOT / "msx" / f).read_text()
+            outside = [l for l in src.splitlines() if "vat_tick" in l.split(";")[0]]
+            self.assertEqual(len(outside), len([l for l in blocks(f) if "vat_tick" in l]), f)
+
+
 class CheatTests(unittest.TestCase):
     """CHEAT=1 (level 2's step 21): the original's cheat mode at each new game and its keys on F5/F4;
     its code only in CHEAT builds, none in the fixed area."""

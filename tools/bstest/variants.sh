@@ -3,8 +3,9 @@
 # through build.sh, one folder each (OUT/NAME/rc2.rom, the log in OUT/NAME.out); prints NAME OK or
 # NAME FAIL with the build's first error. At 14bc5ef every set built except DEMO_ACTORS=2/5 and
 # DEMO_HUD=1, which overflow the fixed area at 52149b0 too (docs/HARNESS.md). The l2_* seven (level
-# 2's step 7) are the LV_TEST=2 sets; the last five (cheat*, its step 21) the CHEAT=1 sets of the
-# candidates (docs/LEVEL2.md section 6): 53 in all.
+# 2's step 7) are the LV_TEST=2 sets; the cheat* five (its step 21) the CHEAT=1 sets of the
+# candidates (docs/LEVEL2.md section 6); the last two (vat*, its step 16) the vats' variant
+# (VAT_TICK=1): 55 in all.
 if [ $# -lt 1 ]; then sed -n 2,6p "$0" >&2; exit 2; fi
 H="$(cd "$(dirname "$0")" && pwd -P)"
 OUT="$1"
@@ -63,3 +64,5 @@ v cheat_t7 CHEAT=1 TAG=7
 v cheat_l2 CHEAT=1 LV_TEST=2 TAG=7
 v cheat_l2p CHEAT=1 LV_CARRY=10050:2:0:3 LV_TEST=2
 v cheat_2m CHEAT=1 ROM_2M=1 TAG=7
+v vat VAT_TICK=1
+v vat_l2 CHEAT=1 LV_TEST=2 TAG=7 VAT_TICK=1
