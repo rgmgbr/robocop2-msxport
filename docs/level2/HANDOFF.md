@@ -2248,7 +2248,8 @@ All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 hea
 
 **Done; committed locally, not pushed (the user's order).** Branch `l2-s15` (worktree `scratchpad/l2/wt15`, from
 level2 0b63ec2), commits **b8b7490** (the code and the harness), **c456d4c** (the view's 48 px), this section's;
-integrated into level2 by cherry-pick onto step 21's head 96e2172 (below). Files: `msx/{cold.asm, sprites.asm, player.asm, level2obj.asm, msx.inc}`, `tools/msxframe.py`,
+cherry-picked onto level2 9fd16e9 (step 21's head) as **93f89f1, 5b2f260, 20a575b** and this note's commit
+(below). Files: `msx/{cold.asm, sprites.asm, player.asm, level2obj.asm, msx.inc}`, `tools/msxframe.py`,
 `tools/bstest/{cutview.py, cutview.tcl}` (new), `tests/test_bstest.py`, `docs/HARNESS.md` (5.22), this file. Records
 in `S15` = `scratchpad/l2/s15`: `W/R` (the six l2 builds), `X/l2` (`EXTJOY=1 LV_TEST=2`, product caps), `B0`/`B1` (the
 product before/after), `V` (the option sets), `G` (the gate), `IGB` (a clone of step 14's `s14/IG`, made a base there:
@@ -2380,7 +2381,14 @@ IG itself untouched), `st`/`stb` (vat stills, new/base), `se`, `se2`, `se2b`, `s
   (`S15/IR`) and every ROM of `l2base.sh builds S15/IG2` (32) are **byte-identical** to this branch's (step 21 changed
   only `CHEAT` builds), so every emulator check above holds for the integrated tree as it is; `sh
   tools/bstest/variants.sh S15/IV` + `l2base.py banks`: **50 of 53** (the 5 `CHEAT` sets build: fixed 150-169, LC3
-  4,833; DEMO_ACTORS 2/5 and DEMO_HUD as before); `make test`: 318 tests, the 4 known failures only.
+  4,833; DEMO_ACTORS 2/5 and DEMO_HUD as before); `make test`: 318 tests, the 4 known failures only. Cherry-picked
+  onto level2 9fd16e9 in the main tree (the HANDOFF.md conflict: both sections, step 15's before step 21's;
+  HARNESS.md merged by git); the integrated tree rebuilt into `S15/IM` (`build.sh`, `hz.sh l2builds`, the X build):
+  the product, the X build and the seven l2 builds byte-identical to this branch's; MCP `hz_chain [concat [hz_l2_jobs
+  {S15/IM/O/l2} {S15/IM/L2R} tr] [hz_l2_still_jobs {S15/IM/st} {S15/IM/L2R} {36 ... 62} l2_vat] [cv_view_jobs
+  {S15/IM/cv} ... {tour 2654 2405 end 259 15}]]`: **level 2: PASS (23 traces)**, contcheck's six PASS, **cut: PASS**
+  (35 stills, 7,329 px), **view: PASS**; `sh tools/bstest/variants.sh S15/MV`: 50 of 53; `make test` (the main tree):
+  318 tests, the 4 known failures only.
 
 ### Open issues
 1. **After the death in a vat RoboCop shows whole inside it**: the original's line goes back to CAh once d = camera y
