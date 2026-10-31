@@ -18,7 +18,7 @@
   cutview.py view DIR [--add N]
       DIR/view_<name>_<m>.txt (tools/bstest/cutview.tcl cv_view_jobs): from the suspect's first list
       (its play-field frames in the list) to the arrest's (the last with them):
-      - v_addx (the view's offset, level2obj.asm t2) moves at most 2 pixels a tick, up to N (56);
+      - v_addx (the view's offset, level2obj.asm t2) moves at most 2 pixels a tick, up to N (48);
       - the view (v_x) moves at most 2 pixels a tick but where it follows RoboCop at the edge of his
         range (player.asm pv_keep: his place p_x - 131 - v_x at AX_MIN 48 or AX_MAX 160) or stays at
         the map's left edge;
@@ -140,7 +140,7 @@ def s16(v: int) -> int:
 
 def cmd_view(args: list[str]) -> int:
     d = Path(args[0])
-    add_max = int(args[args.index("--add") + 1]) if "--add" in args else 56
+    add_max = int(args[args.index("--add") + 1]) if "--add" in args else 48
     cols = suspect_columns()
     allok = True
     for f in sorted(d.glob("view_*.txt")):

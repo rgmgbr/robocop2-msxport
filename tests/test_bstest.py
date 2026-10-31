@@ -176,8 +176,8 @@ class HelperTests(unittest.TestCase):
                 for g in range(20, 60):
                     vx = add + (4 if g == jump else 0)
                     lines.append(f"T {g} {vx} 500 {add} 260 0 470")
-                    lines.append(f"L {g} {40 if g == hide else vx} 500 128 100 50 1 10 256 56")
-                    add = min(56, add + step)
+                    lines.append(f"L {g} {30 if g == hide else vx} 500 128 100 50 1 10 241 56")
+                    add = min(48, add + step)
                 path.write_text("\n".join(lines) + "\n")
             f = self.tmp / "view_end_fx.txt"
             for kw, want in (({}, 0), ({"jump": 30}, 1), ({"step": 3}, 1), ({"hide": 55}, 1)):
