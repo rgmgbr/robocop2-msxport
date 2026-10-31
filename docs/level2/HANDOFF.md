@@ -1692,8 +1692,10 @@ X), `still` (36 snapshots + msxframe PNG/txt), `objs`, `start` (the whole tour u
 
 **Done, but the rates disappoint on the Z80 machines** (the plan's 5: step 16 stops for the user's choice
 among default 18's alternatives; the numbers below). Branch `l2-s14` (worktree `scratchpad/l2/wt14`),
-commits **0d4471f, ed9c119, 9a7e0e2, 659742e, 51cca83, e074a78** and this section's, all committed locally,
-not pushed (the user's order), integrated into `level2` by fast-forward. Files: `msx/{tiles.asm,
+commits (cherry-picked onto level2 a7c465d, steps 18 and 19) **d7d3d3e, 5e729a4, 4cd547c, abde258, 3b00f26,
+bb23717**, this section's and its end's, all committed locally, not pushed (the user's order), integrated
+into `level2` by fast-forward (before the cherry-pick on 7aecb40: 0d4471f, ed9c119, 9a7e0e2, 659742e,
+51cca83, e074a78, 0a190f3). Files: `msx/{tiles.asm,
 scroll9938.asm, scroll9958.asm, field.asm, vats.asm (new), level2.asm, msx.inc}`, `tools/{mapcmp.py,
 msxreal.py, msxframe.py}`, `tools/bstest/{fieldcheck.py, l2base.tcl, vatlog.tcl (new), vatcheck.py (new)}`,
 `tests/test_bstest.py`, `docs/HARNESS.md` (5.22), this file. Records in `scratchpad/l2/s14` (`S14`): `W/R`
@@ -1759,17 +1761,23 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
   column's look cannot move on while its frame waits, so never older), started only where the beam is
   outside the play area and ended before the beam reaches its first line (`vat_fits` with R#23 now);
   later parts of its chain start while the beam is above the column (the guard's "cmd" lines, no tear).
-- **The fixed area**: 75 B in the product (298 -> 223 free; 3.2's budget for step 14: 60-100 B):
-  `get_tile`'s level-2 path is a jump into BANK_FIELD (`vat_tile` reads the map's tile itself), the two
-  hooks share one tail. Lowest real option set p_pzdiag 88 B (step 13: 163); `DEMO_HUD=1` 1 B free.
-  BANK_FIELD 143 B free (1,183 at step 13), BANK_L2 45 B (1,445): tight for step 15. No new bank: still
-  127 of 128 banks, the 1 MiB image (the vats need no block of their own).
+- **The fixed area**: 75 B in the product (3.2's budget for step 14: 60-100 B): `get_tile`'s level-2 path
+  is a jump into BANK_FIELD (`vat_tile` reads the map's tile itself), the two hooks share one tail. Over
+  7aecb40: 298 -> 223 free, the lowest real set (DIAG+PZ_TEST) 163 -> 88, `DEMO_HUD=1` 1 B. **Integrated
+  (over a7c465d, steps 18-19: 267 free): the product 192 B, DIAG+PZ_TEST 57 B** (builds: the agreed
+  fallback, DIAG's `dg_probe`/`dg_rec` into BANK_MUSIC, was not needed), **`DEMO_HUD=1` -30 B: it does not
+  build any more** (45 B at a7c465d; its HUD demo, about 220 B, lives in the fixed area: moving `hud_demo`
+  into a bank is the fix if the set is still wanted; it overflowed before step 12 too). BANK_FIELD 143 B
+  free (1,183 at step 13), BANK_L2 41 B (1,441 at a7c465d), FRONT 1,506 as a7c465d: tight for step 15. No
+  new bank: still 127 of 128 banks, the 1 MiB image (the vats need no block of their own).
 
 ### Checks (exact commands, results; `S14` = scratchpad/l2/s14, `W` = wt14)
 - Builds: `sh tools/bstest/hz.sh l2builds $S14/W/R` (PASS), `sh tools/bstest/build.sh $S14/X/l2/rc2_l2.rom
   EXTJOY=1 LV_TEST=2`, `sh tools/bstest/build.sh $S14/P/rc2.rom`: build OK, z80asm 12 known warnings only.
   `sh tools/bstest/variants.sh $S14/V` + `python3 -I tools/bstest/l2base.py banks $S14/V`: 46 of 48 (DEMO_ACTORS
-  2/5 as before); free bytes above.
+  2/5 as before); integrated (`$S14/IV`, `$S14/i_banks_variants.txt`): **45 of 48** (DEMO_ACTORS 2/5 -D7h,
+  DEMO_HUD -1Eh); free bytes above. The integrated tree's `build/msx/text.inc` made again with the
+  Makefile's `msxtext.py` line (equal to the main tree's).
 - **Level 2's logic**: MCP `hz_chain [hz_l2_jobs {$S14/W/O/l2} {$S14/W/R} tr]`; `sh tools/bstest/hz.sh compare
   --fields analysis/amiga_ram_l2.tsv $S14/W/O/l2 $S14/W/R`: **level 2: PASS (20 traces)**, 0 differ, lost 0.
 - **The map against the bench, with the vat rule**: the bench's maps `$S14/map/tour_F.bin` (`python3 -I
@@ -1817,7 +1825,7 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
   msxframe's object order on the MSX2 at g0900, g1000: 44 and 25 px, step 13's note). Looked at, zoomed
   (`$S14/stp/crop_*.png`): vat 0 on the MSX2 (g0520), vat 3 on the MSX2+ (g1300), vats 1-2 on the turbo R
   (g1000): whole columns, each at one look, the surface's bubbles at a different phase column by column.
-- `make test`: 299 tests, the 4 known failures only (failures=3, errors=1).
+- `make test`: 299 tests, the 4 known failures only (failures=3, errors=1), before and after the integration.
 - **The gate** (`l2base.sh builds $S14/G`; MCP `source {W/tools/bstest/load.tcl}; source
   {W/tools/bstest/l2base.tcl}; l2b_chain {$S14/G} {$S14/G/all.done}`; `sh tools/bstest/l2base.sh check
   $S14/G scratchpad/l2/base`), on step 14 over level2 7aecb40 before the integration: **l2base: FAIL on one
