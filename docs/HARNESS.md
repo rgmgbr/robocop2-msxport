@@ -2030,7 +2030,8 @@ for d in W/vl/*; do python3 -I tools/bstest/vatcheck.py "$d"; done              
   counters 0; the lines above 8, which 4.2 check 7 does not meet yet).
 - Checks 11 and 13: the briefings' and the offer's records are regress's (`bonuscheck.py --brief`,
   `--level2`) and `contcheck.py`'s; level 2's first picture in each flow, `W/O/<flow>/<TAG>_l2g0`, with
-  `tools/msxframe.py ... --level 2 --field` as above (5.22, "At step 18").
+  `tools/msxframe.py ... --level 2 --field` as above (5.22, "At step 18"), which `bonuscheck.py
+  --level2` and `contcheck.py --fire`/`--again` run themselves from level 2's step 22 on.
 - 4.3: `fxcheck.py check` on every `fxl_jobs` log (the table of 5.23), `fxcheck.py visits`, `selftest`,
   and `W/cheat/cheat.txt` with its snapshots.
 - 4.4's set-ups (`msx_local_shutdown` first: the tool runs its own openMSX):

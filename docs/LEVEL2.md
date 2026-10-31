@@ -2139,7 +2139,7 @@ in a worktree on its own branch, and integrated into `level2` by cherry-pick.
 | 21 | The sound checks and the cheat | `b6ad4d5`; `96e2172`, `9fd16e9` | `CHEAT`'s keys at `frame_end`'s head (LC3) and `$804F` in FRONT, not `key_scan` (6) |
 | 15 | The cut and the arrest's view | `93f89f1`, `5b2f260`; `20a575b`, `a485dcf` | the cut in FRONT; the view's premise corrected (3.6) |
 | 16 | Milestone 2 accepted | `0ae4b69`, `84223a8`, `805763d`, `c73ab00`; `a5cdf15`, `d092b97` | the changed cells' window, the timer's cells, the guard's rules, `VAT_TICK=1`; two glitch classes left with their causes (8.1) |
-| 22 | Milestone 3 accepted | — | runs beside step 24: the review's fixes, then 4.1-4.4 whole |
+| 22 | Milestone 3 accepted | — | runs beside step 24: the review's two fixes (8.1), then 4.1-4.4 whole |
 | 23 | The test candidates (`test7`) | — | after step 22 |
 | 24 | Documentation | this record | the docs as built |
 
@@ -2310,13 +2310,17 @@ Inferences the defaults rest on, as they stand:
    pixels within a tile row after a column was made ready (stairs, a lift stopping), R#23 grows, the
    column's first screen line drops below `vat_fits`' threshold and every later window refuses it the
    same way: all seven vats stop redrawing (their logic goes on) until RoboCop moves 16 px sideways,
-   the camera crosses a tile row, or a death or jump runs `vat_init`. The fix: drop it there as the other
-   refusals do (`vr_drop`). Seen refused in a step-16 record; how often it freezes the vats in play is
-   not measured.
+   the camera crosses a tile row, or a death or jump runs `vat_init`. Seen refused in a step-16 record;
+   how often it froze the vats in play was not measured. **Step 22's fix**: the column is dropped as the
+   other refusals do, so that `vat_prep` looks again at once (`vr_nt` stays a mark of its own for
+   `vatlog.tcl`'s count; +1 byte in `BANK_L2`).
 2. **The gate does not check level 2's first picture** after the flow or after the continue:
    `bonuscheck.py --level2` tests only that the snapshot exists, and `contcheck.py` never looks at the
    one after `lv_cont`; step 18's and step 19's first pictures were checked by hand (msxframe, 0 pixels
-   differ). The fix: both run `tools/msxframe.py` on it and compare the HUD's notes with AG.
+   differ). **Step 22's fix**: `bonuscheck.py --level2` and `contcheck.py --fire`/`--again` run
+   `tools/msxframe.py` on that picture (`--no-sprites`: the play area with the sprites off, since a
+   level's first list has no SAT published yet) and fail on its status, and compare the notes' record of
+   the HUD with the game's score, ammo, timer, lives, icon and can.
 
 **Display glitches left with their causes** (the zero-glitch rule: open):
 3. **The "hostage tear"** of level 1's window 860 (at most 3 pictures, the gate's `TEARS` bound) is no

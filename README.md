@@ -126,13 +126,13 @@ make rom ROMOPTS="LV_TEST=2"        # test ROM: at power-on the level-2 briefing
 make rom ROMOPTS="CHEAT=1"          # F5 ends the level, F4 fills the energy (the original's F10/F9)
 ```
 
-The game's flow: the title, level 1, its statistics, Brainstorm, the
-shooting range, the level-2 briefing, level 2 (the Tokugawa brewery), its statistics, both bonus
-stages' second visits, the level-3 briefing, then the title again (level 3 is not ported). Level 2 is
-in development on the branch `level2` and not released yet: it goes out only complete and tested
-([docs/LEVEL2.md](docs/LEVEL2.md): its plan, as built). A game over shows the game-over picture;
-when Brainstorm has given a credit, a continue screen follows, and fire restarts the same level with
-two lives and the score kept, the map as it was left (the first offer can come in level 2).
+The game's flow: the title, level 1, its statistics, Brainstorm, the shooting range, the level-2
+briefing, level 2 (the Tokugawa brewery), its statistics, both bonus stages' second visits, the
+level-3 briefing, then the title again (level 3 is not ported). Level 2 is in development on the
+branch `level2` and not released yet: it goes out only complete and tested
+([docs/LEVEL2.md](docs/LEVEL2.md): its plan, as built). A game over shows the game-over picture; when
+Brainstorm has given a credit, a continue screen follows, and fire restarts the same level with two
+lives and the score kept, the map as it was left (the first offer can come in level 2).
 - Brainstorm (its intro, the chip puzzle, its result): [docs/BRAINSTORM.md](docs/BRAINSTORM.md).
   Solving it gives a credit. Its second visit, after level 2, has its own boards and Ellen's face.
 - The shooting range (its intro; a crosshair over a street of targets, 25 shots and 2:00; its

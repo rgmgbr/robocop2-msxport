@@ -2906,10 +2906,11 @@ subjects begin "docs/LEVEL2.md as built" and "Level 2's step 24: the docs as bui
 - Read back: every changed doc's new text.
 
 ### Open issues
-1. **Step 22 runs beside this step**: the review's finding 1 (`vats.asm` `vr_main`: a column `vat_fits`
-   refuses kept instead of dropped) and finding 2 (the gate's first picture of level 2) are written as
-   open in LEVEL2.md 8.1 and MSX_ARCHITECTURE.md "The vats' display"; once step 22 fixes them, those
-   lines and HARNESS.md 5.24's verdicts follow its account.
+1. **Step 22 runs beside this step**: LEVEL2.md 8.1, MSX_ARCHITECTURE.md "The vats' display" and
+   HARNESS.md 5.24 give the review's finding 1 (`vats.asm` `vr_main`: a column `vat_fits` refuses kept
+   instead of dropped) and finding 2 (the gate's first picture of level 2) with step 22's fixes as its
+   branch `l2-s22` has them (not in `level2` yet when this step integrated); if its integration departs
+   from that, those lines follow its account.
 2. `msx/msx.inc`'s `pz_tvb` (C6AAh) is allocated and unused, and its `pz_tv` comment speaks of visit 1
    only; `tools/msxconv.py` still prints "432 VRAM slots": not docs, left to a code step.
 3. `tests/test_bstest.py` `test_bonuscheck_range_command_line` errors instead of skipping without

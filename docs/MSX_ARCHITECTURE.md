@@ -979,8 +979,12 @@ older.
   in the blank after it (`VAT_LB0` = 4 at least). Then, with `cmd_lock` held, T0, T1 and T2 by HMMM
   from the cache and one HMMM per part of the page that copies the T1/T2 pair down from 32 lines above
   (it overlaps its source), cut at the page's line 255; the nibble of the frame's page (`VF_EP`, never
-  `vat_pg`) takes the look. A column whose checks fail is dropped; one `vat_fits` refuses waits for the
-  next window (`docs/LEVEL2.md` 8.1: the review's finding on it).
+  `vat_pg`) takes the look. A column whose checks fail is dropped (`vr_drop`) and `vat_prep` looks
+  again; one whose window the VBLANK cut short (`vr_lt`) waits for the next. One `vat_fits` refuses
+  (`vr_nt`) was kept too, until the code review of 2026-10-31 found that with the camera eased within
+  its tile row every later window refuses it the same way, and `vat_prep` prepares no other column
+  meanwhile: every vat stops redrawing. Level 2's step 22 drops it as well (`vr_nt` stays a mark of
+  its own for the harness's count; `docs/LEVEL2.md` 8.1).
 - **The V9938's mirror**: the column is then copied onto the page being built or built (`vat_mirror`,
   HMMM page to page, a part a call while the VDP is idle; that page is not shown), the flip waits for it
   (`vat_bk`, `s38u_step`), and `vat_mmark` re-marks the BOBs over it there; a build's start gives its
