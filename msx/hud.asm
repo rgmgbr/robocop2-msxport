@@ -471,7 +471,9 @@ glyph_ptr:
 ; ----- digits -----
 
 ; Redraws up to HUD_DIGITS cells whose digit is not the one the values ask for (the Amiga
-; redrew a fixed half of them every game frame; the result on screen is the same).
+; redrew a fixed half of them every game frame; the result on screen is the same), the timer's
+; cells all in the same frame (the Amiga drew its seconds' two digits together: one cell a frame
+; showed 07:20 between 07:30 and 07:29 for a picture, at every ten seconds; 2026-10-31).
 hud_digits:
         ld hl,hud_timer
         ld de,hud_last
@@ -498,6 +500,9 @@ hd_lp:  call cell_digit
         push bc
         call cell_draw
         pop bc
+        ld a,c
+        cp 3
+        jr c,hd_next                ; (a timer cell but its last: the timer's others too)
         ld hl,hd_left
         dec (hl)
         ret z
