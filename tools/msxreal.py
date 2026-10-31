@@ -16,6 +16,9 @@ openMSX rendering every frame ('set maxframeskip 0': unthrottled it skips frames
 Per frame: the differing pixels of the play area (sprite pixels apart: the expected sprite
 pixels shown wrong, and other pixels where a sprite shows where none should), of the
 border lines and of the HUD; with --png, frame and difference images (magenta: differs).
+Level 2's vat cells (docs/LEVEL2.md 3.5, the vat rule; LEVEL_PREFIX level2) are expected at the look
+their column has on the page shown (RAM F000h-FFFFh's vat_disp, tools/mapcmp.py vat_look), not the
+ROM map's.
 
 usage: msxreal.py CAPTURE_DIR [--level build/msx/level1] [--hud build/msx/hud] [--png OUTDIR]
 """
@@ -27,6 +30,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mapcmp  # noqa: E402
 import msxframe as mf  # noqa: E402
 from msxbright import grade_pal  # noqa: E402
 from planar import write_png  # noqa: E402
@@ -94,6 +98,9 @@ def check(d: Path, level: Path, hud: Path) -> tuple[dict, list[bytes], list[byte
     mp = level.with_suffix(".map").read_bytes()
     til = level.with_suffix(".til").read_bytes()
     rows_map = len(mp) // (mf.COLS * 2)
+    ramf = (d / "ramf.bin").read_bytes() if (d / "ramf.bin").exists() else None
+    vats = mapcmp.vat_layout(level) if ramf else None
+    vpage = 0 if 26 in play else (regs_play[2] >> 5) & 1     # (the V9958's ring: page 0's looks)
     spr = mf.expected_sprites(objs, pal_play)
     hud_want = mf.hud_expected(ram)
     res = {"spr_bad": 0, "spr_px": 0, "extra": 0, "bg_bad": 0, "hud_bad": 0, "gap_bad": 0,
@@ -110,7 +117,11 @@ def check(d: Path, level: Path, hud: Path) -> tuple[dict, list[bytes], list[byte
                 if x < 8 or wy // 16 >= rows_map or wx // 16 >= mf.COLS or wx < 0:
                     want = None
                 else:
-                    t = mp[2 * ((wy // 16) * mf.COLS + wx // 16)] | mp[2 * ((wy // 16) * mf.COLS + wx // 16) + 1] << 8
+                    v = vats["cells"].get((wy // 16, wx // 16)) if vats else None
+                    if v:
+                        t = mapcmp.vat_tile(vats, v, mapcmp.vat_look(ramf, v[0], vpage))
+                    else:
+                        t = mp[2 * ((wy // 16) * mf.COLS + wx // 16)] | mp[2 * ((wy // 16) * mf.COLS + wx // 16) + 1] << 8
                     b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]
                     want = prgb[(b >> 4) if wx % 2 == 0 else b & 15]
                     if (x, y) in spr:

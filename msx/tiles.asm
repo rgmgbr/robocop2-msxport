@@ -102,34 +102,24 @@ gt_vat: push bc
         pop de
         ret
 
-; The vats' display (level 2: vats.asm vat_run, vat_mirror; docs/LEVEL2.md 3.5): the scroll
-; engines' hooks. vat_win, between the HUD split and the VBLANK with the VDP idle: a vat column
-; drawn at its newest look -> NZ when a command of it still runs. vat_idle, at the engines' idle
-; points: the V9938's mirror of that column on its other page, a part when the VDP is idle -> NZ
-; while the vats have work (the engine keeps iw_more).
+; The vats' display (level 2: vats.asm; docs/LEVEL2.md 3.5): the scroll engines' hooks, Z (nothing)
+; in the other levels. vat_win, between the HUD split and the VBLANK with the VDP idle: the vat column
+; made ready drawn at its newest look (vat_run) -> NZ when a command of it still runs. vat_idle, at the
+; engines' idle points: the V9938's mirror of that column on its other page, else the next column made
+; ready (vat_prep) -> NZ while the vats have work (the engine keeps iw_more).
 vat_win:
-        ld a,(lv_logic)
-        cp BANK_L2
-        ret nz
         ld hl,vat_run
-        call l2_call
-        ld a,l
-        or a
-        ret
+        jr vat_hk
 vat_idle:
-        ld a,(vat_bk)
-        or a
-        jr nz,vi_mir
-        ld hl,vat_chg               ; (a vat changed, or a column of it waits: field.asm vat_scan)
-        ld b,7
-vi_c:   or (hl)
-        inc hl
-        djnz vi_c
+        ld hl,vat_prep
+vat_hk: ld a,(lv_logic)
+        cp BANK_L2
+        jr nz,vw_no
+        call l2_call
+vw_ret: ld a,l                      ; (vw_ret: the harness's mark)
         or a
         ret
-vi_mir: ld hl,vat_mirror
-        call l2_call
-        or 1
+vw_no:  xor a
         ret
 
 ; HL = a routine of level 2's logic bank (vats.asm: the level's lv_logic at A000h around it, the
@@ -684,9 +674,11 @@ frd_z:  pop bc
 ; ----- the tile cache -----
 
 ; A = row, E = column -> cmdbuf SX/SY at the cell's tile in VRAM (copied there first when it is
-; not: the VDP must be idle then, so this waits for it). Preserves BC and DE.
+; not: the VDP must be idle then, so this waits for it). Preserves BC and DE. tile_srct: the same for
+; the tile in HL (field.asm vat_srcs: a vat column's tiles at a look).
 tile_src:
         call get_tile
+tile_srct:
         push de
         push bc
         ld b,h

@@ -274,10 +274,11 @@ s38_work:
         ret nz
         ld a,(split_armed)
         or a
-        jr nz,s38w_rq
+        jr nz,s38w_vb
         call s38_rburst             ; (between the split and the VBLANK: the changed cells first,
-        call vdp_busy               ;  then level 2's vats: tiles.asm vat_win)
+        call vdp_busy               ;  then level 2's vats: tiles.asm vat_win, outside the window too)
         ret nz
+s38w_vb:
         call vat_win
         ret nz
 s38w_rq:
@@ -555,7 +556,8 @@ s38ct_go:
         jp tile_to_page
 
 ; Next chunk of the shifted copy: up to 4 row slots from position s38_i (1 while the play-field
-; BOBs have work: field.asm, their commands then wait less), not crossing the ring wrap; 240 px
+; BOBs have work or a vat column waits for the blank: field.asm, their commands then wait less), not
+; crossing the ring wrap; 240 px
 ; wide, displayed page -> back page.
 s38_copy_chunk:
         ld a,(s38_r0)
@@ -568,7 +570,8 @@ s38_copy_chunk:
         sub c                       ; slots before the wrap
         ld b,a
         ld a,(fb_busy)
-        or a
+        ld hl,vat_fr + VF_RDY       ; (or a vat column waits for the blank: field.asm)
+        or (hl)
         ld a,4
         jr z,s38cc_m
         ld a,1

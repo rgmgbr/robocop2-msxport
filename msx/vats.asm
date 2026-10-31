@@ -67,53 +67,46 @@ vwn_1:  and 0x0F
         ld (hl),a
         ret
 
-; A -> HL = A * 16. Keeps BC, DE.
-vat_c16:
-        ld l,a
-        ld h,0
-        add hl,hl
-        add hl,hl
-        add hl,hl
-        add hl,hl
-        ret
-
-; (tiles.asm vat_win through l2_call: between the HUD split and the VBLANK, the VDP idle; level 2)
-; The window's first call: a column whose look on the page shown is not vat_shown's drawn there
-; when one may be (vat_scan) -> L = 1 when its commands run, else 0.
-vat_run:
-        ld a,(tick)
-        ld hl,vat_wtk
-        cp (hl)
-        jr z,vr_no
-        ld (hl),a
+; (tiles.asm vat_idle through l2_call: the scroll engines' idle points, the VDP idle; level 2) The
+; V9938's mirror (its next part), else, once a tick, a column made ready for the next window (vat_run):
+; the first one (from vat_rr on, then from 0) whose look on the page shown is not vat_shown's, that
+; meets no play-field BOB nor their work (on the V9938 where the page being built holds it either) and
+; may be drawn in time, its tiles in the tile cache -> L = 1 while the vats have work (the engines keep
+; iw_more: a column ready, the mirror), else 0.
+vat_prep:
+        ld ix,vat_fr
         ld a,(vat_bk)
         or a
-        jr nz,vr_no                 ; (V9938: the last column on the other page first)
-        ld a,(fb_eng)
+        jr z,vp_r
+        call vat_mirror
+        ld l,1
+        ret
+vp_r:   ld a,(ix+VF_RDY)
         or a
-        jr z,vr_r
-        ld a,(s38_flip_wait)
-        or a
-        jr nz,vr_no                 ; (the old page still on screen: after the flip)
-        ld a,(s38_vis_page)
-        ld (vat_pg),a
-        ld a,(s38_vis_c0)
-        ld c,a
-        ld b,16
-        jr vr_go
-vr_r:   xor a
-        ld (vat_pg),a
-        ld a,(prev_cx)
-        dec a
-        ld c,a
-        ld b,19                     ; (the ring: the columns kept)
-vr_go:  ld hl,-VF_SZ
-        add hl,sp
-        ld sp,hl
-        push hl
-        pop ix
-        ld (ix+VF_W0),c
-        ld (ix+VF_WN),b
+        jr z,vp_s
+        call vat_same
+        ld l,1
+        ret z                       ; (ready: the window draws it)
+        ld (ix+VF_RDY),0
+vp_s:   ld hl,vat_chg               ; (no vat changed, nor waits: nothing to look for)
+        ld b,7
+        xor a
+vp_ch:  or (hl)
+        inc hl
+        djnz vp_ch
+        ld l,a
+        ret z
+        ld hl,vat_fr + VF_STK       ; (the R800 every VBLANK, the Z80 every VAT_KZ)
+        call vat_due
+        ld l,0
+        ret c
+        ld a,(tick)
+        ld (ix+VF_STK),a
+        ld (ix+VF_TRY),2            ; (two columns tried at most: their checks cost the CPU)
+vp_scan:
+        call vat_win0
+        ld l,0
+        ret nz                      ; (V9938: the old page still on screen)
         ld a,(act_8000)
         push af
         ld a,(lv_tab)
@@ -123,22 +116,148 @@ vr_go:  ld hl,-VF_SZ
         ld (ix+VF_HI),0xFF
         call vat_pass               ; (from vat_rr on,
         or a
-        jr nz,vr_e
+        jr nz,vp_e
         ld a,(vat_rr)
         or a
-        jr z,vr_e
+        jr z,vp_e
         ld (ix+VF_HI),a
         ld (ix+VF_LO),0
         call vat_pass               ;  then from 0)
-vr_e:   ld e,a
-        pop af
+vp_e:   pop af
         call bank_8000
-        ld hl,VF_SZ
-        add hl,sp
-        ld sp,hl
-        ld l,e
+        ld l,(ix+VF_RDY)
         ret
-vr_no:  ld l,0
+
+; (tiles.asm vat_win through l2_call: the scroll engines' work with the VDP idle; level 2) The column
+; vat_prep made ready, drawn now (one a tick) when the beam is outside the play area and it still may
+; be: the engines as then, its tiles in their places, no BOB come over it, the time with the R#23 now
+; (vat_fits) -> L = 1 when its commands run, else 0.
+vat_run:
+        ld ix,vat_fr
+        ld l,0
+        ld a,(ix+VF_RDY)
+        or a
+        ret z
+        ld a,(split_armed)          ; (the beam outside the play area: between the HUD split and the
+        or a                        ;  VBLANK, or in the blank after it)
+        jr z,vr_in
+        call vat_vr
+        ld l,0
+        ret z
+vr_in:  ld hl,vat_wtk                ; (the Z80: one column every VAT_KZ VBLANKs)
+        call vat_due
+        ld l,0
+        ret c
+        ld a,(tick)
+        ld (vat_wtk),a
+vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harness's marks)
+        jr nz,vr_drop
+        ld hl,vat_valid
+        call field_call
+        ld a,l
+        or a
+        jr nz,vr_drop
+        ld a,(vat_pg)
+        call vat_meets
+        jr nz,vr_drop
+        ld hl,vat_fits
+        call field_call
+        ld a,l
+        or a
+        jr nz,vr_nt                 ; (no time now: the next window)
+        ld (ix+VF_N),a
+        call vat_gen
+        jr c,vr_lt                  ; (the VBLANK came first: the next window)
+        xor a
+        ld (cmd_lock),a
+        ld (ix+VF_RDY),a
+        call vat_dsp
+        ld a,(ix+VF_WT)
+        and 7
+        or 8
+        ld e,a
+        ld a,(vat_pg)
+        call vat_wnib
+        ld a,(ix+VF_IX)
+        inc a
+        ld (vat_rr),a
+        ld a,(fb_eng)
+        or a
+        jr z,vr_ok
+        call vat_bkcol
+        jr nz,vr_ok
+        ld a,(ix+VF_IX)             ; V9938: the page being built: the column copied there
+        ld (vat_bkc),a              ; (vat_mirror), and its rows drawn there from now on take
+        ld a,(prev_cy)              ; the new look
+        ld (vat_bky),a
+        ld a,1
+        ld (vat_bk),a
+        call vat_dsp
+        ld a,(s38_vis_page)
+        xor 1
+        call vat_wnib
+vr_ok:  ld l,1
+        ret
+vr_drop:
+        ld (ix+VF_RDY),0
+        ld l,0
+        ret
+vr_nt:  ld l,0
+        ret
+vr_lt:  ld l,0
+        ret
+
+; -> vat_pg = the page shown, the frame's window (VF_W0, VF_WN: the page's columns, the ring's kept
+; ones) and the engines' state (VF_EC, VF_EY, VF_EP); NZ when no column may be drawn now (the V9938's
+; old page still on screen).
+vat_win0:
+        ld a,(prev_cy)
+        ld (ix+VF_EY),a
+        ld a,(fb_eng)
+        or a
+        jr z,vw0_r
+        ld a,(s38_flip_wait)
+        or a
+        ret nz
+        ld a,(s38_vis_page)
+        ld (vat_pg),a
+        ld (ix+VF_EP),a
+        ld a,(s38_vis_c0)
+        ld (ix+VF_EC),a
+        ld (ix+VF_W0),a
+        ld (ix+VF_WN),16
+        xor a
+        ret
+vw0_r:  xor a
+        ld (vat_pg),a
+        ld (ix+VF_EP),a
+        ld a,(prev_cx)
+        ld (ix+VF_EC),a
+        dec a
+        ld (ix+VF_W0),a
+        ld (ix+VF_WN),19
+        xor a
+        ret
+
+; -> Z when the engines show what they showed when the frame's column was prepared (vat_win0).
+vat_same:
+        ld a,(prev_cy)
+        cp (ix+VF_EY)
+        ret nz
+        ld a,(fb_eng)
+        or a
+        jr z,vsm_r
+        ld a,(s38_flip_wait)
+        or a
+        ret nz
+        ld a,(s38_vis_page)
+        cp (ix+VF_EP)
+        ret nz
+        ld a,(s38_vis_c0)
+        cp (ix+VF_EC)
+        ret
+vsm_r:  ld a,(prev_cx)
+        cp (ix+VF_EC)
         ret
 
 ; One pass over the vats (VF_LO..VF_HI: the columns it may draw) -> A = 1 when one was drawn, else
@@ -149,9 +268,22 @@ vsp_v:  ld (ix+VF_V),a
         call vat_recp
         ld a,(hl)
         cp 0xFF
-        jr z,vsp_nv                 ; (no such vat)
+        jp z,vsp_nv                 ; (no such vat)
         ld (ix+VF_ST),0
-        ld a,(ix+VF_V)
+        sub (ix+VF_W0)              ; (its first column against the window: none of it in, nothing)
+        ld b,a
+        inc hl
+        ld a,(hl)
+        add a,b
+        dec a                       ; (its last, from the window's first)
+        bit 7,a
+        jr nz,vsp_f                 ; (left of the window)
+        ld a,b
+        cp (ix+VF_WN)
+        jr c,vsp_in
+        bit 7,a
+        jr z,vsp_f                  ; (right of it)
+vsp_in: ld a,(ix+VF_V)
         call vat_rows               ; D = its first column, B = its columns, E = its first index
         jr c,vsp_f                  ; (none of its rows kept)
 vsp_k:  ld a,d
@@ -179,6 +311,8 @@ vsp_st: ld (ix+VF_ST),1
         jr c,vsp_ok
         cp (ix+VF_HI)
         jr nc,vsp_ok
+        dec (ix+VF_TRY)
+        jp m,vsp_ok                 ; (tried enough this time)
         pop de
         push de
         ld a,c
@@ -206,7 +340,7 @@ vsp_f:  ld a,(ix+VF_V)
 vsp_nv: ld a,(ix+VF_V)
         inc a
         cp 8
-        jr c,vsp_v
+        jp c,vsp_v
         xor a
         ret
 vsp_dn: pop de
@@ -259,15 +393,16 @@ vrw_no: scf
         ret
 
 ; D = a column's map column, E = its index in vat_shown, A = its look wanted (the frame's rows its
-; vat's) -> drawn on the page shown when it meets no BOB nor their work (on the V9938 on the page
-; being built either, when it holds the column: its mirror follows) and there is time: A = 1, else 0.
+; vat's) -> made ready for the next window (vat_run) when it meets no BOB nor their work (on the V9938
+; on the page being built either, when that holds the column) and may be drawn in time, its tiles in
+; the tile cache: A = 1, else 0.
 vat_try:
         ld (ix+VF_WT),a
         ld (ix+VF_IX),e
         ld (ix+VF_CC),d
         ld a,(vat_pg)
         call vat_meets
-        jp nz,vtr_no
+        jr nz,vtr_no
         ld a,(fb_eng)
         or a
         jr z,vtr_t
@@ -276,60 +411,22 @@ vat_try:
         ld a,(s38_vis_page)
         xor 1
         call vat_meets
-        jp nz,vtr_no
+        jr nz,vtr_no
 vtr_t:  ld hl,vat_fits
         call field_call
         ld a,l
         or a
         jr nz,vtr_no
-        call vat_dsp
-        ld a,(vat_pg)
-        call vat_nib
-        ld (ix+VF_OLD),a
-        ld a,(ix+VF_WT)
-        and 7
-        or 8
-        ld e,a
-        ld a,(vat_pg)
-        call vat_wnib               ; (the new look, so that tile_src gives its tiles)
-        ld e,(ix+VF_CC)
-        call vat_srcs
-        jr nz,vtr_back
-        call vat_dst
-        ld (ix+VF_N),0
-        call vat_gen
-        jr c,vtr_back               ; (the VBLANK came first: nothing started)
-        xor a
-        ld (cmd_lock),a
-        ld a,(ix+VF_IX)
-        inc a
-        ld (vat_rr),a
-        ld a,(fb_eng)
+        ld hl,vat_srcs
+        call field_call
+        ld a,l
         or a
-        jr z,vtr_ok
-        call vat_bkcol
-        jr nz,vtr_ok
-        ld a,(ix+VF_IX)             ; V9938: the page being built: the column copied there
-        ld (vat_bkc),a              ; (vat_mirror), and its rows drawn there from now on take
-        ld a,(prev_cy)              ; the new look
-        ld (vat_bky),a
+        jr nz,vtr_no
+        ld hl,vat_dst
+        call field_call
+        ld (ix+VF_RDY),1
         ld a,1
-        ld (vat_bk),a
-        call vat_dsp
-        ld a,(ix+VF_WT)
-        and 7
-        or 8
-        ld e,a
-        ld a,(s38_vis_page)
-        xor 1
-        call vat_wnib
-vtr_ok: ld a,1
         ret
-vtr_back:
-        call vat_dsp
-        ld e,(ix+VF_OLD)
-        ld a,(vat_pg)
-        call vat_wnib
 vtr_no: xor a
         ret
 
@@ -366,38 +463,6 @@ vat_bkcol:
         xor a
         ret
 vbk_no: or 1
-        ret
-
-; The frame's VF_DX, VF_PG: the column's place on the page shown (the ring: x & 255, its page the
-; x's bit 8; a V9938 page: from its first column).
-vat_dst:
-        ld a,(fb_eng)
-        or a
-        jr nz,vds_38
-        ld a,(ix+VF_CC)
-        add a,a
-        add a,a
-        add a,a
-        add a,a
-        ld (ix+VF_DX),a
-        ld a,(ix+VF_CC)
-        rrca
-        rrca
-        rrca
-        rrca
-        and 1
-        ld (ix+VF_PG),a
-        ret
-vds_38: ld a,(ix+VF_CC)
-        ld hl,s38_vis_c0
-        sub (hl)
-        add a,a
-        add a,a
-        add a,a
-        add a,a
-        ld (ix+VF_DX),a
-        ld a,(s38_vis_page)
-        ld (ix+VF_PG),a
         ret
 
 ; IX = a column's frame -> its parts sent in order (the window's chain: vat_emit): the tiles of its
@@ -572,9 +637,10 @@ vat_cdst:
         ld (vat_cmd + 14),a
         ret
 
-; vat_cmd = the chain's next part: the first only before the VBLANK interrupt (vdp.asm vdp_cmd_q's
-; rule; cmd_lock then stays 1: the interrupts start no command of theirs between the parts), the
-; others once the one before is done -> C when the first was too late (nothing started). Keeps BC.
+; vat_cmd = the chain's next part: the first only while the beam is outside the play area (between the
+; HUD split and the VBLANK, VF_FS bit 0: vdp.asm vdp_cmd_q's rule; in the blank after it, S#2 VR, bit 1;
+; cmd_lock then stays 1: the interrupts start no command of theirs between the parts), the others once
+; the one before is done -> C when the first was too late (nothing started). Keeps BC.
 vat_emit:
         push bc
         ld a,(ix+VF_N)
@@ -588,9 +654,17 @@ vat_emit:
         di
         ld a,(split_armed)
         or a
-        jr nz,ve_lt
-        ld a,b
-        out (VDP_IND),a             ; R#46: it starts
+        jr nz,ve_vb
+        bit 0,(ix+VF_FS)            ; (between the HUD split and the VBLANK)
+        jr nz,ve_go
+        jr ve_lt
+ve_vb:  ei
+        bit 1,(ix+VF_FS)            ; (in the blank after the VBLANK: S#2 VR)
+        jr z,ve_late
+        call vat_vr
+        jr z,ve_late
+ve_go:  ld a,b
+ve_go1: out (VDP_IND),a             ; R#46: it starts (ve_go1, ve_go2: the harness's marks)
         ei
         jr ve_ok
 ve_lt:  ei
@@ -603,11 +677,43 @@ ve_late:
 ve_nx:  call vdp_wait               ; (the part before; cmd_lock still 1)
         call ve_regs
         ld a,b
-        out (VDP_IND),a             ; R#46: it starts
+ve_go2: out (VDP_IND),a             ; R#46: it starts
 ve_ok:  inc (ix+VF_N)
         pop bc
         or a
         ret
+; HL = the VBLANK count (tick) it last went -> NC when it may go again: the R800 every VBLANK (its CPU
+; has the time), the Z80 every VAT_KZ VBLANKs (a column costs the game's CPU about 4 ms: docs/LEVEL2.md
+; default 18).
+vat_due:
+        ld a,(tick)
+        sub (hl)
+        cp 1
+        ret c                       ; (one a VBLANK at most)
+        ld a,(sl_off)
+        or a
+        ret nz
+        ld a,(tick)
+        sub (hl)
+        cp VAT_KZ
+        ret
+
+; -> NZ when S#2 VR: the beam in the vertical blank. Keeps B, DE, HL.
+vat_vr: di
+        ld a,2
+        out (VDP_CTRL),a
+        ld a,0x8F
+        out (VDP_CTRL),a
+        in a,(VDP_CTRL)
+        ld c,a
+        xor a
+        out (VDP_CTRL),a
+        ld a,0x8F
+        out (VDP_CTRL),a            ; R#15 = 0
+        ei
+        bit 6,c
+        ret
+
 ; R#32-R#45 from vat_cmd (R#17 auto-incrementing: R#46 next) -> B = R#46's byte.
 ve_regs:
         di
@@ -622,69 +728,12 @@ ve_regs:
         ld b,(hl)
         ret
 
-; E = the map column -> the frame's T0, T1, T2 (SX, SY) at the look its nibble on page vat_pg
-; gives, from the tile cache (which then holds them); twice, so that none of the three lost its
-; slot to another one's load -> NZ when one did (later then). Keeps DE.
-vat_srcs:
-        ld c,0
-vss_a:  call vat_src1
-        push bc
-        push de
-        ex de,hl
-        ld hl,cmdbuf
-        ld bc,4
-        ldir
-        pop de
-        pop bc
-        inc c
-        ld a,c
-        cp 3
-        jr c,vss_a
-        ld c,0
-vss_b:  call vat_src1
-        push de
-        ld de,cmdbuf
-        ld b,4
-vss_bc: ld a,(de)
-        cp (hl)
-        jr nz,vss_mv
-        inc de
-        inc hl
-        djnz vss_bc
-        pop de
-        inc c
-        ld a,c
-        cp 3
-        jr c,vss_b
-        xor a
-        ret
-vss_mv: pop de
-        or 1
-        ret
-; C = 0, 1, 2 (T0, T1, T2), E = the map column -> cmdbuf's SX, SY: tile_src of the column's row C
-; (at its look on page vat_pg), HL = the frame's place for them. Keeps BC, DE.
-vat_src1:
-        ld a,(ix+VF_R0)
-        add a,c
-        call tile_src
-        push ix
-        pop hl
-        ld a,c
-        add a,a
-        add a,a
-        add a,VF_S
-        add a,l
-        ld l,a
-        ret nc
-        inc h
-        ret
-
-; (tiles.asm vat_idle through l2_call: the V9938, vat_bk set, the VDP idle; level 2) The last column
+; (vat_prep: the V9938, vat_bk set, the VDP idle; level 2; IX = vat_fr) The last column
 ; drawn on the page shown copied onto the page being built (it is not shown: any time), a part (its
 ; rows down to the page's line 255, then those after it) a call; the flip waits for it. Again from
 ; its first part when the kept rows moved; dropped when no page is built or it does not hold the
-; column (the next build's copy brings it). Then the play-field BOBs over it there, if any, composed
-; again (tiles.asm fb_meetq).
+; column (the next build's copy brings it). Where it meets the play-field BOBs there, the page's
+; sync composes it again (field.asm vat_mmark: fb_bb, fb_bsync).
 vat_mirror:
         ld a,(fb_eng)
         or a
@@ -695,22 +744,13 @@ vat_mirror:
         ld a,(s38_back_c0)
         cp 0xFF
         jr z,vmr_off
-        ld hl,-VF_SZ
-        add hl,sp
-        ld sp,hl
-        push hl
-        pop ix
         ld a,(act_8000)
         push af
         ld a,(lv_tab)
         call bank_8000
         call vmr_go
         pop af
-        call bank_8000
-        ld hl,VF_SZ
-        add hl,sp
-        ld sp,hl
-        ret
+        jp bank_8000
 vmr_off:
         xor a
         ld (vat_bk),a
@@ -804,26 +844,18 @@ vmg_p:  ld a,(ix+VF_CC)             ; rows C .. B: the page shown's column onto 
         call vat_cdst
         push bc
         ld hl,vat_cmd
-        call vdp_cmd
-        pop bc
+vmg_c:  call vdp_cmd                ; (vmg_c, vmg_d: the harness's marks)
+vmg_d:  pop bc
         ld hl,vat_bk
         inc (hl)
         ld a,b
         cp (ix+VF_JB)
         ret c                       ; (its second part next)
-vmg_end:
-        xor a
+vmg_end:                            ; (every part sent: where it meets the BOBs or their work on
+        xor a                       ;  that page, its sync composes it again: field.asm vat_mmark)
         ld (vat_bk),a
-        ld a,(ix+VF_JA)
-vmg_b:  push af
-        add a,(ix+VF_R0)
-        ld d,a
-        ld e,(ix+VF_CC)
         ld a,(s38_vis_page)
         xor 1
-        call fb_meetq
-        pop af
-        cp (ix+VF_JB)
-        ret nc
-        inc a
-        jr vmg_b
+        ld c,a
+        ld hl,vat_mmark
+        jp field_call

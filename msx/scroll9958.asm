@@ -167,11 +167,11 @@ scroll_work:
         ret nz
         ld a,(split_armed)
         or a
-        jr nz,sw_cq
+        jr nz,sw_vb
         call sw_redraw
         call vdp_busy
         ret nz
-        call vat_win                ; (then level 2's vats: tiles.asm)
+sw_vb:  call vat_win                ; (then level 2's vats: tiles.asm; outside the window too)
         ret nz
 sw_cq:  ld a,(q_col)
         cp 0xFF
