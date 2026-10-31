@@ -2304,23 +2304,32 @@ Inferences the defaults rest on, as they stand:
 ### 8.1 Open issues and the user's choices, as they stand (2026-10-31)
 
 **The code review of 2026-10-31** (both diffs since milestone 1), for step 22:
-1. **A ready vat column that stops fitting is never dropped.** In `vats.asm` `vr_main` a column that
-   `vat_fits` refuses stays ready (`vr_nt`), and `vat_prep` keeps a ready column while the engines show
-   what they showed (`vat_same`), so it never looks for another. When the camera eases down a few
-   pixels within a tile row after a column was made ready (stairs, a lift stopping), R#23 grows, the
-   column's first screen line drops below `vat_fits`' threshold and every later window refuses it the
-   same way: all seven vats stop redrawing (their logic goes on) until RoboCop moves 16 px sideways,
-   the camera crosses a tile row, or a death or jump runs `vat_init`. Seen refused in a step-16 record;
-   how often it froze the vats in play was not measured. **Step 22's fix**: the column is dropped as the
-   other refusals do, so that `vat_prep` looks again at once (`vr_nt` stays a mark of its own for
-   `vatlog.tcl`'s count; +1 byte in `BANK_L2`).
-2. **The gate does not check level 2's first picture** after the flow or after the continue:
-   `bonuscheck.py --level2` tests only that the snapshot exists, and `contcheck.py` never looks at the
+1. **A ready vat column that stops fitting was never dropped.** In `vats.asm` `vr_main` a column that
+   `vat_fits` refuses stayed ready (`vr_nt`), and `vat_prep` keeps a ready column while the engines show
+   what they showed (`vat_same`), so it never looked for another while the camera eased within a tile
+   row (stairs, a lift stopping): the review expected every vat to stop redrawing until the view moved.
+   **Step 22's fix**: the column is dropped as the other refusals do, so that `vat_prep` looks again at
+   once (`vr_nt` stays a mark of its own for `vatlog.tcl`'s count; +1 byte in `BANK_L2`). **Measured**
+   (a drive that stops RoboCop after such an ease, both settings, the MSX2 and the MSX2+): the drop draws
+   the same columns at the same times and costs no CPU. The vats stood still there because at that
+   camera position `vat_fits` refuses every column of the vat in view, and the vats seen together (0 + 1,
+   1 + 2) share their rows: `vat_fits`' own limit (default 18), not the kept column. A vat stays still
+   while the view holds it that high on the screen (tour 1054-1148: 5.5 s), in both builds.
+   - **`vat_fits`' allowance for the VBLANK interrupt** (`VAT_LM`, 40 lines) is short of the handler's
+     length in level 2: up to 100-119 lines on a Z80 (85-116 on the MSX2+, 47-56 on the turbo R), so a
+     column started just before the VBLANK can be held longer between its parts. As built none reached
+     the beam in 1,286 columns (its parts up to 4 lines over the allowance); with `VAT_TICK=1` a column
+     of vat 3 in `tour` from 1250 ended 1 and 11 lines into it on the MSX2+ and the MSX2 (its top lines
+     one look behind for that picture), with step 16's bytes too. A `VAT_LM` of 80-120 would cost about
+     8 % of the columns in both builds (step 22's open issue 1).
+2. **The gate did not check level 2's first picture** after the flow or after the continue:
+   `bonuscheck.py --level2` tested only that the snapshot exists, and `contcheck.py` never looked at the
    one after `lv_cont`; step 18's and step 19's first pictures were checked by hand (msxframe, 0 pixels
    differ). **Step 22's fix**: `bonuscheck.py --level2` and `contcheck.py --fire`/`--again` run
    `tools/msxframe.py` on that picture (`--no-sprites`: the play area with the sprites off, since a
    level's first list has no SAT published yet) and fail on its status, and compare the notes' record of
-   the HUD with the game's score, ammo, timer, lives, icon and can.
+   the HUD with the game's score, ammo, timer, lives, icon and can; `hz.tcl` `hb_l2_snap` passes over a
+   split that comes while `hud_frame` runs (a cell recorded before its lines are written).
 
 **Display glitches left with their causes** (the zero-glitch rule: open):
 3. **The "hostage tear"** of level 1's window 860 (at most 3 pictures, the gate's `TEARS` bound) is no

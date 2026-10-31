@@ -3049,6 +3049,17 @@ builds), `S22/c7v`, `S22/c7w` (the runs), `S22/matrix`, `S22/guard`.
    MSX2 and the MSX2+); the notes say it under "Known issues".
 2. The notes' "Built from" names the integrated commit (filled in at the integration below).
 
+### Integrated (steps 22 and 23)
+Cherry-picked onto level2 11e8cfe (step 24 integrated first) as **e662271** (the code), **ca35210** and **64f1303**
+(these sections; HANDOFF.md resolved with steps 22 and 23 above step 24's section; HARNESS.md merged by git), then
+the last commit, which brings step 24's three accounts of the review's findings in line with what step 22 built and
+measured (docs/LEVEL2.md 8.1 items 1-2, with `vat_fits`' allowance for the VBLANK interrupt; docs/MSX_ARCHITECTURE.md
+"The vats' display"; docs/HARNESS.md 5.24's checks 11 and 13). From the main tree: `sh tools/bstest/l2base.sh builds
+S22/I`, `sh tools/bstest/hz.sh l2builds S22/I/L2R` and the variant's l2 build: **all 32 ROMs and the variant
+byte-identical to the worktree's** (`S22/I_cmp.txt`), so every result above holds for the integrated tree; `sh
+S22/tools/cands.sh` from the last commit: the five candidates' SHA-256 equal to the notes', which name that commit;
+`make test`: 321 tests, the 4 known failures only.
+
 ## Step 24: the documentation as built (2026-10-31)
 
 **Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), three commits,

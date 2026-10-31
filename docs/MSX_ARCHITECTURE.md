@@ -983,8 +983,12 @@ older.
   again; one whose window the VBLANK cut short (`vr_lt`) waits for the next. One `vat_fits` refuses
   (`vr_nt`) was kept too, until the code review of 2026-10-31 found that with the camera eased within
   its tile row every later window refuses it the same way, and `vat_prep` prepares no other column
-  meanwhile: every vat stops redrawing. Level 2's step 22 drops it as well (`vr_nt` stays a mark of
-  its own for the harness's count; `docs/LEVEL2.md` 8.1).
+  meanwhile. Level 2's step 22 drops it as well (`vr_nt` stays a mark of its own for the harness's
+  count); measured, the drop changes no picture: the vats seen together share their rows, so when one
+  column no longer fits none does, and a vat stands still while the view holds it that high on the
+  screen (`docs/LEVEL2.md` 8.1). `VAT_LM`'s 40 lines are short of the VBLANK handler's length in level
+  2 (up to 100-119 lines on a Z80): as built no column reached the beam in step 22's records, with
+  `VAT_TICK=1` one did (8.1).
 - **The V9938's mirror**: the column is then copied onto the page being built or built (`vat_mirror`,
   HMMM page to page, a part a call while the VDP is idle; that page is not shown), the flip waits for it
   (`vat_bk`, `s38u_step`), and `vat_mmark` re-marks the BOBs over it there; a build's start gives its
