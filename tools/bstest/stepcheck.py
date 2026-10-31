@@ -2,11 +2,12 @@
 """Step 7's display checks (docs/BRAINSTORM.md 4.2 checks 2 and 3) on hz7.tcl's records.
 
 usage:
-  stepcheck.py still SNAP.bin [...]           the page on screen (the applied list's R#2) with its
+  stepcheck.py still [--visit 2] SNAP.bin [...]
+                                              the page on screen (the applied list's R#2) with its
                                               sprites (R#5's SAT) equals tools/msxpuzl.py's render
                                               of that page's shown state (rd_st0 / rd_st1 in the
                                               snapshot's RAM) and of the cursor in the SAT
-  stepcheck.py rec REC.bin [--ref REF.jsonl] [--png DIR] [--from N] [--every K]
+  stepcheck.py rec REC.bin [--ref REF.jsonl] [--png DIR] [--from N] [--every K] [--visit 2]
                                               every recorded picture: each element rectangle is
                                               one of its states (no torn block), every pixel
                                               outside them is the static screen's (coherence), the
@@ -14,6 +15,9 @@ usage:
                                               trace of the same drive), the cursor of the pass the
                                               list was published after (list_tail's $B00): present
                                               in play, absent in the end sequences
+--visit 2: Brainstorm's second visit (PZ_LEVEL=2 builds, the drives solve2 and fuzz2): the
+render's TV pictures (Ellen's face) and cursor colours are visit 2's (tools/msxpuzl.py
+--visits 1,2), and a snapshot's mirror must hold AG $8050 >= 2. Default: visit 1.
 Exit 0 when every check passed.
 
 A snapshot (hz7.tcl hz7_snap) is VRAM 128 KiB, RAM C000h-FFFFh, the 64 VDP registers and the
@@ -40,8 +44,8 @@ REC = [("regs", 64), ("page", 20736), ("sat", 32), ("pfpal", 32), ("list", 32), 
 REC_LEN = sum(n for _, n in REC)
 
 
-def puzl() -> msxpuzl.Puzl:
-    return msxpuzl.Puzl((ROOT / "build/extracted/files/PUZL_25.bin").read_bytes())
+def puzl(visit: int = 1) -> msxpuzl.Puzl:
+    return msxpuzl.Puzl((ROOT / "build/extracted/files/PUZL_25.bin").read_bytes(), (1, 2) if visit == 2 else (1,))
 
 
 def page_pixels(data: bytes) -> list[list[int]]:
@@ -103,8 +107,8 @@ def compose_sprites(img: list[list[int]], vram: bytes, sat_addr: int, ents: list
                     img[sy][x + lx] = c
 
 
-def still(paths: list[Path]) -> int:
-    p = puzl()
+def still(paths: list[Path], visit: int = 1) -> int:
+    p = puzl(visit)
     bad = 0
     for path in paths:
         d = path.read_bytes()
@@ -126,13 +130,19 @@ def still(paths: list[Path]) -> int:
             print(f"{path.name}: FAIL: the SAT: {cur}")
             bad += 1
             continue
-        want = p.render(bytes(state), cur)
+        level = ram[0xDC50 - 0xC000] | ram[0xDC51 - 0xC000] << 8      # (AG $8050: the visit, msx/puzl.asm)
+        if visit == 2 and not 2 <= level < 0x8000:
+            print(f"{path.name}: FAIL: the mirror's $8050 is {level}: not visit 2")
+            bad += 1
+            continue
+        want = p.render(bytes(state), cur, visit)
         got = page_pixels(vram[page * 0x8000:page * 0x8000 + 20736])
         compose_sprites(got, vram, sat_addr, ents)
         diffs = [(x, y) for y in range(H) for x in range(W) if got[y][x] != want[y][x]]
         drawn = sorted({k for k, i, v in msxpuzl.state_items(bytes(state))})
         pal0 = all(v == 0 for v in d[0x24040:0x24060][2:])
         print(f"{path.name}: $B00 {ram[0x1000] | ram[0x1001] << 8} list $B00 {gframe} page {page} R#5 {r5:02X} "
+              + (f"visit {visit} " if visit != 1 else "") +
               f"cursor {cur} TV {state[0] if state[0] != 255 else '-'} drawn {','.join(drawn)}"
               f"{' (palette black)' if pal0 else ''}: "
               + ("equal to the render" if not diffs else f"FAIL: {len(diffs)} pixels differ, first {diffs[:4]}"))
@@ -141,9 +151,9 @@ def still(paths: list[Path]) -> int:
     return 1 if bad else 0
 
 
-def elements(p: msxpuzl.Puzl):
+def elements(p: msxpuzl.Puzl, visit: int = 1):
     """Per element (state index): its rectangle and its images (value -> pixels; 'static' too)."""
-    v = p.vram[1]
+    v = p.vram[visit]
     static = v.rows(0, 0, W, H)
     out = []
     for e in range(msxpuzl.ST_LEN):
@@ -162,9 +172,9 @@ def elements(p: msxpuzl.Puzl):
     return out, static
 
 
-def rec(path: Path, ref: Path | None, png: Path | None, start: int, every: int) -> int:
-    p = puzl()
-    els, static = elements(p)
+def rec(path: Path, ref: Path | None, png: Path | None, start: int, every: int, visit: int = 1) -> int:
+    p = puzl(visit)
+    els, static = elements(p, visit)
     inside = [[False] * W for _ in range(H)]
     for e, kind, (dx, dy, w, h), imgs in els:
         for y in range(dy, dy + h):
@@ -242,7 +252,7 @@ def rec(path: Path, ref: Path | None, png: Path | None, start: int, every: int) 
             if all(c == bytes(3) for c in pal):
                 pal = [bytes(v * 255 // 7 for v in (q >> 8, q >> 4 & 15, q & 15)) for q in [0] * 16]
             pic = [r[:] for r in img]
-            compose_sprites_rec(pic, parts, ents, p)
+            compose_sprites_rec(pic, parts, ents, p, visit)
             write_png(png / f"pic{k:05d}.png", W, H, [b"".join(pal[c] for c in r) for r in pic])
     rate = f"{pics} pictures in {n} VBLANKs"
     print(f"{n} records: {rate}; torn/unknown blocks {torn}, pictures with pixels outside the elements "
@@ -252,9 +262,10 @@ def rec(path: Path, ref: Path | None, png: Path | None, start: int, every: int) 
     return 1 if bad else 0
 
 
-def compose_sprites_rec(pic, parts, ents, p=None):
-    """The record's SAT drawn with the converter's patterns (colours 15 and 14), sprite 0 in front."""
-    cols = (15, 14)
+def compose_sprites_rec(pic, parts, ents, p=None, visit=1):
+    """The record's SAT drawn with the converter's patterns (the visit's colours: 15 and 14 on visit
+    1), sprite 0 in front."""
+    cols = p.cursor_colours(visit) if p is not None else (15, 14)
     for k in reversed(range(min(2, len(ents)))):
         y, x, pat = ents[k]
         pp = p.pats[32 * (pat >> 2):32 * (pat >> 2) + 32]
@@ -274,12 +285,14 @@ def main() -> int:
     ap.add_argument("--png", type=Path)
     ap.add_argument("--from", dest="start", type=int, default=0)
     ap.add_argument("--every", type=int, default=1)
+    ap.add_argument("--visit", type=int, choices=(1, 2), default=1,
+                    help="Brainstorm's visit: 2 for PZ_LEVEL=2 builds (solve2, fuzz2)")
     a = ap.parse_args()
     if a.mode == "still":
-        return still(a.files)
+        return still(a.files, a.visit)
     if a.png:
         a.png.mkdir(parents=True, exist_ok=True)
-    return max(rec(f, a.ref, a.png, a.start, a.every) for f in a.files)
+    return max(rec(f, a.ref, a.png, a.start, a.every, a.visit) for f in a.files)
 
 
 if __name__ == "__main__":

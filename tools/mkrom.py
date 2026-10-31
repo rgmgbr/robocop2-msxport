@@ -40,7 +40,10 @@
         after them, at L2_PALP / L2_VOFFP in the A000h window) and its play-field atlas
         (sprites_l2_field.bin, from L2_ATLAS: two banks, each with a table of its own frames,
         atlas_banks); its tables bank also holds the vats' display tables at L2_VATS (8000h window:
-        tools/mapcells.py vat_tables); up to
+        tools/mapcells.py vat_tables); then Brainstorm's visit-2 TV pictures (tools/msxpuzl.py
+        --visits 1,2 puzl_tv2.bin: Ellen's face, raw, a blob of its own after the last block, so
+        that no bank moves: docs/LEVEL2.md 3.9; msx/puzl.asm streams it into VRAM through the 8000h
+        window from bank PUZL_TV2_BANK); up to
         256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
@@ -67,8 +70,9 @@ _l2; the copies' labels must equal level 1's, checked after the assembly), check
 cell and attribute value each level's writers can change fits the map patches and the packed
 map's codes (tools/mapcells.py, levels 1 and 2: the build fails otherwise), copies the level
 palette and the HUD's
-(both through the colour grade: level1_grade.pal, hud_grade.pal; Brainstorm's too, puzl_1_grade.pal,
-with the stage's equates and tables, puzl.inc and puzl_tab.inc, and its cursor, puzl_cursor.spr,
+(both through the colour grade: level1_grade.pal, hud_grade.pal; Brainstorm's two visits' too,
+puzl_1_grade.pal and puzl_2_grade.pal, with the stage's equates and tables, puzl.inc and
+puzl_tab.inc, and its cursor, puzl_cursor.spr,
 tools/msxpuzl.py; the range's two visits' palettes too, range_1_grade.pal and range_2_grade.pal,
 with its equates and tables, range.inc and range_tab.inc, and its line's sprite patterns,
 range_line.spr, tools/msxrange.py; the HUD's also from colour 4 on,
@@ -810,9 +814,13 @@ def main(argv: list[str]) -> int:
         print("error: the silhouettes' colour rows differ between the levels (msx/sprites.asm takes level 1's)",
               file=sys.stderr)
         return 1
-    # Brainstorm (msx/puzl.asm): its palette through the colour grade, as game play (decision 8);
-    # the shooting range (msx/frng.asm): its two visits' palettes the same way
-    (gen / "puzl_1_grade.pal").write_bytes(grade_pal((level.parent / "puzl_1.pal").read_bytes()))
+    # Brainstorm (msx/puzl.asm): its two visits' palettes through the colour grade, as game play
+    # (decision 8); the shooting range (msx/frng.asm): its two visits' palettes the same way
+    for v in (1, 2):
+        if not (level.parent / f"puzl_{v}.pal").exists():
+            print(f"error: no puzl_{v}.pal (tools/msxpuzl.py --visits 1,2: make msx)", file=sys.stderr)
+            return 1
+        (gen / f"puzl_{v}_grade.pal").write_bytes(grade_pal((level.parent / f"puzl_{v}.pal").read_bytes()))
     for v in (1, 2):
         (gen / f"range_{v}_grade.pal").write_bytes(grade_pal((level.parent / f"range_{v}.pal").read_bytes()))
     atr = level.with_suffix(".atrp").read_bytes()               # (packed: copied to page-0 RAM)
@@ -995,6 +1003,7 @@ def main(argv: list[str]) -> int:
     # Brainstorm's graphics (tools/msxpuzl.py puzl_gfx.bin: the screen and the sheet, then the TV
     # pictures, packed across banks: msx/puzl.asm streams them into VRAM through the 8000h window)
     puzl_gfx = (level.parent / "puzl_gfx.bin").read_bytes()
+    puzl_gfx_len = len(puzl_gfx)
     puzl_gfx += b"\xff" * (-len(puzl_gfx) % BANK)
     bank_puzl_gfx = bank_stage + 1
     # Brainstorm's music and effects (tools/msxtune.py pzm.bin: msx/tune.asm reads its streams and
@@ -1045,7 +1054,25 @@ def main(argv: list[str]) -> int:
     bank_l2_tab = bank_l2_atr + 1
     bank_l2_atlas = bank_l2_tab + 1
     field_img2 += b"\xff" * (-len(field_img2) % BANK)
-    banks_used = bank_l2_atlas + len(field_img2) // BANK
+    # Brainstorm's visit-2 TV pictures (tools/msxpuzl.py --visits 1,2 puzl_tv2.bin: Ellen's face,
+    # raw), a blob of their own after the last block (docs/LEVEL2.md 3.9, default 12): no bank
+    # moves, and msx/puzl.asm's rd_at reaches 8 banks from a blob's first (puzl_gfx.bin holds 7);
+    # the conversion's puzl.inc must be the one that places them there
+    puzl_inc = {m[1]: int(m[2], 0)
+                for m in re.finditer(r"^(\w+):\s+equ\s+(\S+)", (level.parent / "puzl.inc").read_text(), re.M)}
+    if puzl_inc.get("PZ_VISITS") != 2 or not (level.parent / "puzl_tv2.bin").exists():
+        print("error: Brainstorm's conversion has no visit 2 (puzl.inc PZ_VISITS, puzl_tv2.bin: tools/msxpuzl.py "
+              "--visits 1,2: make msx)", file=sys.stderr)
+        return 1
+    puzl_tv2 = (level.parent / "puzl_tv2.bin").read_bytes()
+    if (len(puzl_tv2), puzl_inc["PZ_GFX_TV2"], puzl_gfx_len) \
+            != (puzl_inc["PZ_GFX_TV_LEN"], 0, puzl_inc["PZ_GFX_LEN"]):
+        print(f"error: puzl_tv2.bin ({len(puzl_tv2)} bytes) or puzl_gfx.bin ({puzl_gfx_len}) is not puzl.inc's",
+              file=sys.stderr)
+        return 1
+    puzl_tv2 += b"\xff" * (-len(puzl_tv2) % BANK)
+    bank_puzl_tv2 = bank_l2_atlas + len(field_img2) // BANK
+    banks_used = bank_puzl_tv2 + len(puzl_tv2) // BANK
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
@@ -1076,6 +1103,7 @@ def main(argv: list[str]) -> int:
         f"SCCFX_BANK: equ {bank_sccfx}\n"
         + "".join(f"BANK_{n}: equ {stage_bank[n]}\n" for n in STAGES) +
         f"PUZL_GFX_BANK: equ {bank_puzl_gfx}\nPUZL_GFX_BANKS: equ {len(puzl_gfx) // BANK}\n"
+        f"PUZL_TV2_BANK: equ {bank_puzl_tv2}\nPUZL_TV2_BANKS: equ {len(puzl_tv2) // BANK}\n"
         f"PZM_BANK: equ {bank_pzm}\n"
         f"RANGE_GFX_BANK: equ {bank_range_gfx}\nRANGE_GFX_BANKS: equ {len(range_gfx) // BANK}\n"
         f"RANGE_HIT_BANK: equ {bank_range_hit}\nFRM_BANK: equ {bank_frm}\n"
@@ -1191,7 +1219,7 @@ def main(argv: list[str]) -> int:
            + voice + scc + fm + sccfx + stage_code["PUZL"] + puzl_gfx + pzm + b"\xff" * (-len(pzm) % BANK)
            + stage_code["FRNG"] + range_gfx + range_hit + frm + b"\xff" * (-len(frm) % BANK)
            + stage_code["L2"] + tiles2 + b"".join(map2_banks) + atr_2 + bytes(BANK - len(atr_2)) + tab2
-           + field_img2)
+           + field_img2 + puzl_tv2)
     if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
            != stage_code[n] for n in STAGES):
         print("error: a late code section (a bonus stage's, level 2's) is not at its bank", file=sys.stderr)
@@ -1234,7 +1262,7 @@ def main(argv: list[str]) -> int:
           f"data in {bank_range_hit}-{bank_frm - 1}" + (f", its music in {bank_frm}-{bank_l2 - 1}" if frm else "")
           + f"; level 2's code in {bank_l2}, tiles in {bank_l2_tiles}-{bank_l2_map - 1}, map in {bank_l2_map}-"
           f"{bank_l2_atr - 1} ({rows2} rows), attributes in {bank_l2_atr}, tables in {bank_l2_tab}, atlas in "
-          f"{bank_l2_atlas}-{banks_used - 1}"
+          f"{bank_l2_atlas}-{bank_puzl_tv2 - 1}; Brainstorm's visit-2 pictures in {bank_puzl_tv2}-{banks_used - 1}"
           + (f"; joystick script {script}" if script else ""))
     return 0
 

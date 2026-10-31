@@ -1687,3 +1687,116 @@ X), `still` (36 snapshots + msxframe PNG/txt), `objs`, `start` (the whole tour u
    on the turbo R or `set ::pause off`.
 5. The HUD's can at the arrest frame differs from msxframe's model (171 px, three machines): look at it with
    step 18/19's HUD check (4.2 check 13).
+
+## Step 20: Brainstorm's second visit (2026-10-31)
+
+**Done.** One commit (10 files, explicit paths: its hash is in `git log`): `tools/msxpuzl.py`, `tools/mkrom.py`,
+`msx/puzl.asm`, `Makefile`, `tools/bstest/stepcheck.py`, `tools/bstest/check_all.sh`, `tests/test_msxpuzl.py`,
+`tests/test_bstest.py`, `docs/HARNESS.md` (5.5's rows, 7's milestone-3 note), this file. Records in `$S20` =
+`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s20`:
+`A` (20 option-set builds of HEAD 7c8635a) and `A2` (its `regress.sh builds` and `rgr_chain all` records, made
+this step's base: no new l2base path was written when it started), `C`, `C2` (the same of this commit), `B`, `B2`
+(the plan's mechanism, rejected: below), `look` (extra visit-2 runs), `png`, logs, and the scratch scripts
+`builds.sh`, `snapcmp.py`, `seqcmp.py`, `palcheck.py`, `puzldiff.py`. The worktrees `wt0`/`wt1` are removed.
+
+### What was built
+- **Converter** (`tools/msxpuzl.py --visits 1,2`, now the Makefile's line): visit 2's 9 TV pictures are a blob
+  of their own, `puzl_tv2.bin` (28,800 B); `puzl_gfx.bin` stays visit 1's (56,704 B, byte-identical);
+  `puzl_2.pal`; `puzl.inc`: `PZ_GFX_TV2` 0 (in `puzl_tv2.bin`), `PZ_VISITS` 2, `PZ_CUR_COL_2` 14
+  (`PZ_CUR_COL2_2` 14: visit 2's COLOR19 and COLOR18 both land on its entry 14, 655). Without `--visits`
+  every output is byte-identical to before.
+- **mkrom**: `puzl_tv2.bin` after the last block (level 2's atlas): `PUZL_TV2_BANK` 123-126,
+  `PUZL_TV2_BANKS` 4 (banks.inc; the summary line names it); it refuses a conversion without visit 2
+  (`puzl.inc` `PZ_VISITS`, the file, its size, `PZ_GFX_TV2` 0, `puzl_gfx.bin`'s size); `gen/puzl_2_grade.pal`.
+  **127 of 128 banks: 1 MiB** (one left: the next block makes the product 2 MiB, default 47).
+- **`msx/puzl.asm`: visit 2 out of line; visit 1 runs its old code instruction for instruction.**
+  `bs_stage`'s visit-2 fall-through keeps its 9 bytes (`ld de,PZ_GFX_TV2` became `jp bs_v2`). `bs_v2`, after
+  `puzl_tab.inc` (so every old label keeps its address): the boards, `pz_pal` = `pz_pal2` (the graded visit-2
+  palette), `bs_show2` (`bs_show`'s 13-instruction head, keep the two equal; then Ellen's pictures from
+  `PUZL_TV2_BANK` through `rd_atb`, A = a blob's first bank, which joins `rd_at` at `rd_at1`; then `jp bsw_tv`:
+  `bs_show`'s own TV loop and the rest, the cursor's colours by its own visit test), back at `bs_vr`. Visit 2's
+  entry does the same work as visit 1's (no second upload). Quirk 5 as it was: `bfd_out` puts `pz_pal1` back
+  at every fade-out's end, so boards 1-3 fade in with visit 1's colours on Ellen's face.
+- BANK_PUZL against HEAD: all 1,490 labels at their addresses; before the old end only 4 bytes differ
+  (A03Ch-A03Eh `jp bs_v2`, A4D5h `PZ_CUR_COL_2` 0Fh -> 0Eh), neither run by visit 1; 107 B appended
+  (`puzl_end` AE12h -> AE7Dh): **4,483 B free** (4,590). Every other bank is HEAD's.
+- **`pz_tvb` (C6AAh) is not used.** The plan's mechanism (`rd_at` reading its base from `pz_tvb`, set in
+  `bs_stage`) was built first (`B`, `B2`): it adds about 113 T to visit 1's entry, and the asynchronous renderer
+  turns that into other pictures. Its uploads and every picture stayed valid (20 traces 0 differ, every still
+  equal to its render, `regress.sh check B2 A2` PASS, 45 verdicts), but 18 of 53 visit-1 snapshots differed
+  from HEAD's (a TV copy in flight a few bytes further on; at passes 300 and 450 a page flipped a VBLANK
+  earlier) and the picture sequences of `solve1_m2`, `_tr`, `_fx` and `quirk2_tr` differed (the TV duty rule's
+  choices). The out-of-line design makes "visit 1 byte-identical in VRAM" hold by construction, and leaves
+  C6AAh to `lv_voffy` and the range's `rgr_nx`.
+- Harness (add only): `stepcheck.py --visit 2` (still and rec: `Puzl(data, (1, 2))`, `render(state, cursor, 2)`;
+  a snapshot's AG $8050 must be 2 or more), `check_all.sh` passes it for `solve2` and `fuzz2`.
+- Tests: `test_msxpuzl.py` (`test_visit_2`: the blobs, the equates, the render's Ellen; the command line with
+  `--visits 1,2` and `render --visit 2`), `test_bstest.py` (`test_stepcheck_visit_2`).
+
+### Checks (exact commands, results)
+- Converter: `python3 -I tools/msxpuzl.py build/extracted/files/PUZL_25.bin OUT/puzl` (no `--visits`): its 14
+  outputs byte-identical to HEAD's; with `--visits 1,2`: `puzl_gfx.bin` = visit 1's, `puzl_tv2.bin` = the old
+  one-blob output's last 28,800 B, `puzl.inc` = visit 1's but `PZ_GFX_TV2` 27904 -> 0, `PZ_VISITS` 1 -> 2,
+  `PZ_CUR_COL_2` 15 -> 14; its checks pass (the renders against the Amiga's composition, 11 states a visit).
+- Builds: `sh $S20/builds.sh WT OUT` (`hz.sh builds`, `hz.sh l2builds`, and `ROM_2M=1`, `PZ_TEST=2`, `PZ_TEST=2
+  PZ_LEVEL=2`, `PZ_TEST=1 PZ_LEVEL=2` (+ `ROM_2M=1`), `EXTJOY=1 LV_TEST=2`, `TAG=7`, `DIAG=1`) from a worktree
+  of 7c8635a into `A` and of this tree into `C`: 20 + 20 build OK, 12 known z80asm warnings each. The shared
+  tree's product, rebuilt after the copy and `make msx`'s converter line: byte-identical to `C`'s (sha256
+  2cd25893b28f0a32; HEAD's 4194792d6a7d1585).
+- **Only Brainstorm's bank and the new blob differ**: `python3 -I tools/bstest/romdiff.py --blocks A/<b> C/<b>`
+  on all 20: romdiff PASS, BANK_PUZL (111 bytes) and `PUZL_TV2_BANK` (new: 123-126; 116-119 in `DIAG=1`, which
+  has no music banks); FIXED, every code bank and every data block identical, so level 1, the title, the range,
+  level 2 and FRONT are HEAD's byte for byte. mkrom's checks (3Fh rule, SCC test values, "OPLL", guard) pass in
+  all.
+- Free bytes (`python3 -I tools/bstest/l2base.py banks C A`): only PUZL moves (4,590 -> 4,483); fixed area
+  298 (product), lowest DIAG+PZ_TEST 163, DEMO_HUD 76, as before. `sh tools/bstest/variants.sh C/variants`: 46
+  of 48 (`DEMO_ACTORS=2`/`5`: the fixed area 6Dh over, as at HEAD).
+- Emulator: one openMSX (the in-process MCP; the step-14 agent used its private session). `sh
+  tools/bstest/regress.sh builds A2` (worktree of 7c8635a) and `... C2`; MCP `source {wt1/tools/bstest/load.tcl};
+  rgr_chain {A2} all {A2/all.done}`, the same on C2: 208 jobs each, 0 time outs. A2 made a base:
+  `check_all.sh A2/O m2 tr fx eu > A2/check_all.log` (7c8635a's scripts), `fresh/new_*`, `xnew_*` copied to
+  `base_*`, `xbase_*`. **`sh tools/bstest/regress.sh check C2 A2`: regress: PASS, 20 steps, 45 verdicts, 0
+  FAIL** (level 1's cov traces; the title from power-on, exact and polled; the product's and `PZ_TEST=1` flows;
+  the restore; the turbo R's blank and writes; the titles after the flows; 2 MiB; the keyboard product; the
+  final checks' flows; Brainstorm's 20 traces, stills and records; the guard and VRAM speed; the HUD; the
+  range's screens, ratings, traces after level 1 and Brainstorm, wanted state, display and sound).
+- **Brainstorm's 20 traces 0 differ** (`sh tools/bstest/check_all.sh C2/O m2 tr fx eu`), `solve2` 728 and
+  `fuzz2` 606 frames with results 0 and 1 on C-BIOS_MSX2 and the FS-A1GT; `python3 -I tools/bstest/cmpcheck.py
+  A2/check_all.log C2/check_all.log C2/O`: PASS (its one torn cell is the base's own: `solve2_m2` record 592,
+  $B00 470, a set-up, palette black).
+- **Visit 1 byte-identical**: `python3 -I $S20/snapcmp.py A2/O/st C2/O/st solve1_m2 solve1_tr solve1_fx
+  solve1_eu fail_m2 fail_tr timeout_m2 timeout_tr quirk2_m2 quirk2_tr`: PASS, all 53 snapshots identical in VRAM,
+  the VDP registers, the palette and RAM C000h-FFFFh; all 10 records (4,331 VBLANKs) identical in every part.
+- **Visit 2's stills equal `msxpuzl.py render --visit 2`**: `python3 -I tools/bstest/stepcheck.py still --visit
+  2 ...` on 66 snapshots, 0 with differences: the suite's (C-BIOS_MSX2, FS-A1GT: passes 100, 400, 700) and 60
+  more (`hz7_job solve2_{fx,eu,m2x}` on the FS-A1FX, C-BIOS_MSX2_EU and C-BIOS_MSX2: every 8 passes of board 0,
+  boards 1 and 3, the ending; their traces 0 differ); `stepcheck.py rec --visit 2 --ref
+  build/emu/pz_solve2_ram.jsonl` on the FS-A1FX and 50 Hz records: 0 torn, 0 outside, 0 cursor errors, the
+  face in 260 and 257 of 424 pictures. `$S20/palcheck.py`: board 0 shows `puzl_2_grade.pal`, boards 1-3 and
+  the ending `puzl_1_grade.pal` (quirk 5), on every machine.
+- Visit 2's flow from power-on (`PZ_TEST=1 PZ_LEVEL=2`, the optional `-test7-bs2` option set): MCP
+  `hz_bonus_setup` on `C/X/bs2` on the Expert and the FS-A1GT, `python3 -I tools/bstest/bonuscheck.py DIR
+  bs2_m2 --result time --gen C/X/bs2/gen --range time`: bonus check PASS on both (the intro and OUT OF TIME.
+  equal to their renders, 4,075 HUD splits in 4,075 VBLANKs, the range's intro and result equal, the range
+  PASS, the title, the new game, lost counters 0).
+- Pictures looked at (`tools/bstest/shots.py`): Ellen under static in visit 2's palette (board 0, FS-A1GT),
+  darker in visit 1's (board 2, quirk 5), clean at the ending (C-BIOS_MSX2), board 3 on the FS-A1FX; HEAD's
+  Murphy at the same pass.
+- `make test`: 298 tests, the 4 known failures only (failures=3, errors=1).
+
+### Open issues
+1. For the user's eye (the candidates' notes): Ellen's face pair 655/644 (provisional, the face looks pale)
+   and quirk 5 (reproduced: boards 1-3 show her in visit 1's 433/322). Under quirk 5 the cursor keeps visit 2's
+   indices (14/14), so on boards 1-3 it shows `pz_pal1`'s 433 where the Amiga shows visit 1's COLOR19 ($754, MSX
+   322); if the user fixes quirk 5 the cursor is 655 throughout.
+2. **`build/msx/puzl.inc` now holds visit 2's equates.** An older commit built with today's `build/msx` reads
+   visit 2's pictures from `puzl_gfx.bin`'s start (and `PZ_CUR_COL_2` 14): for an exact older build regenerate
+   in its worktree with its own converter, `python3 -I tools/msxpuzl.py build/extracted/files/PUZL_25.bin
+   build/msx/puzl`. The step-14 base (`l2/base`, built 03:25 from `l2/wt0`) has its own earlier copy.
+3. `check_all.sh` checks `solve2` and `fuzz2` as visit 2: records of a build before this commit (Murphy) fail
+   those stills; check them with their own commit's `tools/bstest/`.
+4. For step 24: `pz_tvb` (step 5's byte) is unused and `msx.inc`'s `pz_tv` comment ("in puzl_gfx.bin") is
+   visit 1's only (`msx.inc` not edited here); `docs/BRAINSTORM.md`'s visit-2 statements are outdated (1's
+   "Not yet", 3.1 step 3, 3.3, 3.9's `--visits 1,2`, 3.10's 92 banks and 85,504-byte blob, 5's step 13, 8's
+   risks 8 and 9).
+5. Visit 2's entry maps 8 data banks (`puzl_gfx.bin`'s first 4, `puzl_tv2.bin`'s 4), visit 1's 7.

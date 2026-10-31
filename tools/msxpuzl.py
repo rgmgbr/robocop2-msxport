@@ -33,8 +33,11 @@ Outputs (OUT = the prefix, e.g. build/msx/puzl):
                   grades them: decision 8, game play). OUT_2.pal with --visits 1,2
   OUT_gfx.bin     the screen (256 x 162, the TV rectangle black) and the sheet (256 x 56), 128
                   bytes a line: one stream into VRAM page 0 from line 0; then visit 1's 9 TV
-                  pictures (80 x 80, 40 bytes a line, TV_STATES order), and visit 2's 9 after
-                  them with --visits 1,2 (milestone 3)
+                  pictures (80 x 80, 40 bytes a line, TV_STATES order)
+  OUT_tv2.bin     with --visits 1,2: visit 2's 9 TV pictures (Ellen's face), the same layout, in a
+                  blob of their own: tools/mkrom.py puts it after the ROM's last block
+                  (PUZL_TV2_BANK), so that no bank moves, and msx/puzl.asm's rd_at reaches 8 banks
+                  from a blob's first (docs/LEVEL2.md 3.9: Brainstorm's second visit)
   OUT_cursor.spr  9 sprite patterns of 32 bytes (sprite mode 2: left 8 columns, then right 8)
   OUT.inc         equates only (include it anywhere): the elements' places, the sheet's and the
                   TV pictures' VDP coordinates, the blob's layout, the cursor's patterns and
@@ -578,16 +581,23 @@ class Puzl:
                 check(self.pal[v][:14] == self.pal[1][:14], f"visit {v}: the frame's palette")
             self.tv[v] = b"".join(pack([[self.remap[v][c] for c in r] for r in b.tv(n)]) for n in range(TV_COUNT))
         self.pats, self.use = cursor_sprites(a)
-        self.blob = self.screen + self.sheet + b"".join(self.tv[v] for v in visits)
+        self.blob = self.screen + self.sheet + self.tv[1]   # (OUT_gfx.bin: visit 1's pictures)
+        self.tv2 = self.tv.get(2, b"")                      # (OUT_tv2.bin: visit 2's, a blob of their own)
         check(len(self.screen) == GFX_SHEET and len(self.screen + self.sheet) == GFX_PAGE0, "the blob's layout")
         check(all(len(t) == GFX_TV_LEN for t in self.tv.values()), "the TV pictures' size")
         self.vram = {v: self.vram_for(v) for v in visits}
         for v in visits:
             self.check_render(v)
 
+    def tv_source(self, visit: int) -> tuple[bytes, int]:
+        """The blob that holds the visit's TV pictures and their offset in it: visit 1's in
+        OUT_gfx.bin after the screen and the sheet, visit 2's from OUT_tv2.bin's start (visit 1's
+        when visit 2 is not built)."""
+        return (self.tv2, 0) if visit == 2 and 2 in self.visits else (self.blob, GFX_PAGE0)
+
     def tv_offset(self, visit: int) -> int:
-        """The visit's TV pictures in the blob (visit 1's when visit 2 is not built)."""
-        return GFX_PAGE0 + GFX_TV_LEN * (self.visits.index(visit) if visit in self.visits else 0)
+        """The visit's TV pictures' offset in their blob (tv_source)."""
+        return self.tv_source(visit)[1]
 
     def cursor_colours(self, visit: int) -> tuple[int, int]:
         """Sprite 0's colour (COLOR19) and sprite 1's (COLOR18) in the palette the visit shows."""
@@ -596,13 +606,13 @@ class Puzl:
 
     def vram_for(self, visit: int) -> Vram:
         """VRAM as the stage's entry leaves it: the screen and the sheet in page 0 (page 1 is a
-        copy of page 0's play area), the visit's TV pictures in page 2."""
+        copy of page 0's play area), the visit's TV pictures in page 2, each from its blob."""
         v = Vram()
         v.write(0, 0, MW, self.blob[:GFX_PAGE0])
-        t = self.tv_offset(visit)
+        src, t = self.tv_source(visit)
         for n in range(TV_COUNT):
             x, y = tv_slot(n)[:2]
-            v.write(x, y, TV_W, self.blob[t + TV_BYTES * n:t + TV_BYTES * (n + 1)])
+            v.write(x, y, TV_W, src[t + TV_BYTES * n:t + TV_BYTES * (n + 1)])
         return v
 
     def copies(self, state: bytes) -> list[tuple]:
@@ -708,7 +718,8 @@ class Puzl:
         eq("PZ_SCREEN_LINES", MH)
         eq("PZ_SHEET_LINES", SHEET_H)
         eq("PZ_GFX_TV1", self.tv_offset(1), "visit 1's 9 TV pictures, TV_STATES order")
-        eq("PZ_GFX_TV2", self.tv_offset(2), "visit 2's" + ("" if 2 in self.visits else ": visit 1's until milestone 3"))
+        eq("PZ_GFX_TV2", self.tv_offset(2), "visit 2's, in puzl_tv2.bin (its own blob: PUZL_TV2_BANK)"
+           if 2 in self.visits else "visit 2's: visit 1's until milestone 3")
         eq("PZ_TV_BYTES", TV_BYTES, "one picture: 80 lines of PZ_TV_LINE bytes")
         eq("PZ_TV_LINE", TV_LINE)
         eq("PZ_GFX_TV_LEN", GFX_TV_LEN, "a visit's 9 pictures")
@@ -973,6 +984,8 @@ def convert(src: Path, out: Path, visits: tuple[int, ...]) -> int:
     for v in visits:
         put(Path(f"{out}_{v}.pal"), v9938(p.pal[v]))
     put(Path(f"{out}_gfx.bin"), p.blob)
+    if p.tv2:
+        put(Path(f"{out}_tv2.bin"), p.tv2)
     put(Path(f"{out}_cursor.spr"), p.pats)
     inc, tab = p.inc_text(), p.tab_text()
     data = parse_data(tab)
@@ -990,7 +1003,9 @@ def convert(src: Path, out: Path, visits: tuple[int, ...]) -> int:
         print(f"  cursor: sprite 0 colour {c0} (COLOR19), sprite 1 colour {c1} (COLOR18)")
     print(f"cursor patterns (sprite 0/1 per image): {' '.join(f'{a}/{255 if b is None else b}' for a, b in p.use)}")
     print(f"{out}_gfx.bin: {len(p.blob)} bytes = {len(p.blob) / 8192:.2f} banks: screen {len(p.screen)} + sheet "
-          f"{len(p.sheet)} + TV {' + '.join(str(len(p.tv[v])) for v in visits)}")
+          f"{len(p.sheet)} + TV {len(p.tv[1])}")
+    if p.tv2:
+        print(f"{out}_tv2.bin: {len(p.tv2)} bytes = {len(p.tv2) / 8192:.2f} banks: visit 2's TV")
     print("checks passed: the tables (plan 2.6), the red chips, the pieces, the elements' places, the colours, "
           f"the renders against the Amiga ({TV_COUNT + 2} states a visit)")
     print("wrote " + " ".join(f.name for f in written))
@@ -1034,7 +1049,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("puzl", type=Path, help="PUZL_25.bin (loaded at $17100)")
     ap.add_argument("out", type=Path, help="the output prefix, e.g. build/msx/puzl")
     ap.add_argument("--visits", default="1", choices=("1", "1,2"),
-                    help="1 (milestone 1), or 1,2 (visit 2's palette and TV pictures: milestone 3)")
+                    help="1 (milestone 1), or 1,2 (visit 2's palette and TV pictures, OUT_tv2.bin: the "
+                         "ROM's, Makefile)")
     a = ap.parse_args(argv[1:])
     return convert(a.puzl, a.out, tuple(int(v) for v in a.visits.split(",")))
 

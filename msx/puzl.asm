@@ -1,7 +1,10 @@
 ; Brainstorm, the bonus stage after level 1 (the Amiga's PUZL at $17100, which $8382 calls:
 ; docs/BRAINSTORM.md). Bank BANK_PUZL at A000h while it runs, FRONT at 8000h (front.asm
-; front_bonus calls bs_stage); its graphics in the data banks from PUZL_GFX_BANK (tools/mkrom.py,
-; tools/msxpuzl.py).
+; front_bonus calls bs_stage); its graphics in the data banks from PUZL_GFX_BANK, and visit 2's
+; TV pictures (Ellen's face) from PUZL_TV2_BANK (tools/mkrom.py, tools/msxpuzl.py --visits 1,2;
+; docs/LEVEL2.md 3.9). Visit 2's own code is out of line (bs_v2, at the end), so that visit 1
+; runs the code it ran before, instruction for instruction: its timing, pictures and VRAM as
+; they were.
 ;
 ; The logic is PUZL's, routine by routine, in its order (docs/BRAINSTORM.md 2.3: the logic
 ; report's spec), one pass per 50 Hz tick on 50 and 60 Hz machines (its loop's PAL design rate).
@@ -63,16 +66,16 @@ bs_stage:
         ld bc,PZ_RECS_LEN_V1        ;   to $1775F,
         ld de,PZ_GFX_TV1            ;   Murphy's face (the immediate at $1729A)
         jp m,bs_v1
-        ld hl,pzt_recs + PZ_RECS_V2 ; visit 2 (after level 2 on): the boards from $175C0,
-        ld bc,PZ_RECS_LEN_V2
-        ld de,PZ_GFX_TV2            ;   Ellen's face
+        ld hl,pzt_recs + PZ_RECS_V2 ; visit 2 (after level 2 on): the boards from $175C0, then
+        ld bc,PZ_RECS_LEN_V2        ;   its palette and Ellen's face (bs_v2: out of line, back
+        jp bs_v2                    ;   at bs_vr)
 bs_v1:  ld (pz_tv),de
         ld de,pz_boards
         ldir                        ; the boards in RAM (the original loads PUZL again each time)
         ld hl,pz_pal1
-        ld (pz_pal),hl              ; (the immediate at $17B20; visit 2's own palette: milestone 3)
+        ld (pz_pal),hl              ; (the immediate at $17B20)
         call bs_show                ; the stage's screen, the palette black
-        ld a,0xFF
+bs_vr:  ld a,0xFF
         ld (pzv_fadein),a           ; ($17D1A: $B19 = 0, $B20 = FFh: a fade in)
         ld hl,0x0059
         call bs_timer               ; ($1710E: setup_timer($59), replaced by board 0's)
@@ -742,7 +745,7 @@ bs_show:
         call vdp_cmd                ; page 0's play area to page 1
         ld hl,(pz_tv)
         call rd_at                  ; the visit's 9 TV pictures (TV_STATES order) into page 2:
-        ld de,0                     ;   picture n at (80 (n % 3), 80 (n / 3)), a line at a time
+bsw_tv: ld de,0                     ;   picture n at (80 (n % 3), 80 (n / 3)), a line at a time
         ld c,3
 bsw_r:  push bc
         push de                     ; (a row of pictures)
@@ -858,7 +861,7 @@ rd_at:  ld a,h
         rlca
         and 7
         add a,PUZL_GFX_BANK
-        ld (rd_bank),a
+rd_at1: ld (rd_bank),a
         call bank_8000
         ld a,h
         and 0x1F
@@ -1509,3 +1512,57 @@ pz_pal1:
 pz_cursor:
         incbin "puzl_cursor.spr"    ; the cursor's 9 sprite patterns (tools/msxpuzl.py)
         include "puzl_tab.inc"      ; PUZL's boards, messages and tables (tools/msxpuzl.py)
+
+; ----- visit 2 (after level 2 on: AG $8050 >= 2), after everything visit 1 runs or reads, which
+; so keeps its addresses -----
+
+; bs_stage's visit 2 (HL, BC: its boards' source and length): the boards, visit 2's palette
+; ($17DAA: the immediate at $17B20; bs_fade still puts visit 1's back at the end of every fade
+; out: quirk 5) and the stage's screen with Ellen's face; then bs_stage's own course (bs_vr).
+; (pz_tv is visit 1's only: bs_show2 takes Ellen's pictures from their blob.)
+bs_v2:  ld de,pz_boards
+        ldir                        ; the boards and what follows them up to $1775F
+        ld hl,pz_pal2
+        ld (pz_pal),hl
+        call bs_show2
+        jp bs_vr
+
+; bs_show for visit 2: its head as bs_show's (the screen and the sheet into page 0, page 0's play
+; area to page 1: keep the two equal), then Ellen's 9 TV pictures ($25160: the immediate at
+; $1729A), puzl_tv2.bin from PUZL_TV2_BANK (tools/mkrom.py: a blob of their own after the ROM's
+; last block, docs/LEVEL2.md 3.9), streamed by bs_show's own code from bsw_tv on, which then does
+; the rest (the cursor's patterns and visit 2's colours, the SATs, the states) and returns.
+bs_show2:
+        call vdp_wait
+        ld hl,PZ_GFX_SCREEN
+        call rd_at
+        push hl
+        ld e,0
+        ld hl,0
+        call vram_write             ; page 0 from its first line: the screen, then the sheet
+        pop hl
+        ld bc,PZ_GFX_PAGE0
+        call rd_rom
+        call vram_done
+        ld hl,rd_cp01
+        call vdp_cmd                ; page 0's play area to page 1
+        ld a,PUZL_TV2_BANK
+        ld hl,PZ_GFX_TV2
+        call rd_atb                 ; Ellen's pictures into page 2 (TV_STATES order), and the rest
+        jp bsw_tv
+
+; A = a blob's first bank, HL = an offset in it (8 banks at most) -> rd_at's for another blob
+; than puzl_gfx.bin: its bank at 8000h (rd_bank), HL = its address there.
+rd_atb: push bc
+        ld b,a
+        ld a,h
+        rlca
+        rlca
+        rlca
+        and 7
+        add a,b
+        pop bc
+        jp rd_at1
+
+pz_pal2:
+        incbin "puzl_2_grade.pal"   ; visit 2's 16 colours (Ellen's face: its own two, provisional)

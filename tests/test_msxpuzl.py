@@ -207,14 +207,25 @@ class PuzlDataTests(unittest.TestCase):
         img = self.p.render(none, (0, 0, 2))                  # image 2: sprite 1's two pixels in colour 14
         self.assertEqual(sum(r[0:16].count(14) for r in img[2:18]) - sum(r[0:16].count(14) for r in base[2:18]), 2)
 
-    def test_visit_2_ready(self):
+    def test_visit_2(self):
         p2 = msxpuzl.Puzl(self.data, (1, 2))
         self.assertEqual((p2.screen, p2.sheet, p2.tv[1]), (self.p.screen, self.p.sheet, self.p.tv[1]))
         self.assertEqual(sha(p2.tv[2]), PROTOTYPE["tv2"])
         self.assertEqual(sha(msxpuzl.v9938(p2.pal[2])), PROTOTYPE["pal2"])
-        self.assertEqual(len(p2.blob), 56704 + 28800)
+        # visit 1's blob unchanged; visit 2's pictures in a blob of their own (docs/LEVEL2.md 3.9)
+        self.assertEqual(p2.blob, self.p.blob)
+        self.assertEqual(p2.tv2, p2.tv[2])
+        self.assertEqual(len(p2.tv2), 28800)
+        self.assertEqual(self.p.tv2, b"")
         e = equates(p2.inc_text())
-        self.assertEqual((e["PZ_GFX_TV2"], e["PZ_VISITS"], e["PZ_CUR_COL_2"]), (56704, 2, 14))
+        self.assertEqual((e["PZ_GFX_TV1"], e["PZ_GFX_TV2"], e["PZ_GFX_LEN"], e["PZ_VISITS"]), (27904, 0, 56704, 2))
+        self.assertEqual((e["PZ_CUR_COL_2"], e["PZ_CUR_COL2_2"], e["PZ_CUR_COL_1"], e["PZ_CUR_COL2_1"]), (14, 14, 15, 14))
+        # the render of visit 2 takes its TV pictures from tv2: the clean face is Ellen's, not Murphy's
+        state = bytes([8] + [msxpuzl.NONE] * 109)
+        tv = [r[176:256] for r in p2.render(state, None, 2)[2:82]]
+        self.assertEqual(tv, msxpuzl.unpack(p2.tv2[8 * 3200:9 * 3200], 80))
+        self.assertNotEqual(tv, [r[176:256] for r in p2.render(state, None, 1)[2:82]])
+        self.assertEqual(p2.render(state, None, 1), self.p.render(state))
 
     def test_command_line(self):
         with tempfile.TemporaryDirectory() as d:
@@ -237,6 +248,20 @@ class PuzlDataTests(unittest.TestCase):
             self.assertEqual(msxpuzl.pack(self.p.render(bytes(state), (1, 1, 4))),
                              (Path(d) / "r.sc5").read_bytes())
             self.assertTrue((Path(d) / "r.png").exists())
+            self.assertFalse((Path(d) / "puzl_tv2.bin").exists())
+            # --visits 1,2 (the Makefile's): visit 1's files as without it, visit 2's palette and TV blob
+            out2 = Path(d) / "v2" / "puzl"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(msxpuzl.main(["msxpuzl.py", str(PUZL), str(out2), "--visits", "1,2"]), 0)
+            for name in ("puzl_1.pal", "puzl_gfx.bin", "puzl_cursor.spr", "puzl_tab.inc"):
+                self.assertEqual((out2.parent / name).read_bytes(), (Path(d) / name).read_bytes(), name)
+            for name, size in (("puzl_2.pal", 32), ("puzl_tv2.bin", 28800)):
+                self.assertEqual((out2.parent / name).stat().st_size, size, name)
+            with contextlib.redirect_stdout(io.StringIO()):
+                msxpuzl.main(["msxpuzl.py", "render", str(PUZL), str(ram), str(Path(d) / "r2"), "--offset", "16",
+                              "--cursor", "1,1,4", "--visit", "2"])
+            p2 = msxpuzl.Puzl(self.data, (1, 2))
+            self.assertEqual(msxpuzl.pack(p2.render(bytes(state), (1, 1, 4), 2)), (Path(d) / "r2.sc5").read_bytes())
 
     @unittest.skipUnless(shutil.which("z80asm"), "z80asm not installed")
     def test_includes_assemble(self):

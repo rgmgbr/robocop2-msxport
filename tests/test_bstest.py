@@ -272,6 +272,18 @@ class HelperTests(unittest.TestCase):
         self.assertEqual((px[0][0], px[0][1], px[0][2], len(px), len(px[0])), (1, 2, 0, 162, 256))
         self.assertEqual(stepcheck.REC_LEN, 64 + 20736 + 32 + 32 + 32 + 4 * 256)
 
+    @unittest.skipUnless((ROOT / "build/extracted/files/PUZL_25.bin").exists(), "needs PUZL_25.bin (make extract)")
+    def test_stepcheck_visit_2(self):
+        import msxpuzl
+        import stepcheck
+        p1, p2 = stepcheck.puzl(), stepcheck.puzl(2)
+        self.assertEqual((p1.visits, p2.visits), ((1,), (1, 2)))
+        tv1 = stepcheck.elements(p1)[0][0][3]           # element 0, the TV: its images by picture
+        tv2 = stepcheck.elements(p2, 2)[0][0][3]
+        self.assertEqual([list(r) for r in tv2[8]], msxpuzl.unpack(p2.tv2[8 * 3200:9 * 3200], 80))
+        self.assertNotEqual(tv1[8], tv2[8])                             # Ellen's face, not Murphy's
+        self.assertEqual(tv1, stepcheck.elements(p2, 1)[0][0][3])       # visit 1's as before
+
     def test_shots_and_frozen_draw_a_snapshot(self):
         snap = self.tmp / "p0100.bin"
         snap.write_bytes(snapshot())

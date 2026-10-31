@@ -64,8 +64,8 @@ The harness has two sides:
 | `np.tcl` | Tcl | the final checks' flows (5.17): `np_job`, `np_keys_arm` (a drive's moves from the keyboard), `np_solved_setup`, `np_title_setup` / `np_title0_setup` (the title's exact record), `np_fire_setup`, `np_two_setup` / `np_two_title_setup`, `np_wp_job` |
 | `ft.tcl` | Tcl | VRAM writes lost at another Z80 clock (5.17 g): `ft_job`, `ft_flow_job`, `ft_boot_job`, `ft_l1_job` |
 | `run8f.tcl` | Tcl | `c8f_chain`: `c8_chain`'s jobs and the solved ending from the keyboard (5.17 h) |
-| `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` |
-| `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5) |
+| `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` (`solve2` and `fuzz2` with `--visit 2`) |
+| `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5); `--visit 2`: visit 2's (Ellen's pictures and cursor colours; a snapshot's AG `$8050` must be 2 or more) |
 | `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game` |
 | `restorecheck.py DIR AFTER FRESH [--known]` | python | what the stage leaves: page 2, the atlas, the SATs; the next game against a fresh start (5.10) |
 | `hudcheck.py NEW_DIR REF_DIR` | python | the HUD during the stage against a reference build's at the same passes (5.6) |
@@ -1751,11 +1751,10 @@ still work alone: `hz_chain [suite_drives {W/R} {W/O}]` and `check_all.sh` (5.4-
   - A new bank or a larger `music.asm` shows in `romdiff.py`. Mind the SCC test values that
     `tools/mkrom.py` checks.
 - **The second visit (milestone 3).**
-  - `stepcheck.py` renders visit 1: `msxpuzl.Puzl`'s default, and `render(..., visit=1)`.
-  - Once visit 2 has its own pictures (Ellen), give it the visit
-    (`msxpuzl.Puzl(data, (1, 2))`, `render(state, cursor, 2)`) before checking `solve2` /
-    `fuzz2` stills and records.
-  - Until then, check visit-2 snapshots as visit 1, as the night did.
+  - Built at level 2's step 20 (`docs/LEVEL2.md` 3.9): visit 2 shows Ellen, and `check_all.sh`
+    checks `solve2` and `fuzz2` with `stepcheck.py --visit 2` (`msxpuzl.Puzl(data, (1, 2))`,
+    `render(state, cursor, 2)`). The records of a build before it (Murphy on visit 2) fail those
+    stills: check them with their own commit's `tools/bstest/`.
 - **New warnings or labels.**
   - `KNOWN_WARNINGS=n` when a change adds z80asm's known warning on purpose.
   - The labels and addresses of section 2 must exist in every build the harness drives.
