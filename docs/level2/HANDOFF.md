@@ -1693,7 +1693,7 @@ X), `still` (36 snapshots + msxframe PNG/txt), `objs`, `start` (the whole tour u
 **Done, but the rates disappoint on the Z80 machines** (the plan's 5: step 16 stops for the user's choice
 among default 18's alternatives; the numbers below). Branch `l2-s14` (worktree `scratchpad/l2/wt14`),
 commits (cherry-picked onto level2 a7c465d, steps 18 and 19) **d7d3d3e, 5e729a4, 4cd547c, abde258, 3b00f26,
-bb23717**, this section's and its end's, all committed locally, not pushed (the user's order), integrated
+bb23717**, this section's and its end's, integrated
 into `level2` by fast-forward (before the cherry-pick on 7aecb40: 0d4471f, ed9c119, 9a7e0e2, 659742e,
 51cca83, e074a78, 0a190f3). Files: `msx/{tiles.asm,
 scroll9938.asm, scroll9958.asm, field.asm, vats.asm (new), level2.asm, msx.inc}`, `tools/{mapcmp.py,
@@ -2051,7 +2051,7 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
 
 ## Step 18: the flow into and out of level 2 (2026-10-31)
 
-**Done; committed locally, not pushed (the user's order).** Branch `l2-s18` (worktree
+**Done.** Branch `l2-s18` (worktree
 `scratchpad/l2/wt18`, from level2 244ccb8). Records in `$S18` =
 `/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s18`:
 `B` (level2 head's records, below), `W` (this step's gate: `W/R`, `W/X`, `W/V`, `W/S`, `W/L`, `W/L2R` the
@@ -2155,8 +2155,7 @@ All from the worktree's root; `S18` as above; one openMSX (the in-process MCP).
 
 ## Step 19: the continue (2026-10-31)
 
-**Done; committed locally, not pushed (the user's order).** Branch `l2-s18` (on step 18's 038ddbf: the
-history was rewritten to the author rgmgbr meanwhile). Records in `$S18/W19` (the gate) and `$S18/W19/T*`
+**Done.** Branch `l2-s18` (on step 18's 038ddbf). Records in `$S18/W19` (the gate) and `$S18/W19/T*`
 (the first runs).
 
 ### What was built
@@ -2246,7 +2245,7 @@ All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 hea
 
 ## Step 15: the cut and the arrest's view (2026-10-31)
 
-**Done; committed locally, not pushed (the user's order).** Branch `l2-s15` (worktree `scratchpad/l2/wt15`, from
+**Done.** Branch `l2-s15` (worktree `scratchpad/l2/wt15`, from
 level2 0b63ec2), commits **b8b7490** (the code and the harness), **c456d4c** (the view's 48 px), this section's;
 cherry-picked onto level2 9fd16e9 (step 21's head) as **93f89f1, 5b2f260, 20a575b** and this note's commit
 (below). Files: `msx/{cold.asm, sprites.asm, player.asm, level2obj.asm, msx.inc}`, `tools/msxframe.py`,
@@ -2409,7 +2408,7 @@ IG itself untouched), `st`/`stb` (vat stills, new/base), `se`, `se2`, `se2b`, `s
 
 ## Step 21: the sound checks and the cheat (2026-10-31)
 
-**Done; committed locally, not pushed (the user's order).** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
+**Done.** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
 from level2 a7c465d), cherry-picked onto level2 0b63ec2 (step 14 integrated meanwhile). Records in `$S21` =
 `/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s21`:
 `R` (`hz.sh fxbuilds`, `R/cheat`), `fx` (the 26 sound logs and their `.check` verdicts), `neg` (the mutated
