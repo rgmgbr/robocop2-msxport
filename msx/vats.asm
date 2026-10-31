@@ -71,8 +71,8 @@ vwn_1:  and 0x0F
 ; V9938's mirror (its next part), else, once a tick, a column made ready for the next window (vat_run):
 ; the first one (from vat_rr on, then from 0) whose look on the page shown is not vat_shown's, that
 ; meets no play-field BOB nor their work (on the V9938 where the page being built holds it either) and
-; may be drawn in time, its tiles in the tile cache -> L = 1 while the vats have work (the engines keep
-; iw_more: a column ready, the mirror), else 0.
+; may be drawn in time, its tiles in the tile cache -> L = 1 while the vats have work (a column ready,
+; the mirror), else 0 (the engines ignore it: they never keep iw_more for the vats).
 vat_prep:
         ld ix,vat_fr
         ld a,(vat_bk)
@@ -148,15 +148,6 @@ vr_in:  ld hl,vat_wtk                ; (the Z80: one column every VAT_KZ VBLANKs
         call vat_due
         ld l,0
         ret c
-        ld a,(fb_rdy)               ; (the BOBs first: none of their commands waits for the
-        dec a                       ;  interrupts, which cmd_lock would hold back)
-        ret z
-        ld a,(fb_cq)
-        rra
-        ret c
-        ld a,(fb_c2)
-        or a
-        ret nz
         ld a,(tick)
         ld (vat_wtk),a
 vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harness's marks)

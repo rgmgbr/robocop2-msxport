@@ -320,10 +320,9 @@ s38w_copy:
         cp VIEW_ROWS
         jp c,s38_copy_chunk
 s38w_idle:                          ; the back page ready, or none, and no changed cell waiting (a
-        call vat_idle               ; cell half drawn is still in the queue) nor work of level 2's
-        ret nz                      ; vats (tiles.asm vat_idle): nothing to do until the next
-        ld a,(rd_tail)              ; update or a changed cell sets iw_more again
-        ld hl,rd_head
+        call vat_idle               ; cell half drawn is still in the queue; level 2's vats first,
+        ld a,(rd_tail)              ; tiles.asm vat_idle): nothing to do until the next update or a
+        ld hl,rd_head               ; changed cell sets iw_more again
         cp (hl)
         ret nz
         xor a

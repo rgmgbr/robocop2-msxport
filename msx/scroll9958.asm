@@ -211,8 +211,7 @@ sw_row: ld a,(q_row)
 ; the next update or a changed cell sets iw_more again.
 sw_idle:
         call sw_redraw
-        call vat_idle               ; (level 2's vats: work left, tiles.asm)
-        ret nz
+        call vat_idle               ; (level 2's vats: tiles.asm)
         ld a,(rd_tail)
         ld hl,rd_head
         cp (hl)

@@ -103,11 +103,15 @@ gt_vat: push bc
         ret
 
 ; The vats' display (level 2: vats.asm; docs/LEVEL2.md 3.5): the scroll engines' hooks, Z (nothing)
-; in the other levels. vat_win, between the HUD split and the VBLANK with the VDP idle: the vat column
-; made ready drawn at its newest look (vat_run) -> NZ when a command of it still runs. vat_idle, at the
-; engines' idle points: the V9938's mirror of that column on its other page, else the next column made
-; ready (vat_prep) -> NZ while the vats have work (the engine keeps iw_more).
+; in the other levels. vat_win, with the VDP idle and a vat column ready: that column drawn at its
+; newest look in the blank (vat_run) -> NZ when a command of it still runs. vat_idle, at the engines'
+; idle points: the V9938's mirror of that column on its other page, else the next column made ready
+; (vat_prep). The vats never keep iw_more: their work waits for wait_frame's loop or for the engines'
+; own work, so that feed_vdp's calls in the game's logic stay as cheap as in the other levels.
 vat_win:
+        ld a,(vat_fr + VF_RDY)      ; (none ready: nothing to draw, no bank switched)
+        or a
+        ret z
         ld hl,vat_run
         jr vat_hk
 vat_idle:

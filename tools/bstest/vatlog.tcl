@@ -1,7 +1,7 @@
 # vatlog.tcl: level 2's vats on the screen (docs/LEVEL2.md 4.2 check 8; its step 14). Sourced after
 # tools/bstest/load.tcl (hz.tcl, openmsx_rc2.tcl).
 #
-# vl_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES?: on DRIVE tour (build/emu/l2_tour.drive) from
+# vl_jobs DIR ROM LABELS ?SECS? ?FROM? ?MACHINES? ?DRIVE?: on DRIVE (default tour's, build/emu/l2_tour.drive) from
 # the power-on of each machine (default C-BIOS_MSX2, the FS-A1FX, the FS-A1GT), from level 2's first
 # tick past game frame FROM (default 0) for SECS seconds (default 40): rc2_guard with the tears counted
 # (as hz_l2_start_jobs), and every vat column vats.asm draws, into DIR/vat_<m>.txt:
@@ -20,12 +20,12 @@
 #   G frame tick  the game frame at each 100th tick (the rates' clock)
 # and the guard's lines (start check format) into DIR/guard_<m>.txt. Check with
 # tools/bstest/vatcheck.py.
-proc vl_jobs {dir rom labels {secs 40} {from 0} {machines {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}}} {
+proc vl_jobs {dir rom labels {secs 40} {from 0} {machines {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT}} {drive ""}} {
 	file mkdir $dir
-	set e "$::hz_root/build/emu"
+	if {$drive eq ""} { set drive "$::hz_root/build/emu/l2_tour.drive" }
 	set jobs {}
 	foreach {t m} $machines {
-		lappend jobs [list vl_$t $m [list vl_setup $dir $t $rom $labels "$e/l2_tour.drive" $secs $from] {[vl_done]} 1800]
+		lappend jobs [list vl_$t $m [list vl_setup $dir $t $rom $labels $drive $secs $from] {[vl_done]} 1800]
 	}
 	return $jobs
 }
