@@ -43,12 +43,20 @@ expected to end above screen line LINE (their pixels from it down are not shown:
 turns the sprites off there while he sinks); the other objects are expected whole. The caller gives
 the line (tools/bstest/cutview.py cut: the original's copper line for the tick the list shows).
 
+With --no-sprites the sprites are not checked and the play area is rendered with them off (R#8's
+SPD), so that every one of its pixels is compared with the expected picture (none is skipped as a
+sprite's); the HUD and the tile area as always. For a level's first picture (tools/bstest/
+bonuscheck.py --level2, contcheck.py), where the list's SAT is not published yet: the records name
+the objects of its tick while the screen shows none or the set before (docs/level2/HANDOFF.md, steps
+18-19).
+
 Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
 tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
 index; RoboCop's is both levels'), and the silhouettes from level N's colour rows; without it they
 are level 1's, converted again from build/msx/robocop.json as tools/msxsprites.py cut them.
 
 usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N] [--field] [--cut LINE]
+                   [--no-sprites]
        (e.g. build/snap build/msx/level1 build/msx/hud build/png/frame.png)
 """
 from __future__ import annotations
@@ -416,6 +424,9 @@ def main() -> int:
     regs_play = list(base)
     for r, v in play.items():
         regs_play[r] = v
+    no_spr = "--no-sprites" in sys.argv
+    if no_spr:
+        regs_play[8] |= 0x02                # (SPD: the play area without the sprites)
     regs_hud = list(base)
     for r, v in split_regs(ram).items():
         regs_hud[r] = v
@@ -443,12 +454,16 @@ def main() -> int:
     sat_pending = ram[SPR_VBLANK - RAM_BASE] and ram[PUB_SEQ - RAM_BASE] == ram[APP_SEQ - RAM_BASE]
     cut = int(sys.argv[sys.argv.index("--cut") + 1]) if "--cut" in sys.argv else None
     cut_removed = [0]
-    try:
-        spr = {} if sat_pending else expected_sprites(objs, pal_play, cut, cut_removed)
-    except (IndexError, struct.error):      # a product build records no pub_spr: render only
-        print("no sprite record (product build): sprites not checked")
-        spr, sat_pending = {}, True
-    over = set() if sat_pending else over_lines(vram, regs_play)
+    if no_spr:                              # (every play-area pixel against the expected picture)
+        print("--no-sprites: sprites not checked, the play area rendered with them off")
+        spr, sat_pending = {}, False
+    else:
+        try:
+            spr = {} if sat_pending else expected_sprites(objs, pal_play, cut, cut_removed)
+        except (IndexError, struct.error):  # a product build records no pub_spr: render only
+            print("no sprite record (product build): sprites not checked")
+            spr, sat_pending = {}, True
+    over = set() if sat_pending or no_spr else over_lines(vram, regs_play)
     bad = border_px = checked = spr_ok = pending_px = 0
     diff_rows = []
     # V9938 engine: with f > 8 the set-adjust (s = 8 - f) shows the border on the right

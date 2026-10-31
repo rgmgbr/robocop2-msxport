@@ -667,9 +667,7 @@ proc hz_l2c_lvc {} {
 	hz_l2c_file lvc_ram.bin [debug read_block memory 0 0x10000]
 	hz_l2c_note "lv_cont at [machine_info time] s: [hz_l2c_state]"
 	# (the level's first picture after the continue: TAG_l2g0, as hb_l2_go's, notes TAG_bonus.txt)
-	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
-	set ::hb_l2seq -1
-	set ::hb_l2sbp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hb_l2_snap]
+	hb_l2_snap_arm
 	# (the new game's breakpoint stays: a later game over without a credit ends in one; front_over's
 	#  and lv_cont's go)
 	foreach b [lrange $::hc_bps 0 1] { catch {debug remove_bp $b} }
@@ -953,9 +951,7 @@ proc hb_l2_go {} {
 	catch {debug remove_bp $::hb_l2bp}
 	set ::hb_l2 1
 	hb_note "lv_next at [machine_info time] s, tick_n [rc2_w 0xCEE0], AG 8050h [rc2_w 0xDC50]"
-	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
-	set ::hb_l2seq -1
-	set ::hb_l2sbp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hb_l2_snap]
+	hb_l2_snap_arm
 	set ts [rc2_label $::hb_labels tick_start]
 	set gt [rc2_label $::hb_labels game_tick]
 	set ::hb_l2tbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $::hb_l2bank && \[rc2_w 0xD000\] >= 100" hb_l2_100]
@@ -968,21 +964,57 @@ proc hb_l2_state {} {
 	return "RoboCop [rc2_w 0xDAD0] [rc2_w 0xDAD4], camera [rc2_w 0xD004] [rc2_w 0xD006], timer [format %04X [rc2_w 0xDC4A]], score [format %04X%04X [rc2_w 0xDC46] [rc2_w 0xDC48]], lives [rc2_w 0xDC34], 805Eh [rc2_w 0xDC5E], weapon [rc2_w 0xDC5C], ammo [format %04X [rc2_w 0xDC30]], ac_diff - diff_tab [hb_rating], HUD shown $shown heads [peek 0xC63B] [peek 0xC63C] icon [peek 0xC63D] can [format %04X [rc2_w 0xC618]] jobs [peek 0xC646]/[peek 0xC63E]"
 }
 
-# (a split with the display on and a new list, lv_cur's logic bank level 2's: its first picture)
+# level 2's first picture armed (after lv_next or lv_cont): hb_l2_snap at each split, and the main
+# program's HUD work followed (::hb_hud 1 from hud_frame's entry to its return into mainloop or
+# hud_keep): hud.asm records a digit cell as shown before its 16 lines are written, so a split that
+# comes while hud_frame runs (a late frame: docs/level2/HANDOFF.md step 16, open issue 2) would catch
+# the record ahead of the VRAM; that split is passed over and the next one taken (the notes say how
+# many). tools/bstest/bonuscheck.py --level2 and contcheck.py check the picture (tools/msxframe.py).
+proc hb_l2_snap_arm {} {
+	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
+	set ::hb_l2seq -1
+	set ::hb_hud 0
+	set ::hb_hudn 0
+	set hf [rc2_label $::hb_labels hud_frame]
+	set ::hb_hudbps [list [debug set_bp $hf {} {set ::hb_hud 1}]]
+	foreach from {mainloop hud_keep} {
+		set a [rc2_label $::hb_labels $from]
+		for {set i 0} {$i < 48} {incr i} {
+			if {[peek [expr {$a + $i}]] == 0xCD && [rc2_w [expr {$a + $i + 1}]] == $hf} {
+				lappend ::hb_hudbps [debug set_bp [expr {$a + $i + 3}] {} {set ::hb_hud 0}]
+				break
+			}
+		}
+	}
+	set ::hb_l2sbp [debug probe set_bp VDP.IRQhorizontal {[debug probe read VDP.IRQhorizontal] == 1} hb_l2_snap]
+}
+
+proc hb_l2_snap_disarm {} {
+	catch {debug probe remove_bp $::hb_l2sbp}
+	if {[info exists ::hb_hudbps]} {
+		foreach b $::hb_hudbps { catch {debug remove_bp $b} }
+		set ::hb_hudbps {}
+	}
+}
+
+# (a split with the display on and a new list, lv_cur's logic bank level 2's, the HUD not being drawn:
+#  its first picture)
 proc hb_l2_snap {} {
 	if {[peek 0xC002] == 0 || ([debug read "VDP regs" 1] & 0x40) == 0} return
 	set seq [peek 0xC006]
 	if {$seq == $::hb_l2seq} return
+	if {[peek 0xF1A0] != $::hb_l2bank} { set ::hb_l2seq $seq; return }
+	if {$::hb_hud} { incr ::hb_hudn; return }
 	set ::hb_l2seq $seq
-	if {[peek 0xF1A0] != $::hb_l2bank} return
-	catch {debug probe remove_bp $::hb_l2sbp}
+	hb_l2_snap_disarm
 	rc2_snap "$::hb_dir/${::hb_tag}_l2g0"
-	hb_note "level 2's first picture at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], [hb_l2_state]"
+	set skip [expr {$::hb_hudn ? "; splits passed over while the HUD was drawn: $::hb_hudn" : ""}]
+	hb_note "level 2's first picture at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], [hb_l2_state]$skip"
 }
 
 proc hb_l2_100 {} {
 	catch {debug remove_bp $::hb_l2tbp}
-	catch {debug probe remove_bp $::hb_l2sbp}
+	hb_l2_snap_disarm
 	set lost "lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C]"
 	hb_note "level 2 at tick_n [rc2_w 0xCEE0], game frame [rc2_w 0xD000], [machine_info time] s: [hb_l2_state]; $lost"
 	if {[info exists ::rgx_hb] && $::rgx_hb && [info exists ::rgx_tag] && $::rgx_tag eq $::hb_tag} {

@@ -16,7 +16,7 @@
 #   Q t us  vat_prep's when it made a column ready
 #   S secs run_us prep_us run_calls prep_calls  at the end: the time spent in vat_run and vat_prep
 #   K ...  the window's tries (vr_try), drops (the engines moved, a tile gone, a BOB came: vr_drop),
-#        no time (vr_nt), the VBLANK first (vr_lt), and vat_prep's looks (vp_scan)
+#        no time (vr_nt: dropped too), the VBLANK first (vr_lt), and vat_prep's looks (vp_scan)
 #   G frame tick  the game frame at each 100th tick (the rates' clock)
 # and the guard's lines (start check format) into DIR/guard_<m>.txt. Check with
 # tools/bstest/vatcheck.py.

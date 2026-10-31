@@ -126,6 +126,31 @@ class HelperTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
+    def test_first_picture_hud_record(self):
+        """bonuscheck.py first_picture (--level2, contcheck.py --fire/--again): the notes' record of
+        what the HUD shows against the game's values; a picture not recorded fails."""
+        import contextlib
+        import io
+        import bonuscheck
+        self.assertEqual(bonuscheck.hud_cells(0x0730, 0x0123, 0x00019725),
+                         [0, 7, 3, 0, 1, 2, 3, 0, 0, 1, 9, 7, 2, 5])
+        line = ("level 2's first picture at 1.5 s: game frame 0, tick_n 9, RoboCop 352 784, camera 352 784, "
+                "timer 0729, score 00019725, lives {lives}, 805Eh 1, weapon 0, ammo 0000, ac_diff - diff_tab 0, "
+                "HUD shown {shown} heads {heads} icon 3 can 0100 jobs 0/0\n")
+        cases = (("2", "0007030000000000000109070205", "0 0", "holds the game's values"),      # (07:30)
+                 ("2", "0007020900000000000109070205", "0 0", "holds the game's values"),
+                 ("1", "0007020900000000000109070205", "0 0", "heads 0 0 with 1 lives (0 5 expected)"),
+                 ("2", "0007020000000000000109070205", "0 0", "timer cells [0, 7, 2, 0]"),
+                 ("2", "0007020900000000000109070204", "0 0", "ammo and score cells"),
+                 ("65535", "0007030000000000000000000000", "5 5", "ammo and score cells"))
+        for lives, shown, heads, want in cases:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                r = bonuscheck.first_picture(self.tmp, "t", line.format(lives=lives, shown=shown, heads=heads))
+            self.assertEqual(r, 1)                          # (no TAG_l2g0 here: not recorded)
+            self.assertIn(want, out.getvalue())
+            self.assertIn("level 2's first picture not recorded", out.getvalue())
+
     def test_fieldcheck_counts_a_hostage_torn_per_object(self):
         import fieldcheck
         old_ft = fieldcheck.FT

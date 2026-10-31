@@ -169,7 +169,7 @@ vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harnes
         call field_call
         ld a,l
         or a
-        jr nz,vr_nt                 ; (no time now: the next window)
+        jr nz,vr_nt                 ; (no time now: dropped, as below)
         ld (ix+VF_N),a
         call vat_gen
         jr c,vr_lt                  ; (the VBLANK came first: the next window)
@@ -207,8 +207,10 @@ vr_drop:
         ld (ix+VF_RDY),0
         ld l,0
         ret
-vr_nt:  ld l,0
-        ret
+; (a ready column that no longer fits, the camera having moved within its tile row: kept, it held
+; vat_prep at vp_r while vat_same held, so that no other column was prepared; dropped, vat_prep looks
+; again at once: the review of 2026-10-31. vr_nt stays apart for the harness's count)
+vr_nt:  ld (ix+VF_RDY),0
 vr_lt:  ld l,0
         ret
 

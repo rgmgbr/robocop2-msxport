@@ -2,7 +2,7 @@
 """Checks level 2's continue (its step 19: front.asm front_over, front_cont, rc2.asm lv_cont;
 docs/LEVEL2.md 3.7, 4.2 check 11, 4.4's game-over row) on hz.tcl hz_l2_cont_arm's records.
 
-usage: contcheck.py DIR TAG (--fire | --again | --no-fire | --none) [--tag N] [--gen GEN_DIR]
+usage: contcheck.py DIR TAG (--fire | --again | --no-fire | --none) [--tag N] [--gen GEN_DIR] [--py PY]
 
 --fire: the offer shown and taken (fire from its tick 60):
   - DIR/TAG_cont.sc5 (page 0's lines 0-161 once the offer's text is typed, fs_n 50) equals
@@ -15,8 +15,11 @@ usage: contcheck.py DIR TAG (--fire | --again | --no-fire | --none) [--tag N] [-
     (at lv_cont's entry) equal in the map patches (MP_ROW, MP_A, MP_B), the attribute RAM (ATR_RAM0,
     ATR_RAM1 with lv_cur's lv_atrn bytes, atr_lut), the level's lists (spawn_ram with its end word,
     objl_ram, SP_RAM, sp_ptrs), the vat state (vat_phase, vat_shown, vat_disp, vat_chg) and the tile
-    cache (TC_SLOT, and TC_TILE and TC_REF over the level's slots: lv_cont resets it after its entry).
---again: as --fire (the RAM comparison too), then a second game over without a credit: no second
+    cache (TC_SLOT, and TC_TILE and TC_REF over the level's slots: lv_cont resets it after its entry);
+  - level 2's first picture after lv_cont (DIR/TAG_l2g0, notes DIR/TAG_bonus.txt): bonuscheck.py
+    first_picture (tools/msxframe.py on it exits 0; the HUD's record holds the game's values: the
+    score and the lives the continue gives, 07:30, the can full).
+--again: as --fire (the RAM comparison and the first picture too), then a second game over without a credit: no second
   offer, AG $805E 00FFh ($11FEE) at the new game (the title's, which a script build skips).
 --no-fire: the offer shown and left alone: the same record checks, then its whole length (txt_cont's
   304 calls and the call that reads the end: 305 ticks, the original's VBLs), no continue, the credit
@@ -37,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import msxtext  # noqa: E402
-from bonuscheck import preview  # noqa: E402
+from bonuscheck import VPY, first_picture, preview  # noqa: E402
 from msxbright import grade_pal  # noqa: E402
 
 CONT_CALLS = 304
@@ -95,6 +98,7 @@ def main() -> int:
     g.add_argument("--none", dest="mode", action="store_const", const="none")
     ap.add_argument("--tag", dest="ntag", type=int, default=0, help="the build's TAG")
     ap.add_argument("--gen", type=Path, help="the build's gen folder (hud_grade.pal) for the preview")
+    ap.add_argument("--py", default=VPY, help="the Python with numpy for tools/msxframe.py (--fire, --again)")
     a = ap.parse_args()
     notes = (a.dir / f"{a.tag}_cont.txt").read_text()
     print(notes.rstrip())
@@ -174,6 +178,8 @@ def main() -> int:
                   "lv_cfront sets 2; the trace's row 109 has them)")
         before, after = (a.dir / f"{a.tag}_over_ram.bin").read_bytes(), (a.dir / f"{a.tag}_lvc_ram.bin").read_bytes()
         bad |= regions(before, after)
+        bn = a.dir / f"{a.tag}_bonus.txt"
+        bad |= first_picture(a.dir, a.tag, bn.read_text() if bn.exists() else "", a.py)
     else:
         if not done or n != CONT_CALLS + 1:
             print(f"cont: fs_n {n}, fs_done {done}: its whole length ({CONT_CALLS + 1} ticks) expected")

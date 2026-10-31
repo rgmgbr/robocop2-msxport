@@ -25,8 +25,10 @@ TAG_brief.sc5 equals the render of txt_l2_brief or txt_l3_brief (with TEST N), R
 there, the screen's length at its fe_end the script's calls + 1 ticks (394, 412: the original's VBLs)
 or, ended by fire, 50 or more, and a HUD split at every VBLANK from the record to that end. With --level2 (the product's
 flow: lv_next after the briefing): no new game but level 2 at its game frame 100 ("level 2 at
-tick_n"), its first picture recorded (TAG_l2g0: tools/msxframe.py), the lost counters 0 there, and
-with --range the range's rating kept into level 2 (rgcheck.py).
+tick_n"), the lost counters 0 there, with --range the range's rating kept into level 2 (rgcheck.py),
+and its first picture (first_picture: TAG_l2g0, hz.tcl hb_l2_snap) checked: tools/msxframe.py on it
+(--field --no-sprites, the venv's Python or --py PY) must exit 0, and the notes' record of what the
+HUD shows must hold the game's score, ammo, timer, lives (the heads) and full can.
 Exit 0 when every check passed.
 
 Reads build/ram/level1_full.bin and build/msx/text_bs_*.sc5 of the repository this file is in
@@ -36,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,6 +71,88 @@ def preview(path: Path, area: bytes, hud: bytes, txt_pal: bytes, hud_pal: bytes)
 
 
 BRIEF_CALLS = {"l2": 393, "l3": 411}
+VPY = str(Path.home() / ".venvs/msxports/bin/python")      # (msxframe.py needs numpy)
+# msx/hud.asm cell_src: per digit cell the byte of hud_timer, hud_ammo, hud_score (the game's words
+# big-endian) and its nibble (80h: the high one): the timer's 4, the ammo's 3, the score's 7
+CELL_SRC = (0x80, 0x00, 0x81, 0x01, 0x02, 0x83, 0x03, 0x04, 0x85, 0x05, 0x86, 0x06, 0x87, 0x07)
+FIRST = re.compile(r"^level 2's first picture at .*?timer ([0-9A-F]{4}), score ([0-9A-F]{8}), lives (\d+), "
+                   r".*?weapon (\d+), ammo ([0-9A-F]{4}), .*?HUD shown ([0-9a-f]{28}) heads (\d+) (\d+) "
+                   r"icon (\d+) can ([0-9A-F]{4}) jobs (\d+)/(\d+)", re.M)
+
+
+def hud_cells(timer: int, ammo: int, score: int) -> list[int]:
+    """The digit each HUD cell shows for these values (hud.asm hud_digits, cell_digit)."""
+    b = timer.to_bytes(2, "big") + ammo.to_bytes(2, "big") + score.to_bytes(4, "big")
+    return [b[c & 0x7F] >> 4 if c & 0x80 else b[c & 0x7F] & 15 for c in CELL_SRC]
+
+
+def first_picture(d: Path, tag: str, notes: str, py: str = VPY) -> int:
+    """Level 2's first picture (DIR/TAG_l2g0, hz.tcl hb_l2_snap: the split of its first list with the
+    display on, the HUD not being drawn; after lv_next or lv_cont), against the level's own and the
+    game's values (docs/LEVEL2.md 4.2 checks 1 and 13):
+      - tools/msxframe.py on it with --field --no-sprites exits 0: the play area equal to the map with
+        its patches, the vats and the play-field BOBs of the list (the sprites not checked: the list's
+        SAT is not published yet at its frame 0), the HUD equal to what hud.asm records as shown, the
+        tile cache's slots on page 2 and the atlas on page 3 equal to the level's;
+      - the notes' record of what the HUD shows (its line "level 2's first picture at") holds the
+        game's values: the score's 7 cells and the ammo's 3 as AG's words, the timer's 4 as AG's
+        timer or 07:30 (the level's start, the timer's first second not yet drawn), the heads (slot
+        k: 0 while the lives are more than k, else the lost life's 5), weapon 0's icon 3, the can full
+        (0100h), no HUD job pending.
+    Returns 0 when every check passes."""
+    bad = 0
+    m = FIRST.search(notes)
+    if not m:
+        print("level 2's first picture: not noted (or not in the notes' format)")
+        return 1
+    timer, score, lives, weapon, ammo = int(m[1], 16), int(m[2], 16), int(m[3]), int(m[4]), int(m[5], 16)
+    shown = list(bytes.fromhex(m[6]))
+    heads, icon, can, jobs = (int(m[7]), int(m[8])), int(m[9]), int(m[10], 16), (int(m[11]), int(m[12]))
+    lives -= 0x10000 if lives >= 0x8000 else 0
+    want = hud_cells(timer, ammo, score)
+    start = hud_cells(0x0730, ammo, score)
+    what = []
+    if shown[4:] != want[4:]:
+        what.append(f"ammo and score cells {shown[4:]} (the game's {ammo:04X}h, {score:08X}h: {want[4:]})")
+    if shown[:4] not in (want[:4], start[:4]):
+        what.append(f"timer cells {shown[:4]} (the game's {timer:04X}h: {want[:4]}, or 07:30)")
+    want_heads = tuple(0 if lives > k else 5 for k in (0, 1))
+    if heads != want_heads:
+        what.append(f"heads {heads[0]} {heads[1]} with {lives} lives ({want_heads[0]} {want_heads[1]} expected)")
+    if weapon == 0 and icon != 3:
+        what.append(f"icon {icon} with weapon 0 (3 expected)")
+    if can != 0x100:
+        what.append(f"the can {can:04X}h (full: 0100h)")
+    if jobs != (0, 0):
+        what.append(f"HUD jobs pending {jobs[0]}/{jobs[1]}")
+    if what:
+        print("level 2's first picture: the HUD's record does not hold the game's values: " + "; ".join(what))
+        bad = 1
+    else:
+        print(f"level 2's first picture: the HUD's record holds the game's values (score {score:08X}h, "
+              f"ammo {ammo:04X}h, timer {''.join(map(str, shown[:4]))}, {lives} lives: heads {heads[0]} "
+              f"{heads[1]}, icon {icon}, the can full, no job)")
+    snap = d / f"{tag}_l2g0"
+    if not (snap / "vram.bin").exists():
+        print("level 2's first picture not recorded")
+        return 1
+    cmd = [py, "-I", str(ROOT / "tools/msxframe.py"), str(snap), str(ROOT / "build/msx/level2"),
+           str(ROOT / "build/msx/hud"), str(d / f"{tag}_l2g0.png"), "--sprites", str(ROOT / "build/msx/sprites"),
+           "--level", "2", "--field", "--no-sprites"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError as e:
+        print(f"level 2's first picture: msxframe.py not run ({e}: give --py PY, a Python with numpy)")
+        return 1
+    for line in r.stdout.splitlines():
+        if re.search(r"pixels checked|tile VRAM|HUD job|play field:", line):
+            print("  msxframe: " + line.strip()[:200])
+    if r.returncode:
+        print(f"level 2's first picture: msxframe.py exit {r.returncode} ({r.stderr.strip()[-200:]})")
+        bad = 1
+    else:
+        print("level 2's first picture: msxframe.py exit 0 (the play area, the HUD, the tiles and the atlas)")
+    return bad
 
 
 def check_brief(a, ram: bytes, glyphs: list[bytes], notes: str) -> int:
@@ -134,6 +219,7 @@ def main() -> int:
     ap.add_argument("--no-game", action="store_true", help="the record stops before a new game")
     ap.add_argument("--brief", choices=("l2", "l3"), help="the next level's briefing recorded after the range")
     ap.add_argument("--level2", action="store_true", help="level 2 follows the briefing (no new game)")
+    ap.add_argument("--py", default=VPY, help="the Python with numpy for tools/msxframe.py (--level2)")
     a = ap.parse_args()
     ram = (ROOT / "build" / "ram" / "level1_full.bin").read_bytes()
     glyphs = [msxtext.glyph_sc5(ram, g) for g in range(44)]
@@ -186,9 +272,7 @@ def main() -> int:
         elif any(int(v) for v in m.groups()[2:]):
             print(f"level 2: lost counters not 0 ({m[0][-40:]})")
             bad = 1
-        if not re.search(r"^level 2's first picture at", notes, re.M) or not (a.dir / f"{a.tag}_l2g0" / "vram.bin").exists():
-            print("level 2's first picture not recorded")
-            bad = 1
+        bad |= first_picture(a.dir, a.tag, notes, a.py)
         if re.search(r"^game tick_n", notes, re.M):
             print("a new game after the briefing, not level 2")
             bad = 1
