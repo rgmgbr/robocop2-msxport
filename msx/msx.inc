@@ -814,8 +814,23 @@ objl_ram:   equ 0xEE00              ; EE00h-F0FFh: the level's object list ($9C1
 ; 1's reaches F0C5h, the stages use objl_ram only between levels; a fresh level-2 start sets them)
 vat_shown:  equ 0xF012              ; 103: per vat column the look its logic wrote last (the row
                                     ;   table's index, $91BC's D3 / 2)
-vat_disp:   equ 0xF079              ; 103: per vat column the look each page shows (a nibble per page)
-vat_chg:    equ 0xF0E0              ; 7: per vat, not 0 once its looks changed (F0E7h-F0FFh: free)
+vat_disp:   equ 0xF079              ; 103: per vat column the look each page shows: a nibble per page
+                                    ;   (page 0 low; the V9958's ring page 0), 8 + (look & 7) once a
+                                    ;   cell of it is drawn there, 0 none (a column's looks keep their
+                                    ;   half, bit 3: vat_shown's; field.asm vat_tile)
+vat_chg:    equ 0xF0E0              ; 7: per vat, not 0 once its looks changed (lt1) or while a column
+                                    ;   of it on the screen waits (field.asm vat_scan; the scroll
+                                    ;   engines keep their idle work, tiles.asm vat_idle)
+; the vats' display at run time (field.asm vat_run, vat_mirror, vat_tile; level 2's step 14; set by
+; engines_init in every level)
+vat_pg:     equ 0xF0E7              ; the page get_tile's vat rule draws for (the V9938's 0/1, the ring 0)
+vat_wtk:    equ 0xF0E8              ; the VBLANK count (tick) of the last window vat_run took
+vat_rr:     equ 0xF0E9              ; the vat column (vat_shown's index) vat_run looks at first
+vat_bk:     equ 0xF0EA              ; V9938: the last column drawn, copied onto the other page: its
+                                    ;   next part + 1 (0: none; a flip waits for it),
+vat_bkc:    equ 0xF0EB              ;   its column (vat_shown's index),
+vat_bky:    equ 0xF0EC              ;   the kept rows' prev_cy it is copied for
+vat_cmd:    equ 0xF0ED              ; 15: a part's VDP command (R#32-R#46; F0FCh-F0FFh: free)
 ; Brainstorm (msx/puzl.asm) while it runs, in objl_ram (EE00h-EF4Fh: the renderer's): the wanted
 ; state, what the original has drawn as of the last pass (pz_frame), for the renderer. Its
 ; first bytes follow the shown state's layout (puzl.inc PZ_ST_TV ... PZ_ST_BAR, PZ_ST_NONE: not
@@ -1002,7 +1017,8 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDF0h-EDFFh, E0FEh-E0FFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
-; vat_phase, F012h-F0E6h the vats' display since its step 5); EA60h-EC41h: bob_list,
+; vat_phase, F012h-F0E6h the vats' display since its step 5, F0E7h-F0FBh since its step 14);
+; EA60h-EC41h: bob_list,
 ; cat_head, hz_ylo..; F280h-F37Fh: the stack, from F380h down (rc2.asm): nothing else may live there;
 ; the BIOS's area: F380h-F43Bh so_x, so_n, F500h-F9FFh the map patches' MP_B)
 
