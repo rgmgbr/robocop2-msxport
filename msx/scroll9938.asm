@@ -46,6 +46,8 @@ ttp_prep:
         call fb_mark38              ; (field.asm: the play-field BOBs over it again)
         push de
         push bc
+        ld a,d
+        ld (vat_pg),a               ; (level 2's vats: this page's looks, tiles.asm get_tile)
         ld a,b
         call tile_src
         pop bc
@@ -121,6 +123,9 @@ s38u_step:
         jr nz,s38u_hold
         ld a,(fb_bsync)             ; (field.asm: its play-field BOBs composed)
         cp e
+        jr nz,s38u_hold
+        ld a,(vat_bk)               ; (level 2's vats: the last vat column on this page too)
+        or a
         jr nz,s38u_hold
         ld a,(s38_vis_c0)
         ld (s38_old_c0),a           ; (the page on screen until the flip is: s38_redraw)
@@ -270,8 +275,10 @@ s38_work:
         ld a,(split_armed)
         or a
         jr nz,s38w_rq
-        call s38_rburst             ; (between the split and the VBLANK: the changed cells first)
-        call vdp_busy
+        call s38_rburst             ; (between the split and the VBLANK: the changed cells first,
+        call vdp_busy               ;  then level 2's vats: tiles.asm vat_win)
+        ret nz
+        call vat_win
         ret nz
 s38w_rq:
         ld a,(s38_rq)
@@ -312,8 +319,10 @@ s38w_copy:
         cp VIEW_ROWS
         jp c,s38_copy_chunk
 s38w_idle:                          ; the back page ready, or none, and no changed cell waiting (a
-        ld a,(rd_tail)              ; cell half drawn is still in the queue): nothing to do until
-        ld hl,rd_head               ; the next update or a changed cell sets iw_more again
+        call vat_idle               ; cell half drawn is still in the queue) nor work of level 2's
+        ret nz                      ; vats (tiles.asm vat_idle): nothing to do until the next
+        ld a,(rd_tail)              ; update or a changed cell sets iw_more again
+        ld hl,rd_head
         cp (hl)
         ret nz
         xor a

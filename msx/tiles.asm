@@ -22,6 +22,8 @@ TC_SLOTS:   equ 256                 ; the most a level has (page 2: 432 until th
 ; ----- map reads -----
 
 ; get_tile: A = row, E = column -> HL = tile. Preserves BC and DE (and the A000h window's bank).
+; Level 2's vat cells (field.asm vat_tile, docs/LEVEL2.md 3.5): their column's look on the page
+; being drawn (vat_pg), not the ROM map's.
 get_tile:
         push de
         ld d,a
@@ -52,7 +54,10 @@ gt_hit: inc h
         ld l,a                      ; its tile
         pop de
         ret
-gt_rom: ld a,d
+gt_rom: ld a,(lv_logic)             ; (level 2: its vats)
+        cp BANK_L2
+        jr z,gt_vat
+gt_map: ld a,d
         ld l,a
         ld h,0
         ld e,a
@@ -86,6 +91,57 @@ gt_rom: ld a,d
         call bank_a000
         pop de
         ret
+gt_vat: push bc
+        ld hl,vat_tile
+        call field_call             ; (D = row, E = column) -> HL = the vat cell's tile, FFFFh: none
+        pop bc
+        ld a,h
+        and l
+        inc a
+        jr z,gt_map
+        pop de
+        ret
+
+; The vats' display (level 2: vats.asm vat_run, vat_mirror; docs/LEVEL2.md 3.5): the scroll
+; engines' hooks. vat_win, between the HUD split and the VBLANK with the VDP idle: a vat column
+; drawn at its newest look -> NZ when a command of it still runs. vat_idle, at the engines' idle
+; points: the V9938's mirror of that column on its other page, a part when the VDP is idle -> NZ
+; while the vats have work (the engine keeps iw_more).
+vat_win:
+        ld a,(lv_logic)
+        cp BANK_L2
+        ret nz
+        ld hl,vat_run
+        call l2_call
+        ld a,l
+        or a
+        ret
+vat_idle:
+        ld a,(vat_bk)
+        or a
+        jr nz,vi_mir
+        ld hl,vat_chg               ; (a vat changed, or a column of it waits: field.asm vat_scan)
+        ld b,7
+vi_c:   or (hl)
+        inc hl
+        djnz vi_c
+        or a
+        ret
+vi_mir: ld hl,vat_mirror
+        call l2_call
+        or 1
+        ret
+
+; HL = a routine of level 2's logic bank (vats.asm: the level's lv_logic at A000h around it, the
+; bank that was there comes back). Keeps nothing but what the routine returns in BC, DE, HL.
+l2_call:
+        ld a,(act_a000)
+        push af
+        ld a,(lv_logic)
+        call bank_a000
+        call fc_hl
+        pop af
+        jp bank_a000
 
 ; D = row, E = column (-1..160: the neighbours wrap into the rows above and below, as the
 ; Amiga's linear map does) -> A = the cell's attributes (the two rows after the level's lv_rows:
