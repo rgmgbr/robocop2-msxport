@@ -2243,3 +2243,155 @@ All from the worktree's root; one openMSX (the in-process MCP); `B` = level2 hea
    remove themselves.
 4. The title after a game over is seen only in the product (script builds skip it); no regress record covers it
    (the plan's 4.4 game-over row: checked here on EXTJOY builds through the new game).
+
+## Step 21: the sound checks and the cheat (2026-10-31)
+
+**Done; committed locally, not pushed (the user's order).** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
+from level2 a7c465d), cherry-picked onto level2 0b63ec2 (step 14 integrated meanwhile). Records in `$S21` =
+`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s21`:
+`R` (`hz.sh fxbuilds`, `R/cheat`), `fx` (the 26 sound logs and their `.check` verdicts), `neg` (the mutated
+ROMs), `cheat` (the keyboard run, its snapshots and renders), `var0`/`var1` (a7c465d's and this step's option
+sets), `W` (the gate), the logs. One openMSX: a private MSX-AI MCP session (`mcpd.py $S21/mcp`, `mx.sh`).
+
+### What was built
+- **`CHEAT=1`** (`tools/mkrom.py`; refused with `DIAG`, which plays no game): `msx/cold.asm` `ng_init` sets AG
+  `$804F` to FFh at each new game (the title's cheat handler `$11F60` begins `st.b $804F`: REA on
+  `level1_full.bin`), and `msx/frame.asm` `fe_keys`, called first by `frame_end`, maps F5 (keyboard row 7 bit 1)
+  to key code 59h and F4 (bit 0) to 58h in `$8032` while held, the code + 80h once let go (the release the
+  Amiga's keyboard interrupt leaves; another key's code is kept); `frame_end` already acts on 59h (`$16D0`
+  set: the level's end) and 58h (energy 102h), the original's F10/F9. **Deviation (recorded): the mapping is
+  at `frame_end`'s head in `BANK_LC3` and the `$804F` store in FRONT, not in `player.asm` `key_scan` and
+  `rc2.asm` as the plan's row 21 says**: both are fixed code, and so the fixed area pays nothing (every
+  set's `code_end` as its twin's; `LC3` −33 B, FRONT −5 B in CHEAT builds; operands of the code after them
+  move). Since `frame_end` runs in script builds too, F5/F4 also work in an `EXTJOY` CHEAT build; nothing
+  changes while the game is paused (no tick).
+- **`tools/bstest/fxlog.tcl`** (new; `load.tcl` sources it; `sess_fxlog.tcl` stays as step 0 brought it:
+  l2base's `fx_scc` job reads its log by its starts): every write to the PSG's R0-R13, to 9800h-98FFh with
+  where it went (the cartridge's SCC, another slot's, none) and to the OPLL, with the engine's events
+  (HARNESS.md 5.23); `msx/sound.asm` gained the label `sf_back` (no byte) for the VBLANK's sound work's end.
+  `fxl_jobs` (26 jobs), `hz.sh fxbuilds R` (9 builds).
+- **`tools/bstest/fxcheck.py`** (new; the 2026-10-22 scratch copy was lost): `check` replays a log on a model
+  of `sndplay.asm` and `music.asm`'s in-game effects (their data read from the ROM) and compares every
+  event's writes with the model's, the queue, the tick divider, the end state, the effects' starts and plays
+  to the end, the bench's requests per frame and the text screens' silence; `visits` compares the stages'
+  tunes of two runs tick for tick; `selftest` mutates a real log.
+- **`tools/bstest/cheat.tcl`** (new): `ch_job DIR ROM LABELS`, a CHEAT=1 build by the keyboard from the
+  power-on through both levels (HARNESS.md 5.23).
+- `tools/bstest/variants.sh`: the candidates' five CHEAT sets (53 in all). Tests: `tests/test_fxcheck.py`
+  (15: a synthetic ROM, logs made through the model, every mutation caught, both players' rules, the voice
+  choice, the waveform skip, the divider, the queue, the bench's restart, the job tables), `test_level2_rom.py`
+  `CheatTests` (the refusals, the `if CHEAT` blocks, a CHEAT build's code windows), `test_bstest.py` (53
+  sets). `docs/HARNESS.md` 5.23, the file table, the labels list.
+
+### Checks (exact commands, results)
+All from the worktree's root; `S21` as above.
+- **Builds**: `sh tools/bstest/hz.sh fxbuilds $S21/R`: PASS (l2 c7d59acca481f0b8 and l2c d691c89e8b9a9c03 =
+  step 19's; l2x 32982a9c0bdab777, l2n 2529805774f7c3db, l2cn ca2ba682e101777d, pz1 8f1f9288f11037dd = step
+  19's pzt, pz2 324adab4a16839a9, pz1n 696f566ac58674a9, pz2n bdbf4247434bce03); `sh tools/bstest/build.sh
+  $S21/R/cheat/rc2.rom CHEAT=1`: dcaa839e9b2790da; 12 known z80asm warnings each, nothing else in the logs.
+- **4.3 check 1, the effects by register**: `hz_chain [fxl_jobs {$S21/fx} {$S21/R}] {...}` (26 jobs, under a
+  minute), then `sh $S21/fxall.sh $S21/fx $S21/R`, which runs for each drive (tour, vat, mine, end, t1left,
+  trolley) and chip set k (scc: the cartridge's SCC, `l2`; ext: an SCC cartridge in slot B, `extb scc`,
+  `l2x`; psg: the PSG alone, `l2n`; C-BIOS_MSX2) `python3 -I tools/bstest/fxcheck.py check $S21/fx/d_D_k.txt
+  $S21/R/B/rc2.rom $S21/R/B/rc2.labels --bench build/emu/l2_D_ram.jsonl --expect k` and `tools/tracecmp.py
+  --ram --fields analysis/amiga_ram_l2.tsv` on the run's trace: **18 of 18 fxcheck: PASS**, every trace 0
+  differ in all 1,022 fields (2,654 / 701 / 161 / 259 / 341 / 641 rows). In all: 144,355 segments, 310,398
+  writes (SCC 93,586 + 93,986, PSG 37,497 + 37,975 + 47,354) equal to the model write for write; every SCC
+  write at the chip the run uses (`c` / `x`); every request taken by the next VBLANK in order, none dropped
+  (tour: 1,829 queued, taken 1-2 VBLANKs after); a tick at exactly the divider's VBLANKs (tour 9,194 of
+  11,033); the engine's 197 bytes equal at the end; every frame's requests equal the bench's (2,653 / 700 /
+  160 / 258 / 340 / 640 frames run; the gun's opening once a life: frames 29, and 138 and 554 after `vat`'s
+  two deaths). The priority rule: each player's own as before (refusals: tour 05h 8, 07h 2 on the SCC; the PSG
+  player 79 of 593 0Ch), see open issue 1.
+- **4.3 check 2, the new numbers** (started / played whole; the rest cut by a later start on the channel or
+  voice): **12h** t1left 7/7 (scc, ext 7/6, psg 6/5); **1Ah** t1left 112/4 (scc, ext; psg 112/6), tour psg
+  657/1; **28h** vat 3/2 (all three), tour psg 5/1; **21h** tour 2/1 (all three), end ext 1/1; **10h** (a vat's
+  death) vat 2/1. **0Ch**: tour's longest ride 212 requests every 2nd frame (frames 643-1065), trolley's 79
+  (483-639), t1left's 50: on the SCC (both slots) every request started (tour 593/593, 593 and 590 whole); on
+  the PSG alone 514 of 593 (79 refused by `sndplay.asm`'s rule: open issue 1). **The gun's opening** at level
+  2's start: G at game frame 29 in every drive (the bench's first effect 3), played whole in end, tour, vat
+  (three starts) and trolley, cut by early effects in mine and t1left.
+- **4.3 check 3, by ear** (for the user's notes): the effects in `build/music/preview/sfx_all_amiga.wav`,
+  `sfx_all_scc.wav`, `sfx_all_psg.wav` (one layout, 42 effects, 33.92 s) at 0Ch 0:08.56 (0.08 s), 10h 0:11.40
+  (0.98 s), 12h 0:13.42 (0.22 s), 1Ah 0:20.24 (0.52 s), 21h 0:25.62 (0.32 s), 28h 0:30.90 (0.68 s); alone:
+  `build/music/preview/sfx/sfx_NN_amiga.wav` / `_psg.wav` with NN the decimal number (12, 16, 18, 26, 33, 40).
+- **4.3 check 4, silence**: `fxcheck.py check` on `brief_scc`, `brief_psg` (LV_TEST's briefing),
+  `cont_scc`, `cont_psg` (the continue offer), `pz1_*` (the level-2 briefing after the range) and `pz2_*` (the
+  level-3 briefing after the range's second visit): **8 screens, 0 writes after their stop** each; the
+  stop's own writes (mus_quiet, sq_mute, the VBLANK's sq_stop) as the model's; the model ends at the title's
+  music (`mus_start`, `sq_title`) after `pz*`'s briefing.
+- **4.3 check 5, the second visits**: `python3 -I tools/bstest/fxcheck.py visits $S21/fx/pz1_k.txt
+  $S21/fx/pz2_k.txt` (PZ_TEST=1, PZ_LEVEL 1 / 2, the stages left alone from the power-on): **PASS on the SCC
+  and on the PSG alone**: Brainstorm's PZM 3,001 ticks and the range's FRM 6,000 ticks, every chip register
+  equal at every tick (the SCC's 00h-AFh, PSG R0-R13).
+- **4.3 check 6, the title's music after the new flow**: regress.sh's flows in the gate below: the title after the product's whole flow (level 1, both
+  stages, the level-2 briefing, level 2 ended at its frame 100 as F5 ends it, both stages' second visits, the
+  level-3 briefing) on the Expert, the HB-F1XDJ and the FS-A1GT: **the picture identical, the music identical
+  at every tick** (5,045 / 5,045 / 5,046 ticks; 150,864 / 150,864 / 130,435 PSG writes; SCC, PSG registers
+  and PSG writes 0 differ: titlecmp2.py) against a7c465d's records; against main 9be19aa's base (the title after the old flow) the
+  picture identical and every PSG write identical at every tick, the registers that differ only ones neither
+  run can hear (`titlecmp2.py --unheard`: the SCC's at every tick, on the turbo R the PSG's too: leftovers of
+  what played before the title, as at steps 18-19).
+- **Self-test**: `python3 -I tools/bstest/fxcheck.py selftest $S21/fx/d_end_K.txt ...` on scc, ext and psg:
+  **12 of 12, 12 of 12, 9 of 9 mutations caught** (a PSG write's value and register, a write missing, one
+  more, two swapped, an SCC write's value, address and chip, a start, a tick and a request lost, the end
+  state). Real ROMs run in openMSX (`$S21/neg`): the first record of effect 0Ah's SCC stream with its volume
+  0 → 1: **FAIL, 5 differences** (every start of 0Ah), PASS against its own ROM (the model reads the data);
+  `sound.asm` `spv_on`'s `ld a,0Fh` → 0Eh: **FAIL, 580**.
+- **4.3 check 7, the cheat**: `hz_chain [list [ch_job {$S21/cheat} {$S21/R/cheat/rc2.rom}
+  {$S21/R/cheat/rc2.labels}]]` (466 emulated s; `$S21/cheat/cheat.txt`): `$804F` FFh from the new game; level
+  1 at frame 100, **F5: `$8032` 59h and `$16D0` FFh at the next tick**, the score counted, front_stats at frame
+  132 (`$8032` D9h once let go); Brainstorm and the range left alone, the level-2 briefing; level 2 at frame
+  100, the energy poked to 40h, **F4: 102h at the next tick** (`$8032` 58h, then D8h); **F5 ends level 2**,
+  front_stats, both second visits, the level-3 briefing, the title (SCREEN 8, `front_mode` 1). **Pictures
+  looked at** (`$PY -I tools/msxframe.py $S21/cheat/S build/msx/levelN build/msx/hud S.png --sprites
+  build/msx/sprites --level N`, a contact sheet `$S21/cheat/sheet.png`): level 1 before F5 (score 0) and after
+  it (the score counting, 2100), level 1's statistics, level 2 at frame 100 (07:26), the can drained (40h),
+  full after F4, level 2's end (the score counting), its statistics, the title after it.
+- **Option sets**: `sh tools/bstest/variants.sh $S21/var1`: **51 of 53** (DEMO_ACTORS 2/5 overflow as before,
+  the fixed area −8Ch); **the 46 sets that built at a7c465d byte-identical to a7c465d's** (`$S21/var0`, built
+  from this worktree before any edit; `cmp`), `python3 -I tools/bstest/romdiff.py --blocks` on the product,
+  l2_test, lock, trace, p_pz: **romdiff: PASS** (39 blocks identical). Free bytes (`python3 -I
+  tools/bstest/l2base.py banks $S21/var1`): the CHEAT sets' fixed area as their twins' (cheat, cheat_t7,
+  cheat_2m 267; cheat_l2, cheat_l2p 248), LC3 4,866 → 4,833, FRONT −5 (cheat 1,501, cheat_l2 1,419); the
+  lowest set (DIAG+PZ_TEST) 132 as at a7c465d.
+- `make test`: 316 tests, the 4 known failures only.
+- **The gate**: all from the worktree (a7c465d + this step: its ROMs are a7c465d's).
+  - Builds: `sh tools/bstest/l2base.sh builds $S21/W` and `sh tools/bstest/hz.sh l2builds $S21/W/L2R`:
+    PASS; **all 32 ROMs byte-identical to a7c465d's** (`s18/I`, cmp), 12 known warnings each.
+  - The chain (the private MCP): `hz_chain [concat [hz_l2_jobs W/O/l2 W/L2R tr] [rgr_jobs W all] [l2b_jobs
+    W]] W/all.done`: 252 jobs, 0 time outs.
+  - `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv $S21/W/O/l2 $S21/W/L2R`: **level 2:
+    PASS (23 traces)**, lost 0; `contcheck.py` cont, cont_fx, cont_tr `--fire`, cont2 `--again`, cont_nf
+    `--no-fire`, over `--none`: **PASS**.
+  - `sh tools/bstest/regress.sh check $S21/W $S18/I`: one FAIL, the exact title from power-on's game RAM
+    (pointers DD08h, DD0Ah, DD0Ch 14 bytes apart, the `sw_*` bytes): **`s18/I/fresh/xbase_*` are main
+    9be19aa's** (its check against `../base` copied them there: `regress.sh check` copies the base's
+    `xbase_*` into W's `fresh/`), while its labels are a7c465d's, so the relocated pointers cannot be
+    followed; this step's record equals `s18/I`'s own `xnew_*` byte for byte. So **the base view `$S21/IB`**:
+    `s18/I`'s folders linked, `fresh/` with `s18/I`'s own records as `base_*` and `xbase_*` (what
+    `l2base.sh base` does; nothing written into s18). Against it: `sh tools/bstest/regress.sh check $S21/W
+    $S21/IB`: **regress: PASS** (45 verdicts; the exact title identical in every part, RAM 4,094 bytes at
+    their place, $B32 apart); `sh tools/bstest/l2base.sh check $S21/W $S21/IB`: **l2base: PASS** (level
+    1's die, over, end 901 / 1,249 / 517 rows 0 differ; the start checks 0 on the MSX2, MSX2+, turbo R; the
+    stills; LOCKSTEP 2,998 lists 0 differ; the effects identical: sess_fxlog's 800 starts, 803 / 802 starts
+    each in the base's frame with 0 moves, SCC 57,480 and PSG 33,396 sound ticks 0 differ).
+  - `sh tools/bstest/l2base.sh check $S21/W ../base` (main 9be19aa's base): **l2base: PASS** (45 verdicts).
+
+### Open issues
+1. **The priority rule's scope differs between the two players (pre-existing, level 1 too; not fixed: no
+   default covers it and it changes level 1's accepted SCC sound).** The original's request entry `$18014`
+   jumps to `$1822C` for every effect: while channel 3's flags (`$18126` = the channel records `$18024` +
+   56h × 3) are set, an effect lower than the last one started (`$18023`) is not played, whatever its
+   channel (REA on `level2_full.bin`: `tst.w $18126; beq; cmp.b $18023,D0; bcs rts`; xrefs: only `$18014`).
+   `sndplay.asm` `sq_sfx` (the PSG alone) does that; `music.asm` `fxs_one` (with an SCC) applies it only to
+   channel-3 requests (`cp 3; jr nz,fxs_ok`), against its own comment and docs/MSX_ARCHITECTURE.md. Evidence
+   (fxcheck's "scope" line): requests on channels 0-2 played on the SCC that the original refuses: tour 105
+   (cartridge) / 109 (slot B), end 15 / 14, trolley 13, t1left 9, vat 5; the PSG player refuses the same
+   kind (tour 79 0Ch). The fix is 5 bytes less in BANK_MUSIC (the channel test dropped), the user's call: it
+   changes which effects play on the SCC in level 1 and level 2 (l2base's effect verdicts would then differ
+   from the base by design).
+2. Not modelled by `fxcheck.py`: the title's music, the speech, the stages' tunes (their own checks:
+   `titlecmp2.py`, `frregcmp.py`, and `visits` here). A log's check ends at the title's music.
+3. `fxlog.tcl`'s drive jobs run `LV_TEST` builds; the product's way into level 2 (`flow_l2_end`) is not
+   logged by it (its traces equal the bench: the same requests).

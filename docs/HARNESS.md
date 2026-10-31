@@ -97,6 +97,9 @@ The harness has two sides:
 | `fieldcheck.py RECDIR LEVEL_PREFIX OUT.png [--level 2]` | python (venv) | every play-area pixel no sprite covers against the tiles (map and patches) and the play-field BOBs of the list on screen (level 1's scratch tool of 2026-10-21, 5.21); a `CLASS` line per kind of difference in a picture (the hostage tear with its BOBs, a torn explosion, other); `--level 2`: level 2's frames as its ROM uploads them (`tools/msxframe.py` `FieldLooks`) and its hostage-like BOBs torn per object (5.22, step 13) |
 | `fxcmp.py BASE_sn.txt NEW_sn.txt`, `--starts A B` | python | the effects of two builds by their starts: the same starts in the same order and `LOCKSTEP` frames, each effect's own sound from its start (5.21, the gate's timing-blind verdicts) |
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
+| `fxlog.tcl` | Tcl | every PSG (R0-R13), SCC (9800h-98FFh, where it went) and OPLL write with the sound engine's events: requests queued and taken, ticks, stops, text screens, the stages' tune ticks; `fxl_jobs W/fx R` (26 jobs: level 2's drives on three chip sets, the continue, the briefings, both stages' visits), `fxl_drive_job`, `fxl_text_job` (5.23) |
+| `fxcheck.py check LOG ROM LABELS [--bench REF] [--expect K]`, `visits A B`, `selftest LOG ROM LABELS` | python | the sound engine's model (`sndplay.asm`, `music.asm`'s in-game effects) replays an `fxlog.tcl` log: every segment's writes, the queue, the tick divider, the end state, the effects' starts and plays to the end, the bench's requests, the text screens' silence; the stages' tunes of two visits tick for tick; mutations a log must fail (5.23) |
+| `cheat.tcl` | Tcl | `ch_job DIR ROM LABELS`: a `CHEAT=1` build by the keyboard from the power-on, F5 ending level 1 and level 2, F4 filling the energy, snapshots and notes (5.23) |
 | `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
 | `l2frame.py SNAP LEVEL HUD OUT.png [SPRITE_PAL]` | python (venv) | `tools/msxframe.py` on a level-2 snapshot, the sprites' expected pixels from the palette they were converted with (level 1's, until level 2's step 12) (5.22) |
 
@@ -120,7 +123,14 @@ The Tcl reads these labels from a ROM's label file:
 - level 2's base (5.21): `spr_plan`, `SPR_BASE_BANK`, `SPR_PAT_BANK`, `SPR_COL_BANK`, `VIEW_LINES`,
   `fx_start`, `fx_tick`; its field records copy RAM 0600h-09FFh (the play-field engine's lists:
   `fb_dn0` 06D9h, `fb_dn1` 0712h, `fb_lost`, `fb_qn`), F240h-F27Fh (`fb_vis` F248h) and MP_B
-  F500h-F8FFh, which `fieldcheck.py` reads at those offsets.
+  F500h-F8FFh, which `fieldcheck.py` reads at those offsets;
+- level 2's sound logs (5.23, `fxlog.tcl`): `snd_frame`, `sf_back`, `sq_put`, `sq_mute`, `sq_sfx`,
+  `sq_gun`, `sq_stop`, `sq_title`, `sqf_t`, `mus_stop`, `mus_start`, `fe_text`, `tns_go`, `tn_tick`,
+  `tn_left`, `tick_n`, `scc_pg2`, `mus_mode`, `BANK_INPUT`, `BANK_MUSIC`, `BANK_FRONT`, the scripts
+  `txt_l2_brief`, `txt_l3_brief`, `txt_cont`; `fxcheck.py` the engine's equates and RAM homes
+  (`SCCFX_BANK`, `GUN_FX`, `GUN_TAB`, `SND_SFX_N`, `snd_sfx`, `fx_waves`, `TN_MARK`, `SCC_*`, `mus_v`,
+  `fx_pv`, `fx_wc`, `snd_v`, ... its `LABELS_NEEDED`); the cheat (`cheat.tcl`): `front_stats`,
+  `fr_title`, `front_mode`.
 
 It also uses RAM addresses of `msx/msx.inc` directly:
 
@@ -1814,6 +1824,55 @@ python3 -I tools/bstest/contcheck.py W/O/l2 cont2 --again
 python3 -I tools/bstest/contcheck.py W/O/l2 cont_nf --no-fire
 python3 -I tools/bstest/contcheck.py W/O/l2 over --none
 ```
+
+### 5.23 Level 2's sound checks and the cheat (step 21 of its plan)
+
+The plan's 4.3. **`fxlog.tcl`** logs, from an arming point on, every write the game makes to the sound
+chips (the PSG's R0-R13 by its latch, R14/R15 left out; every store to 9800h-98FFh with where it went:
+the cartridge's SCC when page 2 shows the cartridge with bank 3Fh there, another slot's SCC when page 2
+shows another slot, else none; the OPLL's) and the engine's events around them: a request queued by
+the main program (`sq_put`, Q), `snd_stop`'s parts (`mus_stop` Y, `sq_mute` Z), the VBLANK's sound work
+(`snd_frame` V to `sf_back` W) with what it takes from the queue (`sq_sfx` S, `sq_gun` G, `sq_stop` X)
+and its tick (`sqf_t` T), each game frame's start (F), the text screens (`fe_text` B to its return b),
+the title's music (M: the model's end) and, from the job's start, every tick of the stages' tunes with
+the chips' state (`tn_tick` U, `tns_go` N). Its first line (I) holds the engine's RAM C000h-CFFFh, its
+last (E) the same at the end. **`fxcheck.py`** replays the log on a model of the engine (`sndplay.asm`,
+the PSG player; `music.asm`'s effects on the SCC with their noise on the PSG: `fx_start`, `fx_tick`,
+their readers and outputs, routine for routine; the data read from the ROM: `sccfx.bin`'s table and
+streams in `SCCFX_BANK`, `fx_waves`, `snd_sfx` and its streams in `BANK_INPUT`, `GUN_TAB`) from the
+I line's state, and wants: each event's writes exactly the model's, in order; every request taken by
+the next VBLANK, in order, none dropped; a tick at exactly the VBLANKs the divider gives (60 Hz: five of
+six); the engine's variables at the end equal (197 bytes); in a text screen no write after its own
+stop. It reports per effect its starts, the refusals of the priority rule (`$1822C` as each player
+implements it) and the starts played whole (every part to its stream's end, not cut by another start
+or a stop); with `--bench`, the requests the main program queued in each game frame against the
+reference's (`$B31` ... `$B2C`, frame_keys' order; the gun's opening once a life, at its first effect 3).
+
+```sh
+sh tools/bstest/hz.sh fxbuilds R          # l2, l2x (NO_SCC_INT=1), l2n (NO_SCC=1), l2c, l2cn, pz1, pz2, pz1n, pz2n
+```
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_chain [fxl_jobs {W/fx} {R}] {W/fx/all.done}     (26 jobs, < 1 min)
+```
+```sh
+python3 -I tools/bstest/fxcheck.py check W/fx/d_tour_scc.txt R/l2/rc2.rom R/l2/rc2.labels --bench build/emu/l2_tour_ram.jsonl --expect scc
+python3 -I tools/bstest/fxcheck.py visits W/fx/pz1_scc.txt W/fx/pz2_scc.txt      # Brainstorm's PZM and the range's FRM, visit 2 against 1
+python3 -I tools/bstest/fxcheck.py selftest W/fx/d_end_scc.txt R/l2/rc2.rom R/l2/rc2.labels
+```
+
+| Job (`fxl_jobs`) | Build, machine | Checks |
+|---|---|---|
+| `d_<drive>_<k>`: tour, vat, mine, end, t1left, trolley | `l2` (k scc: the cartridge's SCC), `l2x` (ext: `NO_SCC_INT=1`, an SCC cartridge in slot B), `l2n` (psg: `NO_SCC=1`), C-BIOS_MSX2 | `check --bench build/emu/l2_<drive>_ram.jsonl --expect k`; the drive's trace (`d_<drive>_<k>_trace.txt`) against the reference, `tracecmp.py --ram --fields analysis/amiga_ram_l2.tsv` |
+| `cont_<k>` | `l2c`, `l2cn`: the cont drive (301 rows) | `check`: the offer `txt_cont` silent after its stop |
+| `brief_<k>` | `l2`, `l2n` from the power-on: LV_TEST's briefing to 1 s after it | `check`: `txt_l2_brief` silent |
+| `pz1_<k>`, `pz2_<k>` | `pz1`, `pz2` (scc), `pz1n`, `pz2n` (psg) from the power-on, no script: Brainstorm and the range of visit 1 or 2 left alone, then the next level's briefing to 1 s after it | `check` (the briefing silent; the model ends at the title's music); `visits pz1_k pz2_k` |
+
+`cheat.tcl` (`ch_job DIR ROM LABELS`, a `CHEAT=1` build, no script, C-BIOS_MSX2): the title, SPACE,
+level 1 to its game frame 100, F5 (row 7 bit 1) held 0.5 s, the statistics, the stages left alone, the
+level-2 briefing, level 2 to its game frame 100, its energy poked to 40h, F4 (row 7 bit 0), F5, the
+statistics, both second visits, the level-3 briefing and the title; `DIR/cheat.txt` notes each step with
+`$804F`, `$8032`, `$16D0` and the energy; snapshots `l1_100`, `l1_end`, `l1_stats`, `l2_100`, `l2_low`,
+`l2_full`, `l2_end`, `l2_stats` (`tools/msxframe.py ... --level N`) and `title` (SCREEN 8).
 
 ## 6. The whole suite in order
 
