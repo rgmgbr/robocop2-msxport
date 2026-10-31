@@ -2840,6 +2840,170 @@ All from the worktree's root; `S21` as above.
   issue, its integration's same verdict (these ROMs are its own byte for byte).
 - `make test` (the main tree): 317 tests, the 4 known failures only.
 
+## Step 22: milestone 3 accepted (2026-10-31)
+
+**Done.** Branch `l2-s22` (worktree `scratchpad/l2/wt22`, from level2 d092b97), commit **6eab0e8** (the review's two
+fixes) and this section's. Files: `msx/vats.asm`, `tools/msxframe.py`, `tools/bstest/{bonuscheck.py, contcheck.py,
+hz.tcl, vatlog.tcl}`, `tests/test_bstest.py`, `docs/HARNESS.md` (the gate's lines: the tools table's `bonuscheck.py`
+and `contcheck.py` rows, the `--level2` bullet, "At step 22"), this file. Records in `S22` = `scratchpad/l2/s22`:
+`G` (the gate: builds, records, `G_l2base_check.out`), `GX`, `GXV`, `GV` (the X build, its `VAT_TICK=1` twin, the
+variant's l2 build), `F` (the sound checks' builds), `fx` (their logs), `V/built`, `V/vattick` (the vats: guard,
+rates, speeds, field windows, the stop drive), `fz` (finding 1: the drives, the old and new builds, the VBLANK
+handler's lengths), `f2`, `f2n`, `f2c`, `neg2` (finding 2: msxframe on step 16's first pictures, the new checks on
+them, the known-bad cases), `V55` (the option sets), `c7a`, `c7b`, `c7v`, `c7w`, `matrix`, `guard` (step 23),
+`tools/` (scratch: `fz.tcl`, `chainB.tcl`, `isrt.tcl`, `c7.tcl`, `cands.sh`, `fxall.sh`). Two openMSX: the
+in-process MCP (chain A: `l2b_chain`) and a private session (`tools/bstest/mcpd.py S22/mcp`, chain B), shut down.
+
+### The review's finding 1 (vats.asm vr_main: a ready column that stops fitting)
+- **The path holds** and showed in the drives: `S22/fz/x850` (step 16's variant bytes, 45ad102f, tour from 850, MSX2,
+  `S22/tools/fz.tcl`: a line per `vr_nt`, `vr_drop`, `vr_ok`, `vp_scan` with the game frame, `cam_y`, R#23): at game
+  frame 1054 column 25 (vat 2, rows 0-6) was refused for time 3 times (`cam_y` 551, R#23 39, `prev_cy` 34), then
+  dropped by the camera's next step; the reviewer's `vr_nt 3`.
+- **The stop drive** `S22/fz/l2_stop1047.drive` (tour's joystick bytes to game frame 1047, none after: RoboCop
+  drops off trolley 2 onto the platform at y 672 and stands; the camera eases down to `cam_y` 565 and holds; vat 2
+  in view, its top at screen line 75): from game frame 1040, 15 s, MSX2 and MSX2+, as built and `VAT_TICK=1`,
+  the builds before the fix (`S22/fz/{keep,keepv}`: step 16's bytes e2ef2f58 / 45ad102f) and with the reviewer's
+  line (`S22/fz/{drop,dropv}`; this step's code: `S22/V/{built,vattick}/stop`). **The picture is the same in
+  every pair**: as built no column drawn in 15 s; `VAT_TICK=1` the same 4 columns at the same times (88.43 ...
+  89.18 s on the MSX2, 80.12 ... 80.60 s on the MSX2+), then none while the camera holds. The kept column's 3
+  refusals became one refusal and a drop; `vat_run` 114 calls, 46 ms against 74 calls, 39 ms (the variant on the
+  MSX2), `vat_prep` within 0.5 %. **So the vats stay still there whatever happens to the ready column**: at that
+  camera position `vat_fits` refuses every column of the vat in view (8 rows kept: 111 lines of VDP time, its first
+  line 75), and the vats that can be in view together (0 + 1, 1 + 2) share their rows (MAP2.md 2.5), so no other
+  column could fit either. The freeze the review describes is `vat_fits`' own limit (whole columns, ended before
+  the beam reaches their first line: default 18), not the kept column's; it lasts while the view holds a vat high
+  on the screen (tour 1054-1148: vat 2 still for 5.5 s in both builds).
+- **The fix** (6eab0e8): `jr nz,vr_nt` stays, and `vr_nt` now clears `VF_RDY` (`vr_nt: ld (ix+VF_RDY),0`, falling into
+  `vr_lt`'s `ld l,0 / ret`): the reviewer's drop, with `vr_nt` kept a mark of its own for `vatlog.tcl`'s K line (+1
+  byte in BANK_L2: 29 -> 28 free). Why not keep: dropping costs no CPU (the stop drive above: fewer `vat_run`
+  calls in the variant, the same as built) and draws the same; a kept column could only be drawn later at a stale
+  look and holds `vat_prep` from the scan.
+- `python3 -I tools/bstest/romdiff.py --blocks s16/G/R/prod/rc2.rom S22/G/R/prod/rc2.rom` (+ both `gen/banks.inc`):
+  **38 blocks identical; the code blocks that differ: BANK_L2; romdiff: PASS**. So step 16's results stand for every
+  other code bank: the fixed area, LC1, LC2, L1, LC3 (level 1), INPUT, FRONT (the title, the text screens), FIELD,
+  MUSIC, PUZL (Brainstorm), FRNG (the range); and level 1, the title, Brainstorm and the range were run again anyway
+  in the gate below.
+
+### The review's finding 2 (the gate: level 2's first picture)
+- `bonuscheck.py` `first_picture` (`--level2`; `contcheck.py --fire` and `--again` after `lv_cont`, its notes in
+  `TAG_bonus.txt`): `tools/msxframe.py TAG_l2g0 build/msx/level2 build/msx/hud TAG_l2g0.png --sprites
+  build/msx/sprites --level 2 --field --no-sprites` (the venv's Python, `--py PY`) must exit 0, and the notes'
+  record of the HUD ("level 2's first picture at": HUD shown, heads, icon, can, jobs) must hold the game's values:
+  the score's 7 cells and the ammo's 3, the timer's 4 (its value or 07:30), the heads (slot k: 0 while the lives are
+  more than k, else 5), weapon 0's icon 3, the can full (0100h), no HUD job.
+- **What it took** (msxframe as the review proposed, on step 16's 15 first pictures, `S22/f2`): 5 failed on known
+  classes: two_m2 1,212 px, cont / cont2 1,389, cont_tr 1,411 (the sprites at the first list: its SAT not published
+  yet, the records name its tick's objects while the screen shows none, or the set before: steps 18-19), kb_ex 25
+  (the timer: the split interrupted `hud_frame` between a cell's record and its 16 lines; step 16's open issue 2).
+  So **`msxframe.py --no-sprites`** (new): the play area rendered with the sprites off (R#8's SPD) and every pixel of
+  it compared (without it a product snapshot skipped every differing play-area pixel as a pending sprite's); all
+  15 then pass but kb_ex (`S22/f2n`). And **`hz.tcl` `hb_l2_snap_arm`** (`hb_l2_go`, `hz_l2c_lvc`): breakpoints at
+  `hud_frame`'s entry and at its two return points (`mainloop`'s and `hud_keep`'s calls) set `::hb_hud`, and
+  `hb_l2_snap` passes over a split that comes while it is 1 and takes the next one (the notes end with "splits
+  passed over while the HUD was drawn: N"); `hb_l2_snap_disarm`.
+- **Known-bad cases** (copies of step 16's real records in `S22/neg2`; `python3 -I tools/bstest/bonuscheck.py DIR
+  prod_m2 --result time --gen s16/G/R/prod/gen --range time --brief l2 --level2`, `contcheck.py DIR cont --fire`):
+  the real records PASS; **FAIL** on page 2's tile slots zeroed (16 KiB: 127 slots), 64 HUD bytes flipped (128 px),
+  2 x 256 play-area bytes flipped (324 px), 40 lines of the atlas zeroed (5 atlas frames), the notes' score cell
+  9605 for 9600, heads 0 5 with 2 lives, lives 1 (heads 0 0 kept), lives 0 after the continue, the timer cells
+  09:58 (`hud_lvl`'s old class); and step 16's kb_ex record (the race) fails both checks. `make test`'s new
+  `test_first_picture_hud_record`.
+- On the gate's new records (below) **all 10 level-2 flows and the four continues pass**; kb_ex's notes say "splits
+  passed over while the HUD was drawn: 1".
+
+### Checks (exact commands, results; `S22` as above, `W` = wt22)
+- **Builds**: `sh tools/bstest/l2base.sh builds S22/G`, `sh tools/bstest/hz.sh l2builds S22/G/L2R`, `sh
+  tools/bstest/build.sh S22/GX/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2`, `... S22/GXV/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2
+  VAT_TICK=1`, `... S22/GV/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_TICK=1`, `sh tools/bstest/hz.sh
+  fxbuilds S22/F`: PASS. **Every build log** (106 label files: these, the candidates twice, the 52 option sets):
+  the 12 known z80asm warnings, no other message, no "error". The product eb8942c0568cc39f (1 MiB, 127 of 128 banks),
+  l2 7d0eb350c7c9fe12, X f94ca6ab5a1fffd5, the variant's l2 d7f62f2628678623; free bytes (`S22/G/banks.txt`): the fixed area 181, LC1 53, LC2 4,842, L1 874, LC3
+  4,866, INPUT 11, FRONT 1,381, FIELD 143, MUSIC 1,331, PUZL 4,483, FRNG 264, **BANK_L2 28** (29 at step 16).
+- **The chains**: A (in-process): `source W/tools/bstest/load.tcl; source W/tools/bstest/l2base.tcl; l2b_chain S22/G
+  S22/G/all.done`: 227 jobs, 0 time outs. B (private): `S22/tools/chainB.tcl` = `hz_l2_jobs S22/G/O/l2 S22/G/L2R tr`,
+  per build (as built `G/L2R/l2`, `VAT_TICK=1` `GV/l2`) `vl_jobs` on tour from 450, 850, 1250 (25 s), 2130 (20 s),
+  standing at vat 0 from 540 (20 s, `l2_still520.drive`), `vat` from 30 (20 s), `vl_speed_jobs` 450, 850, 540, the
+  stop drive (`fz_jobs`), `hz_l2_field_jobs` (GX, GXV) on tour 495 (300), 735 (200), 960 (250), 1255 (350), and
+  `fxl_jobs S22/fx S22/F`: 133 jobs, 0 time outs.
+- **4.1**: `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv S22/G/O/l2 S22/G/L2R`: **level 2: PASS (23
+  traces)**, 0 differ in all 1,022 fields, lost 0 (`S22/l2compare.txt`); `python3 -I tools/bstest/contcheck.py
+  S22/G/O/l2 TAG MODE --gen S22/G/L2R/l2c/gen`: cont, cont_fx, cont_tr `--fire`, cont2 `--again` (each with the
+  first picture: PASS), cont_nf `--no-fire`, over `--none`: **PASS all six**.
+- **4.3**: `sh S22/tools/fxall.sh S22/fx S22/F` (step 21's script with this worktree): **fxall: PASS**: the 18
+  drive logs (tour, vat, mine, end, t1left, trolley x the cartridge's SCC, an SCC in slot B, the PSG alone) fxcheck
+  PASS with `--bench`, their traces 0 differ in all 1,022 fields; the continue's offer and the briefing silent
+  after their stop (scc, psg); pz1/pz2 (the briefings after the range's two visits) PASS; `visits` PASS on the SCC
+  and the PSG. Self-test: `python3 -I tools/bstest/fxcheck.py selftest S22/fx/d_end_K.txt S22/F/B/rc2.rom
+  S22/F/B/rc2.labels --expect K`: **12 of 12, 12 of 12, 9 of 9 mutations caught** (scc, ext, psg).
+- **4.4, the gate**: `sh tools/bstest/l2base.sh check S22/G scratchpad/l2/base` (main 9be19aa's base;
+  `S22/G_l2base_check.out`): **regress: PASS, 45 verdicts** (level 1's cov traces, the title from power-on (exact),
+  the product's and PZ_TEST flows with the briefing and level 2 and **the new first-picture checks**, the restore,
+  the turbo R's blank and writes (0 from `front_bonus`' entry to level 2's frame 100), the product's whole flow and
+  the title after it, the 2 MiB product (p2m_ex), the keyboard flows, Brainstorm, the range); level 1's die / over
+  / end 901 / 1,249 / 517 rows 0 differ; the start check 0 on the three machines; the field check PASS (860's known
+  class, as step 16); LOCKSTEP 2,998 lists 0 differ. **The same two verdicts as step 16 FAIL, judged CPU time**: the
+  still `m2_g1490` (324 px from the base, msxframe 543 against 462) and the PSG build's effect start 795 (effect 4,
+  frame 731: its second tick's volume 10 against 11; 1 of 33,272 ticks; the SCC build 0 differ). `l2base: FAIL` on
+  those two only.
+- **4.2 on the vats, both settings, three machines** (`python3 -I tools/bstest/vatcheck.py S22/V/B/W`): as built
+  **exit 0 in all 6 windows** (guard tear 0 of a vat column; tour 450 on the turbo R 1 "other": step 16's staged
+  piece; the least margin from the beam to a column's first line 27-88 lines); `VAT_TICK=1` exit 0 in 5 and **exit 1
+  in tour 1250** (open issue 1). The field check on the vat windows (`$PY -I tools/bstest/fieldcheck.py
+  S22/V/B/fd/F_M build/msx/level2 S22/V/B/fd/F_M.png --level 2`): **24 windows, 6,600 pictures, 0 differences, no
+  vat column at an older look**. The lost counters 0 after every job.
+- **The vats' rates** (`vatcheck.py`'s columns a second; the vat-0 columns' draws standing; `vl_speed_jobs`; 25 s
+  from 450 and 850, 20 s standing at vat 0 from 540):
+
+| columns a second | MSX2 | MSX2+ | turbo R |
+|---|---|---|---|
+| tour 450, as built / `VAT_TICK=1` | 1.1 / 3.3 | 2.7 / 6.4 | 12.0 / 18.8 |
+| tour 850, as built / `VAT_TICK=1` | 1.2 / 3.6 | 2.7 / 6.2 | 15.8 / 22.6 |
+| standing at vat 0, as built / `VAT_TICK=1` | 0.7 / 2.9 | 2.4 / 6.4 | 9.0 / 13.8 |
+| a vat-0 column redrawn standing, every | 17 s / 4.2 s | 5.0 s / 1.9 s | 1.3 s / 0.9 s |
+
+| ticks a second, pictures a second | MSX2 | MSX2+ | turbo R |
+|---|---|---|---|
+| tour 450, as built / `VAT_TICK=1` | 13.48, 10.64 / 13.28, 10.88 | 16.00, 8.04 / 14.76, 7.36 | 24.76, 29.44 / 24.84, 27.96 |
+| tour 850, as built / `VAT_TICK=1` | 17.76, 17.00 / 16.96, 16.04 | 21.28, 13.44 / 20.64, 12.48 | 24.92, 38.84 / 24.76, 37.16 |
+| standing at vat 0, as built / `VAT_TICK=1` | 16.30, 9.75 / 16.05, 10.05 | 19.20, 10.05 / 18.35, 9.35 | 25.00, 26.15 / 25.00, 25.60 |
+
+  Step 16's numbers but the variant's tour 850 on the MSX2 (3.4 -> 3.6 columns, 17.04 -> 16.96 ticks, 16.32 -> 16.04
+  pictures: the window where the drop takes effect).
+- **The matrix and the fresh machines** (step 23's candidates, the same code): `python3 -I tools/msxmatrix.py ROM
+  --labels L --home <msx-ai>/.openmsx-home --jobs 1` (`--no-title` for the two LV_TEST files): **10 of 10 on each
+  of the five** (fresh machines from the power-on: the Expert, the HB-F1XDJ, the FS-A1GT, C-BIOS 50 Hz, a disk
+  interface, a slot expander, an FM-PAC, the 2 MiB MegaRAM with an SCC, an SCC+, alone); the title and its game on a
+  fresh Expert: the regress verdict (exact) above; the cheat file on a fresh Expert through both levels (step 23).
+- **The 2 MiB product**: p2m_ex in the gate (the boot, the title, level 1, both stages, the briefing, level 2:
+  PASS, its first picture checked); `ROBOCOP2_v0.1.3-test7-2M.ROM` on a fresh Expert: the title (R#0 0Eh, R#1 62h)
+  after 12 s; its first 1 MiB alone (`S22/guard/t7_2M_as_1M.rom`): the guard's text, "ROBOCOP 2 needs a 2 MB Konami
+  SCC cartridge or MegaRAM. If yours is one, reset the MSX." (`msx_local_screen`); the matrix 10 of 10.
+- **The option sets**: `sh tools/bstest/variants.sh S22/V55` + `python3 -I tools/bstest/l2base.py banks S22/V55`:
+  **52 of 55** (DEMO_ACTORS 2 and 5 -E2h, DEMO_HUD -29h: step 16's three, the same bytes over); the lowest set
+  (DIAG + PZ_TEST) 46 B; `vat` 119, `vat_l2` 100; BANK_L2 28 in every set.
+- **make test** (the worktree): 321 tests, **the 4 known failures only** (failures 3, errors 1, 54 skipped).
+
+### Open issues
+1. **`vat_fits`' allowance for the VBLANK interrupt (`VAT_LM`, 40 lines) is short of what the interrupt takes in
+   level 2.** The VBLANK handler (`isr_vblank`'s call, `S22/tools/isrt.tcl`, tour, 25 s windows): up to 100-119 lines
+   on the MSX2, 85-116 on the MSX2+, 47-56 on the turbo R, 60-75 lines every few VBLANKs. A column started just
+   before the VBLANK can be held that long between two parts. The parts' time over `LN` (`vatcheck`'s records): as
+   built median -6, max 44 lines (4 over the allowance, 1,286 columns: never into the beam, the least margin 27
+   lines); `VAT_TICK=1` max 79 (2,356 columns), and in tour from 1250 a column of vat 3 ended 1 line (MSX2+) and 11
+   lines (MSX2) after the beam reached its first line (`vatcheck`: "DRAWN BY THE BEAM"; the guard's tear rule counts
+   0): its top lines show the old look for that picture. **The same with step 16's variant bytes** (`S22/fz/old1250`:
+   1 and 2 such columns): older than this step; step 16 measured the variant on tour 450, 850 and standing only.
+   Not fixed: `VAT_LM` 80-120 would lose about 8 % of the columns in both builds and keep most others to the blank
+   after the VBLANK (an estimate from the records), a change of default 18's rate for the user to weigh; the test7
+   notes say it for the `-vats` file.
+2. The vats stand still while a vat is high on the screen (finding 1 above): `vat_fits`' rule, e.g. standing on the
+   platforms between vats 1 and 2. A column drawn in parts as the beam allows, or from the top while the beam is
+   below it, would change it (default 18's design).
+3. `hz_l2_jobs`-style drives end at their last row: a `vl_jobs`/`isrt.tcl` window that outlasts the drive (tour from
+   2130 on the turbo R: 25 s reach row 2,654) waits for its `after time` forever; that measurement was dropped.
+4. Step 16's open issues 1-4 and 6-7 stand (the hostage tear, the timer in a late frame, the staged pieces, lines
+   above 8 sprites, the gate's two CPU-time verdicts, the objects' `vat` check).
+
 ## Step 24: the documentation as built (2026-10-31)
 
 **Done.** Branch `l2-s24` (worktree `scratchpad/l2/wt24`, from level2 `d092b97`), three commits,

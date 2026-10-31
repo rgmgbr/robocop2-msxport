@@ -66,7 +66,7 @@ The harness has two sides:
 | `run8f.tcl` | Tcl | `c8f_chain`: `c8_chain`'s jobs and the solved ending from the keyboard (5.17 h) |
 | `check_all.sh OUT TAG...` | shell | for every drive job: `tools/puzlcmp.py`, `stepcheck.py still`, `stepcheck.py rec` (`solve2` and `fuzz2` with `--visit 2`) |
 | `stepcheck.py still` / `rec` | python | the stage's pictures against `tools/msxpuzl.py`'s render (5.5); `--visit 2`: visit 2's (Ellen's pictures and cursor colours; a snapshot's AG `$8050` must be 2 or more) |
-| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game`; `--brief l2\|l3`: the next level's briefing after the range, `--level2`: level 2 after it instead of a new game (level 2's step 18, 5.22) |
+| `bonuscheck.py DIR TAG` | python | the bonus text screens against `tools/msxtext.py`'s render, the HUD split at every VBLANK, the title, the new game (5.9); `--range time\|C,D,M`: the range's screens recorded in the same flow (5.19); `--no-game`; `--brief l2\|l3`: the next level's briefing after the range, `--level2`: level 2 after it instead of a new game (level 2's step 18, 5.22), its first picture checked (`first_picture`: `tools/msxframe.py ... --field --no-sprites` exits 0, the notes' HUD record holds the game's values; step 22) |
 | `restorecheck.py DIR AFTER FRESH [--known]` | python | what the stage leaves: page 2, the atlas, the SATs; the next game against a fresh start (5.10) |
 | `hudcheck.py NEW_DIR REF_DIR` | python | the HUD during the stage against a reference build's at the same passes (5.6) |
 | `shots.py OUT SNAP...` | python | whole-screen PNGs of snapshots (play area, blank lines, HUD; 2x) |
@@ -85,7 +85,7 @@ The harness has two sides:
 | `regress.tcl` | Tcl | `rgr_chain W ?FAMILY? ?MARK?` (flows, final, drives, range, display, sound; 208 jobs with all), `rgr_jobs`, `rgr_base_chain B` (the base's records) |
 | `rgflow.tcl` | Tcl | the range's flows (5.19): `rgx_job` (PZ_TEST=2), `rgx_arm_job` (after level 1 and Brainstorm), `rgx_tarm_job` (the range traced there), `rgx_want_job` (the wanted state), `rgk_job` (the product from the keyboard), `rgh_arm` (the range's screens inside Brainstorm's flows), `rgx_timeout_if`; `rgc_job` and `rgc_chain` (the range's test candidates from the keyboard, 5.20) |
 | `frsound.tcl` | Tcl | the range's sound logs (5.19): `frs_drive`, `frs_alone`, `frs_suite W ?REC?` |
-| `contcheck.py DIR TAG (--fire \| --again \| --no-fire \| --none) [--tag N] [--gen GEN]` | python | level 2's continue (its step 19, 5.22): the offer's screen against `tools/msxtext.py`'s render of `txt_cont`, R#0/R#1, the HUD split, its length, the continue or the new game, AG `$805E`; with the continue the map patches, attribute RAM, level's lists, vat state and tile cache equal before PIC9 and at `lv_cont`'s entry |
+| `contcheck.py DIR TAG (--fire \| --again \| --no-fire \| --none) [--tag N] [--gen GEN]` | python | level 2's continue (its step 19, 5.22): the offer's screen against `tools/msxtext.py`'s render of `txt_cont`, R#0/R#1, the HUD split, its length, the continue or the new game, AG `$805E`; with the continue the map patches, attribute RAM, level's lists, vat state and tile cache equal before PIC9 and at `lv_cont`'s entry, and level 2's first picture after it checked as `bonuscheck.py --level2`'s (step 22) |
 | `rgcheck.py DIR TAG (--counts C,D,M \| --time) [--tag N] [--no-game] [--level2 \| --new-game]` | python | the range's text screens against `tools/msxtext.py`'s render, the HUD split, the result at `fr_done`, the rating at `fr_rated`, SHARP and the lost counters at the new game, or (the product's flow since level 2's step 18) level 2 with the range's rating kept (5.19, 5.22); `bonuscheck.py --range` calls it |
 | `cmpcheck.py BASE.log NEW.log [OUT]` | python | two `check_all.sh` logs job by job; a torn cell accepted only under a black palette (5.19) |
 | `frsnd/frregcmp.py ROOT LOG...` | python (venv) | FRM's registers per tick in an `frsound.tcl` log against `frm.bin`'s streams decoded apart; `--selftest` (5.19) |
@@ -1820,8 +1820,8 @@ shows the briefing after the range, then the title. The flows learnt it:
   heads, icon and can, the lost counters) end the job, or run `::hb_l2next` (a job's next steps).
 - **`bonuscheck.py --brief l2|l3`** (the record against `msxtext.py`'s render with TEST N, R#0 16h
   R#1 62h, the length, the split at every VBLANK) and **`--level2`** (level 2 instead of a new game, its
-  first picture recorded, its lost counters 0; with `--range` the range's rating kept: `rgcheck.py`
-  `level2=True`). `rgcheck.py` takes the notes' "level 2 at tick_n" line (`--level2`, `--new-game`, or
+  first picture checked (step 22, below), its lost counters 0; with `--range` the range's rating kept:
+  `rgcheck.py` `level2=True`). `rgcheck.py` takes the notes' "level 2 at tick_n" line (`--level2`, `--new-game`, or
   as the notes say).
 - **`regress.sh check`**: `prod_m2`, `prod_tr`, `p2m_ex`, `two_m2`, `two_title_ex` (the second stage is
   the product's) with `--brief l2 --level2`; `pzt_*`, `solved_*` with `--brief l2`; the `ar_*` range
@@ -1864,6 +1864,24 @@ python3 -I tools/bstest/contcheck.py W/O/l2 cont2 --again
 python3 -I tools/bstest/contcheck.py W/O/l2 cont_nf --no-fire
 python3 -I tools/bstest/contcheck.py W/O/l2 over --none
 ```
+
+At step 22 (2026-10-31, the review's finding 2), **level 2's first picture is checked**, after the flow
+(`bonuscheck.py --level2`) and after the continue (`contcheck.py --fire`, `--again`): `bonuscheck.py`
+`first_picture` runs `tools/msxframe.py TAG_l2g0 build/msx/level2 build/msx/hud TAG_l2g0.png --sprites
+build/msx/sprites --level 2 --field --no-sprites` (the venv's Python, or `--py PY`) and fails on its exit
+status: the play area equal to the map with its patches, the vats and the play-field BOBs, every pixel
+of it (`--no-sprites` renders it with the sprites off: a level's first list has no SAT published yet,
+so its records name objects the screen does not show), the HUD equal to what `hud.asm` records as
+shown, the tile cache's slots and the atlas equal to the level's. It also compares the notes' record
+("level 2's first picture at": HUD shown, heads, icon, can, jobs) with the game's values: the score's 7
+cells and the ammo's 3, the timer's 4 (its value or 07:30), the heads (slot k: 0 while the lives are more
+than k, else 5), weapon 0's icon 3, the can full, no HUD job. `hz.tcl` `hb_l2_snap_arm` follows the main
+program's HUD work (`hud_frame`'s entry to its return into `mainloop` or `hud_keep`) and `hb_l2_snap`
+passes over a split that comes while it runs (a digit cell recorded as shown before its 16 lines are
+written: the record ahead of the VRAM), taking the next one; the notes then end with "splits passed
+over while the HUD was drawn: N" (kb_ex: 1). Known-bad cases caught (copies of real records): 16 KiB of
+page 2's tile slots zeroed, 64 HUD bytes and 512 play-area bytes flipped, 40 atlas lines zeroed (msxframe
+exit 1); a score cell, the heads, the lives or the timer (09:58) changed in the notes' line.
 
 At step 16 (2026-10-31, milestone 2's acceptance: the display's remaining glitches, the vats'
 variant), **the guard judges what the screen shows** (`tools/openmsx_rc2.tcl` `rc2_guard`):
