@@ -1817,7 +1817,7 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
   9,180 pictures; every vat cell at its column's look on the page shown, no "vat-look", no "vat-older").
   On the way it caught a real fault: on the MSX2 the page shown kept an older nibble than its column
   (13-22 pictures a window: `vat_run` wrote the nibble of `vat_pg`, which the V9938's tile draws had
-  meanwhile set to the page being built), fixed in e074a78; and its first "vat-older" rule took the
+  meanwhile set to the page being built), fixed in bb23717 (e074a78 before the cherry-pick); and its first "vat-older" rule took the
   looks' recurrence for steps back (fixed: only a change of a column's look is dated).
 - **Stills, looked at** (MCP `hz_chain [hz_l2_still_jobs {$S14/st} {$S14/W/R} {520 900 1000 1300 2200 2380}
   l2_tour]`; `$PY -I tools/msxframe.py SNAP build/msx/level2 build/msx/hud OUT.png --sprites build/msx/sprites
@@ -1837,7 +1837,22 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
   pushed that frame's list past a VBLANK, so the picture is the display one step on. No level-1 logic or
   list differs (the traces, LOCKSTEP's 3,000 lists); the stills are the one verdict of the gate that is not
   blind to CPU time (a level-1 still taken a fixed VBLANK count after its frame's start would be).
-  @@GATE2@@
+  **The integrated tree** (step 14 cherry-picked onto level2 a7c465d; `l2base.sh builds $S14/IG`, `hz.sh
+  l2builds $S14/IG/L2R`; MCP `hz_chain [concat [hz_l2_jobs {$S14/IG/O/l2} {$S14/IG/L2R} tr] [rgr_jobs {$S14/IG}
+  all] [l2b_jobs {$S14/IG}]] {$S14/IG/all.done}`, 252 jobs, as step 19's): `hz.sh compare --fields
+  analysis/amiga_ram_l2.tsv $S14/IG/O/l2 $S14/IG/L2R`: **level 2: PASS (23 traces)**, `cont` 301 rows on the
+  three machines, `over`, `flow_l2_end` 259; `contcheck.py` cont, cont_fx, cont_tr (`--fire`), cont2
+  (`--again`), cont_nf (`--no-fire`), over (`--none`): **PASS** (the vat state equal before PIC9 and at
+  `lv_cont`'s entry); `sh tools/bstest/l2base.sh check $S14/IG scratchpad/l2/base`: **regress 45 verdicts
+  PASS** (the fresh title's exact record too), everything else PASS, **the same one still `m2_g1490`
+  FAILs** (24 px, msxframe 468 against 462: the timing above). Against level2 a7c465d's records
+  (`scratchpad/l2/s18/I`) the same still, and the fresh title's exact RAM reads as 17 bytes apart: I's
+  `fresh/xbase_*` is the main base's record (its level-table pointers 14 B away) judged with a7c465d's
+  labels; our record equals I's own `xnew` there (`ac_mkptr` 9959h, `ac_mktab` 9953h, `ac_diff` 9933h).
+  The vat checks again on the integrated l2 build (`$S14/ivl`, `$S14/ifd`, `$S14/ispf`): `vl_jobs` 450 and
+  850 on the three machines: **no vat column's tear** (MSX2 1.6 / 1.4, MSX2+ 2.6 / 2.7, turbo R 12.5 / 16.6
+  columns a second); the field windows 495, 735, 1255 on the three machines: **0 differences, 0 older**;
+  the speed (25 s from frame 450): MSX2+ 401 ticks (-5 %), MSX2 344 (-2 %), turbo R 620.
 
 ### Open issues (for step 16 and the user)
 1. **The rates disappoint on the Z80 machines** (the table above): the plan's 5 applies, step 16 stops
