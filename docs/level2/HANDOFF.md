@@ -2395,3 +2395,24 @@ All from the worktree's root; `S21` as above.
    `titlecmp2.py`, `frregcmp.py`, and `visits` here). A log's check ends at the title's music.
 3. `fxlog.tcl`'s drive jobs run `LV_TEST` builds; the product's way into level 2 (`flow_l2_end`) is not
    logged by it (its traces equal the bench: the same requests).
+
+### Integrated (level2 0b63ec2, step 14's integration, + step 21: b6ad4d5, 96e2172)
+- Cherry-picked without a conflict (git merged HARNESS.md and HANDOFF.md). From the main tree: `sh
+  tools/bstest/l2base.sh builds $S21/X`, `sh tools/bstest/hz.sh l2builds $S21/X/L2R`: PASS, **all 32 ROMs
+  byte-identical to step 14's integrated builds** (`scratchpad/l2/s14/IG`), 12 known warnings each; `hz.sh
+  fxbuilds $S21/XR`: PASS; `CHEAT=1`: e0d28bf115ad94a9.
+- Option sets: `sh tools/bstest/variants.sh $S21/var2`: **50 of 53** (DEMO_ACTORS 2/5 -D7h and DEMO_HUD -1Eh,
+  as step 14's integration; the five CHEAT sets build). Free bytes (`python3 -I tools/bstest/l2base.py banks
+  $S21/var2`): the fixed area 192 B in the product, 173 with LV_TEST, 57 in the lowest set (DIAG+PZ_TEST), each
+  CHEAT set as its twin; LC3 4,833 and FRONT -5 B in the CHEAT sets.
+- The chain (the private MCP, the main tree's Tcl): `hz_chain [concat [hz_l2_jobs X/O/l2 X/L2R tr] [rgr_jobs X
+  all] [l2b_jobs X] [fxl_jobs xfx XR {d_tour_scc d_vat_ext d_t1left_psg cont_scc brief_psg}]] X/all.done`: 257
+  jobs, 0 time outs. `hz.sh compare --fields analysis/amiga_ram_l2.tsv $S21/X/O/l2 $S21/X/L2R`: **level 2: PASS
+  (23 traces)**; `contcheck.py`'s six: **PASS**; `fxcheck.py check` (with `--bench`) on tour (the cartridge's
+  SCC), vat (an SCC in slot B), t1left (the PSG alone): **PASS**, their traces 0 differ; cont_scc and brief_psg:
+  **PASS**, the offer and the briefing silent after their stop.
+- `sh tools/bstest/l2base.sh check $S21/X scratchpad/l2/base` (main 9be19aa): regress **45 verdicts PASS**,
+  everything else PASS but **the known still `m2_g1490`** (24 px, msxframe 468 against 462): step 14's open
+  issue, its integration's same verdict (these ROMs are its own byte for byte).
+- `make test` (the main tree): 317 tests, the 4 known failures only.
+
