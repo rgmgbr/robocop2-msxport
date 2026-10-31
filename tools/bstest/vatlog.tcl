@@ -229,3 +229,31 @@ proc vl_sp_end {} {
 	close $f
 	set ::vl_sp_done 1
 }
+
+# vl_snap_jobs DIR ROM LABELS FRAMES ?MACHINES?: tour's drive from the power-on with n = F + 1 rows for
+# each F of FRAMES, rc2_snap at the trace's end into DIR/<m>_gF: the port's map at the start of game frame
+# F, against the bench's (tools/amigaemu.py game --level 2 --carry 10050:2:0:good --gframes F --drive
+# build/emu/l2_tour.drive --stop-at-end --dump D) with tools/mapcmp.py D DIR/<m>_gF build/msx/level2.
+proc vl_snap_jobs {dir rom labels frames {machines {m2 C-BIOS_MSX2 tr Panasonic_FS-A1GT}}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set jobs {}
+	foreach {t m} $machines {
+		foreach f $frames {
+			lappend jobs [list snap_${t}_$f $m [list vl_snap_setup [file join $dir ${t}_g$f] $rom $labels "$e/l2_tour.drive" [expr {$f + 1}]] {[vl_snap_done]} 900]
+		}
+	}
+	return $jobs
+}
+proc vl_snap_setup {out rom labels drive n} {
+	set ::vl_sn_out $out
+	set ::vl_sn_done 0
+	hz_l2_drive $rom $labels "$out.trace.txt" $n $drive
+}
+proc vl_snap_done {} {
+	if {$::vl_sn_done} { return 1 }
+	if {![info exists ::rc2_trace_done] || !$::rc2_trace_done} { return 0 }
+	rc2_snap $::vl_sn_out
+	set ::vl_sn_done 1
+	return 1
+}

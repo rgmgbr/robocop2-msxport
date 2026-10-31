@@ -148,6 +148,15 @@ vr_in:  ld hl,vat_wtk                ; (the Z80: one column every VAT_KZ VBLANKs
         call vat_due
         ld l,0
         ret c
+        ld a,(fb_rdy)               ; (the BOBs first: none of their commands waits for the
+        dec a                       ;  interrupts, which cmd_lock would hold back)
+        ret z
+        ld a,(fb_cq)
+        rra
+        ret c
+        ld a,(fb_c2)
+        or a
+        ret nz
         ld a,(tick)
         ld (vat_wtk),a
 vr_try: call vat_same               ; (vr_try, vr_nt, vr_lt, vp_scan: the harness's marks)
