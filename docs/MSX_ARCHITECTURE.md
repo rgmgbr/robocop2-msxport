@@ -635,7 +635,8 @@ which as sprites were striped, cut or left out.
     any cache frame. `bob.asm` `fb_add` sets the list entry's bit 7 for a `BM_FLASH` record, and
     `fb_wants` keeps it in level 3 only (`fb_fwm` 80h), so levels 1 and 2 keep their sprite
     silhouettes. A play-field frame without a white copy (the lift, the rocket, the smoke, a debris
-    part) shows its normal look.
+    part) shows its normal look. Which pictures take the white look: one per hit, or `FLASH_LOOK`'s
+    (below, "Game logic": "The hit flash's look").
   - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
     frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
     `death_w21`, and the rocket (bullet 11h, 48 x 16).
@@ -985,6 +986,59 @@ which as sprites were striped, cut or left out.
   `SPR_SIL_BLACK`: its black), chosen per object (`os_mode`, bits 0-1 of `O_EC`). A hit flash
   drawn in a tick the display skips is held for the tick shown (`fl_pend`), or it would never
   reach the screen.
+- **The hit flash's look** (`tools/mkrom.py` `FLASH_LOOK`, 2026-11-01; a comparison for the user's
+  choice, `docs/PERF2_PLAN.md` D1: nothing is decided, and every build without the option looks as
+  always, byte for byte). Each hit shows the enemy white for one picture; with hits every 4 ticks
+  and 2 ticks a picture, a shot enemy changes look at every picture, and where it stands still (Cain
+  on level 3's ground floor) each change recomposes it (`docs/PERF2_PLAN.md` 1.5). The options:
+  - `6`: at most one white picture in 4 per enemy. A hit within the 3 pictures after a white one
+    shows the enemy normal; hits every 2 pictures give white, normal, normal, normal (half the hits
+    show no white picture).
+  - `7`: a hit shows the enemy white in its picture and the next one; a hit within them keeps it
+    white, and it turns normal 2 pictures after its last hit. Hits every 2 pictures give a steady
+    white; hits 3 pictures apart white, white, normal.
+  - "Pictures" are the pictures with game progress (a tick shown, `bob_skip` 0): a picture that
+    repeats a game state repeats its look. Per enemy slot (the 5 `OBJ_SLOTS`, `fl_slot`).
+  - **How.** Only the look a part's BOB record takes (`bob_mode`, `BM_FLASH` or `BM_NORMAL`)
+    changes: `bob.asm` `fl_note` (a hit now, `OS_FLASH`), `fl_held` (no hit now) and `fl_due` (a
+    hit shown in this picture). `OS_FLASH`, the results (`$16BA`) and everything else the logic
+    reads stay as always (`l3_tail`'s minterm is a constant), so the logic traces are the original's.
+    The state is `fl_pend`'s byte per slot: bit 0 a hit held from a skipped tick (as always), bits
+    1-4 the slot's pictures to come, which `rc2.asm`'s frame end (`ml_flc`, once per frame with
+    ticks: one picture with progress) shifts right instead of clearing; bit 1 is the picture's own:
+    with `7` white, with `6` no white. A hit sets bit 2 (`7`) or bits 2-4 (`6`, only when it shows
+    white), never bit 1, so every part of an enemy takes one look in its picture whichever part
+    sets them. `objects.asm` `slot_clear` clears the slot's byte: a new enemy starts with its own
+    look. No RAM of its own (`ED0Eh`-`ED0Fh` stay spare); the fixed area 6 bytes more (`6`) or 2
+    (`7`), LC1 5 (`slot_clear`).
+  - **Where it shows**: wherever `BM_FLASH` goes. Levels 1 and 2: the enemies' sprite silhouettes
+    (and a gunner's silhouette over the play field, level 2's types 2, 14 and 16). Level 3: the play
+    field's white copies (`fb_add`'s bit 7: Cain's parts, types 21, 33, 35 and 51) and its sprite
+    enemies' silhouettes (Cain's 32 x 40 part). Not changed: the blinks a type draws itself by the
+    frame counter (`bob_flashd` or `bob_black` called directly: level 1's type 25, level 2's type 2),
+    which are not hit flashes; Cain's hit-look frames of his 32 x 40 part (`$16D9`, the logic).
+  - **Measured** (2026-11-01; openMSX headless, EXTJOY drive builds with the product's options;
+    ticks/s / pictures/s / pictures with progress per second; MSX2 C-BIOS_MSX2, MSX2+ Panasonic
+    FS-A1FX, turbo R Panasonic FS-A1GT):
+
+    | Window | Look | MSX2 | MSX2+ | turbo R |
+    |---|---|---|---|---|
+    | Ground floor, Cain shot 44 times (`l3_kill` 1500-1765) | 0 | 10.18 / 5.53 / 5.34 | 10.06 / 5.43 / 5.20 | 19.54 / 14.01 / 10.99 |
+    | | 6 | 12.72 / 7.10 / 6.67 | 12.09 / 6.66 / 6.39 | 20.05 / 26.86 / 14.68 |
+    | | 7 | 16.54 / 9.36 / 8.68 | 15.40 / 8.37 / 8.02 | 19.40 / 23.50 / 13.33 |
+    | Cain's route firing (`l3_boss` 130-1400) | 0 | 6.12 / 9.67 / 3.76 | 8.07 / 4.27 / 4.07 | 13.87 / 10.42 / 7.63 |
+    | | 6 | 6.25 / 9.77 / 3.85 | 8.11 / 4.23 / 4.09 | 14.17 / 10.39 / 7.80 |
+    | | 7 | 6.21 / 9.88 / 3.82 | 8.12 / 4.23 / 4.08 | 14.20 / 10.69 / 7.78 |
+
+    On the ground floor's pictures (the shown page's list and the published sprites at every
+    picture), Cain's look changes 87 times with `0` (44 white pictures, white and normal in turn),
+    44 times with `6` (22 white pictures, at most one in any 4 with progress) and once with `7` on
+    the MSX2 and the MSX2+ (white from the first hit on). The turbo R, at about 1.5 ticks a picture,
+    sees Cain's hits 3-4 pictures apart: with `7` he still changes 58 times (white 2 pictures, then
+    normal 1-2). Level 2 (`l2_barrel`, 13 hits in pairs 4-6 ticks apart): `0` white, normal, white;
+    `6` one white picture a pair; `7` four white pictures, or white, white, normal, white, white;
+    its speed within the builds' own timing scatter. Without hits (Cain's route, `l3_kill`
+    130-1400) the three builds run within 1 %.
 - **Speed (2026-10-20, 25 Hz)**: about 23 ticks per second and 7.2-7.5 pictures in the busiest
   scene of level 1 (the start, five enemies), 8.2 pictures walking (the CPU is the limit: the
   logic about 74,000 T-states a tick, the sprite pipeline about 165,000 per picture, the

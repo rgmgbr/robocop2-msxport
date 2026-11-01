@@ -553,6 +553,10 @@ slot_clear:
         ld (ix+OS_XF+1),a
         ld (ix+OS_YF),a
         ld (ix+OS_YF+1),a
+        if FLASH_LOOK
+        call fl_slot                ; (the hit flash's look: the new object's own, bob.asm)
+        ld (hl),0
+        endif
         ret
 
 ; A = type -> HL = its record ($BEA6 + 16 t). Keeps DE.
