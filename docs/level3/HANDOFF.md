@@ -1353,3 +1353,10 @@ this step's records and pictures: `build/archive/level3_step11_records_2026-11-0
 2. Level 3 has no BOB or map-write comparison against the bench (review B's gap 1); the static check
    found no difference.
 3. Step 8's open issues 1-4 and 6 are unchanged by this step.
+
+### Integrated
+Cherry-picked onto `level2` `41cf830` (the main tree clean; step 10's section kept before this one) as
+**`8a19ded`** (the fix), **`35d733b`** (`amigacov.py`) and **`dd082c7`** (this section, `HARNESS.md` 5.26,
+`np.tcl`'s header, `LEVEL3.md` 3.11), and this note's. In the main tree then: the product and `e1` built with
+`tools/bstest/build.sh` byte-identical to the worktree's (`d8c4637cca9f904f`, `f6db5fee52a62e3d`), so every
+result above holds; `make test`: 348 tests, the 4 known failures only.
