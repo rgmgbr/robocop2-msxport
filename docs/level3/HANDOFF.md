@@ -23,7 +23,12 @@ what it did, the files, the commits, every check with its exact command and resu
 ### Commits
 - `934e2f1` Makefile (level 3's RAM image).
 - `d0afe4c` the bench, the coverage, the names and seeds.
-- the docs commit (this section, `docs/LEVEL3.md`, the ledger).
+- `5546686` the docs (this section, `docs/LEVEL3.md`, the ledger, `ROM_BUDGET.md` 7).
+- Integrated into `level2` (clean tree, from `2b44ca5`) by cherry-pick as **`1a2edef`, `fe12770`,
+  `9150383`**. In the main tree then: `build/ram/level3_full.bin` rebuilt with the Makefile's line
+  (sha256 `700df44d…3515ca`); the product built from it (`sh tools/bstest/build.sh OUT.rom`) is
+  byte-identical to `2b44ca5`'s (no ROM source changed); `amigaemu.py game --level 3 --gframes 200
+  --god` runs (201 game frames, `$8050` 2).
 
 ### Checks (each with its command and result)
 - The image: `python3 -I tools/ramimage.py build/extracted build/ram/level3 RB1 MU1 SPERMA DATAL3 PERMA`
