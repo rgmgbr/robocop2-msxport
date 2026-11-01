@@ -249,3 +249,106 @@ holds for the integrated tree; `make test`: 329 tests, the 4 known failures only
   or D's: the drives here put RoboCop on the ground floor and Cain stayed on row 20.
 - The frames the bench did not draw (rare states of Cain, types 36, 37) come from REA's tables in step C.
 - The ending's hook needs step 3's entry name (until then `$8050` = 3 goes to the title).
+
+## Step 3: the game completed and the high scores (2026-11-01)
+
+**Done.** Worktree `g/wt03`, branch `g-s03` from `2b44ca5`, rebased onto `level2` `d44821d` (steps 1 and 2
+integrated); scratch `S3` = `$SCRATCH/g/s03`. One openMSX: a private MSX-AI MCP session
+(`tools/bstest/mcpd.py S3/mcp`, `mx.sh`), shut down. The design and the facts: `../ENDING.md`.
+
+### What was built
+- **The facts** (REA, Ghidra 12.1.4, raw-binary m68k, entry `0x0`, the project's seeds, on
+  `build/ram/level3_full.bin`; `$8000-$17FFF` the same bytes in the three images): `level_load_3`
+  `$86DE`, the text `$112C5`, `$11C54` (PICF, CMP, 1801h passes, the tune on 4 of 5: 4,916 ticks, fire
+  at once), `high_score_entry` `$12082` (only a greater score, ties keep the older above), the name
+  entry `$1215C` and its keys `$1225C` (keyboard only, no timeout), the table `$11FF6`; named in
+  `analysis/main_8000.sym` (seeds regenerated), `docs/AMIGA_ANALYSIS.md` extended.
+- **The code** (`msx/ending.asm` in **`BANK_FRONT2`, bank 127** at A000h; `msx/frontx.asm` appended to
+  FRONT): `front_ending` (WELL DONE typed as the briefings, then CMP while that screen stays on, 4,916
+  ticks or fire pressed once released), `hs_entry` (the entry after every game over and after the
+  ending; the MSX keyboard's matrix; the table screen after an entry), the table in RAM from the
+  power-on (C2D9h, C5D0h), `fr_ending` **the ending's one way in** (`ld hl,fr_ending` / `call
+  front_call`, then `ml_ttl`), `fb_brief2` (front_bonus calls it after the level-3 briefing until level
+  3 is in), `fo_hsc` (front_over), `ci_hook` (cold_init: `rom_guard`, moved from `cold.asm`, and the
+  table). FRONT's own code keeps its place: three call operands of the same size change. `tune.asm`
+  `tn_cmp` and `tune_cm.inc` after the player.
+- **The sound**: `tools/msxtune.py --end` → `build/msx/end.bin` (27,110 B, banks 128-131): CMP tune 1
+  unrolled to 4,916 ticks (SCC 12,797 B, OPLL 8,793 B with HH and TCY, PSG 5,287 B), its speech silent,
+  HI1's effects 3 and 4.
+- **The texts**: `tools/msxtext.py` → `build/msx/ending.inc` (`txt_end` 111 B, `txt_hisc` 102 B,
+  `txt_best` 5 B, `hs_head`, `hs_def`) and `text_end.sc5`, `text_hisc.sc5`, `text_best.sc5`; `text.inc`
+  unchanged.
+- **The options**: `END_TEST=1` (the ending at power-on, `LV_CARRY`'s score) and `END_TEST=2` (a game
+  over: PIC9, the entry, the offer with `LV_CARRY`'s credits); refused with `PZ_TEST`, `LV_TEST`, `DIAG`.
+- **The harness**: `tools/bstest/ending.tcl` (`ge_job`, `ge_ret_arm`), `endcheck.py`,
+  `frsnd/endsim.py`; `np.tcl` (`np_t_poll` arms RETURN at the entry after the stages' records) and
+  `cheat.tcl` go through the ending; `docs/HARNESS.md` 5.25. `tests/test_ending.py` (10 tests).
+- **The image**: 2 MiB, **132 of 256 banks** (127 `BANK_FRONT2`, 128-131 `END_BANK`); the boot guard on.
+  Free bytes (`l2base.py banks`, the product on `d44821d`): fixed area **174** (unchanged by this step),
+  FRONT **1,173** (1,381 before: `rom_guard` 143 B, `frontx.asm` 65 B), MUSIC **1,251** (1,331),
+  FRONT2 **7,041**, FIELD 150, `BANK_L2` 28.
+
+### Commits
+- `90ac5a7` the ending and the high scores (code, tools, harness, tests); `8998d60` the docs, the
+  harness's flows, the names; this section's (all three rebased onto `d44821d`; before the rebase
+  `d37b8fd`, `99bff05` on `2b44ca5`).
+
+### Checks (each with its command and result; `W` = the worktree, `PY` the venv's Python)
+- **Builds**: `sh tools/bstest/build.sh S3/b2/NAME/rc2.rom OPTIONS` for the product, `e1`
+  (`END_TEST=1 LV_CARRY=10050:2:0:1`), `e1t` (+ `TAG=8`), `e2` (`END_TEST=2 LV_CARRY=10050:0:1:1`),
+  `e2n` (`...:0:0:1`), `e2s` (`END_TEST=2 LV_CARRY=7500:0:1:1`), `cheat`, `ext`, `diag` (`DIAG=1`);
+  `sh tools/bstest/hz.sh builds S3/G/R`, `... l2builds S3/G/L2R`, `X/p2m` (`ROM_2M=1`): every log
+  "build OK", the 12 known z80asm warnings only. The product `460553ba86166756` on `2b44ca5`,
+  `4ffbd9695dff6907` on `d44821d`; `ROM_2M=1` the same bytes as the product.
+- **The banks**: `python3 -I tools/bstest/romdiff.py --blocks BASE.rom NEW.rom` against the product of
+  `2b44ca5` and of `d44821d` (built from the main tree): **37 blocks identical; code blocks that differ:
+  BANK_FRONT, BANK_MUSIC**; FRONT differs at `807Eh`, `82D1h`, `8A3Ah` (the three calls) and from its old
+  end `9A9Bh`, MUSIC from its old end `BACDh`; `BANK_FRONT2` and `END_BANK` new: every other code bank's
+  checks stand.
+- **The sound** (no emulator): `$PY -I tools/bstest/frsnd/endsim.py W S3/b3/prod/rc2.rom
+  S3/b3/prod/rc2.labels` → **all: PASS** (the tune's 4,916 ticks and 60 after on SCC + PSG drums, SCC +
+  OPLL rhythm, OPLL alone, PSG alone at 50 and 60 Hz, `tn_left` 0 at tick 4,916, no write after; the
+  entry's effects, 14 started, 2 refused by `$1822C`'s rule; the R800 without an OPLL write). A one-bit
+  change in the image's SCC, OPLL or PSG stream fails it (3 of 3 caught).
+- **The screens** (`docs/HARNESS.md` 5.25's chain, 7 jobs on the Expert, C-BIOS_MSX2, the HB-F1XDJ,
+  the FS-A1FX and the FS-A1GT; `bash S3/tools/endchecks.sh S3/E2 S3/b2`): **endcheck PASS on all 7**:
+  WELL DONE, 33 waits of the name entry (R O B O C O P 2 X BS KP9 Z RET; RET alone with `TAG=8`; BS SPACE
+  M S X RET; A RET; K E Y P A D KP0 KP1 RET), the table screens and the continue offer after an entry,
+  each equal to the render pixel for pixel with R#0 16h, R#1 62h and txt_pal; the tune 4,917 ticks to
+  `tn_left` 0 in 98.5 emulated s; no entry for a tie (7500), no offer without a credit; the table in RAM
+  as the model. Looked at: `e1_end`, `e1_hs10`, `e1t_hs0` (TEST 8), `e2_best` (" MSX" under KEITH),
+  `e2_cont`, `e1tr_end`.
+- **The gate's flows** (`rgr_jobs S3/G flows`, `hz_l2_jobs S3/G/O/l2 S3/G/L2R tr {end over cont cont_fx
+  cont_tr cont_nf cont2 flow_l2_end}`, `ch_job`: 30 jobs, `S3/tools/gate.tcl`): `sh tools/bstest/regress.sh
+  check S3/G scratchpad/l2/base flows` → **regress: PASS**: level 1's coverage traces, the title from
+  power-on (exact: the picture, registers, palette and the music at every tick identical), the
+  product's and `PZ_TEST=1` flows, the restore, the turbo R's blank (6 frames, as the base), the turbo
+  R's writes, **the product's whole flow through the ending and the title after it** (ex, f1, tr: the
+  picture, the registers that show and the palette identical; the music `titlecmp2.py --unheard` PASS:
+  the SCC registers that differ are channel 3's, which the title never sounds), the 2 MiB product, the
+  keyboard flows. `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv S3/G/O/l2 S3/G/L2R
+  end over cont cont_fx cont_tr flow_l2_end` → **level 2: PASS (6 traces)**, 0 differ; `contcheck.py`
+  cont, cont_fx, cont_tr `--fire`, cont2 `--again`, cont_nf `--no-fire`, over `--none` → **PASS all six**.
+  The cheat run: level 1, level 2 (F5), both second visits, the level-3 briefing, the game completed
+  (463 s), the title (568.6 s; the score under the table: no entry). tx_ex's first run waited at the
+  entry (the stages' records had removed `ge_ret_arm`'s breakpoint) until RETURN was pressed by hand;
+  `np_t_poll` arms it after them since, and tx_f1, tx_tr and the re-run below went through alone.
+- **After the rebase** (S3/b3, on `d44821d`): `e1`, `e2` (endcheck PASS), `tx_ex` (the title after the
+  ending against the base's: the picture, registers, palette identical, titlecmp2 PASS), `cont` (0
+  differ, contcheck PASS), endsim PASS (`S3/tools/g3.tcl`).
+- **The guard**: the product's first 1 MiB alone (`head -c 1048576`) on a fresh Expert: "ROBOCOP 2 needs
+  a 2 MB Konami SCC cartridge or MegaRAM. If yours is one, reset the MSX." (VRAM's name table).
+- **The matrix**: `python3 -I tools/msxmatrix.py S3/G/R/prod/rc2.rom --labels S3/G/R/prod/rc2.labels
+  --home <msx-ai>/.openmsx-home --jobs 1` → **10 of 10 PASS**.
+- **make test** → 331 tests, the 4 known failures only (failures=3, errors=1, skipped=56).
+
+### Open issues
+1. **Level 3's agents**: take `fb_brief2`'s call of `fr_ending` out (`frontx.asm`: the `$8050` = 2 test)
+   when level 3 follows the level-3 briefing, and call `fr_ending` from level 3's end (`$8050` = 3: no
+   statistics, no stages), then `ml_ttl`. `docs/LEVEL3.md` default 13 (an A000h-only block in bank 127)
+   now meets `BANK_FRONT2` there: the next such bank is 191.
+2. The user's choices: the WELL DONE screen kept on while CMP plays and the table screen after an entry
+   (`../ENDING.md` defaults 2 and 3), the OPLL's HH and TCY drums (default 9), the CMP speech left silent.
+3. Not run (their code banks byte-identical to the base's): the regress families final, drives,
+   range, display and sound, the stills and field checks, the 55 option sets. The tx jobs take about
+   120 s more emulated time (the ending).
