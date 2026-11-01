@@ -806,7 +806,7 @@ LABEL_DEF = re.compile(r"^([A-Za-z_]\w*):", re.M)
 IDENT = re.compile(r"(?<![\w$.])([A-Za-z_]\w*)")
 
 
-LVS_TAIL = "; ----- the sprite budget's give-way"     # msx/lvshared.asm's last section
+LVS_TAIL = "; ----- the sprite budget's per-give and per-run code"   # msx/lvshared.asm's last section
 
 
 def lvshared_copy(src: str, level: str, level_data: set[str], tail: bool = True) -> str:
@@ -816,8 +816,8 @@ def lvshared_copy(src: str, level: str, level_data: set[str], tail: bool = True)
     the comments stay as they are. The copy assembles to the same bytes but those names' values,
     so placed right after the level header it puts every label at level 1's address
     (lvshared_check). tail=False ends the copy before its last section, the sprite budget's
-    give-way (LVS_TAIL; VAT_ANIM=1 builds, whose level 2 bank holds the vats' display: level 1's
-    bank keeps it, which msx/sprites.asm bu_lvl maps there)."""
+    per-give and per-run code (LVS_TAIL; VAT_ANIM=1 builds, whose level 2 bank holds the vats'
+    display: level 1's bank keeps it, which msx/sprites.asm bu_lvl maps there)."""
     if not tail:
         cut = src.find("\n" + LVS_TAIL)
         if cut < 0:
@@ -1112,8 +1112,8 @@ def main(argv: list[str]) -> int:
     # labels and the level's own data's names suffixed (gen/lvshared_l2.asm)
     lvshared = (ROOT / "msx" / "lvshared.asm").read_text()
     level_data = set(LABEL_DEF.findall((gen / "at_l1.inc").read_text() + (gen / "cells_l1.inc").read_text()))
-    # (VAT_ANIM=1: level 2's bank holds the vats' display, no room for the sprite budget's give-way,
-    # which level 1's bank alone holds then: msx/sprites.asm bu_lvl maps it)
+    # (VAT_ANIM=1: level 2's bank holds the vats' display, no room for the sprite budget's per-give and
+    # per-run code, which level 1's bank alone holds then: msx/sprites.asm bu_lvl maps it)
     tail = not opts["VAT_ANIM"]
     (gen / "lvshared_l2.asm").write_text(lvshared_copy(lvshared, "l2", level_data, tail))
     (gen / "lvshared_l3.asm").write_text(lvshared_copy(lvshared, "l3", level_data, tail))

@@ -150,8 +150,8 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertEqual(len(mkrom.lvshared_check(src, labels.replace("t3_l2:\tequ $a0f0", "t3_l2:\tequ $a0f2"))), 1)
 
     def test_lvshared_copy_without_its_last_section(self):
-        # VAT_ANIM=1 builds: the other levels' copies end before the sprite budget's give-way, which
-        # level 1's bank alone holds then (msx/sprites.asm bu_lvl maps it)
+        # VAT_ANIM=1 builds: the other levels' copies end before the sprite budget's per-give and per-run
+        # code, which level 1's bank alone holds then (msx/sprites.asm bu_lvl maps it)
         src = ("t3:     call walker2\n"
                "        jr t3\n"
                "\n" + mkrom.LVS_TAIL + " (msx/sprites.asm budget) -----\n"

@@ -833,32 +833,20 @@ t31:    ld l,(ix+OS_X)
         call bob_part               ; legs
         jp gunman
 
-; ----- the sprite budget's give-way (msx/sprites.asm budget) -----
+; ----- the sprite budget's per-give and per-run code (msx/sprites.asm budget) -----
 
-; Kept here, not in the fixed area, since 2026-11-01 (584 bytes: the fixed area had 29 bytes left
-; in its fullest option set). Its only caller is sprites.asm's budget (ft_lines' ft_give, bg_tot's
-; ft_total, ln_fill's ft_live, bg_drops' and ln_obj's ft_map), which sprites_tick runs with the
-; level's logic bank at A000h (bu_lvl): the sprite pools may be there otherwise. It reads and
-; writes RAM only, maps the compositions' banks at 8000h (ft_map) and calls the fixed area's
-; obj_ix, ln_obj, ln_add and ln_first; the interrupts put act_a000's bank back.
-; VAT_ANIM=1 builds (level 2's bank holds the vats' display: 28 bytes left) have it in level 1's
-; bank only: tools/mkrom.py's copies for the other levels end before this section's first line
+; Kept here, not in the fixed area, since 2026-11-01 (the fixed area had 29 bytes left in its fullest
+; option set): the code that runs once a give or a budget run, or seldom: the total phase (ft_total),
+; the give-way's entry (ft_give), what a give does (ft_dropb, ft_out), the candidates' lists made once
+; a run (ft_lists), the BOBs' order of importance (bu_order, made again when an identity changed) and
+; the cut (bg_cut). The walks over the candidates (ft_drop_t, ft_leave_t, ft_cand, ft_anyb, ft_covers,
+; ft_live, ft_map) stay in the fixed area: the turbo R runs that from its internal RAM, and from here,
+; the cartridge, the whole give-way took the R800 2 to 4 % more time where Cain is shot. The budget is
+; this code's only caller: sprites_tick runs it with the level's logic bank at A000h (bu_lvl); it reads
+; and writes RAM only and calls the fixed area's routines; the interrupts put act_a000's bank back.
+; VAT_ANIM=1 builds (level 2's bank holds the vats' display: 28 bytes left) have it in level 1's bank
+; only: tools/mkrom.py's copies for the other levels end before this section's first line
 ; (lvshared_copy, tail), and bu_lvl maps level 1's bank instead. Keep it the last section.
-
-; IX = object -> NC when it is shown and not left out. Keeps BC, DE.
-ft_live:
-        bit 7,(ix+O_FLAGS)
-        scf
-        ret z
-        ld a,(ix+O_OUT)
-        cp 1
-        ccf
-        ret
-
-; IX = object: its composition's bank at 8000h. Keeps BC, DE, HL.
-ft_map: ld a,(ix+O_BANK)
-        add a,SPR_BASE_BANK
-        jp bank_8000
 
 ; The total phase: while the objects (but the spark) pass BUD_MAX sprites, something gives way
 ; as on a line (ft_line FFh: anywhere).
@@ -896,47 +884,6 @@ ft_give:
         scf
         ret nz                      ; (a line: the VDP hides its last sprites, never RoboCop's)
         jp ft_drop_t                ; (A = 0: the characters)
-
-; A = tier: the cheapest OR layer of a band of an object of that tier on line ft_line (FFh:
-; anywhere, the spark excluded) is dropped. C when there is none. (The tier's live objects in
-; object order, ft_tl: the same candidates in the same order as a walk of all 16 objects.)
-ft_drop_t:
-        ld (ft_tier),a
-        ld a,(ft_lok)
-        or a
-        call z,ft_lists
-        ld a,(ft_tier)              ; no OR layer left to drop in the tier (busy scenes: most
-        add a,ft_orn & 0xFF         ; effects have one layer, dropped first): the walk would
-        ld l,a                      ; find none
-        ld h,ft_orn / 256
-        ld a,(hl)
-        or a
-        scf
-        ret z
-        ld a,0xFF
-        ld (ft_best),a
-        ld hl,0
-        ld (ft_bix),hl
-        ld a,(ft_tier)
-        ld hl,ft_tl
-        call ft_tlist
-fdt_lp: ld a,(hl)
-        cp 0xFF
-        jr z,fdt_x
-        inc l
-        push hl
-        call obj_ix
-        call ft_live
-        call nc,ft_cand
-        pop hl
-        jr fdt_lp
-fdt_x:  ld hl,(ft_bix)
-        ld a,h
-        or l
-        scf
-        ret z
-        push hl
-        pop ix
 
 ; IX = object, ft_bbit = one of its bands: that band's OR layer goes (its B sprites leave its
 ; lines, O_GONE and the total, not for the spark); a character's stays held. NC.
@@ -989,156 +936,6 @@ fdb_l:  ld a,1
         or a                        ; (NC)
         ret
 
-; IX = object -> Z when it is the spark. Keeps BC, DE.
-ft_spark:
-        push ix
-        pop hl
-        ld a,l
-        cp (obj_tab + SPARK_OBJ * OBJ_SIZE) & 0xFF
-        ret nz
-        ld a,h
-        cp (obj_tab + SPARK_OBJ * OBJ_SIZE) / 256
-        ret
-
-; IX = a live object of tier ft_tier: its cheapest band on line ft_line (FFh: anywhere, but the
-; spark's) whose OR layer is still there, if cheaper than ft_best: ft_best, ft_bix, ft_bbit.
-ft_cand:
-        ld a,(ft_line)
-        inc a
-        jr nz,fc_go
-        call ft_spark
-        ret z
-fc_go:  call ft_map
-        ld l,(ix+O_BANDT)
-        ld h,(ix+O_BANDT+1)
-        ld b,(ix+O_NBANDS)
-        ld c,1
-fc_lp:  ld a,c
-        and (ix+O_DROP)
-        jr nz,fc_n                  ; (dropped already)
-        inc hl
-        inc hl
-        ld a,(hl)                   ; B sprites
-        dec hl
-        dec hl
-        or a
-        jr z,fc_n
-        call ft_covers
-        jr c,fc_n
-        inc hl
-        inc hl
-        inc hl
-        ld a,(hl)                   ; its gain
-        dec hl
-        dec hl
-        dec hl
-        push hl
-        ld hl,ft_best
-        cp (hl)
-        jr nc,fc_np
-        ld (hl),a
-        ld (ft_bix),ix
-        ld a,c
-        ld (ft_bbit),a
-fc_np:  pop hl
-fc_n:   inc hl
-        inc hl
-        inc hl
-        inc hl
-        sla c
-        djnz fc_lp
-        ret
-
-; IX = object, HL = one of its band entries -> NC when the band's 16 lines hold line ft_line
-; (FFh: any line). Keeps BC, HL.
-ft_covers:
-        ld a,(ft_line)
-        cp 0xFF
-        ret z                       ; (NC)
-        push hl
-        push bc
-        ld c,a
-        ld e,(hl)
-        call ln_first
-        ld e,c
-        ld d,0
-        ex de,hl
-        or a
-        sbc hl,de                   ; line - its first line
-        ld a,h
-        or a
-        scf
-        jr nz,fcv_x
-        ld a,l
-        cp 16
-        ccf
-fcv_x:  pop bc
-        pop hl
-        ret
-
-; IX = object -> NC when one of its bands holds line ft_line (FFh: always, but for the spark).
-ft_anyb:
-        ld a,(ft_line)
-        inc a
-        jr nz,fa_go
-        call ft_spark
-        scf
-        ret z
-        or a
-        ret
-fa_go:  call ft_map
-        ld l,(ix+O_BANDT)
-        ld h,(ix+O_BANDT+1)
-        ld b,(ix+O_NBANDS)
-fa_lp:  call ft_covers
-        ret nc
-        inc hl
-        inc hl
-        inc hl
-        inc hl
-        djnz fa_lp
-        scf
-        ret
-
-; A = tier: the least important live object of that tier on line ft_line (FFh: anywhere, but the
-; spark) is left out of the tick (the spark first, on a line). C when there is none. (The tier's
-; live objects in the order of importance, ft_tb, walked from the end as bu_ord was.)
-ft_leave_t:
-        ld (ft_tier),a
-        cp 2
-        jr nz,flt_o
-        ld ix,obj_tab + SPARK_OBJ * OBJ_SIZE
-        call ft_live
-        jr c,flt_o
-        call ft_anyb
-        jr nc,ft_out
-flt_o:  ld a,(ft_lok)
-        or a
-        call z,ft_lists
-        ld a,(ft_tier)
-        ld hl,ft_tb
-        call ft_tlist
-        ld c,l                      ; (its start: the lists do not cross a 256-byte boundary)
-flt_e:  ld a,(hl)
-        inc l
-        cp 0xFF
-        jr nz,flt_e
-        dec l
-flt_lp: ld a,l
-        cp c
-        scf
-        ret z                       ; (none)
-        dec l
-        ld a,(hl)
-        push hl
-        push bc
-        call obj_ix
-        call ft_live
-        call nc,ft_anyb             ; (NC: on the line)
-        pop bc
-        pop hl
-        jr c,flt_lp
-
 ; IX = object: left out of the tick: its sprites leave its lines and the total. NC.
 ft_out: ld (ix+O_OUT),1
         ld c,1
@@ -1150,18 +947,6 @@ ft_out: ld (ix+O_OUT),1
         add a,(ix+O_GONE)
         ld (bu_tot),a
 fo_x:   or a                        ; (NC)
-        ret
-
-; A = tier, HL = ft_tl or ft_tb -> HL = that tier's list (17 bytes a tier). Keeps BC.
-ft_tlist:
-        ld e,a
-        add a,a
-        add a,a
-        add a,a
-        add a,a
-        add a,e                     ; 17 * tier
-        add a,l
-        ld l,a
         ret
 
 ; The give-way's candidates, once a budget run (at its first give: ft_lok): per tier 0-2 the
@@ -1270,4 +1055,122 @@ ftg_elp: ld a,(de)
         ld (hl),0xFF
         inc de
         djnz ftg_elp
+        ret
+
+; The BOB objects in their order of importance, for the budget and the plan (bu_ord, FFh after
+; the last): lifts and the vehicle (RoboCop stands on them), enemies, their bullets, pickups,
+; RoboCop's shots and effects, explosions (bob.asm categories; within one, object order).
+bu_order:
+        xor a
+        ld (bo_dirty),a
+        ld hl,bo_pos                ; per rank: its count, then where its objects go
+        ld b,BO_RANKS
+        xor a
+boz:    ld (hl),a
+        inc hl
+        djnz boz
+        ld hl,obj_key + 4 + 3       ; (object 1's category + 1)
+        ld b,SPARK_OBJ - 1
+boc:    ld a,(hl)                   ; its rank
+        add a,bo_rank & 0xFF
+        ld e,a
+        adc a,bo_rank / 256
+        sub e
+        ld d,a
+        ld a,(de)
+        cp BO_RANKS
+        jr nc,boc_n                 ; (no identity)
+        add a,bo_pos & 0xFF
+        ld e,a
+        ld d,bo_pos / 256
+        ex de,hl
+        inc (hl)
+        ex de,hl
+boc_n:  inc l
+        inc l
+        inc l
+        inc l
+        djnz boc
+        ld hl,bo_pos                ; counts -> the first place of each rank
+        ld b,BO_RANKS
+        ld c,0
+bop:    ld a,(hl)
+        ld (hl),c
+        add a,c
+        ld c,a
+        inc hl
+        djnz bop
+        ld a,c                      ; (the end)
+        add a,bu_ord & 0xFF
+        ld l,a
+        ld h,bu_ord / 256
+        ld (hl),0xFF
+        ld hl,obj_key + 4 + 3
+        ld c,1                      ; object
+bow:    ld a,(hl)
+        add a,bo_rank & 0xFF
+        ld e,a
+        adc a,bo_rank / 256
+        sub e
+        ld d,a
+        ld a,(de)
+        cp BO_RANKS
+        jr nc,bow_n
+        add a,bo_pos & 0xFF
+        ld e,a
+        ld d,bo_pos / 256
+        ld a,(de)                   ; its place
+        inc a
+        ld (de),a
+        dec a
+        add a,bu_ord & 0xFF
+        ld e,a
+        ld d,bu_ord / 256
+        ld a,c
+        ld (de),a
+bow_n:  inc l
+        inc l
+        inc l
+        inc l
+        inc c
+        ld a,c
+        cp SPARK_OBJ
+        jr c,bow
+        ret
+
+; Even with every OR layer dropped the objects pass BUD_MAX sprites: after RoboCop (counted
+; with rc_hold), the BOBs in their order of importance (bu_ord): those that do not fit then
+; are left out this tick (O_OUT); bu_cut = 1.
+bg_cut: ld a,1
+        ld (bu_cut),a
+        ld a,(rc_hold)
+        ld c,a                      ; one-layer sprites of the objects kept (RoboCop always,
+        ld hl,bu_ord                ; whole; the spark is never left out here: entries 0-1),
+cut_lp: ld a,(hl)                   ; the BOBs in their order of importance
+        cp 0xFF
+        ret z
+        push hl
+        call obj_ix
+        call cut_obj
+        pop hl
+        inc hl
+        jr cut_lp
+
+; IX = object, C = the one-layer sprites kept so far (bg_cut): kept when it fits, else left out.
+; Keeps B.
+cut_obj:
+        bit 7,(ix+O_FLAGS)
+        ret z
+        ld a,c
+        add a,(ix+O_NA)
+        cp BUD_MAX + 1
+        jr nc,cut_out
+        ld c,a
+        ret
+cut_out:
+        ld (ix+O_OUT),1
+        ld a,(bu_tot)
+        sub (ix+O_NSPR)
+        add a,(ix+O_GONE)
+        ld (bu_tot),a
         ret
