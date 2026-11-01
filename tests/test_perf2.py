@@ -53,6 +53,17 @@ class KitFilesTests(unittest.TestCase):
                 for s in ("/private/tmp", "/Users/", "scratchpad"):
                     self.assertNotIn(s, text, p.name)
 
+    def test_gate_sh_logic_names_every_compared_job(self):
+        # G-LOGIC names each trace (hz.sh compare skips an unnamed one that is missing): the names must be
+        # hz.sh's compared jobs of each level, all of them
+        hz = (ROOT / "tools" / "bstest" / "hz.sh").read_text()
+        lists = re.findall(r'JOBS="([^"]*)"', hz)
+        l2, l3 = ({j.split(":")[0] for j in s.split()} for s in lists[:2])
+        gate = (KIT / "gate.sh").read_text()
+        self.assertEqual(set(re.search(r'L3J="([^"]*)"', gate).group(1).split()), l3)
+        self.assertEqual(set(re.search(r'L2J="([^"]*)"', gate).group(1).split()), l2)
+        self.assertEqual((len(l3), len(l2)), (16, 23))
+
 
 class KitVerdictTests(unittest.TestCase):
     def setUp(self):

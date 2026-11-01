@@ -18,8 +18,9 @@
 #   gate.sh map BASE NEW [--ignore FROM-TO ...]
 #                              G-MAP: mapdiff.py --gate BASE/map NEW/map
 #   gate.sh logic W R          G-LOGIC: hz.sh compare on W/logic/l3 and W/logic/l2 (the Amiga bench,
-#                              R/T's labels) and W/logic/l1 (level 1's cov1, cov0, cov0_tr), with the lost
-#                              counters 0
+#                              R/T's labels: level 3's 16 jobs and level 2's 23 by name, a missing trace
+#                              FAILs) and W/logic/l1 (level 1's cov1, cov0, cov0_tr), with every job's
+#                              lost counters 0 (W/logic/l<k>/lost.txt)
 #   gate.sh all BASE NEW R     every verdict above in turn (each one's output in NEW/gate_<name>.txt);
 #                              "gate: PASS" when all pass
 # BASE: W0's HEAD records (the campaign's base folder); NEW: the run folder of pf_gate_jobs. Each verdict's
@@ -32,7 +33,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../../.." && pwd -P)"
-usage() { sed -n 2,31p "$0" >&2; exit 2; }
+usage() { sed -n 2,32p "$0" >&2; exit 2; }
 REPO="${REPO:-$ROOT}"
 PA=""; [ "${PARTIAL:-}" = 1 ] && PA="--partial"
 cmd="${1:-}"; shift || true
@@ -78,9 +79,26 @@ logic)
   [ $# -eq 2 ] || usage
   W="$(abs "$1")"; R="$(abs "$2")"
   bad=0
-  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l3.tsv" "$W/logic/l3" "$R/T" || bad=1
-  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l2.tsv" "$W/logic/l2" "$R/T" || bad=1
+  # (every trace pf_logic_jobs makes, named: hz.sh compare fails a named job without its trace, where
+  #  it skips an unnamed one; and every job's lost counters, levels 2 and 3 by hz.sh, level 1's here)
+  L3J="tour3 tour3_fx tour3_tr beam park park_fx park_tr boss boss_fx boss_tr kill kill_fx kill_tr cont3 cont3_fx cont3_tr"
+  L2J="end tour lift trolley vat fuzz sharp fair poor over cont barrel mine t1left drone tour_fx vat_fx trolley_eu tour_tr vat_tr flow_l2_end cont_fx cont_tr"
+  for l in l3 l2; do
+    [ -f "$W/logic/$l/lost.txt" ] || { echo "$l: FAIL: no lost counters ($W/logic/$l/lost.txt)"; bad=1; }
+  done
+  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l3.tsv" "$W/logic/l3" "$R/T" $L3J || bad=1
+  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l2.tsv" "$W/logic/l2" "$R/T" $L2J || bad=1
   sh "$REPO/tools/bstest/hz.sh" compare "$W/logic/l1" "$R/T/trace/rc2_ext5.labels" || bad=1
+  for j in cov1 cov0 cov0_tr; do
+    [ -f "$W/logic/l1/$j.txt" ] || { echo "$j: FAIL: no trace"; bad=1; }
+    lost=$(grep "^$j (" "$W/logic/l1/lost.txt" 2>/dev/null | tail -1)
+    if [ -z "$lost" ]; then
+      echo "$j: FAIL: no lost counters in $W/logic/l1/lost.txt (gates.tcl pf_logic_jobs' level-1 jobs record them: run cov1, cov0, cov0_tr again)"; bad=1
+    else
+      echo "$j lost: ${lost#*): }"
+      echo "$lost" | grep -q '): mp 0 atr 0 rd 0 fb 0 pools ' || { echo "  FAIL: lost counters"; bad=1; }
+    fi
+  done
   echo "G-LOGIC: $([ $bad -eq 0 ] && echo PASS || echo FAIL)"
   [ $bad -eq 0 ]
   ;;

@@ -13,7 +13,8 @@
 #                                         DIR/<run>_<tag>.txt (+ .over) (tools/dispcmp.py)
 #   pf_map_jobs DIR R ?TAGS?              G-MAP: cnt.tcl's map dumps every 100 ticks: DIR/<drive>_<tag>_map.txt
 #   pf_logic_jobs DIR R                   G-LOGIC: hz_l3_jobs, hz_l2_jobs (with the turbo R) and level 1's
-#                                         cov1/cov0/cov0_tr on R/T: DIR/l3, DIR/l2, DIR/l1 (hz.sh compare)
+#                                         cov1/cov0/cov0_tr on R/T: DIR/l3, DIR/l2, DIR/l1 (hz.sh compare),
+#                                         each with its lost counters in DIR/l<k>/lost.txt
 # TAGS: {tag machine ...}: ::pf_m4 (C-BIOS_MSX2 m2, the Expert ex, the FS-A1FX fx, the FS-A1GT tr),
 # ::pf_m3 (m2 fx tr), ::pf_vdp2 (m2 fx: both VDPs). Every job's drive comes from ::pf_emu (build/emu).
 
@@ -220,13 +221,18 @@ proc pf_map_jobs {dir R {tags ""} {drives ""}} {
 
 # ----- G-LOGIC: the logic traces against the Amiga bench (hz.sh compare)
 
+# (level 1's three traces through hz_l2_drive, as levels 2 and 3's: the same rc2_drive_rom trace, plus the
+#  lost counters at every tick_start, appended to DIR/l1/lost.txt when the job ends: gate.sh logic wants
+#  mp, atr, rd and fb 0 there too)
 proc pf_logic_jobs {dir R} {
 	set jobs [concat [hz_l3_jobs "$dir/l3" "$R/T" tr] [hz_l2_jobs "$dir/l2" "$R/T" tr]]
 	file mkdir "$dir/l1"
 	set rom "$R/T/trace/rc2_ext5.rom"
 	set lab "$R/T/trace/rc2_ext5.labels"
+	set lost [file join $dir l1 lost.txt]
 	foreach {j m n drv} {cov1 C-BIOS_MSX2 4401 drive_cov1.txt cov0 Panasonic_FS-A1FX 1400 drive_cov0.txt cov0_tr Panasonic_FS-A1GT 1400 drive_cov0.txt} {
-		lappend jobs [list $j $m [list rc2_drive_rom $rom $lab "$dir/l1/$j.txt" $n 0 [file join $::pf_emu $drv]] {$::rc2_trace_done} 900]
+		lappend jobs [list $j $m [list hz_l2_drive $rom $lab "$dir/l1/$j.txt" $n [file join $::pf_emu $drv]] \
+			"\$::rc2_trace_done && \[hz_l2_lost {$lost}\]" 900]
 	}
 	return $jobs
 }
