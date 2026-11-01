@@ -651,7 +651,14 @@ What step C built and where it departs from 3.5-3.6 (the account and the checks:
   byte), which no blank holds: with Cain-sized parts animating every tick, 10-14 % of the pictures show
   him partly old, partly new on the V9958 (fewer on the V9938), type 21 about 5 %, the truck 1 %, type 51
   none; the guard counts the copies running into shown lines. Not the cache's: its frames and places
-  are right in every picture; the same with the picture held 60 VBLANKs. Step D's (open issue).
+  are right in every picture; the same with the picture held 60 VBLANKs. **Step 7** (`docs/level3/HANDOFF.md`)
+  copies a staged item as one chain the split interrupt starts (`field.asm` `fst_chain`: one copy a band
+  of pieces side by side in page 3, the largest last): with the real logic the field check's torn
+  pictures went 84 -> 0 of 1,000 (boss, V9958), 10 -> 0 (V9938), 114 -> 21 (turbo R), kill 65 -> 1 of 700
+  (V9958), 61 -> 0 (V9938). Left: the chain's last band starts after the VBLANK's list when the blank
+  begins during the split's wait, and the beam crosses it in about 1 picture of 170 on the V9958 (15
+  copies in 42 s of the boss window; the V9938 none); the fix is the VBLANK's order in `isr.asm` or a
+  copy racing the beam from a line interrupt (open issue).
 
 ### 3.11 As built by step B (2026-11-01) [V]
 

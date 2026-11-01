@@ -468,6 +468,14 @@ which as sprites were striped, cut or left out.
   2's trolleys (map y 508-554, across the ring's line 256) showed their top 4 lines 4 px ahead
   for a picture each time they crossed the ring's x 256 (MSX2+ and turbo R, 9-23 pictures a
   ride; `fieldcheck.py --level 2`).
+  An item larger than the scratch on the page shown is staged (`fb_stage`, 2-4 pieces of 64x64):
+  since 2026-11-01 (level 3's step 7) its pieces are composed side by side in page 3 (piece k at x
+  64k, the three caches lent) and copied as one such chain (`fst_chain`): one copy a band of pieces,
+  cut where the ring is crossed, the last band's first and of a band's parts the larger last (the
+  split interrupt's wait covers only the small ones), at most four commands (else piece by piece);
+  until then each piece after the first was started by the main loop when it found the VDP idle,
+  2-15 ms later and often while the beam drew it (level 3's Cain partly old, partly new in 8 % of
+  the pictures of the boss fight on the V9958). `VAT_ANIM=1` builds keep the old staging.
   All of an owner's BOBs change in one item (items of one owner always merge). `cmd_lock` keeps
   the interrupts off the command registers while the main program writes them.
 - **With the sprites**: every item carries the picture it belongs to (`fb_tick`, counted by

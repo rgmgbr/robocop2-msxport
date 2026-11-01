@@ -846,3 +846,102 @@ note's. In the main tree then: the product, `DIAG=2` and `DIAG=1 PZ_TEST=1` buil
 above hold; `make test`: 347 tests, the 4 known failures only. The summaries (the two option-set runs,
 the free bytes of the 58 sets, the logs) in `build/archive/rest_step9_records_2026-11-01.tar.gz`; the
 option sets' ROMs deleted.
+
+## Step 7: the tear of big moving play-field items (2026-11-01)
+
+**Done, one open issue** (the beam crossing a chain's last band on the V9958: below). Worktree `g/wt07`, branch
+`g-s07` from `level2` `a80288d`, moved to `56e8f56` (step 6's logic: the real Cain) and rebased onto
+`001787b` (step 9); scratch `S7` = `$SCRATCH/g/s07`. One openMSX: a private MSX-AI MCP session
+(`tools/bstest/mcpd.py S7/mcp`, `mx.sh`). Step 5's open issue 1.
+
+### What it did
+- **The cause** (the records' field state at each split, `S7/tools/fbstate.py`: `fb_stg`, `fb_spk`,
+  `fb_scp`, the queue): the torn pictures were a staged item's pieces after the first. `fst_more` let the
+  main loop start each of them "right away" when it found the VDP idle, 2-15 ms after the one before and
+  often while the beam drew it, so the item showed between two pieces for 1-10 pictures (runs of up to 10
+  in the records). A first try, every piece in `fb_cmd` and `fb_cmd2` for the split interrupt, fell back to
+  the old path whenever a 2 x 2 item crossed the ring (more than four commands: Cain at map y 768).
+- **`msx/field.asm`** (`13924de`): `fb_stage` composes a staged item's pieces side by side in page 3
+  (piece k at x 64k: the three caches lent, piece 3 in the scratch; `fb_scol` its pieces across);
+  `fst_chain` prepares the item's copies as one chain for the split interrupt (`fb_scp` 2): one HMMM a band
+  of pieces, cut where the V9958's ring is crossed, the last band's first and of a band's parts the larger
+  last (`fb_sord`, `fch_hf`), so that the split's wait (`isr_fbgo`, 110 polls) covers only the small ones;
+  `fb_cq` 3, `fb_vok` 0 (never the VBLANK's start; a one-command chain may start in the blank by
+  `fb_mayq`); more than four commands or a piece out of its window: piece by piece as before. `fcp_sp`:
+  `fb_copy`'s cut points as a routine (`fst_chain` and `fb_copy`). `fst_more` counts `fb_scp` 1 only.
+  `VAT_ANIM=1` builds keep the old staging (no room in `BANK_FIELD`; they serve level 2's comparison).
+  `msx/msx.inc`: `fb_scol` 065Ah, `fb_sord` 065Bh (065Ch-065Fh free). `tests/test_level3_field.py`:
+  `test_staged_pieces_one_chain`.
+- **Not taken**: option (a), a fit test for chains: from the split a big item high on the screen cannot
+  stay ahead of the beam at 6.3 us a byte in any order (Cain's top at shown line 46: the beam catches a
+  64-wide copy after about 44 of its lines), so the test would only hold the item; option (c), the
+  V9938's page flip: the V9938 shows no torn item with the chain in the real windows.
+
+### Commits
+`13924de` (the chain, the test) and this section's (with `docs/LEVEL3.md` 3.10 and
+`docs/MSX_ARCHITECTURE.md`'s play-field rules).
+
+### Checks (`W` = the worktree, `PY` the venv's Python, base = `level2` without `13924de`)
+- **Builds** (`sh S7/tools/mkb.sh W S7/bv4 "prod" "low DIAG=1 PZ_TEST=1" "anim VAT_ANIM=1" "diag2
+  DIAG=2"`; `sh tools/bstest/hz.sh l3builds S7/R4`): all build, the 12 known warnings only; the product
+  `fde75be5865bfb72`, l3 `7d5eb71e82a31bb5`, the lowest set `b941de7001cd6c49`, `VAT_ANIM=1`
+  `ac52b05753a61100` (byte-identical before and after the rebase onto `001787b`, so every result below
+  holds). `sh tools/bstest/variants.sh S7/V` on `56e8f56` + the chain: 56 of 61 (the three known fixed-area
+  overflows; `DIAG=2` and `PZ_TEST=1 DIAG=2` failed at `level3obj.asm:128` on the base too: step 9's
+  `001787b` fixed it, `DIAG=2` builds here). **Free bytes** (`python3 -I tools/bstest/l2base.py banks
+  S7/bv4`): the fixed area 164 (the same), the lowest set 29 (the same); **`BANK_FIELD` 300 -> 49** (the
+  product and the lowest set), `VAT_ANIM=1` 99 -> 93, the l3 trace build (`EXTJOY=1`) 259 -> **8**.
+- **The field check's torn pictures** (`CLASS ... hostage-tear`: a big item partly a picture ahead or
+  behind at the split; `$PY -I tools/bstest/fieldcheck.py DIR build/msx/level3 OUT.png --level 3`, counted
+  by `S7/tools/tears.py DIR FC.txt LEN`), base -> new, the same jobs on both builds (`lf_jobs DIR R POSES
+  FROM N MACHINES DRIVE`; the real logic with `poses_none.tcl`, nothing injected):
+
+  | window | V9938 (C-BIOS_MSX2) | V9958 (FS-A1FX) | turbo R (FS-A1GT) |
+  |---|---|---|---|
+  | `boss` from tick 125, 1,000 pictures (Cain on the roof) | 10 -> **0** | 84 -> **0** | 114 -> **21** |
+  | `kill` from tick 1500, 700 pictures (Cain on the ground floor, his death) | 61 -> **0** | 65 -> **1** | - |
+  | stress (`poses60`, `lf_mul 8`, `lf_dx 0`, idle drive, 1,100 pictures) | 106 -> 49 | 194 -> 106 | 188 -> 83 |
+  | stress: Cain's phase | 8/271 -> 0/273 | 48/299 -> 4/254 | 44/203 -> 7/193 |
+  | stress: type 21's phase | 59/299 -> 30/272 | 65/256 -> 27/251 | 52/208 -> 37/199 |
+  | stress: the truck's phase | 20/279 -> 17/252 | 59/275 -> 51/256 | 48/218 -> 12/174 |
+
+  The stress test's remaining ones are runs of 2-24 pictures while the scripted enemy and a real one
+  (`D0E4h`) are composed at once (four pieces each: the hold, `FB_HOLD` 8, runs out), a load the real
+  game does not make (ENEMY_CAP 1); `poses60.tcl` is step 5's, the idle drive `build/emu/l3_still.drive`
+  (no input; made from `l3_tour3.drive`'s pokes). Looked at (the field check's sheets, `S7/kb0/fx.png`,
+  `S7/kb3/fx.png`): the base's torn boss pictures show Cain on the roof with pieces of his white hit-flash
+  copy left beside his normal look; the new build's pictures there show him and the smoke whole.
+- **The guard** (42 s from level 3's first tick, `boss`'s drive; `S7/tools/gd.tcl` `gd_jobs`, as
+  `lf_start_jobs` with another drive), base -> new: **tear** (a copy the beam crossed) m2 3 -> 0, fx 8 ->
+  **15**, tr 10 -> **22**; reg (R#46 written in the play area) 58 / 183 / 182 -> 0 / 5 / 2; cmd 95 / 279 /
+  405 -> 53 / 130 / 274; vbl 0 / 10 / 1 -> 0 / 11 / 6; pal and cpu 0; lost 0. The stress test (fx): tear 5
+  -> 69, reg 103 -> 1, cmd 351 -> 252, vbl 127 -> 18. The new tears are the chains' last bands (50-124 x
+  59-64) started at lines 228-260: the blank begins during the split's wait (the HUD's 45 lines) and the
+  VBLANK interrupt goes on with them only after its list (`isr.asm` `ifg_fin`), too late for a band high
+  on the screen; one picture is torn each time (about 1 in 170 on the V9958 in the boss window, against
+  84 in 1,000 at the split before).
+- **Speed** (ticks reached in the same pictures, 60 Hz): the stress test fx 246 -> 265, m2 212 -> 238, tr
+  320 -> 350; **Cain's phase** fx 11.6 -> 13.7 ticks a second, m2 12.8 -> 12.7, tr 17.1 -> 18.0; **type 21's**
+  fx 14.1 -> 14.3, m2 12.0 -> 13.2, tr 17.3 -> 18.1; `boss` fx 248 -> 254, m2 232 -> 235, tr 350 -> 366;
+  `kill` fx 1624 -> 1634, m2 1629 -> 1636. Not slower anywhere but Cain's phase on the MSX2 (-1 %).
+- **Levels 1 and 2** (`S7/tools/ab.tcl`: step 5's comparison, base `SRC=S7/bwt` builds of `56e8f56` and
+  new): the `LOCKSTEP=24` records, `python3 -I tools/dispcmp.py BASE/disp_M.txt NEW/disp_M.txt`: **2,998
+  lists, 0 differ** on C-BIOS_MSX2 and the FS-A1FX; level 1's 10 stills (`tools/msxframe.py --level 1
+  --field`): 4 byte-identical, 6 the same verdicts (the known 31, 260, 6 px); level 2's 24 stills (`--level
+  2 --field`): 6 byte-identical, 16 the same (0 differ), the MSX2's g0900 44 -> 0 px, its g1600 0 -> 8 px
+  (8 sprite pixels on a line of 9 sprites, step 5's known class; the new build reached frame 1600 2.4 s
+  earlier, so the still is another moment).
+- **`make test`** (the worktree): 348 tests, the 4 known failures only.
+
+### Open issues
+1. **The beam crosses a chain's last band** on the V9958 and the turbo R (above: 15 and 22 copies in 42 s
+   of the boss window, each one torn picture). In `field.asm` alone no order holds both ends: the largest
+   band first starts it at the split but leaves the rest to the main loop (step 5's tear); last, it waits
+   for the VBLANK's list. Next levers, outside the copy path: in `isr.asm`, the VBLANK interrupt going on
+   with a pair's parts (`ifg_fin`) before its list, or the split's wait not stopping at the blank for a
+   chain; or a copy started right after the beam leaves the item's top (a line interrupt: each line gets a
+   whole frame). The user's choice may be needed (decision 13's play field against sprites for Cain).
+2. `BANK_FIELD` has 49 bytes left in the product and **8 in the trace builds**: the next change of
+   `field.asm` needs room first (`VAT_ANIM=1` builds keep the old staging for that reason).
+3. The stress test's runs while two big enemies change at once (the hold runs out); not reached with
+   ENEMY_CAP 1.
