@@ -794,6 +794,64 @@ The plan and every table: `docs/LEVEL3.md` section 2 (2026-11-01). The facts in 
   does not follow their PC-relative tables. **The sound**: effects 0Eh, 22h-25h, 27h, 28h of MU1,
   nothing new.
 
+**Found while porting level 3** (2026-11-01; the port's account: `docs/LEVEL3.md` 3.9-3.11,
+`docs/level3/HANDOFF.md` steps 4-6). REA below = Ghidra 12.1.4 through the REA MCP on
+`build/ram/level3_full.bin` (sha256 `700df44d…3515ca`, raw-binary m68k, entry `0x0`, the seeds of
+`analysis/ghidra_seeds.tsv`: 126 functions, 317 labels, 0 failed).
+- **Cain reads the D1 that the slot before left** **[verified: REA `read_function_instructions` on
+  `update_objects` `$C3E4` and `obj22_update` `$D49C`; the port's traces of `tour3`, `park`, `boss`, `kill`
+  and `cont3` equal to the bench in `snd_b2c`-`snd_b31`]**. `update_objects`' slot loop (`$C3EE-$C446`) sets
+  A3, D7 and D5 and calls the handler (`jsr (0,A2,D5.w)` at `$C432`) without writing D1; only the dying
+  path loads it (`$C40A`, before the death routine). Type 22's handler writes no D1 before `$D53A`:
+  `cmpi.w #$30,D1` / `bmi` / `move.b #$0E,$B2D`, reached only while its fire counter `(-$40,A3)` is 0
+  (`$D526`). So sound 0Eh plays when the D1 left by the slot before is 30h or more. What that D1 is
+  **[verified: the bench's traces]**: for slot 0 `read_joystick` `$BDEC`'s FF00h or FF10h; after a handler
+  whose last call drew a BOB, `draw_bob`'s shift ror 4 | 0FCAh (0BFAh for a hit flash), where the shift
+  is (x + 1) & 15 because `$B0A` holds ~camera x & 15 in both nibbles of its low byte (no writer of `$B0A`
+  in the analysed code); after one that drew nothing, its last D1 (y − camera y when out of view). Names:
+  `boss_d1_sound` `$D53A`, `scroll_nibble` `$B0A` (`analysis/main_8000.sym`).
+  **[inferred, not reached by any drive]**: with the joystick locked (`$804D`) slot 0's D1 is what
+  `eb_update` left; a marker spawned into the slot before Cain's on the frame he runs leaves the
+  marker's y.
+- **The bench's fault after level 3's game over (`cont3`)** **[verified: the bench, step 6's write watch on
+  `$FD92-$FDA1` and its mirrors (`c3dbg.py` in `build/archive/level3_stepB_records_2026-11-01.tar.gz`);
+  `text_plot`'s code by REA]**. The first `cont3` drive pressed fire after the game frames stop at the
+  death's end (row 149), so the continue offer (`$11FD2`) went unanswered and the title came. The title's
+  text plot then wrote 80h at `$10FD9F`, which the bench folds onto chip RAM's `$FD9F`, the message slots;
+  their ticker read a string pointer of `$800000` from there, unmapped on the bench (open bus on an
+  A500), and the bench stopped (PC `$FDB8`, A1 800000h, bench frame 735). The game's code is not at
+  fault there: with fire at frames 140-159 the drive continues as the original does. `text_plot`
+  `$11062` (REA, 22 instructions): D0 += the glyph's x, D1 += its y; skipped when D1 ≥ A0h (a signed
+  test, so a y above the screen passes); A0 = the long at `$109A2` (the screen pointer, `$725A2` while
+  the title shows) + D1 × 98h (`mulu.w`, added as a word); then four planes 26h apart, each byte read,
+  masked and ORed with the colour's bit (a read-modify-write). How the plot's address reached the
+  mirror was not traced further.
+- **The palette flash's two countdown steps between a death and the continued game** **[verified: REA
+  `xrefs` to `palette_fades` `$F878`: `$80F8` (`main_loop`'s frame), `$FEFC` (in `$FEDA`, the display set-up
+  that `main_loop` `$82A8` calls for the game over), `$1080C` (in `text_screen` `$10768`, which shows the
+  continue offer's script), `$10902`, `$12112` and `$121E0` (`high_score_entry` and its name entry); the
+  bench's `cont3` (step 6's `c3dbg4.py`, the calls of `$F878` other than `main_loop`'s)]**. `$F878` counts a
+  running flash (`$F826`) down by one at each call, so between the death's end and the continued game
+  the original takes two steps (`$FEFC`, `$1080C`): a flash at 4 when RoboCop died is at 2 when the game
+  goes on. **[inferred, not traced]**: a game over whose score enters the table takes two more
+  (`$12112`, `$121E0`).
+- **`act_20` runs before the first game frame too** **[verified: the bench, step 4's plain `tour3`
+  reference]**: `level_init`'s map-object pass calls it, so the map objects' collision slot 1
+  (`mslot1_x` B7h → 617h) has changed before row 0 of a trace.
+- **Level 3's explosions and bullets** **[verified: REA's reading of the draw code (`tools/bobcatalog.py
+  level3`, `L3_HARD`) and the bench's frames]**: DATAL3 overwrites MADEX, so level 3 has no MADEX
+  explosion: explosion type 0 draws PERMA's 32 × 32 frames, and type 6's first step draws whatever
+  DATAL3 holds at `$3DF00`. `$F3CE`'s bullet animation takes offsets up to the first past its limit, so
+  bullet 12h draws `$40638` as 48 × 16 and 13h `$40C78` as 32 × 40. The catalogue's 212 frames (141 in
+  DATAL3) hold the bench's 202; only `$6BB80` is not explained by the tables. Frames the bench did not
+  draw but the code can: Cain's muzzle flash `$412B8` and `$46790`, type 38's directions 13-15, type 4's
+  `$58312` and `$6C620`.
+- **The hit flash's colour** **[verified: `draw_part` `$AC44` and `draw_part_last` `$AC56` patch `draw_bob`'s
+  minterm to `$BFA` (the mask ORed into every plane: colour 15; `analysis/main_8000.sym`, and *RoboCop's
+  fire* above); the palette's entry 15 by a byte read (level 3's step C)]**: every part of a hit enemy
+  is drawn in colour 15 of the level's palette for the frame of the hit, which in level 3's palette (=
+  level 2's) is (11, 11, 11) in 4-bit components: a light grey, not white.
+
 ### Music and sound effects (MU1 player) **[verified: REA listing of `$18000-$18B35` (level-1 image); `tools/rc2music.py --verify` runs that code in Unicorn and matches the model's Paula writes and player RAM on every tick of every tune of the five files (49986 ticks); the paths the data never takes (vibrato, 86h, 81h-83h in patterns, 83h in sequences, stop tune, the effect priority, effects over music) matched the same way on patched images and call scripts]**
 
 - **Files.** TITM (title), MU1 (in-game sound effects), CH1 (a jingle), CMP (game completed)
