@@ -352,3 +352,15 @@ integrated); scratch `S3` = `$SCRATCH/g/s03`. One openMSX: a private MSX-AI MCP 
 3. Not run (their code banks byte-identical to the base's): the regress families final, drives,
    range, display and sound, the stills and field checks, the 55 option sets. The tx jobs take about
    120 s more emulated time (the ending).
+
+### Integrated
+Cherry-picked onto `level2` `d44821d` (the main tree clean) as **`af87f56`** (the code), **`5ca5870`** (the
+docs) and **`b7ad1d3`** (this section); the tree equal to `g-s03`'s. In the main tree then:
+`build/msx/end.bin` (`$PY -I tools/msxtune.py --end --out build/msx --cache build/music`) and
+`ending.inc` with `text_end`, `text_hisc`, `text_best` (`tools/msxtext.py`, the Makefile's line) made with
+the integrated tools, both byte-identical to the worktree's; the product, `e1`, `e2` and the `l2c` build
+(`tools/bstest/build.sh`) byte-identical to the worktree's (the product `4ffbd9695dff6907`), so every
+result above holds; `make test`: 339 tests, the 4 known failures only. The summaries, notes, pictures
+looked at and the scratch scripts in `build/archive/rest_step3_records_2026-11-01.tar.gz`; the ending's
+tune previews (`end_amiga.wav`, `end_scc.wav`, `end_fm.wav`, `end_psg.wav`, `end_sccfm.wav`,
+`end_fx_*.wav`) in `build/music/preview`; the big records deleted.
