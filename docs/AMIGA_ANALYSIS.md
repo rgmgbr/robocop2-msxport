@@ -357,6 +357,10 @@ over (PIC9)**, called from `main_loop` when the lives counter `$8034` goes negat
   others: 3 (types 4, 12, 13, 15, 34-37, 41, 50, 51), 4 (14, 28), 5/6 (1, 2, 16, 21, 24, 26),
   7 and 17h (`FUN_dbea`, type 25's machine), 8 (29), 9/10 (22), 11h (40, never hits: width
   negative), 0Bh-0Eh (the helper `$C398` of the switch at `$C42A`, no damage) and 16h (33).
+  **[Corrected 2026-11-01 by a byte read of the three RAM images: `$FA35`[11h] is 08 (an 8 × 8 box)
+  and `$FA63`[11h] 40h, so type 40's bullet 11h hits (level 3's rocket, types 40 and 42:
+  `docs/LEVEL3.md` 2.6); 12h's width is 9Dh (never hits); 17h lies past the 23-entry tables, its
+  width the height table's first byte, 9Dh: never hits.]**
 - Pickup effects: 4 scatter gun (weapon 3), 8 rapid fire (1), 12 time − 1 minute (00:00 at
   the bottom), 16 time + 1 minute, 20 reversed controls (100h frames, or off), 24 shield
   (`$16AA` = 100h), 28 energy full (102h), 32 three-way gun (2), 36/40 nuke retrieved (energy

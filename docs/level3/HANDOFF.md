@@ -81,9 +81,12 @@ the missiles × 1, the rest as the original):
 | `objects.asm` `en_update`, level start; `hits.asm` `pk_energy`, `pk_nuke`; `lvshared.asm` (a man rescued); `level1.asm` type 25, type 32 | 102h, 0, 100h, + 20h | not damage |
 | `frame.asm` F4 (`CHEAT`), `player.asm` (`GOD`) | 102h, 100h | test builds |
 
-Enemy bullet types 17 and 18 carry 40h in `$FA63` too: 17 is type 40's, which never hits (its width is
-negative), and 18 has no caller among the 28 calls of `ebullet_add` (`docs/AMIGA_ANALYSIS.md`); if level
-3's research finds one (a missile), `phb_en`'s `cp 3` must take it as well.
+Enemy bullet types 11h and 12h carry 40h in `$FA63` too (a byte read of `level1_full.bin`, `level2_full.bin`
+and `level3_full.bin`, the same tables): 11h, the rocket of types 40 and 42, has an 8 × 8 box and hits, but
+only level 3 has those types (`docs/LEVEL3.md` 2.6, its default 11: × 1, so `phb_en`'s test must take 11h
+when level 3 is built); 12h's width is negative (it never hits). Levels 1 and 2 spawn no type 40 or 42,
+so there the rule of types 1 and 2 is complete. (Type 25's second bullet, 17h, lies past the 23-entry
+tables and never hits: its width byte is the height table's first, 9Dh.)
 
 **The vats' code kept in every build** (for level 3's room): `vats.asm` 1,401 B in `BANK_L2`; `field.asm`'s
 vat section (`vat_init` to its end) 1,010 B in `BANK_FIELD` (1,015 with `VAT_ANIM=1`); the fixed area
