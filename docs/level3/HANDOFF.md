@@ -513,3 +513,125 @@ scratch `S=$SCRATCH/g/s04`. The plan: `docs/LEVEL3.md` step A; as built: its new
   checked by `cheat.tcl` (above); `amigaemu.py --flow` through `load_level2` is step D's if needed.
 - Only `tour3` and `beam` exist; the plan's `park`, `boss` and `kill` need the car park's and Cain's
   logic (step B).
+
+## Step 5 (plan step C): the sprites and the play field (2026-11-01)
+
+**Done, with one open issue for step D** (big moving play-field enemies tear: below). Worktree `g/wt05`,
+branch `g-s05` from `level2` `d0985a4`, rebased onto `bc3ad83` (step 4 in); scratch `S5` =
+`$SCRATCH/g/s05`. One openMSX: a private MSX-AI MCP session (`tools/bstest/mcpd.py S5/mcp`, `mx.sh`).
+The plan: `docs/LEVEL3.md` step C; as built: its new section 3.10.
+
+### What it did
+- **Default 9**: `vats.asm` (in `level2.asm`), `field.asm`'s vat section past `vat_init` and `tiles.asm`'s
+  `vat_win` / `vat_idle` only in `VAT_ANIM=1` builds (the product: stubs; `vatlog.tcl` logs the clock and
+  the guard alone on a build without `vat_run`). Product: the fixed area +31 B, `BANK_FIELD` +958 B,
+  `BANK_L2` +1,401 B.
+- **The catalogue** (`tools/bobcatalog.py level3`, REA on `level3_full.bin`): 212 frames, the bench's
+  202 (`build/emu/cov_level3.json` and `l3_frames_drawn.json`, copied from step 2's scratch; all in it,
+  only `$6BB80` not explained by the tables) and 10 from the draw code's tables (`L3_HARD`, Cain's
+  `$D7EE`/`$D80E`/`$D79A`/`$D7CA`, type 21's `$D44C`, the truck's, types 34-39's, 50-52's, the lift's,
+  types 4 and 12's), the bullets level 3 fires (`L3_BULLETS`), its explosions (`L3_EXPL`), its pickups.
+- **The pool** (`tools/msxsprites.py --l3-bobs --l3-ram --l3-pal --l3-remove`, the Makefile): level 3's
+  150 ids after level 2's (82 new records, level 1's 60 and level 2's 4 where those memories hold the same
+  bytes, the spark's 4), the pool 28 banks (27); its play field: 66 frames from `lv_fid0` 98h, 18 in
+  its atlas (109 lines, two banks), 42 big ones and 55 white copies (colour 9) in the frame cache's ROM
+  (14 banks, the header in the first), the smoke in level 1's dynamic frames; `msx/level3_frames.json`
+  (empty: default 14); `tools/msxchooser.py` a level-3 section (120 cards).
+- **The engine**: `field.asm` per-level tables (`fld_l1/2/3`: `field_dyn`, the white mark, the cache's
+  bank; `fb_init` copies 11 bytes to 064Fh-0659h and empties the cache), `fb_wants` (the white mark kept
+  in level 3), `fbb_fc`, `fc_find`, `fc_get` (the frame cache, `fc_res` ECF0h, seven fixed places on page
+  2 lines 160-231); `bob.asm` (`lv_fid0`, level 3's bullets with a play-field frame to the play field,
+  `fb_add`'s BM_FLASH mark). `mkrom.py`: level 3's BOBHASH (`l3_hash`), atlas, frame cache and
+  descriptor (its index, spark, `fld_l3`, ids); every late block by `place_banks` (163 of 256 banks:
+  `BANK_FRONT2` stays on 127). `cold.asm` needed nothing: `lv_select` uploads `lv_fimg`'s atlas, now
+  level 3's own.
+- **The harness**: `tools/bstest/l3field.tcl` (`lf_jobs`: scripted enemies of level 3's frames appended to
+  each tick's play-field list, the field check's records, the cache's copies counted; `lf_start_jobs`),
+  `l3poses.py`, `fieldcheck.py --level 3`, `msxframe.py` (`FieldLooks(3)`, `POOL_LEVEL` dropped),
+  `romdiff.py` (`L3_FC`), harness marks `ml_fbn`, `fcg_ld`, `fcg_dn` (no bytes); `docs/HARNESS.md` 5.27;
+  `tests/test_level3_field.py` (8 tests).
+
+### Commits
+`a2fbaab` (default 9), `b87d778` (the catalogue), `6e796df` (the pool, the engine, mkrom, the Makefile),
+`a2ec1e4` (the harness, fieldcheck, msxframe, the chooser), `37952b4` (the tests, `lf_start_jobs`), and
+this section's (with `docs/LEVEL3.md` 3.10 and `docs/HARNESS.md` 5.27).
+
+### Checks (each with its command and result; `W` = the worktree, `PY` the venv's Python)
+- **Builds**: `sh S5/tools/mkb.sh W S5/fin "prod" "l3 EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3" "low
+  DIAG=1 PZ_TEST=1" "anim VAT_ANIM=1"`: all build, the 12 known z80asm warnings only; the product
+  `3f9e446fac3bb45a` (2 MiB, 163 of 256 banks, the guard), l3 `72686ab18a50937c`. `sh
+  tools/bstest/variants.sh S5/V`: **58 of 61** (the three known fixed-area overflows: `DEMO_ACTORS` 2 and
+  5 -F3h, `DEMO_HUD` -3Ah). Free bytes (`l2base.py banks`): the fixed area **164** (product), **29**
+  (`DIAG=1 PZ_TEST=1`, the lowest), `BANK_FIELD` **300**, `BANK_L2` 1,429, FRONT 1,143, `BANK_L3` 3,913,
+  `BANK_L3B` 8,045; `VAT_ANIM=1`: fixed 118, FIELD 99 (level 3's play field left out there).
+- **The pool**: `python3 -I tools/bstest/pooldiff.py OLD/sprites build/msx/sprites` (OLD: step 4's pool): every
+  index entry of RoboCop (294), level 1 (198) and level 2 (204) resolves to the same record bytes,
+  patterns and colour rows: **PASS**; level 1's and level 2's `sprites_l*` files byte-identical.
+- **romdiff** against step 4's product (`bc3ad83`, built from the main tree): `python3 -I
+  tools/bstest/romdiff.py --blocks BASE.rom S5/b2/prod/rc2.rom`: **31 data blocks identical** at their
+  new banks; differ as meant: the pool (`SPR_BASE_BANK`, 27 -> 28 banks: pooldiff above) and `L3_TAB`
+  (level 3's own BOBHASH); new `L3_ATLAS`, `L3_FC`. `relocheck.py ... BANK_LC1 BANK_LC2 BANK_L1 BANK_LC3
+  BANK_INPUT BANK_MUSIC BANK_PUZL BANK_FRNG BANK_FRONT2 BANK_L3`: relocated label words and bank
+  operands only; FRONT besides them level 3's descriptor (`lv_sidx`, `lv_spark`, `lv_fld`, `lv_fid0`: 6
+  bytes); `BANK_L2` besides them the removed `vats.asm` and 16 label-plus-constant operands of `l2_hdr`
+  and `mk_tab2` (moved by it); FIXED and FIELD: this step's code.
+- **Levels 1 and 2 unchanged** (step 4's builds against these, `S5/tools/ab.tcl`, 14 jobs): the
+  `LOCKSTEP=24` records, `python3 -I tools/dispcmp.py BASE/disp_M.txt NEW/disp_M.txt`: **2,998 lists, 0
+  differ** on C-BIOS_MSX2 and the FS-A1FX; level 1's stills (`l2b_sl_setup`, game frames 100, 430,
+  860, 1490, 2400, two machines): `tools/msxframe.py --level 1 --field` the same verdicts on base and new
+  in all 10 (the known classes: 18, 31, 260, 6 px), 9 of them with VRAM and registers byte-identical;
+  level 2's stills (`hz_l2_still_jobs`, `l2_tour`, frames 0 to 2000, three machines): `msxframe.py
+  --level 2 --field` 0 play-field pixels differ in 23 of 24 on both, the FS-A1FX's g1600 8 px on both,
+  every sprite pixel exact.
+- **Check 2** (`hz_l3_still_jobs S5/st S5/R {0 50 300 700}`; `$PY -I tools/msxframe.py SNAP
+  build/msx/level3 build/msx/hud OUT.png --sprites build/msx/sprites --level 3 --field`): the start
+  picture (g0000, RoboCop at (1184, 784)) **exact on the three machines**; 11 of 12 stills exact, the
+  MSX2's g0300 796 px at the beams (step 4's known class); level 3's sprite BOBs (type 4's) exact.
+- **Check 3** on the windows step 4's stubs reach (`lf_jobs` with `poses_none.tcl`, `tour3` from frame 2,
+  700 pictures, and from 600, 500 pictures; `$PY -I tools/bstest/fieldcheck.py DIR build/msx/level3 OUT
+  --level 3`): **0 differ on the three machines** (the beams' cells not checked).
+- **Checks 4 and 5** (`lf_start_jobs S5/sc/plain S5/R 42`): guard reg 0, pal 0, cmd 2 / 0 / 0, cpu 0,
+  vbl 0, tear 0; patcheck 0 bad; satcheck the first frame only; lost 0; **sprlines 395 / 317 / 299
+  frames, all the known class** (RoboCop beside type 4 drawn as legs and torso, level 1's records: no new
+  class).
+- **The frame cache** (no level-3 enemy draws yet: `lf_jobs` injects them; `python3 -I
+  tools/bstest/l3poses.py`; `set ::lf_mul 8; set ::lf_dx 0`, `l3_still`'s idle drive, 1,100 pictures a
+  machine, the six phases in 360 ticks): its frames and places are right in every picture checked on
+  both VDPs (looked at: Cain's legs, his 64 x 32 part, type 21's legs and torso, the white copies of
+  Cain, the truck and type 51 on the MSX2, the MSX2+ and the turbo R; `S5/lf3/m2_four.png`). Copies
+  (`fc.txt`): 49 / 60 / 71 in 350-400 ticks, 13-21 ms each (the turbo R's as slow: the VDP's access).
+  The field check's differences (`fieldcheck.py ... --level 3`, per phase `S5/tools/phases.py`):
+  MSX2 32 of 1,100 pictures, MSX2+ 59, turbo R 51, all of the "hostage tear" class (part of the
+  enemy a picture ahead) but 18 on the MSX2; per phase (MSX2+): Cain 37 of 268 pictures, type 21 10 of
+  170, the truck 2 of 172, type 51 0 of 148, type 35 with the rocket 0 of 157, the two legs side by side
+  10 of 185. The same counts with `FB_HOLD` 60 (a test build): not the hold. With the enemy walking 2 px
+  a tick and animating every tick (`lf_mul` 1): 92 / 51 / 57 of 450. Under the guard (`lf_start_jobs ...
+  poses60.tcl`): reg 184-289, cmd 332-679, tear 6 / 10 / 43, vbl 0 / 20 / 1 (lists applied late: the
+  split interrupt waits for long copy chains).
+- **make test** (the worktree): 347 tests, **the 4 known failures only**.
+
+### What step D must know about the frame cache and the play field
+- A big enemy's frames reach the screen right: the cache loads a frame into its place when a piece is
+  composed with it (13-21 ms of CPU, the main loop stopped meanwhile: Cain's walk loads a legs frame
+  every other tick); a white copy for each hit flash of a play-field frame. Frames shown together never
+  share a place, so they are loaded once; two different leg frames on screen at once (a type 21's debris
+  beside a new type 21) share place 0 and are loaded again for each piece (right, slow).
+- **The tear**: an item of more than one 64 x 64 piece on the page shown is copied in pieces of about
+  13 ms each (`fb_mayq`'s 6.3 us a byte), which no blank holds; the V9958 has one page, so Cain (64 x
+  ~80, three play-field parts) and type 21 show partly old, partly new frames in about 5-14 % of the
+  pictures while they move or animate (the stress test above; the real logic will tell). Options:
+  copies racing the beam top-down only when they keep ahead (`fb_fits` for chains), smaller items (the
+  changed rectangle only), or on the V9938 composing big items on the hidden page and flipping. The
+  user's choice may be needed (decision 13's play field against sprites).
+- `fb_add` marks every BM_FLASH record (bit 7); levels 1-2 drop the mark in `fb_wants`. A play-field
+  frame without a white copy (the lift, the rocket, the smoke, a debris part) shows its normal look.
+- Level 3's enemy bullets whose frame is a play-field frame are drawn into the play field (the debris
+  of `death_cain`, `death_truck`, `death_w21`; the rocket, bullet 11h, 48 x 16).
+
+### Open issues
+1. The tear above (step D: the boss fight's look; possibly the user's choice).
+2. `VAT_ANIM=1` builds leave level 3's play field out (no room in `BANK_FIELD`): they serve level 2's
+   comparison only.
+3. The lowest option set has 29 B of the fixed area.
+4. The `park`, `boss` and `kill` windows (checks 3-5 there) wait for step B's logic: `lf_jobs` and
+   `fieldcheck.py --level 3` take them as they are.

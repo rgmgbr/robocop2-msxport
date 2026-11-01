@@ -106,6 +106,9 @@ The harness has two sides:
 | `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
 | `l2frame.py SNAP LEVEL HUD OUT.png [SPRITE_PAL]` | python (venv) | `tools/msxframe.py` on a level-2 snapshot, the sprites' expected pixels from the palette they were converted with (level 1's, until level 2's step 12) (5.22) |
 | `vatlog.tcl` | Tcl | level 2's vats (5.22, step 14; sourced after `load.tcl`): `vl_jobs` (the guard with tears and every vat column drawn: its parts' beam lines, R#23, the time in `vat_run` and `vat_prep`), `vl_speed_jobs` (game frames, ticks and pictures in SECS), `vl_snap_jobs` (`rc2_snap` at chosen game frames for `tools/mapcmp.py`) |
+| `l3field.tcl` | Tcl | level 3's play field (5.27, its step C; sourced after `load.tcl` and `l2base.tcl`): `lf_jobs DIR R POSES ?FROM? ?N? ?MACHINES? ?DRIVE?` (scripted enemies of level 3's frames appended to the tick's play-field list after `bob_flush`, the field check's records, the frame cache's copies counted), `lf_start_jobs DIR R ?SECS? ?POSES?` (level 3's start check under the guard, `hz_l2_start_jobs`' lines) |
+| `pooldiff.py OLD_PREFIX NEW_PREFIX` | python | the global sprite pool grown in place: RoboCop's, level 1's and level 2's index entries resolve to the same records, patterns and colour rows (5.27) |
+| `l3poses.py OUT.tcl [POOL]` | python | `lf_jobs`' script from level 3's play-field frames: Cain, type 21, the truck, type 51, type 35 with the rocket, Cain's legs beside type 21's, each part cycling its frames, a hit flash every 16th tick (5.27) |
 | `vatcheck.py DIR` | python | `vl_jobs`' logs per machine: columns a second, each column's draws a second, the CPU's share, the least margin from the beam to a column; exit 1 when the beam drew into a vat column (5.22) |
 | `cutview.tcl` | Tcl | level 2's arrest scene (5.22, step 15; sourced after `load.tcl`): `cv_view_jobs` (at every tick the view, `v_addx`, RoboCop and the camera; at each list's split its camera, RoboCop's record and the play-field BOBs) |
 | `cutview.py cut SNAPROOT REF.jsonl`, `view DIR [--add 48]` | python (venv) | the cut at a vat's surface (stills against `tools/msxframe.py --cut LINE` at the original's copper line) and the arrest's view (`v_addx`'s steps, the view's pace, RoboCop's range, the suspect whole) (5.22) |
@@ -2159,8 +2162,7 @@ field file's name (`*_l3.tsv`).
 **The start and the stills** (`hz_l3_still_jobs W/O/st W/R ?FRAMES? ?DRIVE?`: `hz_l2_still_setup` with
 `BANK_L3`, on the three machines): `pos.txt` (RoboCop at (1184, 784), `lv_cur`'s logic bank `BANK_L3`),
 then `$PY -I tools/msxframe.py SNAP build/msx/level3 build/msx/hud OUT.png --sprites build/msx/sprites
---level 3 --field` (msxframe takes level 2's pool frames for level 3 until step C: `POOL_LEVEL`; 160
-tile-cache slots). The first picture (game frame 0) is exact on the three machines; stills on the beams
+--level 3 --field` (level 3's own pool frames since step C, 5.27; 160 tile-cache slots). The first picture (game frame 0) is exact on the three machines; stills on the beams
 differ at the beams' cells only (their looks change every tick: the RAM's patches are a tick ahead of the
 picture) and, at a lift, step B's two-part look is missing.
 
@@ -2169,6 +2171,35 @@ briefing, level 2, F5, the stages' second visits, the level-3 briefing, **level 
 F5 (AG `$8050` = 3: `rc2.asm` `ml_ev`'s `ml_end`), the game completed (`front_ending`, the name entry by
 RETURN, the table) and the title. `np.tcl` `np_t_l2`'s breakpoint ends level 3 at its first tick the
 same way (`BANK_L3`), so the regress gate's `tx` flows reach the ending and the title as before.
+
+### 5.27 Level 3's sprites and play field (level 3's step C)
+
+`docs/LEVEL3.md` 3.5-3.6 and 3.10 (as built); the step's account: `docs/level3/HANDOFF.md`, "Step 5 (plan
+step C)". `W` a fresh folder outside `build/msx`, `PY` the venv's Python, `R` = `W/R` with `hz.sh
+l3builds W/R`.
+
+**The pool and the catalogue**: `python3 -I tools/bobcatalog.py level3 --drawn build/emu/cov_level3.json
+--drawn build/emu/l3_frames_drawn.json` (212 frames; a coverage frame the REA tables do not explain is
+listed), then the Makefile's `msxsprites.py ... --l3-bobs ... --l3-ram ... --l3-pal ... --l3-remove
+msx/level3_frames.json`: `sprites_l3.json`, `sprites_l3_field.{bin,inc}`, `sprites_l3_field_vram.bin`,
+`sprites_l3_fc.bin` (the frame cache), `sprites_l3_bobs.png`. `tools/msxchooser.py` has a level-3 section.
+`python3 -I tools/bstest/pooldiff.py OLD/sprites build/msx/sprites`: levels 1-2's index entries against an
+older pool resolve to the same records, patterns and colour rows (the pool grown in place).
+
+**The field check** (`fieldcheck.py --level 3`: level 3's frames from `msxframe.py`'s `FieldLooks(3)`, its
+frame cache's and the white copies, a list entry's bit 7; judged as the frame itself):
+```
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; source {<repo>/tools/bstest/l3field.tcl}
+python3 -I tools/bstest/l3poses.py W/poses.tcl          # (set ::lf_len 60 in it: the six phases in 360 ticks)
+msx_local_cmd: hz_chain [lf_jobs {W/lf} {W/R} {W/poses.tcl} 2 1100] {W/lf/all.done}
+$PY -I tools/bstest/fieldcheck.py W/lf/m2 build/msx/level3 W/lf/m2.png --level 3   # and fx, tr
+```
+`set ::lf_mul N` slows the parts' frames down, `::lf_dx` is the walk's pixels a tick (0: the enemy stays
+where the camera puts it); a POSES file with `set ::lf_phases {{none {}}}` injects nothing (the windows
+the level reaches by itself: `tour3` from frames 2 and 600, 0 differ on the three machines at step C).
+`W/lf/<m>/fc.txt`: the frame cache's copies (count, emulated microseconds, the longest) and the lost
+counters. **The start check**: `hz_chain [lf_start_jobs {W/sc} {W/R} 42] {W/sc/all.done}` (with POSES
+as its fourth argument the scripted enemies run under the guard).
 
 ## 6. The whole suite in order
 

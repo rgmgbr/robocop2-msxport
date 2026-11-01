@@ -575,6 +575,64 @@ What step A built and where it departs from 3.1-3.8 (the account and the checks:
 - **The fixed area** 18 B (`ml_ev` +1, `ml_end` 3, `l3b_call` 14): 156 B free in the product, 21 in the
   lowest set (`DIAG=1 PZ_TEST=1`).
 
+### 3.10 As built by step C (2026-11-01) [V]
+
+What step C built and where it departs from 3.5-3.6 (the account and the checks: `docs/level3/HANDOFF.md`,
+"Step 5 (plan step C)"):
+
+- **The catalogue** (`tools/bobcatalog.py level3`): **212 frames** (141 in DATAL3), the bench's 202 and
+  10 from REA's reading of the draw code (`L3_HARD`: every table of types 21, 22, 33-39 and 50-52, the
+  lift's two parts, the shared types 4 and 12): Cain's muzzle flash `$412B8` and `$46790`, type 38's
+  directions 13-15, type 4's `$58312` and `$6C620`, and three PERMA frames of level 1's coverage. The
+  bullets are the types level 3 fires (`L3_BULLETS`, `$F3CE`'s animation: offsets up to the first past
+  the limit, so bullet 12h draws `$40638` as 48 x 16 and 13h `$40C78` as 32 x 40, as the bench saw);
+  the explosions are the types the bench drew (`L3_EXPL` 0, 1, 4, 6, 7). **Level 3 has no MADEX
+  explosion** (DATAL3 overwrites MADEX: explosion type 0 is PERMA's 32 x 32, sprites as in levels 1-2;
+  type 6's first step draws whatever DATAL3 holds at `$3DF00`, as the Amiga does): only the smoke (48
+  x 56) uses the explosions' slot.
+- **The pool** (`tools/msxsprites.py --l3-*`): level 3's 150 ids (82 new records against palette C, 60
+  level 1's and 4 level 2's records where those memories hold the same bytes, the spark's 4); patterns
+  3,604 -> 3,944, **the pool 27 -> 28 banks** (every later block one bank on); levels 1-2's 696 index
+  entries resolve to the same record bytes. The 32 x 40 part of Cain and every frame under 48 px stay
+  sprites (decision 13; 3.5's "four play-field parts" counted that part).
+- **The play field**: 66 frames from **98h** (`lv_fid0`: the first multiple of 8 after its sprite ids):
+  18 static (the atlas, 109 lines, two banks: the lift's two parts, Cain's 48 x 16, type 21's torso, type
+  35, the truck's body and part, type 51, the rocket, a debris part), **42 in the frame cache** (Cain's
+  legs 48 x 44 x 18 and 64 x 34 x 2, his 64 x 32 x 6, type 21's legs 64 x 40 x 16), 6 smoke frames
+  (level 1's dynamic frames: level 3's own `field_dyn`, `fb_fdyt`), the lift's two parts late.
+- **The hit flash** (default 6): **white copies in the ROM**, not a conversion at the upload: 55 of
+  them (every play-field frame an L3_FLASH enemy draws: Cain, types 21, 33, 35, 51), in **colour 9**
+  (palette C's nearest to the Amiga's colour 15, (11, 11, 11): the flash is colour 15 of the Amiga's
+  palette, which is not MSX colour 15), uploaded as any cache frame. `bob.asm` `fb_add` sets the list
+  entry's bit 7 for a BM_FLASH record; `field.asm` `fb_wants` keeps it in level 3 only (`fb_fwm`, 80h),
+  so levels 1-2's lists are as before (their silhouettes stay sprites).
+- **The frame cache** (page 2 lines 160-231): **seven fixed places** (`L3_FC_PLACES`, not LRU): 0 the
+  legs, 1 Cain's 64 x 32, 2 the legs' white copies, 3 the other white copies up to 64 x 48, 4 those up
+  to 64 x 24, 5 the truck's body's white copy (80 x 48), 6 type 51's (48 x 49; places 5 and 6 overlap
+  others); the frames shown together never share a place (ENEMY_CAP 1). `fc_res` (ECF0h) keeps the
+  cache frame of each place; a copy makes the places it overlaps empty. `field.asm` `fbb_fc` /
+  `fc_find` / `fc_get`: a frame not resident is copied from its ROM bank when a piece is composed with
+  it, with the VDP idle and no command prepared (`fb_dyn`'s rule), 13-21 ms a copy (1-1.3 KiB: about 15
+  us a byte while the screen shows, the R800 the same). Its ROM: 14 banks, the header in the first one
+  (per id [normal, white], per cache frame [bank, address, place], per place [x, line, overlaps]).
+- **ROM**: **163 of 256 banks**. `place_banks` now lays out every block after level 2's atlas (the pool's
+  growth had put Brainstorm's visit-2 pictures on bank 127): level 3's map and attributes 124-126,
+  `BANK_FRONT2` 127, the visit-2 pictures 128-131, the ending's sound 132-135, level 3's tiles 136-143,
+  tables 144, atlas 145-146, frame cache 147-160, `BANK_L3` 161, `BANK_L3B` 162.
+- **Default 9**: the vats' display only in `VAT_ANIM=1` builds; there `BANK_FIELD` has no room for level
+  3's play field, so those builds leave it out (`fld_l3` empty, level 3's play-field frames out of its
+  BOBHASH: not drawn; they serve level 2's comparison).
+- **`bob.asm`**: `lv_fid0` in `bob_flush` and `bf_frame`; in level 3 (`fb_fwm`) the enemy bullets whose
+  frame is a play-field frame (the deaths' debris, the rocket) go to the play field.
+- **Free bytes** (the product): the fixed area 164 (156 + 31 from default 9 - 23), the lowest set 29;
+  `BANK_FIELD` 300 (1,108 after default 9).
+- **Big moving play-field enemies tear** (the step's stress test, `tools/bstest/l3field.tcl`): an item of
+  more than one 64 x 64 piece on the page shown is copied in several HMMMs of about 13 ms each (6.3 us a
+  byte), which no blank holds: with Cain-sized parts animating every tick, 10-14 % of the pictures show
+  him partly old, partly new on the V9958 (fewer on the V9938), type 21 about 5 %, the truck 1 %, type 51
+  none; the guard counts the copies running into shown lines. Not the cache's: its frames and places
+  are right in every picture; the same with the picture held 60 VBLANKs. Step D's (open issue).
+
 ## 4. The checks
 
 Every step: `make test` with the four known failures only; the build logs without errors or new
