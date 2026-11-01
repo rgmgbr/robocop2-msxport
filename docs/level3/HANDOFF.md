@@ -646,3 +646,100 @@ worktree's; the product, the l3 trace build, the lowest set and `VAT_ANIM=1` bui
 (`tools/bstest/build.sh`) byte-identical to the worktree's (the product `3f9e446fac3bb45a`), so every
 result above holds; `make test`: 347 tests, the 4 known failures only. The summaries, the scratch tools
 and the pictures looked at: `build/archive/rest_step5_records_2026-11-01.tar.gz`; the big records deleted.
+
+## Step 6 (plan step B): the logic (2026-11-01)
+
+**Done.** Worktree `g/wt06`, branch `g-s06`, rebased onto `level2` `a80288d` (step 5 in); scratch
+`S=$SCRATCH/g/s06`. The plan: `docs/LEVEL3.md` step B; as built: its new section 3.11.
+
+### What it did
+- **The types** (`msx/level3obj.asm`, `BANK_L3B`): 21, 22 (Cain), 33-43, 46, 47, 48, 50, 51 and 52 ported
+  from step 2's REA exports (`S2/asm`, the Ghidra provider) instruction by instruction, with `obj_push`
+  (`$EF18`), the turrets' map writes (`$EAA6`, `$EA50`, `$EBB8`), type 38's flight (level 2's `t49` copied),
+  the bank's own helpers; their tables in bank `l3b` of `analysis/amiga_tables.tsv` (19 rows).
+- **The patched bytes**: `obj22_step` = `$D583` XOR 3, `obj40_flag` = `$E9F5` XOR 42h; `tools/tracecmp.py`'s
+  field option `xor=`, both fields enabled in `analysis/amiga_ram_l3.tsv` (780 fields).
+- **The D1 Cain reads** (found here): `update_objects` hands each handler the slot before's D1 and type 22
+  tests it (`$D53A`: sound 0Eh). The port keeps it in `uo_d1`: every level-3 handler leaves its last D1
+  there (`l3_tail` after a last BOB: draw_bob's shift ror 4 | 0FCAh, or y - camera y when out; `$B0A`'s
+  nibble is ~camera x & 15, so the shift is (x + 1) & 15), types 4 and 12 and the deaths through
+  `level3.asm`'s `t4_w`, `t12_w`, `d3_c31e`, `d3_c35a` (the deaths' last explosion's y too); slot 0's is
+  `read_joystick`'s (negative).
+- `msx/mapobj.asm` `act_20` (`ao_acts` entry 8), `msx/special.asm` `spl_two` (the lift's two parts when AG
+  `$8050` = 2), `msx/hits.asm` the rocket (bullet 11h) x 1 (default 11); types 38, 39, 52's 18h x 1 (12).
+- **The drives** (`tools/l3drives.py`): `park`, `boss`, `kill` (a natural kill: Cain followed down through
+  act_20's three floor pieces, shot on the ground floor; energy and lives poked, no god mode) and `cont3`'s
+  reference; `hz.tcl` `hz_l3_jobs` (16 jobs), `hz.sh` (the `l3c` build, the level-3 `JOBS`).
+- **cont3's bench fault**: its drive's fire came after the game frames stop at the death's end (row 149):
+  the offer went unanswered, the title came, and the title's text plot (`$11062` through `$725A2`) wrote
+  80h into chip RAM's mirror of the message slots (`$10FD9F` = `$FD9F`), whose ticker then read a string at
+  `$800000`, unmapped on the bench (open bus on an A500). Fire now at 140-159. Then the continue's one
+  difference, the palette flash's countdown (`$F826`, 2 against 4 after the continue): the original takes
+  two `pl_fade` steps between the death's end and the continued game (`$82A8`'s `$FEDA`, `$FEFC`; the
+  continue's text `$10768`, `$1080C`), the port none: `msx/front.asm` `fo_flash` at `front_over`'s start and
+  at `front_cont`'s text (both levels; level 2's countdown is idle there, its traces unchanged).
+- `tools/mapcells.py --level 3`: type 36's shafts (the 22 cells of 2D00h that `t36_w` holds as constants)
+  checked against the map and every writer. `analysis/main_8000.sym` (`text_plot` `$11062`, `$D53A`, `$B0A`)
+  and the seeds. `tests/test_level2_rom.py`: the damage rule with the rocket and the touches.
+
+### Commits
+- On `g-s06` (rebased onto `a80288d`): `163d065` (the types, act_20, the lift, the rocket, xor=), `bedd287`
+  (park, boss, kill and their jobs), `df6b7ab` (cont3: the drive, `fo_flash`, the l3c build and jobs),
+  `09e4fd3` (the findings, mapcells' shafts), `92a6106` (LEVEL3.md 3.11, HARNESS.md 5.28, the test), and
+  this note's.
+
+### Checks (each with its command and result; `R` = `$S/R2`, `PY` the venv's Python)
+- The builds: `sh tools/bstest/hz.sh l3builds $S/R2` (l3 `e5841d12d0689e79`, l3c `89ba0ac2d0384657`), the
+  product `sh tools/bstest/build.sh $S/R2/prod/rc2.rom` (`fb06ae0faab13802`: 2 MiB, level 3's code in bank
+  161, its types in 162), the lowest set `DIAG=1 PZ_TEST=1` (`ca449cce9180c21e`): mkrom's checks passed, the
+  12 known z80asm warnings only.
+- Free bytes (`python3 -I tools/bstest/l2base.py banks $S/R2`): fixed area 164 in the product, 29 in the
+  lowest set (as step 5 left them: this step adds nothing there); LC1 50 (- 4: the rocket), LC2 4,827 (- 15:
+  `act_20`), LC3 4,794 (- 72: the lift), FRONT 1,119 (- 24: `fo_flash`; the lowest set 721), `BANK_L3` 3,867
+  (- 46: the wrappers), **`BANK_L3B` 2,383** (5,662 used).
+- The references: `python3 -I tools/l3drives.py refs park boss kill cont3` then `check`: "references: 6 of
+  6 as expected" (`park` 1,201 rows `6614e02d98a2f6b5`, `boss` 1,401 `6454a63800dea384`, `kill` 1,861
+  `83ff8fd40281d2af`, `cont3` 401 `094defd80670fc84`; `tour3`, `beam` as at step A). `l3stub.py` has no stub
+  left: the plain references are compared.
+- **Level 3's traces** (private MCP session `tools/bstest/mcpd.py $S/mcp`, `mx.sh`): `hz_chain [hz_l3_jobs
+  {$S/O5} {$S/R2} tr] MARK`, then `sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv $S/O5
+  $S/R2` -> **"level 3: PASS (16 traces)"**: `tour3`, `park`, `boss`, `kill`, `cont3` each on C-BIOS_MSX2, the
+  FS-A1FX and the FS-A1GT, and `beam`, every row 0 differ in 780 fields (kill to the level's end, row 1860;
+  cont3 through the continue at row 150), lost counters 0 (pools at most 66/60 of 255).
+- Level 1: `sh tools/bstest/hz.sh trace $S/R2/trace`, `hz_regress ... tr`, `sh tools/bstest/hz.sh compare
+  $S/R2/trace` -> cov1 4,401 rows, cov0 and cov0_tr 1,400, 948 fields 0 differ: "regression: PASS".
+- Level 2: `sh tools/bstest/hz.sh l2builds $S/R2`, `hz_chain [hz_l2_jobs {$S/O5/l2} {$S/R2} tr] MARK`, `sh
+  tools/bstest/hz.sh compare --fields analysis/amiga_ram_l2.tsv $S/O5/l2 $S/R2` -> **"level 2: PASS (23
+  traces)"** (1,022 fields, the continues on three machines and `flow_l2_end` included).
+- ENEMY_CAP with level 3's types: `build.sh $S/R2/cap/rc2_cap.rom EXTJOY=1 LV_TEST=3` (ENEMY_CAP 1,
+  DAMAGE_X 2) on `kill`'s drive, 2,600 ticks: Cain in slot 0 from tick 150, his bombs and missiles (38, 39,
+  52: not counted) beside him, his falls through the three pieces (y 56, 255, 416, 578, 719), his death at
+  about 1780, the ending and the title; lost counters 0.
+- The frames: the bench's `--bobs` log of `tour3`, `park`, `boss` and `kill` draws 178 distinct frames
+  (address, BLTSIZE), **all in step 5's catalogue** (`build/sprites/catalog_l3.json`, 212).
+- `python3 -I tools/mapcells.py build/ram/level3_full.bin analysis/amiga_tables.tsv build/msx/level3.atrp
+  160 50 --level 3` -> 216 cells, "type 36's shafts: 22 cells of 2D00h, as SHAFTS_L3, no writer's".
+- `make test`: 347 tests, the 4 known failures only.
+
+### For step D
+- **The windows** of the new drives (`build/emu/l3_<drive>.drive`, ticks = rows): `park` 0-1200 (the street
+  and the trucks 40-240, floor 35 under the turrets 250-600: rockets from 330, the car park's ground floor
+  600-1100); `boss` 0-1400 (the roof 50-260 with Cain from about 125 and his bursts until 425, floor 20
+  300-600, act_20's pieces open at about 600, 1000 and 1400, floor 30 625-1000 with the homing missiles,
+  floor 40 1025-1400); `kill` 0-1860 (boss's route, the ground floor 1500-1770: Cain hurt from about 1600,
+  dead at about 1765, the end count to 1860); `cont3` (the beam's death, the game over at 149, the
+  continue, level 3 again from 150). Checks 3-5 (`fieldcheck.py --level 3`, `l3field.tcl`) can run there now.
+- The sound (check 6): Cain's 0Eh depends on the D1 above; the traces' `snd_b2c`-`snd_b31` already match
+  the bench on all 16 traces.
+- The continue: `fo_flash` covers a game over with a credit; the original's high-score entry (`$12082`)
+  calls `pl_fade` too (`$12112`, `$121E0`), which a flash running at the death's end of a qualifying score
+  would also count down (not traced: no drive reaches it).
+- The two-part lift's frames (`$5397C` 743h, `$53BC0` 403h) and the rocket's are drawn by the logic now:
+  step 5's catalogue holds them.
+
+### Open issues
+- The D1 that Cain reads is emulated where it can come from in level 3; with the joystick locked (`$804D`)
+  slot 0's D1 would be `eb_update`'s leftover, which the port takes as negative (no drive reaches it).
+- A marker spawn into the slot before Cain's on the frame he runs leaves the original's D1 at the marker's
+  y, the port's at 20h + 8 x step (`objects.asm` `uf_mk`): it changes nothing while type 43 (markers off,
+  the roof) has run, as in every drive here.
