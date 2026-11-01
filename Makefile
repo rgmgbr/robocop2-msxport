@@ -30,7 +30,7 @@ pics: extract
 ram: extract
 	$(PYTHON) -I tools/ramimage.py $(X) $(BUILD)/ram/level1 RB1 MU1 DATAL1 SPERMA PERMA
 	$(PYTHON) -I tools/ramimage.py $(X) $(BUILD)/ram/level2 RB1 MU1 DATAL2 MADEX SPERMA PERMA
-	$(PYTHON) -I tools/ramimage.py $(X) $(BUILD)/ram/level3 RB1 MU1 DATAL3 PERMA
+	$(PYTHON) -I tools/ramimage.py $(X) $(BUILD)/ram/level3 RB1 MU1 SPERMA DATAL3 PERMA
 
 seeds: extract
 	$(PYTHON) -I tools/ghidra_seeds.py $(X)/boot/main_8000.bin analysis/main_8000.sym analysis/ghidra_seeds.tsv
