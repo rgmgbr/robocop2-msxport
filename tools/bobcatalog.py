@@ -19,6 +19,16 @@ L2_HARD (REA: what the scan cannot follow) and the frames of level 1's bench cov
 level 2's RAM image holds too (shared code drawing MADEX, SPERMA and PERMA frames). The level-1
 catalogue (catalog) is unchanged: tools/msxsprites.py's level-1 input stays byte-identical.
 
+Level 3's catalogue (level3, docs/LEVEL3.md 2.7 and 3.5): the frames level 3 draws, for tools/msxsprites.py
+--pool. Most level-3 draw sites index PC-relative word tables that the scan does not follow (or follows
+with the wrong BLTSIZE), so the catalogue is built from REA's reading of each type's draw code (L3_HARD:
+every table of types 21, 22, 33-39, 50-52, the lift's two parts and the shared types 4 and 12), the bullet
+types level 3 fires (L3_BULLETS, with $F3CE's animation: offsets 0, step, ... up to the first past the
+limit), the explosion types it spawns (L3_EXPL, $F140/$F1C6 by $F3BC/$F3C5), its pickups (L3_PICKUPS,
+$F964), the frames of level 1's bench coverage that lie in PERMA with the same bytes in level 3's image
+(RoboCop's shots and effects), and the bench's coverage of level 3 (--drawn: every frame it drew must be in
+the catalogue; the ones the tables above do not explain are listed).
+
 usage:
   bobcatalog.py catalog            -> build/sprites/catalog.json
   bobcatalog.py sheets [CATALOG]   -> build/sprites/<level>_<routine>.png
@@ -26,6 +36,10 @@ usage:
                                    -> build/sprites/catalog_l2.json (COV1: level 1's bench coverage,
                                       default build/emu/cov_level1.json; COV2: level 2's, whose
                                       frames must all be in the catalogue)
+  bobcatalog.py level3 [--shared COV1.json] [--drawn COV3.json] [-o OUT.json]
+                                   -> build/sprites/catalog_l3.json (COV3: level 3's bench coverage,
+                                      tools/amigacov.py --level 3 "bobs", or a list of [addr, BLTSIZE,
+                                      count] such as the boss drives' l3_frames_drawn.json)
 """
 from __future__ import annotations
 
@@ -88,6 +102,82 @@ BULLETS = (0xF4A4, 0xF500, 0xF55C)     # ebullet_add $F5BC / $F3CE: per type t (
 L2_NEVER = {(0x5397C, 32, 29), (0x53BC0, 32, 16)}   # the lift's level-3 parts ($8DE6 at $8EE8/$8EFE:
                                        # special_lift $8EB0's, level 3; msx/level1_frames.json drops them
                                        # too): level 2's lifts draw $4B68A only (REA, its bench coverage)
+
+
+# level 3 (REA on build/ram/level3_full.bin, docs/LEVEL3.md 2.4-2.7): the object types of its spawn list
+# $99E2 and of its markers $C624, its bullet types, explosion types and pickups
+L3_TYPES = {4, 12, 21, 22, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 47, 48, 50, 51, 52}
+DATAL3 = (0x28000, 0x5540C)
+L3_BULLETS = (3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22)   # (2.6: types 34-37, 41, 50, 51
+                                       # fire 3; 21 5 and 6; 22 9 and 0Ah; the deaths 0Bh-10h, 12h-14h; 40
+                                       # and 42 11h; 33 16h. Types 1, 2, 4, 7, 8, 15h are other levels')
+L3_EXPL = (0, 1, 4, 6, 7)              # the explosion types whose frames the bench drew in level 3 ($F366's
+                                       # D5: steps $F3BC[t]..$F3C5[t] of $F140 (BLTSIZE) / $F1C6 (gfx))
+L3_PICKUPS = (8, 16, 24, 28, 32)       # what its crates and turrets drop ($AA3A's entries 2-11, types 40/42)
+EXPL_STEPS = (0xF3BC, 0xF3C5, 0xF140, 0xF1C6)
+PICKUPS = 0xF964
+# Level 3's frames by REA (the draw code of each type, docs/LEVEL3.md 2.4-2.5): (proc, site, base,
+# offsets, BLTSIZE, evidence) as L2_HARD's
+L3_HARD = (
+    ("obj22_update", 0xD636, 0x3BFC0, ("u", 0xD7EE, 16), 0xB04,
+     "REA $D49C: Cain's legs walking, $3BFC0 + $D7EE[step + 10h facing left] (48 x 44)"),
+    ("obj22_update", 0xD636, 0x3E900, (0, 0x54D8), 0xB04,
+     "REA $D49C: Cain standing ($16DA), $3BFC0 + 2940h + $D7EE[0 / 10h]"),
+    ("obj22_update", 0xD636, 0x3EE28, (0, 0x54D8), 0x885,
+     "REA $D49C: Cain falling (-60h,A3), $3BFC0 + 2E68h + $D7EE[0 / 10h] (64 x 34)"),
+    ("obj22_update", 0xD678, 0x40278, (0, 0x1E0, 0x54D8, 0x54D8 + 0x1E0), 0x404,
+     "REA $D49C: Cain's 48 x 16 part, $40278 + $D80E[8 x side] (+1E0h when $B00 & 5Ch is 0)"),
+    ("obj22_update", 0xD6A8, 0x40638, ("u", 0xD79A, 4), 0xA03,
+     "REA $D49C: Cain's 32 x 40 part, $40638 + $D79A[4 x side + 2 x hit look ($16D9)]"),
+    ("obj22_update", 0xD6E4, 0x3F378, ("u", 0xD80E, 8), 0x805,
+     "REA $D49C: Cain's 64 x 32 part, $3F378 + $D80E[fire counter + 8 x side]"),
+    ("obj22_update", 0xD790, 0x412B8, (0, 0xA0, 0x54D8, 0x54D8 + 0xA0), 0x402,
+     "REA $D49C: Cain's muzzle flash, $412B8 + $D7CA[side] (+A0h when $B32 is negative)"),
+    ("obj21_update", 0xD372, 0x46970, ("u", 0xD44C, 16), 0xA05,
+     "REA $D2FA: type 21's legs, $46970 + $D44C[step + 10h facing right] (64 x 40)"),
+    ("obj21_update", 0xD3A2, 0x49B70, (0, 0x3688), 0x704, "REA $D2FA: type 21's torso (+3688h facing right)"),
+    ("obj21_update", 0xD3E8, 0x6CDA0, (0, 0x140), 0x403, "REA $D2FA: type 21's muzzle flash (+140h)"),
+    ("obj21_update", 0xD418, 0x49EB8, (0, 0x3688), 0x403, "REA $D2FA: type 21's head (+3688h facing right)"),
+    ("obj33_update", 0xE0F8, 0x4F00C, (0,), 0xC06, "REA $E0A4: the truck's body (80 x 48)"),
+    ("obj33_update", 0xE11A, 0x4F96C, (0, 0x1E0), 0x603, "REA $E0A4: the truck's back wheel (+1E0h)"),
+    ("obj33_update", 0xE140, 0x4FD2C, (0, 0x1E0), 0x603, "REA $E0A4: the truck's front wheel (+1E0h)"),
+    ("obj33_update", 0xE162, 0x4E684, (0,), 0xC83, "REA $E0A4: the truck's cab (32 x 50)"),
+    ("obj33_update", 0xE188, 0x4EA6C, (0, 0x2D0), 0x604, "REA $E0A4: the truck's 48 x 24 part (+2D0h)"),
+    ("obj34_update", 0xE246, 0x500EC, ("u", 0xE1B2, 5), ("t", 0xE1A8),
+     "REA $E1D6: type 34's top by aim_cell's direction, A4 = $E1A0 + $E1C6[D3]: $500EC + (12h,A4), BLTSIZE (8,A4)"),
+    ("obj34_update", 0xE268, 0x500EC, (0, 0xA0), 0x203, "REA $E1D6: type 34's middle (+A0h)"),
+    ("obj34_update", 0xE288, 0x5022C, (0, 0xA0), 0x203, "REA $E1D6: type 34's feet (+A0h)"),
+    ("obj35_update", 0xE334, 0x4E080, ("u", 0xE352, 2), ("t", 0xE34A),
+     "REA $E28C: type 35 risen, $4E080 + $E352[k], BLTSIZE $E34A[k] (48 x 18, 48 x 28)"),
+    ("obj35_update", 0xE346, 0x4E080, (0,), 0x203, "REA $E28C: type 35 sunk (32 x 8)"),
+    ("obj35_update", 0xE308, 0x6CEE0, (0,), 0x403, "REA $E28C: type 35's muzzle flash"),
+    ("obj36_update", 0xE3B8, 0x5338C, (0, 0x2F8), 0x983, "REA $E356: type 36's body (+2F8h facing left)"),
+    ("obj36_update", 0xE442, 0x5171C, (0x690, 0x230, 0x460, 0x8C0), 0x703,
+     "REA $E356: type 36's legs, $5171C + $E452[(step & 2) + 6 facing left] (32 x 28)"),
+    ("obj37_update", 0xE5B6, 0x50BDC, (0, 0x140, 0xA0, 0x1E0), 0x402,
+     "REA $E470: type 37's first rotor, $50BDC + $E642[D4] + $E66C[$B00 & 6], drawn while $B00 & 14h is 0 "
+     "(steps 0 and 1 only), D4 0 and 4 ($E65A non-zero)"),
+    ("obj37_update", 0xE5EA, 0x50F9C, (0, 0x140, 0x280, 0xA0, 0x1E0, 0x320), 0x402,
+     "REA $E470: type 37's second rotor, $50F9C + $E642[D4] + $E66C[$B00 & 6]"),
+    ("obj37_update", 0xE638, 0x513FC, (0, 0x140, 0x280, 0xA0, 0x1E0, 0x320), 0x402,
+     "REA $E470: type 37's gun, $513FC + $E642[D4] + $E66C[$B00 & 6], D4 0 and 4 ($E64E non-zero)"),
+    ("obj37_update", 0xE600, 0x525CC, ("u", 0xE648, 3), 0x803, "REA $E470: type 37's body, $525CC + $E648[D4]"),
+    ("obj38_update", 0xE782, 0x4D680, ("u", 0xE7B2, 16), 0x402, "REA $E6D6: type 38, 16 directions $E7B2"),
+    ("obj39_update", 0xE88A, 0x4D680, ("u", 0xE808, 3), 0x402, "REA $E7D2: type 39, $4D680 + $E808[k]"),
+    ("obj52_update", 0xE95A, 0x4D680, ("u", 0xE808, 3), 0x402, "REA $E8A2: type 52, as type 39's"),
+    ("obj50_update", 0xEF14, 0x53D00, (0,), 0x983, "REA $EEE2: type 50 (32 x 38)"),
+    ("obj51_update", 0xEEDE, 0x54390, (0, 0x5BE), 0xC44, "REA $EE68: type 51 (48 x 49, +5BEh)"),
+    ("FUN_00008de6", 0x8EE8, 0x5397C, (0,), 0x743, "REA $8DE6: the lift's top part in level 3 ($8ED2, 32 x 29)"),
+    ("FUN_00008de6", 0x8EFE, 0x53BC0, (0,), 0x403, "REA $8DE6: the lift's bottom part in level 3 (32 x 16)"),
+    ("obj04_update", 0xCFCA, 0x5860A, (0,), 0x743, "REA $CFB0 (level 2's catalogue): type 4's legs"),
+    ("obj04_update", 0xD040, 0x57192, ("s", 0xD066, 8), ("t", 0xD096),
+     "REA $CFB0 (level 2's catalogue): type 4's torso by aim, $57192 + $D066[aim], BLTSIZE $D096[aim]"),
+    ("obj04_update", 0xD000, 0x6C620, tuple(0xA0 * k for k in range(8)), 0x402,
+     "REA $CFF0 (level 2's catalogue): type 4's muzzle flash $6C620 + aim x 0A0h"),
+    ("obj12_update", 0xCF30, 0x567F6, (0,), 0x6C3, "REA $CEF8 (level 2's catalogue): type 12's legs"),
+    ("obj12_update", 0xCF92, 0x56076, (0, 0x280, 0x500), 0x803, "REA $CEF8 (level 2's catalogue): type 12's torso"),
+    ("obj12_update", 0xCF5C, 0x6C940, (0,), 0x402, "REA $CEF8 (level 2's catalogue): type 12's muzzle flash"),
+)
 
 
 def proc_levels(main: bytes) -> dict[int, set[str]]:
@@ -433,6 +523,86 @@ def cmd_level2(argv: list[str]) -> int:
     return 0
 
 
+def drawn_list(path: Path) -> list[tuple[int, int]]:
+    """(frame, BLTSIZE) of a bench coverage: tools/amigacov.py's "bobs", or a list of [addr, BLTSIZE, count]."""
+    j = json.loads(path.read_text())
+    if isinstance(j, dict):
+        return [(b["addr"], b["bltsize"]) for b in j["bobs"]]
+    return [(int(e[0]), int(e[1])) for e in j]
+
+
+def cmd_level3(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="bobcatalog.py level3")
+    ap.add_argument("--shared", type=Path, action="append", default=[],
+                    help="level 1's bench coverage (default build/emu/cov_level1.json): its PERMA frames with the "
+                         "same bytes in level 3's image")
+    ap.add_argument("--drawn", type=Path, action="append", default=[],
+                    help="level 3's bench coverage (tools/amigacov.py --level 3, or [addr, BLTSIZE, count] lists): "
+                         "every frame must be listed")
+    ap.add_argument("-o", "--out", type=Path, default=OUT / "catalog_l3.json")
+    a = ap.parse_args(argv)
+    procs = load_procs()
+    main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
+    ram1 = (ROOT / LEVELS["level1"][0]).read_bytes()
+    ram3 = (ROOT / LEVELS["level3"][0]).read_bytes()
+    refs, seen, src = [], set(), {}
+
+    def add(proc: int, name: str, site: int, frames: list[tuple[int, int]], evidence: str) -> None:
+        sizes: dict[int, list[int]] = {}
+        for f, d4 in frames:
+            sizes.setdefault(d4, []).append(f)
+        for d4, fs in sizes.items():
+            w, h = ((d4 & 63) - 1) * 16, d4 >> 6
+            fs = [f for f in dict.fromkeys(fs) if 0x10000 <= f <= len(ram3) - 5 * (w // 8) * h and (f, w, h) not in seen]
+            if not fs:
+                continue
+            seen.update((f, w, h) for f in fs)
+            src.update({(f, w, h): name for f in fs})
+            refs.append({"proc": proc, "proc_name": name, "site": site, "base": fs[0], "adjust": [], "table": None,
+                         "ltable": None, "bltsize": d4, "width": w, "height": h, "frames": fs, "level": "level3",
+                         "evidence": evidence})
+
+    for name, site, base, offsets, d4, evidence in L3_HARD:
+        proc = next((p for p, (n, _) in procs.items() if n == name), 0)
+        add(proc, name, site, table_frames(main, base, offsets, d4), evidence)
+    gfx, blt, anim = BULLETS
+    for t in L3_BULLETS:
+        g, d4 = struct.unpack_from(">L", main, gfx + 4 * t - 0x8000)[0], struct.unpack_from(">H", main, blt + 4 * t - 0x8000)[0]
+        step, lim = struct.unpack_from(">hh", main, anim + 4 * t - 0x8000)
+        n = 1 if step <= 0 else lim // step + 2             # ($F426: the offset grows by the step while it
+        add(0xF3CE, "FUN_0000f3ce", 0xF488, [(g + k * max(step, 0), d4) for k in range(n)],   # is at most the
+            f"REA $F3CE: bullet type {t:X}h ($F4A4/$F500/$F55C + {4 * t})")                    # limit, then 0)
+    first, last, bl, gf = EXPL_STEPS
+    for t in L3_EXPL:
+        k0, k1 = main[first + t - 0x8000], main[last + t - 0x8000]
+        add(0xF080, "FUN_0000f080", 0xF12A,
+            [(struct.unpack_from(">L", main, gf + 4 * k - 0x8000)[0], struct.unpack_from(">H", main, bl + 2 * k - 0x8000)[0])
+             for k in range(k0, k1 + 1)],
+            f"REA $F080: explosion type {t}, steps {k0}-{k1} ($F3BC/$F3C5; $F140 BLTSIZE, $F1C6 gfx)")
+    add(0xF900, "FUN_0000f900", 0xF95C,
+        [(struct.unpack_from(">L", main, PICKUPS + t - 0x8000)[0], 0x402) for t in L3_PICKUPS],
+        "REA $F900: the pickups level 3 drops ($F964 + type)")
+    shared = lambda f, w, h: frame_bytes(ram1, f, w, h) == frame_bytes(ram3, f, w, h)  # noqa: E731
+    for path in a.shared or [ROOT / "build/emu/cov_level1.json"]:
+        frames = [(f, d4) for f, d4 in drawn_list(path) if PERMA[0] <= f < PERMA[1]
+                  and shared(f, ((d4 & 63) - 1) * 16, d4 >> 6)]
+        add(0, "drawn", 0, frames, f"level 1's bench coverage ({path.name}): PERMA, the same bytes in level 3")
+    unexplained = []
+    for path in a.drawn:
+        frames = [(f, d4) for f, d4 in drawn_list(path) if (f, ((d4 & 63) - 1) * 16, d4 >> 6) not in seen]
+        unexplained += frames
+        add(0, "drawn", 0, frames, f"level 3's bench coverage ({path.name})")
+    a.out.parent.mkdir(parents=True, exist_ok=True)
+    a.out.write_text(json.dumps({"refs": refs}, indent=1))
+    own = {k for k in seen if DATAL3[0] <= k[0] < DATAL3[1]}
+    print(f"{a.out}: {len(refs)} references, {len(seen)} distinct frames ({len(own)} in DATAL3, "
+          f"{len(seen) - len(own)} shared)")
+    if unexplained:
+        print(f"  {len(unexplained)} frames of the coverage the tables do not explain (taken as drawn): "
+              + ", ".join(f"{f:X}:{d4:04X}" for f, d4 in unexplained))
+    return 0
+
+
 def cmd_sheets(catalog: Path | None = None) -> int:
     cat = json.loads((catalog or OUT / "catalog.json").read_text())
     main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
@@ -481,5 +651,7 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "catalog"
     if cmd == "level2":
         raise SystemExit(cmd_level2(sys.argv[2:]))
+    if cmd == "level3":
+        raise SystemExit(cmd_level3(sys.argv[2:]))
     raise SystemExit(cmd_catalog() if cmd == "catalog" else
                      cmd_sheets(Path(sys.argv[2]) if len(sys.argv) > 2 else None))
