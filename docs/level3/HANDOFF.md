@@ -1220,3 +1220,11 @@ This section's only (`docs/level3/HANDOFF.md`, `docs/LEVEL3.md` 3.10's note); no
    the V9938 in the kill window (the table above; one picture each time, the item partly old for a
    frame). Not fixable by the chain's order or start from the existing interrupts (the volume, above);
    the levers: a (a step of its own, both engines) or c (the user's choice).
+
+### Integrated
+Cherry-picked onto `level2` `75499b1` (step 8's; the main tree clean) as **`05f4fbe`** (this section after
+step 8's, `LEVEL3.md` 3.10's note, step 8's whole-drive guard cited) and this note's. In the main tree then:
+the product `8f87721ef2ad3f2a` (step 8's: no code changed here), the l3 trace build `2a663a471c3577a9` (step
+8's `frontx.asm` only), the lowest set `82db068352bc89a9`; free bytes the same (the fixed area 164, the lowest
+set 29, `BANK_FIELD` 49, 8 in the l3 trace build); the boss window's guard on the FS-A1FX and the FS-A1GT
+line for line the same as at `03ba0ca` (tear 15 and 22; ticks 368 and 587).
