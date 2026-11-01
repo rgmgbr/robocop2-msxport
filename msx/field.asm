@@ -2753,35 +2753,61 @@ fcg_on: inc hl
         call bank_8000
         pop bc                      ; B = the place's x, C = its line
         push bc
-        ex de,hl
-fcg_ln: push hl                     ; VRAM 10000h (page 2) + line * 128 + x / 2
-        ld a,c
-        srl a
-        ld h,a
-        ld a,c
+        ex de,hl                    ; HL = its pixels
+        ld a,c                      ; DE = its first line's address, VRAM 10000h + line * 128 + x / 2:
+        srl a                       ;  every place lies in page 2's lines 128-255 (FC_TOP_l3, FC_END_l3:
+        ld d,a                      ;  checked below), so R#14 stays 5 and line / 2 is A13..A8 with the
+        ld a,c                      ;  write flag (40h)
         rrca
         and 0x80
-        ld l,a
+        ld e,a
         ld a,b
         srl a
-        or l
-        ld l,a
+        or e
+        ld e,a
+        push ix
+        push hl
+        ex de,hl
         ld e,1
-        push bc
-        call vram_write
-        pop bc
-        pop hl
-        push bc
+        call vram_write             ; R#14 = 5 and vram_busy once (the interrupts write no VRAM and
+        ld a,(fc_bpl)               ;  leave R#14 alone, sprites.asm spr_wr); IX = the OUTIs of a
+        and 0xFE                    ;  line's first half (outi32 + 64 - 2 x its bytes, half the
+        cpl                         ;  line's), IY = its second half's (one more for an odd count:
+        add a,65                    ;  an odd entry would fall into an OUTI's middle)
+        ld e,a
+        ld d,0
+        ex de,hl                    ; (DE = the address)
+        ld bc,outi32
+        add hl,bc
+        push hl
+        pop ix
         ld a,(fc_bpl)
-        ld b,a
+        rra
+        jr nc,fcg_ev
+        dec hl
+        dec hl
+fcg_ev: push hl
+        pop iy
+        pop hl                      ; HL = its pixels
         ld c,VDP_DATA
-        otir
-        pop bc
-        inc c
-        ld a,(fc_lines)
+fcg_ln: di                          ; a line: its address (two bytes), its bytes in two halves (18
+        ld a,e                      ;  T-states a byte, the sprite engine's rate), the next line's
+        out (VDP_CTRL),a            ;  address 128 bytes on
+        ld a,d
+        out (VDP_CTRL),a
+        ei
+        call fcg_jx
+        call fcg_jy
+        ld a,e
+        add a,0x80
+        ld e,a
+        jr nc,fcg_nc
+        inc d
+fcg_nc: ld a,(fc_lines)
         dec a
         ld (fc_lines),a
         jr nz,fcg_ln
+        pop ix
 fcg_dn: call vram_done              ; (fcg_ld, fcg_dn: the harness's marks of a copy)
 fcg_ok: pop de                      ; D = x, E = line
         pop af
@@ -2793,6 +2819,16 @@ fcg_bz: pop de
         call bank_8000
         scf
         ret
+fcg_jx: jp (ix)                     ; (fcg_ln: a line's halves, sprites.asm outi32 from their entries)
+fcg_jy: jp (iy)
+        if 128 > FC_TOP_l3
+fc_top_err:                         ; (an error: fc_get's lines need the cache's places in page 2's
+fc_top_err:                         ;  lines 128-255, tools/msxsprites.py L3_FC_PLACES)
+        endif
+        if FC_END_l3 > 256
+fc_end_err:
+fc_end_err:
+        endif
         endif
 
 ; Phase FP_COPY: the next part of the piece from the scratch onto its page (HMMM; the V9958's ring

@@ -1,8 +1,12 @@
 """The field engine's arithmetic of performance campaign 2 (docs/PERF2_PLAN.md): field-2's tile burst (msx/field.asm
 fb_tiles, ftl_ax: a cell's part in a piece by 8-bit arithmetic on the piece's corner) against the 16-bit clip it
-replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell. Stdlib only."""
+replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell; FC-UPLOAD's line loop (fc_get:
+R#14 set once, the frame cache's places in page 2's lines 128-255, a line's bytes in two halves of sprites.asm's
+outi32 chain, an odd count's extra byte in the second). Stdlib only."""
 from __future__ import annotations
 
+import ast
+import json
 import re
 import unittest
 from pathlib import Path
@@ -81,6 +85,73 @@ class TileBurstTests(unittest.TestCase):
         cold = [l.split(";")[0].strip() for l in (ROOT / "msx" / "cold.asm").read_text().splitlines()]
         calls = [cold[k + 1] for k, l in enumerate(cold) if l == "ld hl,field_upload"]
         self.assertEqual(sorted(calls), ["call front2_call", "jp front2_call"])
+
+
+def converter_constant(name: str):
+    """A constant of tools/msxsprites.py, read from its source (no numpy needed)."""
+    for node in ast.parse((ROOT / "tools/msxsprites.py").read_text()).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise KeyError(name)
+
+
+def halves(count: int) -> tuple[int, int]:
+    """fc_get's entries into outi32 for a line of 'count' bytes, as the Z80 computes them: IX's offset
+    (and 0xFE, cpl, add a,65) and IY's (two less for an odd count)."""
+    a = ((~(count & 0xFE)) + 65) & 0xFF
+    return a, a - 2 if count & 1 else a
+
+
+class CacheUploadTests(unittest.TestCase):
+    def test_the_places_lie_in_page_2s_lines_128_255(self):
+        for x, y, w, h in converter_constant("L3_FC_PLACES"):
+            self.assertTrue(128 <= y and y + h <= 256 and x % 2 == 0 and x + w <= 256, (x, y, w, h))
+            self.assertLessEqual(w, 128)                        # (64 bytes a line at most: two halves of 32)
+
+    def test_the_assembly_checks_them(self):
+        f = [l.split(";")[0].strip() for l in (ROOT / "msx/field.asm").read_text().splitlines()]
+        for cond, label in (("if 128 > FC_TOP_l3", "fc_top_err:"), ("if FC_END_l3 > 256", "fc_end_err:")):
+            k = f.index(cond)
+            self.assertEqual(f[k + 1:k + 4], [label, label, "endif"])
+        src = (ROOT / "tools/msxsprites.py").read_text()
+        self.assertIn('FC_TOP: equ {min(y for _, y, _, _ in L3_FC_PLACES)}', src)
+        self.assertIn('FC_END: equ {max(y + h for _, y, _, h in L3_FC_PLACES)}', src)
+        inc = ROOT / "build/msx/sprites_l3_field.inc"
+        if inc.exists():                                       # (a conversion: its equates as the places)
+            q = {m[1]: int(m[2]) for m in re.finditer(r"^(FC_TOP|FC_END): equ (\d+)", inc.read_text(), re.M)}
+            places = converter_constant("L3_FC_PLACES")
+            self.assertEqual(q, {"FC_TOP": min(p[1] for p in places), "FC_END": max(p[1] + p[3] for p in places)})
+
+    def test_the_halves_of_every_line(self):
+        for count in range(1, 65):
+            ix, iy = halves(count)
+            n1, n2 = (64 - ix) // 2, (64 - iy) // 2
+            self.assertTrue(ix % 2 == 0 and iy % 2 == 0 and 0 <= iy <= ix <= 64, count)   # (an OUTI's start)
+            self.assertEqual((n1, n2), (count >> 1, count - (count >> 1)), count)
+
+    def test_the_loop_is_the_one_modelled(self):
+        body = code("field.asm", "fcg_ld", "fcg_dn")
+        k = body.index("ld a,(fc_bpl)", body.index("call vram_write"))
+        self.assertEqual(body[k:k + 4], ["ld a,(fc_bpl)", "and 0xFE", "cpl", "add a,65"])
+        self.assertEqual(body[k + 4:k + 18], ["ld e,a", "ld d,0", "ex de,hl", "ld bc,outi32", "add hl,bc", "push hl",
+                                              "pop ix", "ld a,(fc_bpl)", "rra", "jr nc,fcg_ev", "dec hl", "dec hl",
+                                              "push hl", "pop iy"])
+        loop = body[body.index("ld c,VDP_DATA") + 1:]
+        self.assertEqual(loop[:8], ["di", "ld a,e", "out (VDP_CTRL),a", "ld a,d", "out (VDP_CTRL),a", "ei",
+                                    "call fcg_jx", "call fcg_jy"])
+        self.assertNotIn("otir", body)
+        self.assertNotIn("call vram_write", loop)
+        self.assertEqual(code("field.asm", "fcg_jx", "fcg_jy"), ["jp (ix)"])
+        chain = code("sprites.asm", "outi32", "pend_commit")
+        self.assertEqual([l for l in chain if l != "outi"], ["ret"])
+        self.assertEqual(chain, ["outi"] * 32 + ["ret"])         # (two bytes an OUTI: the entries' arithmetic)
+
+    def test_every_cache_frame_fits_a_line(self):
+        j = ROOT / "build/msx/sprites_l3.json"
+        if not j.exists():
+            self.skipTest("needs make msx (the pool with level 3)")
+        for c in json.loads(j.read_text())["fc"]:
+            self.assertTrue(c["w"] % 2 == 0 and c["w"] // 2 <= 64, c)
 
 
 if __name__ == "__main__":

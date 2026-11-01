@@ -584,7 +584,14 @@ which as sprites were striped, cut or left out.
     place, and a copy empties the places it overlaps. `field.asm` `fbb_fc`, `fc_find` and `fc_get`
     copy a frame that is not resident from its ROM bank when a piece is composed with it, with the VDP
     idle and no command prepared (`fb_dyn`'s rule): 13-21 ms a copy (1-1.3 KiB), the main loop
-    stopped meanwhile. The cache's ROM (`L3_FC`, 11 banks since field-1, 14 before) begins with a
+    stopped meanwhile. Since performance campaign 2's FC-UPLOAD (`docs/PERF2_PLAN.md` item 8) a copy
+    sets R#14 once (`vram_write` for its first line: every place lies in page 2's lines 128-255, which
+    the converter's `FC_TOP` and `FC_END` give and `field.asm` checks at assembly), then per line only
+    the address (two OUTs between DI and EI, the next line's 128 bytes on) and the bytes through
+    `sprites.asm` `outi32`'s OUTIs in two halves (`fcg_jx`, `fcg_jy`: half the line's bytes, the second
+    half one more for an odd count, as field-1's boxes give): 18 T-states a byte instead of OTIR's 23,
+    and about 200 T-states a line besides instead of 450 (`vram_write` and the address from the line
+    each time). The cache's ROM (`L3_FC`, 11 banks since field-1, 14 before) begins with a
     header: per id [normal, white], per cache frame [bank, address, place], per place [x, line,
     overlaps].
   - **The white hit flash**: white copies in the ROM (55: every play-field frame of Cain and types 21,

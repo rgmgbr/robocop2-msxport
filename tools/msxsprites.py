@@ -1749,6 +1749,7 @@ def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1
             cidx[(e["fid"], 1)] = len(cache)
             cache.append((np.where(cut > 0, flash, 0).astype(np.uint8), fc_place(e["sw"], e["sh"], True), e["src"], 1))
     trim_entries(out, cuts, {k for k in cuts if k in place})
+    assert all(img.shape[1] <= 128 for img, *_ in cache), "a cache frame wider than fc_get's line (64 bytes)"
     for e in out:                                           # (a removed frame: the frame shown's copies)
         for wb in (0, 1):
             if (e["look"], wb) in cidx:
@@ -1803,6 +1804,8 @@ def write_field_l3(path: Path, field: dict, id0: int) -> None:
         f"FC_PLACES: equ {len(L3_FC_PLACES)}\n"
         f"FC_ENT: equ 0x{0x8000 + field['fc_ent']:04X}             ; its header (FC_BANK at 8000h): [normal, white] per\n"
         f"FC_PLC: equ 0x{0x8000 + field['fc_plc']:04X}             ;   frame from 8000h, its frames' entries, its places\n"
+        f"FC_TOP: equ {min(y for _, y, _, _ in L3_FC_PLACES)}                 ; the places' first line on page 2 and the line past\n"
+        f"FC_END: equ {max(y + h for _, y, _, h in L3_FC_PLACES)}                 ;   their last (msx/field.asm fc_get: within 128-255)\n"
         "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn: the static\n"
         "                                    ; and the cache's frames their opaque box), dx, dy (signed: the\n"
         "                                    ; box's corner in the frame; a removed frame shown as another)\n"
