@@ -382,6 +382,8 @@ is the original's design (Q1, Q4, Q7).
     RoboCop at screen x ≤ `AX_MAX` 160, and Cain stands 170-200 px behind him.
   - The 8-sprites-a-line budget leaves out 22-38 % of his burst bullets' pictures and 3-12 % of his
     projectiles' (RoboCop 5 + Cain's 32 × 40 part 3).
+- **The user's decision** (2026-11-01, "vamos manter a lógica"): the logic stays the original's
+  (default 17). The display options (camera mode 2 showing more of Cain) wait for the user.
 - Records, drives and tools: `build/archive/cain_2026-11-01` (local).
 
 ## 3. The MSX design
@@ -876,6 +878,10 @@ step 3 owns `front*.asm`'s ending and high scores.
     him (type 22, 1 a frame) and touching his bombs and missiles (38, 39, 52: the touch's 1 a frame;
     their own 18h was × 1 already, default 12). Every other enemy keeps `DAMAGE_X`. **In** (`hits.asm`
     `phb_en` and the touch).
+17. **Where Cain attacks and where he dies stay the original's** (the user's decision of
+    2026-11-01, "vamos manter a lógica", after the play-test report of 2.11): the projectiles from
+    their fixed spawn entries, the bursts from the type-48 triggers, the idle floor ends and Q1.
+    Alternatives offered: attacks everywhere, or killable high up. **In** (no code change).
 
 ## 7. Risks
 
