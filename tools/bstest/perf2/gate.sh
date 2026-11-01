@@ -1,0 +1,97 @@
+#!/bin/sh
+# gate.sh: the shell side of docs/PERF2_PLAN.md 5.4's gates (performance campaign 2's kit; docs/HARNESS.md
+# section 12). The emulator side: gates.tcl's jobs (pf_gate_jobs W R) in a private session.
+#
+#   gate.sh builds R [SRC]     the gates' builds into R from SRC (a source tree with build/ linked to the
+#                              main checkout's, e.g. a worktree; default this repository): R/l3/cap3.rom
+#                              (EXTJOY=1 LV_TEST=3), R/l2/cap2.rom (EXTJOY=1 LV_TEST=2), R/l1/ext.rom
+#                              (EXTJOY=1), R/L/l1|l2|l3/lock.rom (+ LOCKSTEP=24), and hz.sh's trace builds
+#                              in R/T (l3builds, l2builds, trace)
+#   gate.sh speed BASE NEW     G-SPEED: win.py --gate BASE/speed NEW/speed
+#   gate.sh hold BASE NEW      G-HOLD: holds.py --gate BASE/speed NEW/speed (the same records)
+#   gate.sh field BASE NEW [JOBS]
+#                              G-FIELD: fieldcheck.py on NEW/field's windows (REPO's build/msx and
+#                              fieldcheck.py judge them; JOBS windows at once, default 4), then
+#                              fieldsum.py gate BASE/field NEW/field
+#   gate.sh guard BASE NEW     G-GUARD: guardsum.py gate BASE/guard NEW/guard
+#   gate.sh lock BASE NEW      G-LOCK: lockgate.py BASE/lock NEW/lock
+#   gate.sh map BASE NEW [--ignore FROM-TO ...]
+#                              G-MAP: mapdiff.py --gate BASE/map NEW/map
+#   gate.sh logic W R          G-LOGIC: hz.sh compare on W/logic/l3 and W/logic/l2 (the Amiga bench,
+#                              R/T's labels) and W/logic/l1 (level 1's cov1, cov0, cov0_tr), with the lost
+#                              counters 0
+#   gate.sh all BASE NEW R     every verdict above in turn (each one's output in NEW/gate_<name>.txt);
+#                              "gate: PASS" when all pass
+# BASE: W0's HEAD records (the campaign's base folder); NEW: the run folder of pf_gate_jobs. Each verdict's
+# last line reads "G-NAME: PASS" or "G-NAME: FAIL ...". Exit 0 only when the verdicts asked for pass.
+# Environment: REPO, the checkout whose build/ (the drives' references, the conversions), analysis/ and
+# tools/bstest/hz.sh, fieldcheck.py the verdicts use (default this repository; a git worktree has no
+# build/: give the main checkout).
+set -u
+H="$(cd "$(dirname "$0")" && pwd -P)"
+ROOT="$(cd "$H/../../.." && pwd -P)"
+usage() { sed -n 2,29p "$0" >&2; exit 2; }
+REPO="${REPO:-$ROOT}"
+cmd="${1:-}"; shift || true
+abs() { (cd "$1" 2>/dev/null && pwd -P) || { echo "gate.sh: no folder $1" >&2; exit 2; }; }
+case "$cmd" in
+builds)
+  [ $# -ge 1 ] || usage
+  mkdir -p "$1" || exit 2
+  R="$(abs "$1")"; S="${2:-$ROOT}"; S="$(abs "$S")"
+  B="$S/tools/bstest/build.sh"; HZ="$S/tools/bstest/hz.sh"
+  bad=0
+  b() {
+    out="$1"; shift
+    mkdir -p "$(dirname "$R/$out")"
+    if sh "$B" "$R/$out" "$@" > "$R/${out%.rom}.build.txt" 2>&1; then tail -1 "$R/${out%.rom}.build.txt"
+    else echo "FAIL: $out ($R/${out%.rom}.build.txt)"; bad=$((bad + 1)); fi
+  }
+  b l3/cap3.rom EXTJOY=1 LV_TEST=3
+  b l2/cap2.rom EXTJOY=1 LV_TEST=2
+  b l1/ext.rom EXTJOY=1
+  b L/l1/lock.rom EXTJOY=1 LOCKSTEP=24
+  b L/l2/lock.rom EXTJOY=1 LV_TEST=2 LOCKSTEP=24
+  b L/l3/lock.rom EXTJOY=1 LV_TEST=3 LOCKSTEP=24
+  mkdir -p "$R/T"
+  sh "$HZ" l3builds "$R/T" > "$R/T/l3builds.txt" 2>&1 || bad=$((bad + 1)); tail -1 "$R/T/l3builds.txt"
+  sh "$HZ" l2builds "$R/T" > "$R/T/l2builds.txt" 2>&1 || bad=$((bad + 1)); tail -1 "$R/T/l2builds.txt"
+  sh "$HZ" trace "$R/T/trace" > "$R/T/trace.txt" 2>&1 || bad=$((bad + 1)); grep "build OK" "$R/T/trace.txt" | tail -1
+  echo "gate builds: $([ $bad -eq 0 ] && echo OK || echo "$bad FAILED") ($R)"
+  [ $bad -eq 0 ]
+  ;;
+speed) [ $# -eq 2 ] || usage; python3 -I "$H/win.py" --gate "$1/speed" "$2/speed" ;;
+hold) [ $# -eq 2 ] || usage; python3 -I "$H/holds.py" --gate "$1/speed" "$2/speed" ;;
+field)
+  [ $# -ge 2 ] || usage
+  J="${3:-4}"
+  python3 -I "$H/fieldsum.py" run "$2/field" --root "$REPO" --jobs "$J" > "$2/field/fieldsum_run.txt" 2>&1
+  python3 -I "$H/fieldsum.py" gate "$1/field" "$2/field"
+  ;;
+guard) [ $# -eq 2 ] || usage; python3 -I "$H/guardsum.py" gate "$1/guard" "$2/guard" ;;
+lock) [ $# -eq 2 ] || usage; python3 -I "$H/lockgate.py" "$1/lock" "$2/lock" ;;
+map) [ $# -ge 2 ] || usage; B="$1"; N="$2"; shift 2; python3 -I "$H/mapdiff.py" --gate "$B/map" "$N/map" "$@" ;;
+logic)
+  [ $# -eq 2 ] || usage
+  W="$(abs "$1")"; R="$(abs "$2")"
+  bad=0
+  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l3.tsv" "$W/logic/l3" "$R/T" || bad=1
+  sh "$REPO/tools/bstest/hz.sh" compare --fields "$REPO/analysis/amiga_ram_l2.tsv" "$W/logic/l2" "$R/T" || bad=1
+  sh "$REPO/tools/bstest/hz.sh" compare "$W/logic/l1" "$R/T/trace/rc2_ext5.labels" || bad=1
+  echo "G-LOGIC: $([ $bad -eq 0 ] && echo PASS || echo FAIL)"
+  [ $bad -eq 0 ]
+  ;;
+all)
+  [ $# -ge 3 ] || usage
+  B="$1"; N="$2"; R="$3"
+  bad=0
+  for g in speed hold guard lock map field logic; do
+    if [ "$g" = logic ]; then a1="$N"; a2="$R"; else a1="$B"; a2="$N"; fi
+    if REPO="$REPO" sh "$0" "$g" "$a1" "$a2" > "$N/gate_$g.txt" 2>&1; then :; else bad=$((bad + 1)); fi
+    tail -1 "$N/gate_$g.txt"
+  done
+  echo "gate: $([ $bad -eq 0 ] && echo PASS || echo "FAIL ($bad)")"
+  [ $bad -eq 0 ]
+  ;;
+*) usage ;;
+esac
