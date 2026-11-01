@@ -555,7 +555,7 @@ lt_n:   push bc
         djnz lt_n
         ld hl,lab_h
         ld bc,4 * 256 + 9           ; (4 pairs of rows from row 9)
-lt_h:   push bc
+lab_lth: push bc
         push hl
         ld b,c
         ld c,0
@@ -583,7 +583,7 @@ lt_hv:  ld a,(hl)
         pop bc
         inc c
         inc c
-        djnz lt_h
+        djnz lab_lth
         ld bc,0x1200
         call dg_at
         ld hl,lbs_nofh
