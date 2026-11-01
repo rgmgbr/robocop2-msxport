@@ -69,14 +69,18 @@ def vat_tile(layout: dict, cell: tuple[int, int], look: int) -> int:
     return layout["tiles"][0 if j == 0 else 1 if j % 2 else 2][look]
 
 
-def vat_look(ramf: bytes, idx: int, page: int | None) -> int:
-    """A vat column's look from RAM F000h-FFFFh: vat_shown's (page None), or what that page shows
-    (vat_disp's nibble: 8 + (look & 7), the half vat_shown's; none drawn: vat_shown's)."""
+def vat_look(ramf: bytes, idx: int, page: int | None) -> int | None:
+    """A vat column's look from RAM F000h-FFFFh: vat_shown's (page None: the logic's), or what that
+    page shows (vat_disp's nibble: 8 + (look & 7), the half vat_shown's); None when the page has drawn
+    no cell of it (nibble 0): that page shows the map's own tile there, which the caller keeps. The
+    product (VAT_ANIM=0: the vats as static images, msx/field.asm vat_init) never draws a column, so
+    every vat cell is the map's; a VAT_ANIM=1 build sets the nibble when it draws a visible cell
+    (field.asm vat_tile, vats.asm)."""
     shown = ramf[VAT_SHOWN - 0xF000 + idx]
     if page is None:
         return shown
     nib = (ramf[VAT_DISP - 0xF000 + idx] >> (4 * page)) & 15
-    return (nib & 7) | (shown & 8) if nib & 8 else shown
+    return (nib & 7) | (shown & 8) if nib & 8 else None
 
 
 def main(argv: list[str]) -> int:

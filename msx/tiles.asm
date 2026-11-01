@@ -22,8 +22,9 @@ TC_SLOTS:   equ 256                 ; the most a level has (page 2: 432 until th
 ; ----- map reads -----
 
 ; get_tile: A = row, E = column -> HL = tile. Preserves BC and DE (and the A000h window's bank).
-; Level 2's vat cells (field.asm vat_tile, docs/LEVEL2.md 3.5): their column's look on the page
-; being drawn (vat_pg), not the ROM map's.
+; Level 2's vat cells (VAT_ANIM=1 builds: field.asm vat_tile, docs/LEVEL2.md 3.5): their column's
+; look on the page being drawn (vat_pg), not the ROM map's; the product (VAT_ANIM=0) shows the map's
+; own look, the vats' static images, so that get_tile costs in level 2 what it costs in level 1.
 get_tile:
         push de
         ld d,a
@@ -54,9 +55,12 @@ gt_hit: inc h
         ld l,a                      ; its tile
         pop de
         ret
-gt_rom: ld a,(lv_logic)             ; (level 2: its vats)
+gt_rom:
+        if VAT_ANIM
+        ld a,(lv_logic)             ; (level 2: its vats)
         cp BANK_L2
         jr z,gt_vat
+        endif
 gt_map: ld a,d
         ld l,a
         ld h,0
@@ -91,13 +95,16 @@ gt_map: ld a,d
         call bank_a000
         pop de
         ret
+        if VAT_ANIM
 gt_vat: ld hl,vat_tile
         call field_call             ; (D = row, E = column; keeps BC, DE) -> HL = the tile: a vat
         pop de                      ; cell's, else the map's
         ret
+        endif
 
-; The vats' display (level 2: vats.asm; docs/LEVEL2.md 3.5): the scroll engines' hooks, Z (nothing)
-; in the other levels. vat_win, with the VDP idle and a vat column ready: that column drawn at its
+; The vats' display (level 2 in VAT_ANIM=1 builds: vats.asm; docs/LEVEL2.md 3.5): the scroll
+; engines' hooks, Z (nothing) in the other levels and in the product (VAT_ANIM=0: vat_on 0, no column
+; ever made ready). vat_win, with the VDP idle and a vat column ready: that column drawn at its
 ; newest look in the blank (vat_run) -> NZ when a command of it still runs. vat_idle, at the engines'
 ; idle points: the V9938's mirror of that column on its other page, else the next column made ready
 ; (vat_prep). The vats never keep iw_more: their work waits for wait_frame's loop or for the engines'
@@ -108,7 +115,8 @@ vat_win:
         jr vat_go                   ;  the other levels, vat_init clearing it at every start)
 vat_idle:
         ld hl,vat_prep
-        ld a,(vat_on)               ; (vat_init: level 2; the engines ignore vat_idle's flags)
+        ld a,(vat_on)               ; (vat_init: level 2 with VAT_ANIM=1; the engines ignore vat_idle's
+                                    ;  flags)
 vat_go: or a
         ret z
 vat_l2: ld a,(act_a000)             ; (BANK_L2 at A000h around the call)

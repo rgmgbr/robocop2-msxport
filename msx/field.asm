@@ -1564,8 +1564,8 @@ fp_y:   ld (fb_pe + 2),hl
         dec hl
         call fb_cell
         ld (fb_cc + 3),a
-        call vat_inbox              ; (level 2: a piece over a vat cell takes its background from the
-        jp nz,fp_tiles              ;  tiles, which follow its column's look)
+        call vat_inbox              ; (level 2's drawn vats, VAT_ANIM=1: a piece over a vat cell takes
+        jp nz,fp_tiles              ;  its background from the tiles, which follow its column's look)
         ld hl,(fb_cur + 1)          ; an owner's?
         ld a,h
         and l
@@ -3526,7 +3526,10 @@ an_w:   or b
 ; vats.asm (BANK_L2, level 2's logic bank) draws the vats' columns and get_tile's vat rule; here:
 ; their state cleared at each full redraw (vat_init), a piece over a vat cell composed from the tiles,
 ; never a cache (vat_inbox), a V9938 build's page given the looks its copy brings (vat_bbinit), and
-; whether a column meets the play-field BOBs or their work (vat_meet, for vats.asm).
+; whether a column meets the play-field BOBs or their work (vat_meet, for vats.asm). All of it only in
+; VAT_ANIM=1 builds (vat_on 1 in level 2): the product (VAT_ANIM=0) shows the vats at the map's own
+; look, its static images, and the play field treats their cells as any other (the user's choice of
+; 2026-10-31). The code stays in every build (the harness's marks, the tests).
 
 VAT_REC:    equ L2_VATS + 0x40          ; per vat: first column, columns, first row, rows (its record's
                                         ;   + 2), first index in vat_shown (tools/mapcells.py vat_tables)
@@ -3572,7 +3575,9 @@ VF_SZ:      equ 41
 
 
 ; (engines_init, engines_jump: every level) No vat column drawn on any page, nothing to do; level
-; 2's vat_disp cleared (vat_chg's 7 bytes are free in the other levels).
+; 2's vat_disp cleared (vat_chg's 7 bytes are free in the other levels), and vat_on set there in
+; VAT_ANIM=1 builds only (the product: 0, the map's look; vat_disp stays 0, so that the pictures'
+; models read every column as the map's own).
 vat_init:
         xor a
         ld (vat_pg),a
@@ -3592,8 +3597,10 @@ vin_c:  ld (hl),a
         ld a,(lv_logic)
         cp BANK_L2
         ret nz
+        if VAT_ANIM
         ld a,1
         ld (vat_on),a
+        endif
         ld hl,vat_disp
         ld bc,VAT_COLS_l2
         xor a
@@ -3772,13 +3779,14 @@ vt_page:
         ld a,(vat_pg)
         ret
 
-; (fb_piece, level 2) -> NZ when the piece's cells (fb_cc) hold a vat cell: its background then
-; comes from the tiles (the vat rule's look on its page), never from a cache (a vat cell's tile
-; changes with its look). Keeps BC, DE.
+; (fb_piece) -> NZ when the vats are drawn (vat_on: level 2 with VAT_ANIM=1) and the piece's cells
+; (fb_cc) hold a vat cell: its background then comes from the tiles (the vat rule's look on its
+; page), never from a cache (a vat cell's tile changes with its look); else Z (the other levels and
+; the product's static vats: the cache as for any piece). Keeps BC, DE.
 vat_inbox:
-        ld a,(lv_logic)
-        cp BANK_L2
-        ret nz                      ; (Z: no vats)
+        ld a,(vat_on)
+        or a
+        ret z                       ; (Z: no vats drawn)
         push bc
         push de
         ld a,(act_8000)
@@ -3835,13 +3843,13 @@ vib_yes:
         or 1
         ret
 
-; (fb_bbinit: a V9938 build begins, level 2) The page being built holds, once its copy is made, the
-; looks the page shown has of the columns the copy brings (the columns of both pages), none of the
-; others' yet. The last column's mirror is not needed any more: the copy brings it.
+; (fb_bbinit: a V9938 build begins, level 2 with VAT_ANIM=1: vat_on) The page being built holds, once
+; its copy is made, the looks the page shown has of the columns the copy brings (the columns of both
+; pages), none of the others' yet. The last column's mirror is not needed any more: the copy brings it.
 vat_bbinit:
-        ld a,(lv_logic)
-        cp BANK_L2
-        ret nz
+        ld a,(vat_on)
+        or a
+        ret z
         xor a
         ld (vat_bk),a
         ld a,(act_8000)

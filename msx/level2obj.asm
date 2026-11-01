@@ -8,8 +8,8 @@
 ; Amiga offset d at IX + (d ^ 1), a word at IX + d), update_objects runs the handler with $16BA's
 ; high byte set and frees the slot when it returns A (D0's high byte) negative. The handlers' own
 ; damages to RoboCop follow the port's rule (decisions 17 and 19, docs/LEVEL2.md default 26): the
-; drip's 0Ah times DAMAGE_X, the drone's 18h as a missile's, at most twice; trace builds
-; (DAMAGE_X=1) keep the original's.
+; drip's 0Ah times DAMAGE_X (trace builds, DAMAGE_X=1, keep the original's), the drone's 18h as a
+; missile's, the original's in every build (the user's choice of 2026-10-31).
 
 ; ----- type 1: a walking gunman, legs and torso ($C736) -----
 
@@ -939,11 +939,7 @@ t49_d:  ld a,(t_d2)
         ret
 t49_hit:
         ld hl,(AM + 0x169A)
-        if DAMAGE_X > 1
-        ld de,0 - 0x18 * 2          ; (its own damage as a missile's: decisions 17 and 19)
-        else
-        ld de,0 - 0x18
-        endif
+        ld de,0 - 0x18              ; (its own damage as a missile's, never multiplied: decision 19)
         add hl,de
         ld (AM + 0x169A),hl
 t49_boom:

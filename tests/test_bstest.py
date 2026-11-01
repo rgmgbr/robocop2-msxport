@@ -857,7 +857,7 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = r.stdout.splitlines()
         self.assertEqual(len(lines), 55)          # (41 sets, level 2's 7 LV_TEST=2 ones, its 5 CHEAT=1 ones and
-                                                  #  its 2 VAT_TICK=1 ones)
+                                                  #  its 2 VAT_ANIM=1 VAT_TICK=1 ones)
         self.assertTrue(all(line.endswith(" OK") for line in lines), r.stdout)
 
 

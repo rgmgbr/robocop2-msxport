@@ -184,9 +184,10 @@ OPTIONS = {
     "SPLITDIAG": (0, "1 = test build: the HUD split's display-on later by 14 T-states a step, steps 0-15 of 256"
                      " frames each (the step in the score's last digits); the timer shows this step's fewest and"
                      " most polls from the display-on to the match of display line 169 (msx/isr.asm isr_split)"),
-    "DAMAGE_X": (3, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them): 3 = the user's choice"
-                    " for the fewer enemies (ENEMY_CAP), 1 = the original, for trace tests; the missile (enemy bullet"
-                    " types 1 and 2, damage 40h) at most 2, the user's choice (msx/hits.asm)"),
+    "DAMAGE_X": (2, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them, the drip): 2 = the"
+                    " user's choice of 2026-10-31 for the fewer enemies (ENEMY_CAP; 3 made the game impossible), 1 = the"
+                    " original, for trace tests; the missiles (enemy bullet types 1 and 2, damage 40h, and level 2's"
+                    " drone) keep the original's damage in every build, the user's choice (msx/hits.asm, level2obj.asm)"),
     "ROM_2M": (0, "1 = a 2 MiB image while the game still fits 1 MiB (test: the start of a 2 MiB ROM, msx/cold.asm"
                   " rom_guard)"),
     "PZ_TEST": (0, "1 = test build: at power-on, without the title, level 1's start, then Brainstorm (the bonus stage"
@@ -204,10 +205,15 @@ OPTIONS = {
     "CHEAT": (0, "1 = test build: the original's cheat mode at each new game (AG $804F FFh, msx/cold.asm ng_init) and its"
                  " keys on F5 and F4 (key codes 59h and 58h, the Amiga's F10 and F9: msx/frame.asm fe_keys): F5 ends"
                  " the level, F4 fills the energy; not with DIAG (no game)"),
-    "VAT_TICK": (0, "1 = the vats' variant (level 2, docs/LEVEL2.md default 18, for the user's comparison): their"
-                    " columns get time at every game tick, a column made ready after each tick whether the scroll"
-                    " engines are idle or not (msx/tiles.asm vat_tick) and drawn in the next window between the HUD"
-                    " split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle points"),
+    "VAT_ANIM": (0, "level 2's vats: 0 = static images, the map's own look (the product: the user's choice of"
+                    " 2026-10-31, the time for the game; the logic, the sinking and the phases, as always); 1 = redrawn"
+                    " as they bubble, the display as built for test7 (docs/LEVEL2.md default 18, a comparison only:"
+                    " msx/vats.asm through tiles.asm get_tile, vat_win, vat_idle; field.asm vat_init sets vat_on)"),
+    "VAT_TICK": (0, "1 = the vats' variant (level 2, docs/LEVEL2.md default 18, for the user's comparison; needs"
+                    " VAT_ANIM=1): their columns get time at every game tick, a column made ready after each tick"
+                    " whether the scroll engines are idle or not (msx/tiles.asm vat_tick) and drawn in the next window"
+                    " between the HUD split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle"
+                    " points"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -788,8 +794,9 @@ def main(argv: list[str]) -> int:
     if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
         print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
         return 2
-    if opts["VAT_TICK"] not in (0, 1):
-        print("VAT_TICK must be 0 or 1", file=sys.stderr)
+    if opts["VAT_ANIM"] not in (0, 1) or opts["VAT_TICK"] not in (0, 1) or (opts["VAT_TICK"] and not opts["VAT_ANIM"]):
+        print("VAT_ANIM and VAT_TICK must be 0 or 1, and VAT_TICK=1 needs VAT_ANIM=1 (the variant of the vats'"
+              " display: with VAT_ANIM=0 nothing redraws them)", file=sys.stderr)
         return 2
     try:
         carried = lv_carry(carry or LV_CARRY)

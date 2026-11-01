@@ -35,8 +35,9 @@ the list on screen (fb_vis at F248h: the first in the list on top, as msx/field.
 composes) as the level's atlas and dynamic frames hold them (FieldLooks: the bytes the ROM
 uploads); without it the static map alone, as before (a BOB or a patch counts as a difference).
 Level 2's vat cells (LEVEL_PREFIX level2, a snapshot with ramf.bin) are expected at their column's look
-on the page shown (tools/mapcmp.py vat_look: vat_disp's nibble, else vat_shown's; the V9958's ring
-page 0), a map patch first with --field, as msx/tiles.asm get_tile draws them.
+on the page shown (tools/mapcmp.py vat_look: vat_disp's nibble; the V9958's ring page 0), a map patch
+first with --field, as msx/tiles.asm get_tile draws them; a column that page has not drawn (nibble 0:
+always so in the product, VAT_ANIM=0, whose vats are the map's static images) at the map's own tile.
 
 With --cut LINE (level 2's vats: msx/cold.asm spr_cut), RoboCop's and the hit spark's sprites are
 expected to end above screen line LINE (their pixels from it down are not shown: the Amiga's copper
@@ -484,8 +485,9 @@ def main() -> int:
                 c = looks.at(lst, wx, wy) if field else None
                 if c is None:
                     v = vats["cells"].get((wy // 16, wx // 16)) if vats else None
-                    if v and not (field and patched(patches, wy // 16, wx // 16)):
-                        t = mapcmp.vat_tile(vats, v, mapcmp.vat_look(ramf, v[0], vpage))
+                    lk = mapcmp.vat_look(ramf, v[0], vpage) if v and not (field and patched(patches, wy // 16, wx // 16)) else None
+                    if lk is not None:
+                        t = mapcmp.vat_tile(vats, v, lk)
                     elif field:
                         t = recframes.tile_at(mp, patches, wy // 16, wx // 16)
                     else:

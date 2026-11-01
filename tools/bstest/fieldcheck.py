@@ -32,7 +32,11 @@ so that a column showing two looks or a half-drawn one differs ("CLASS picture v
 seen in two pictures in a row never shows an older look than the one before ("CLASS picture vat-older":
 when it changes look, the new look's age, the latest record up to then in which vat_shown became it, is
 before the age of its change before; the looks recur every cycle, so a look kept unchanged keeps its
-age and the first one a column shows has none)."""
+age and the first one a column shows has none). A column the page has not drawn (nibble 0: vat_look
+None) is expected at the map's own tile, as any cell, and is in neither vat class: so it is in the
+product (VAT_ANIM=0, the vats as the map's static images) for every column; a VAT_ANIM=1 build draws
+a visible column's nibble with its first cell (msx/field.asm vat_tile). The summary line counts both
+kinds of columns seen."""
 import json
 import struct
 import sys
@@ -258,6 +262,7 @@ def main():
     VATS = mapcmp.vat_layout(level) if level.name == "level2" else None
     VATS_N = len({v[0] for v in VATS["cells"].values()}) if VATS else 0
     vat_hist, vat_age, vat_older, vat_recs, vat_cols = {}, {}, 0, 0, set()
+    vat_mcols = set()                           # (the vat columns seen at the map's own tile)
     vat_last = {}                               # (each column seen: the look it showed last)
     prev_low = None
     sheet, total_bad, pics_bad = [], 0, 0
@@ -338,13 +343,26 @@ def main():
                 if not h or h[-1][1] != lk:
                     h.append((len(sheet), lk))
 
-        def vtile(P, row, col):
+        def vlook(row, col):
+            """-> the look of a vat cell's column on the page shown, None for any other cell and
+            for a column that page has not drawn (the map's own tile)"""
             v = VATS["cells"].get((row, col)) if vat_on else None
-            if v:
+            if not v:
+                return None
+            lk = mapcmp.vat_look(vram_f, v[0], vpage)
+            if lk is None:
+                vat_map.add(v[0])
+            return lk
+
+        def vtile(P, row, col):
+            lk = vlook(row, col)
+            if lk is not None:
+                v = VATS["cells"][(row, col)]
                 vat_seen.add(v[0])
-                return mapcmp.vat_tile(VATS, v, mapcmp.vat_look(vram_f, v[0], vpage))
+                return mapcmp.vat_tile(VATS, v, lk)
             return rf.tile_at(mp, P, row, col)
         vat_seen = set()
+        vat_map = set()
         vat_px = 0
         img = []
         for y in range(rf.VIEW):
@@ -444,8 +462,8 @@ def main():
                             break
                 if not ok:
                     bad += 1
-                    if vat_on and (wy // 16, wx // 16) in VATS["cells"]:
-                        vat_px += 1
+                    if vlook(wy // 16, wx // 16) is not None:
+                        vat_px += 1             # (a drawn vat column's cell; the map's: "other")
                     badcells[(wy // 16, wx // 16)] = badcells.get((wy // 16, wx // 16), 0) + 1
                     drow[3 * x:3 * x + 3] = b"\xff\x00\xff"
             img.append(bytes(drow))
@@ -511,6 +529,7 @@ def main():
         if older:
             print(f"CLASS {p.stem} vat-older px=0")
         vat_cols |= vat_seen
+        vat_mcols |= vat_map
         sheet.append(img)
     if wrong:
         print(f"{wrong} files of another length skipped")
@@ -519,7 +538,7 @@ def main():
           f"{dyn_torn} torn explosion/smoke pictures)")
     if VATS is not None:
         print(f"vats: {vat_recs} records with the vats' RAM, {len(vat_cols)} vat columns seen, {vat_older} pictures "
-              f"with a column at an older look")
+              f"with a column at an older look; {len(vat_mcols)} vat columns seen at the map's own tile")
     # contact sheet: 8 per row, 1x
     per = 8
     w = 256

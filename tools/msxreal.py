@@ -18,7 +18,8 @@ pixels shown wrong, and other pixels where a sprite shows where none should), of
 border lines and of the HUD; with --png, frame and difference images (magenta: differs).
 Level 2's vat cells (docs/LEVEL2.md 3.5, the vat rule; LEVEL_PREFIX level2) are expected at the look
 their column has on the page shown (RAM F000h-FFFFh's vat_disp, tools/mapcmp.py vat_look), not the
-ROM map's.
+ROM map's; a column that page has not drawn (the product's static vats, VAT_ANIM=0: every column) at
+the map's own tile.
 
 usage: msxreal.py CAPTURE_DIR [--level build/msx/level1] [--hud build/msx/hud] [--png OUTDIR]
 """
@@ -118,8 +119,9 @@ def check(d: Path, level: Path, hud: Path) -> tuple[dict, list[bytes], list[byte
                     want = None
                 else:
                     v = vats["cells"].get((wy // 16, wx // 16)) if vats else None
-                    if v:
-                        t = mapcmp.vat_tile(vats, v, mapcmp.vat_look(ramf, v[0], vpage))
+                    lk = mapcmp.vat_look(ramf, v[0], vpage) if v else None
+                    if lk is not None:
+                        t = mapcmp.vat_tile(vats, v, lk)
                     else:
                         t = mp[2 * ((wy // 16) * mf.COLS + wx // 16)] | mp[2 * ((wy // 16) * mf.COLS + wx // 16) + 1] << 8
                     b = til[t * 128 + (wy % 16) * 8 + (wx % 16) // 2]

@@ -4,7 +4,8 @@ silhouettes, the hidden frames, the lines a joint composition reaches above its 
 in banks of their own tables (atlas_banks), its play-field tables beside level 1's (field_inc), the
 vats' display tables (tools/mapcells.py vat_tables), the harness's level-2 job tables
 (tools/bstest/hz.tcl hz_l2_jobs and hz.sh compare --fields agree), tools/bstest/l2stub.py's stubs
-against the main code, and CHEAT (step 21)."""
+against the main code, CHEAT (step 21), and the rest of the game's step 1: VAT_ANIM (the vats as static
+images in the product), DAMAGE_X 2 and the missiles' own damage."""
 from __future__ import annotations
 
 import json
@@ -256,7 +257,8 @@ class VatTickTests(unittest.TestCase):
     def test_mkrom_refuses_a_bad_vat_tick(self):
         with tempfile.TemporaryDirectory() as t:
             out = str(Path(t) / "x.rom")
-            for opts in (["VAT_TICK=2"], ["VAT_TICK=-1"]):
+            for opts in (["VAT_TICK=2", "VAT_ANIM=1"], ["VAT_TICK=-1", "VAT_ANIM=1"],
+                         ["VAT_TICK=1"], ["VAT_TICK=1", "VAT_ANIM=0"]):    # (VAT_TICK=1 needs VAT_ANIM=1)
                 self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
             self.assertFalse(Path(out).exists())
 
@@ -280,6 +282,110 @@ class VatTickTests(unittest.TestCase):
             src = (ROOT / "msx" / f).read_text()
             outside = [l for l in src.splitlines() if "vat_tick" in l.split(";")[0]]
             self.assertEqual(len(outside), len([l for l in blocks(f) if "vat_tick" in l]), f)
+
+
+def if_blocks(path: str, name: str) -> list[str]:
+    """The code lines between "if NAME" and its endif in msx/PATH (an if inside one kept with its lines)."""
+    out, inside, depth = [], False, 0
+    for line in (ROOT / "msx" / path).read_text().splitlines():
+        code = line.split(";")[0].strip()
+        if not inside and code == f"if {name}":
+            inside, depth = True, 0
+        elif inside and code == "endif" and not depth:
+            inside = False
+        elif inside:
+            depth += code.startswith("if ") - (code == "endif")
+            out.append(code)
+    return out
+
+
+def routine(path: str, label: str, end: str) -> list[str]:
+    """The code lines of msx/PATH from LABEL: up to (not with) the line that starts with END."""
+    lines = [l.split(";")[0].rstrip() for l in (ROOT / "msx" / path).read_text().splitlines()]
+    i = next(k for k, l in enumerate(lines) if l.startswith(label + ":"))
+    out = []
+    for l in lines[i:]:
+        if out and l.strip().startswith(end):
+            break
+        if l.strip():
+            out.append(l.strip())
+    return out
+
+
+class VatAnimTests(unittest.TestCase):
+    """VAT_ANIM (the rest of the game's step 1, the user's choice of 2026-10-31): the product shows level
+    2's vats at the map's own look (VAT_ANIM=0), VAT_ANIM=1 the display as built for test7; the vats' code
+    (vats.asm, field.asm's vat section) stays in every build, the logic (level2.asm lt1) in both."""
+
+    def test_the_defaults_and_the_refusals(self):
+        self.assertEqual((mkrom.OPTIONS["VAT_ANIM"][0], mkrom.OPTIONS["VAT_TICK"][0]), (0, 0))
+        with tempfile.TemporaryDirectory() as t:
+            out = str(Path(t) / "x.rom")
+            for opts in (["VAT_ANIM=2"], ["VAT_ANIM=-1"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+            self.assertFalse(Path(out).exists())
+
+    def test_the_display_is_in_its_if_blocks(self):
+        tiles = if_blocks("tiles.asm", "VAT_ANIM")
+        self.assertEqual(tiles[:3], ["ld a,(lv_logic)", "cp BANK_L2", "jr z,gt_vat"])     # gt_rom's branch
+        self.assertIn("gt_vat: ld hl,vat_tile", tiles)
+        src = (ROOT / "msx" / "tiles.asm").read_text()
+        self.assertEqual(len([l for l in src.splitlines() if "gt_vat" in l.split(";")[0]]),
+                         len([l for l in tiles if "gt_vat" in l]))
+        self.assertEqual(if_blocks("field.asm", "VAT_ANIM"), ["ld a,1", "ld (vat_on),a"])  # vat_init
+        for f in ("rc2.asm", "sprites.asm", "scroll9938.asm", "scroll9958.asm", "vats.asm", "level2.asm"):
+            self.assertNotIn("VAT_ANIM", (ROOT / "msx" / f).read_text(), f)
+
+    def test_the_play_field_follows_vat_on(self):
+        """vat_inbox and vat_bbinit act only while the vats are drawn (vat_on): Z in every other level
+        (level 1's pieces to the cache again, as before level 2's step 14) and in the product's level 2."""
+        for label in ("vat_inbox", "vat_bbinit"):
+            self.assertEqual(routine("field.asm", label, "push")[1:4], ["ld a,(vat_on)", "or a", "ret z"], label)
+        field = (ROOT / "msx" / "field.asm").read_text()
+        self.assertEqual(field.count("ld a,(lv_logic)"), 1)                                # (vat_init's alone)
+
+    def test_vat_look_none_where_the_page_drew_nothing(self):
+        import mapcmp
+        ramf = bytearray(0x1000)
+        ramf[mapcmp.VAT_SHOWN - 0xF000 + 5] = 0x0B                                         # (vat_shown: look 11)
+        self.assertEqual(mapcmp.vat_look(bytes(ramf), 5, None), 0x0B)
+        self.assertIsNone(mapcmp.vat_look(bytes(ramf), 5, 0))                              # (the map's own tile)
+        self.assertIsNone(mapcmp.vat_look(bytes(ramf), 5, 1))
+        ramf[mapcmp.VAT_DISP - 0xF000 + 5] = 0xC0 | 0x0A                                   # (page 0: 2, page 1: 4)
+        self.assertEqual((mapcmp.vat_look(bytes(ramf), 5, 0), mapcmp.vat_look(bytes(ramf), 5, 1)), (0x0A, 0x0C))
+
+
+class DamageTests(unittest.TestCase):
+    """DAMAGE_X 2 (the user's choice of 2026-10-31) and the missiles' own damage in every build: enemy
+    bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied; the other bullets, the touch
+    and the drip times DAMAGE_X."""
+
+    def test_the_default(self):
+        self.assertEqual(mkrom.OPTIONS["DAMAGE_X"][0], 2)
+        with tempfile.TemporaryDirectory() as t:
+            out = str(Path(t) / "x.rom")
+            for opts in (["DAMAGE_X=0"], ["DAMAGE_X=4"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+
+    def test_the_missiles_skip_the_multiplication(self):
+        x = if_blocks("hits.asm", "DAMAGE_X > 1")
+        self.assertEqual(x[:3], ["ld a,c", "cp 3", "jr c,phb_mx"])                         # (types 1 and 2)
+        self.assertEqual(x[3:], ["ld l,e", "ld h,d", "add hl,de", "if DAMAGE_X > 2", "add hl,de", "endif",
+                                 "ex de,hl", "phb_mx:"])
+        self.assertEqual(if_blocks("hits.asm", "DAMAGE_X > 2"), ["add hl,de"])
+        drone = routine("level2obj.asm", "t49_hit", "t49_boom")
+        self.assertEqual(drone, ["t49_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
+                                 "ld (AM + 0x169A),hl"])
+
+    def test_damage_x_where_the_rule_says(self):
+        uses = []
+        for f in sorted((ROOT / "msx").glob("*.asm")):
+            for l in f.read_text().splitlines():
+                if "DAMAGE_X" in l.split(";")[0]:
+                    uses.append((f.name, l.split(";")[0].strip()))
+        self.assertEqual(uses, [("hits.asm", "if DAMAGE_X > 1"), ("hits.asm", "if DAMAGE_X > 2"),
+                                ("hits.asm", "ld de,0 - DAMAGE_X"),                          # (the touch)
+                                ("level2obj.asm", "ld de,0 - 0x0A * DAMAGE_X")])             # (the drip)
 
 
 class CheatTests(unittest.TestCase):
