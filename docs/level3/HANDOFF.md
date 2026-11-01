@@ -635,3 +635,14 @@ this section's (with `docs/LEVEL3.md` 3.10 and `docs/HARNESS.md` 5.27).
 3. The lowest option set has 29 B of the fixed area.
 4. The `park`, `boss` and `kill` windows (checks 3-5 there) wait for step B's logic: `lf_jobs` and
    `fieldcheck.py --level 3` take them as they are.
+
+### Integrated
+Cherry-picked onto `level2` `bc3ad83` (the main tree clean) as **`cc67408`** (default 9), **`69c5bbe`** (the
+catalogue), **`416bb42`** (the pool, the engine, mkrom), **`0acd381`** (the harness), **`618f2f4`** (the
+tests), **`9f51b90`** (the docs) and this note's. In the main tree then: `build/emu/cov_level3.json` and
+`l3_frames_drawn.json` (step 2's coverage), `build/sprites/catalog_l3.json` (`bobcatalog.py level3`) and
+the pool (the Makefile's `msxsprites.py` line) made with the integrated tools, byte-identical to the
+worktree's; the product, the l3 trace build, the lowest set and `VAT_ANIM=1` built from the main tree
+(`tools/bstest/build.sh`) byte-identical to the worktree's (the product `3f9e446fac3bb45a`), so every
+result above holds; `make test`: 347 tests, the 4 known failures only. The summaries, the scratch tools
+and the pictures looked at: `build/archive/rest_step5_records_2026-11-01.tar.gz`; the big records deleted.
