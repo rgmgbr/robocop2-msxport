@@ -692,6 +692,37 @@ What step B built and where it departs from 3.3-3.4 (the account and the checks:
 - **Bytes** (product): `BANK_L3B` 2,383 free (5,662 used), `BANK_L3` 3,867, LC1 50, LC2 4,827, LC3
   4,794, FRONT 1,119; the fixed area unchanged.
 
+### 3.12 As built by step D (2026-11-01) [V]
+
+Checks 3-8 of section 4, whole, on the MSX2, the MSX2+ and the turbo R, with step 7's chain in (the account,
+the commands and every number: `docs/level3/HANDOFF.md`, "Step 8 (plan step D)"; the harness:
+`docs/HARNESS.md` 5.29):
+
+- **The one fix** (`msx/frontx.asm` `fo_hsc`): the high-score entry takes three steps of `pl_fade`'s
+  countdown of the palette flash (`$F826`), as `$12082` does (REA: its text screen's `$10768`, `$1080C`;
+  Return's `$121E0`; the fade loop's `$12112`, once, the fade level already 0). A flash running at the
+  death's end of a qualifying score thus ends before the continued game: RoboCop's tint only (no logic
+  reads `$F826`), and the trace field `$F826` (step B's open issue). FRONT 7 B.
+- **Checks 3-4**: in Cain's windows (boss from 625, kill from 1550 and from 1745 to the level's end) the
+  field check finds no picture behind its list or torn (one on the turbo R in 1,000), no wrong frame, no
+  wrong cache place; type 21's death in park (ticks 49-85, the trace build's ENEMY_CAP 0) still shows its
+  white flash and debris up to 8 pictures behind the list (37-53 pictures in 500). The guard counts
+  124 / 250 / 234 copies the beam crossed over the whole kill drive (step 7's chain's last bands). The
+  stills from Cain's last hits to the end count: every sprite pixel and play-field pixel as the lists say.
+- **Check 5**: no line above 8 sprites over the whole kill drive (the guard's `sprlines` 0 on the three).
+- **Check 6**: the requests per tick equal the bench's on the SCC, an SCC in slot B and the PSG (kill and
+  park; boss on the SCC; cont3 through the continue), the briefing and the offer silent after their stop.
+- **Check 7**: the product's whole flow (`np_l3flow_setup`) from level 1 through level 2's end, the
+  statistics, both second visits, the level-3 briefing (412 VBLs), level 3 (its first picture and frame 100),
+  its end, the end count, WELL DONE, the CMP tune (4,917 ticks), the name entry, the table and the title;
+  Cain's own death in kill (trace 0 differ to row 1860) into WELL DONE and the tune; a game over in level
+  3 into PIC9, the name entry, the table and the offer.
+- **Check 8**: after the continue the map patches, the attribute RAM, the lists and the tile cache as
+  before PIC9; the frame cache empty at `lv_cont` (PIC9 overwrote its lines: every frame copied again).
+- **The speed** (not a check; the product's options, kill's drive): the boss route runs at 6-10.5 ticks a
+  second on the MSX2, 9-10.6 on the MSX2+, 14-19 on the turbo R, the end count at 19-25; tour3's start at
+  15-22. Cain's composition is the cost (an open issue, section 7's risk 1).
+
 ## 4. The checks
 
 Every step: `make test` with the four known failures only; the build logs without errors or new

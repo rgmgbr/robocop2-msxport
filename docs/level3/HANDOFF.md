@@ -954,3 +954,144 @@ byte-identical to the worktree's (the product `fde75be5865bfb72`, l3 `7d5eb71e82
 above holds; `make test`: 348 tests, the 4 known failures only. The summaries (the field checks, the guard's
 lines, the copies' counts, the logs), the scratch tools (`tears.py`, `fbstate.py`, `gd.tcl`, `ab.tcl`,
 `stillcmp.sh`), the idle drive and the pictures looked at: `build/archive/rest_step7_records_2026-11-01.tar.gz`.
+
+## Step 8 (plan step D): Cain, the end, the sound and the continue (2026-11-01)
+
+**Done: checks 3-8 pass on the three machines, with open issues** (the boss route's speed, the beam's tears
+the guard counts, type 21's death composed behind its list: below). Worktree `g/wt08`, branch `g-s08` from
+`level2` `56e8f56`, rebased onto `03ba0ca` (step 7's chain in); scratch `S8` = `$SCRATCH/g/s08`. One
+openMSX: a private MSX-AI MCP session (`tools/bstest/mcpd.py S8/mcp`, `mx.sh`). The plan: `docs/LEVEL3.md`
+step D; as built: its new section 3.12; the harness: `docs/HARNESS.md` 5.29.
+
+### What it did
+- **The fix** (`msx/frontx.asm` `fo_hsc`, step B's open issue 2): REA (Ghidra, `level3_full.bin`) on
+  `high_score_entry` `$12082` and the name entry `$1215C`: an entry takes three steps of `pl_fade`'s
+  countdown of the palette flash (`$F826`): its text screen (`$12160`: `$10768`, whose `$1080C` calls
+  `pl_fade`), Return (`$121D6`-`$121E0`: the fade level set to 1, fading out, `pl_fade`) and the fade loop
+  (`$12104`-`$1211A`: `pl_fade` until the level is 0, once since it is 0 already). The port's `hs_entry`
+  took none: after a game over with a flash running and a qualifying score, the continued game showed
+  RoboCop's tint two more frames and `$F826` differed. `fo_hsc` now calls `fo_flash` three times when the
+  entry ran. Only the palette reads `$F826` (`player.asm` `pl_fade`, `logic.asm` `pal_flash`): no logic
+  changes. Proven on the MSX (`ge_l3over_job`: the beam's flash, 4, at the death's end): `ac_flash` at
+  `lv_cont` 0002h before, FFFFh after, as the original's five steps (PIC9's, the entry's three, the offer's)
+  leave it. FRONT 7 B.
+- **Step B's open issue 1** (the D1 emulation's two rare cases): left documented; no drive reaches them and
+  no cheap proof exists.
+- **The harness** (the checks' tools, `docs/HARNESS.md` 5.29): `contcheck.py --level 3`; `bonuscheck.py
+  --level3` (`first_picture(level=3)`); `endcheck.py --script`; `hz.tcl`: `hb_l2_snap_arm` records level 3's
+  first picture (`TAG_l3g0`) after `lv_cont` and, when a job asks (`::hb_l3rec`), after `lv_next`, and its
+  game frame 100 ("level 3 at tick_n"); `hz_l2c_poll` no longer takes the offer's record from an
+  `LV_TEST=3` build's briefing (its end pointer is `txt_cont`'s start: cont3's records had held PIC9);
+  `np.tcl` `np_l3flow_setup` (the product's whole flow with level 3 recorded, its end asked at its frame
+  100, the game completed recorded under TAG2); `ending.tcl` `ge_arm` (`ge_setup`'s records without the
+  reset, `::ge_nopause`), `ge_kill_job` (kill's drive into the game completed), `ge_l3over_job` (a level-3
+  game over with the entry and the offer); `fxlog.tcl` `fxl_l3_jobs`, `hz.sh l3fxbuilds`; `l3field.tcl`
+  `lf_start_jobs` on any drive.
+
+### Commits
+`f03678d` (the fix), `d3e2ffc` (the harness), `44731c2` (the flow's level-3 end and records), and this
+section's (with `docs/LEVEL3.md` 3.12 and `docs/HARNESS.md` 5.29).
+
+### Checks (`R3` = `S8/R3`: the rebased tree, step 7's chain and this step; "before step 7" = `56e8f56` and this step, `S8/R`, `S8/R2`)
+- **Builds** (`tools/bstest/build.sh`, `hz.sh l3builds`, `l3fxbuilds`, `trace`, `l2builds`): all build,
+  the 12 known z80asm warnings only; R3: the product `8f87721ef2ad3f2a` (2 MiB, the guard), the lowest
+  set (`DIAG=1 PZ_TEST=1`) `82db068352bc89a9`, l3 `2a663a471c3577a9`, l3c `c9346215d9196419`, l3o
+  (`LV_TEST=3 LV_CARRY=10050:0:1:1`) `4fd9db258aa10365`, cap (`EXTJOY=1 LV_TEST=3`) `afea1b0147cf820d`.
+  `romdiff.py --blocks` (the product before and after the fix): 48 blocks identical, only `BANK_FRONT`
+  differs: one byte at 8A58h (`call ci_hook`'s operand) and frontx.asm's tail from `fo_hsc` + 13 (the 7
+  bytes and the code after them moved: `ci_hook`, `rom_guard`, its message); FRONT's own code, the title,
+  Brainstorm's and the range's front parts unchanged. **Free bytes** (`python3 -I tools/bstest/l2base.py
+  banks S8/R3`): FRONT **1,112** in the product (1,119), **714** in the lowest set (721); the fixed area
+  164 and 29, `BANK_FIELD` 49, `BANK_L3` 3,867, `BANK_L3B` 2,383, FRONT2 7,041 (unchanged).
+- **Check 1 and levels 1-2** (R3: `hz_l3_jobs`, the level-1 regression, `hz_l2_jobs`; `hz.sh compare`):
+  **"level 3: PASS (16 traces)"** (780 fields, lost counters 0), **"regression: PASS"**, **"level 2: PASS
+  (23 traces)"**; the same before step 7 (R2).
+- **Check 3** (`lf_jobs W R poses_none.tcl FROM N MACHINES DRIVE`, the real logic, nothing injected;
+  `$PY -I tools/bstest/fieldcheck.py DIR build/msx/level3 OUT.png --level 3`): pictures with differences,
+  MSX2 / MSX2+ / turbo R (the classes: "hostage-tear" a big item torn or a picture behind; "other" a list's
+  items not yet composed):
+
+  | window (game frames) | before step 7 | R3 |
+  |---|---|---|
+  | tour3 from 2 (to 132-185), 500 | 25 / 28 / 31 (all tears but 2) | - |
+  | park from 40 (to 85-203), 500 | 74 / 102 / 75 (tears 34 / 48 / 69, other 41 / 60 / 50) | 46 / 53 / 37 (tears 15 / 23 / 35, other 34 / 31 / 27) |
+  | park from 330 and 650, 500 and 400 | 0 / 0 / 0 and 0 / 0 / 0 | - |
+  | boss from 110 (Cain on the roof), 500 | 0 / 42 / 59 | - |
+  | boss from 625 (floor 30), 400 | 30 / 27 / 54 | **0 / 0 / 1** |
+  | boss from 1025 (floor 40), 400 | 24 / 38 / 53 | - |
+  | kill from 1550 (Cain hurt), 700 | 70 / 65 / 76, all tears | **0 / 0 / 0** |
+  | kill from 1745 (his death, the end count) to 1860, 600 | - | **0 / 0 / 0** to row 1860 (the 158 / 159 / 290 pictures of tick 1861 are WELL DONE's text over the play area: not the field) |
+
+  No picture shows a frame the list does not hold or a wrong cache place; the lost counters 0; the frame
+  cache's copies 13-21 ms (`fc.txt`). Park's remaining ones (R3) are type 21's death (ticks 49-85): its white
+  flash and its debris (2-5 items in the list, the trace build's ENEMY_CAP 0) composed up to 8 pictures
+  behind (`S8/O7/lf/parka_fx.png`: the robot white for a run, its legs' part a picture behind). Looked at:
+  the pre-step-7 tears (Cain partly white, partly normal, at the roof's edge and when hit), the park runs.
+- **Check 4** (coherence): the field check's classes above are the play field's frame-to-frame coherence
+  (a picture behind its list, or torn); the guard over the whole kill drive (`lf_start_jobs W R 400 {} kill
+  1861`, ended at the drive's last row by `rc2_rg_end`) counts the copies the beam crossed: R3 **tear 124 /
+  250 / 234** (before step 7: 25 / 41 / 22), reg 0 / 14 / 5, cmd 755 / 814 / 832, vbl 2 / 83 / 52, pal and
+  cpu 0, `patcheck` 0 bad (step 7's open issue 1: its chains' last bands). The stills (`hz_l3_still_jobs W R
+  {1700 1760 1766 1770 1775 1779 1780 1781 1782 1783 1790 1800 1830 1855} l3_kill`, before step 7; `$PY -I
+  tools/msxframe.py ... --level 3 --field`): Cain hit (his white copy), his death's explosions and debris,
+  the end count: play field 0 differ and every sprite pixel exact in 37 of 42, the other 5 2 px where
+  RoboCop's muzzle flash (133) and his new bullet (141) meet at the gun with an OR layer dropped (an effect
+  giving way). `tools/recframes.py` reads `rc2_jumprec`'s records only (the field check's are 1,301 bytes
+  longer): not used.
+- **Check 5** (the guard's `sprlines` over the whole kill drive): R3 **0 / 0 / 0 pictures with a line above
+  8**. Before step 7: 9 pictures on the MSX2 at game frames 1781-1782 (line 97, 9 sprites: RoboCop's run
+  first, Cain's death explosions and RoboCop's bullets after it, in a SAT caught mid-publication:
+  "transient" for `msxframe.py`), 0 on the others. Past the drive's end the guard counted 15 sprites a line
+  on WELL DONE: R#8's sprites-off bit is set there (`end_regs.bin` 0Ah), `rc2_sprlines` does not read it.
+- **Check 6** (`fxl_l3_jobs`; `fxcheck.py check LOG ROM LABELS --bench build/emu/l3_<drive>_ram.jsonl
+  --expect k`): **fxcheck: PASS** on `d_kill_{scc,ext,psg}` (1,860 frames, 635 requests equal the bench's),
+  `d_park_{scc,ext,psg}` (1,200, 663), `d_boss_scc` (1,400, 1,069), `cont3_{scc,psg}` (400 frames, 122
+  requests, through the continue: the offer taken; the offer `txt_cont` silent after its stop),
+  `brief3_{scc,psg}` (the briefing silent); level 3 has no gun opening (its start's `$15CA`). The effects'
+  priority rule's known scope note (`docs/LEVEL2.md` 8.1) appears as in level 2. R3: kill and cont3 again,
+  PASS.
+- **Check 7** (R3; the same before step 7):
+  - the product's flow, `np_l3flow_setup` on the Expert (power-on RAM), the FS-A1FX and the FS-A1GT:
+    `bonuscheck.py W/np f3_ex2 --result time --range time --brief l3 --level3` **PASS** (Brainstorm's and the
+    range's second visits, the level-3 briefing 412 ticks, level 3's first picture `msxframe.py` exit 0 with
+    the HUD's values, its game frame 100 with the lost counters 0 and the range's rating); `f3_ex ... --brief
+    l2 --level2` PASS; `endcheck.py W/np f3_ex2 RET --score 28800` **PASS** (level 3's end at its frame 100,
+    the end count, WELL DONE equal to the render, the CMP tune 4,917 ticks in 98.5 s, the name entry's first
+    wait, the table, the end at the title); `S8/O6/np/f3_ex2_end.png` looked at;
+  - Cain's own death: `ge_kill_job` on the three machines, `hz.sh compare --fields ... kill kill_fx kill_tr`
+    "level 3: PASS (3 traces)" (to row 1860: his death at about 1765, the end count), then `endcheck.py W/ke
+    kill - --script --score 24650` **PASS** (WELL DONE, the tune, the new game: a script build skips the
+    entry and the title);
+  - a game over in level 3: `ge_l3over_job` (Expert, FS-A1FX, FS-A1GT), `endcheck.py W/ov ov_ex "C A I N RET"
+    --over --score 10050` **PASS** (PIC9, the entry's waits, the table with CAIN 10050, the offer, `lv_cont`).
+- **Check 8** (R3 and before step 7): `contcheck.py W/O/l3 l3_cont3 --fire --level 3` (and `_fx`, `_tr`)
+  **cont check: PASS**: the offer equal to the render, the HUD split at every VBLANK, ended by fire, the
+  credit used; the map patches, the attribute RAM, the lists and the tile cache equal before PIC9 and at
+  `lv_cont`; the frame cache empty at `lv_cont` (41h in place 0 before PIC9); level 3's first picture
+  `msxframe.py` exit 0 with the HUD's values. cont3's traces 0 differ.
+- **The speed** (`S8/sp3.tcl`: each tick's emulated time, cap's build, kill's drive; ticks a second, MSX2 /
+  MSX2+ / turbo R), before step 7 -> R3: Cain on the roof (130-260) 7.8 / 9.8 / 14.5 -> 7.8 / 10.4 / 15.5;
+  floor 20 (300-600) 5.9 / 8.6 / 13.0 -> 6.1 / 9.1 / 14.1; floor 30 8.4 / 9.2 / 13.5 -> 8.5 / 9.8 / 14.9;
+  floor 40 6.8 / 9.4 / 13.9 -> 7.0 / 10.4 / 15.7; the ground floor (1500-1765) 9.4 / 9.1 / 15.4 -> 10.5 / 10.6
+  / 19.2; the end count 19.2 / 18.5 / 24.4 -> 19.7 / 19.2 / 24.8; the drive's two teleports (ticks 30-50) take
+  23 s on the MSX2. The trace build (ENEMY_CAP 0) the same within 2 %.
+- **`make test`** (the worktree, R3): 348 tests, the 4 known failures only.
+
+### Open issues
+1. **The boss route is slow**: 6-10.5 ticks a second on the MSX2, 9-10.6 on the MSX2+, 14-19 on the turbo R
+   while Cain is on screen (25 wanted; the end count 19-25, tour3's start 15-22). The cost is his
+   composition (three play-field parts, the frame cache's copies a small share: 618 copies of 13-16 ms in
+   the whole kill drive). `BANK_FIELD` has 49 B. The user's choice may be needed (decision 13's play field
+   against sprites for Cain), or a cheaper composition.
+2. **The beam crosses copies** (the guard's tear 124 / 250 / 234 over the kill drive, R3): step 7's open
+   issue 1 (step 10 works on it in `isr.asm`).
+3. **Type 21's death** (park, R3): its white flash and debris up to 8 pictures behind the list, 37-53
+   pictures in 500 (several items at once; the trace build's ENEMY_CAP 0).
+4. 2 px where RoboCop's muzzle flash and his new bullet meet with an OR layer dropped (5 of 42 stills):
+   an effect's look, not Cain's or type 21's.
+5. The regress gate's `tx` flows (`np_title_setup`) do not end level 3 at its first tick as `docs/HARNESS.md`
+   5.26 says: the stages' records remove `np_t_l2`'s breakpoint, so level 3 plays without input until a
+   game over, then the entry and the title (the title's comparison holds either way). `np_l3flow_setup`
+   asks the end itself.
+6. `rc2_sprlines` counts sprites while R#8 hides them (WELL DONE); `lf_start_jobs`' guard waits past a
+   drive's last row (the drive pauses the machine): step D's chains ended it there.

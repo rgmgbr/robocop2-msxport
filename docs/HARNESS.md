@@ -2233,6 +2233,68 @@ msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_l3 {W/O/l3} {W/R} tr
 sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv W/O/l3 W/R   # "level 3: PASS (16 traces)"
 ```
 
+### 5.29 Level 3's checks 3-8: Cain, the end, the sound and the continue (level 3's step D)
+
+`docs/LEVEL3.md` 4 and 3.12 (as built); the step's account: `docs/level3/HANDOFF.md`, "Step 8 (plan step
+D)". `W` a fresh folder outside `build/msx`, `PY` the venv's Python, `R` = `W/R` with `hz.sh l3builds W/R`
+and `hz.sh l3fxbuilds W/R` (`l3x`, `l3n`, `l3cn`), `<repo>` the repository's root. One chain (one
+`msx_local_cmd` a line, or a private session's `mx.sh`), after `source {<repo>/tools/bstest/load.tcl};
+source {<repo>/tools/bstest/l2base.tcl}; source {<repo>/tools/bstest/l3field.tcl}`:
+```
+set J [hz_l3_jobs {W/O/l3} {W/R} tr]                                                   ;# check 1 and cont3's records (check 8)
+foreach {nm drive from n} {parka l3_park 40 500 bossb l3_boss 625 400 killa l3_kill 1550 700 killb l3_kill 1745 600} {
+    set J [concat $J [lf_jobs "W/lf/$nm" {W/R} {W/poses_none.tcl} $from $n {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} $drive]] }   ;# check 3
+set J [concat $J [lf_start_jobs {W/sc} {W/R} 400 {} kill 1861]]                       ;# checks 4-5: the guard over kill
+set J [concat $J [hz_l3_still_jobs {W/st} {W/R} {1700 1760 1770 1779 1781 1783 1800 1855} l3_kill]]   ;# check 4's stills
+set J [concat $J [fxl_l3_jobs {W/fx} {W/R}]]                                            ;# check 6
+lappend J [np_job f3_ex Gradiente_Expert20_64K np_l3flow_setup {W/np} {W/prod/rc2.rom} {W/prod/rc2.labels}]   ;# check 7 (and _fx, _tr)
+lappend J [ge_kill_job {W/ke} {W/R} C-BIOS_MSX2 {}]                                     ;# check 7 (and _fx, _tr: machine, suffix)
+lappend J [ge_l3over_job {W/ov} ov_ex {W/l3o/rc2_l3o.rom} {W/l3o/rc2_l3o.labels} {C A I N RET} Gradiente_Expert20_64K]   ;# check 7
+hz_chain $J {W/all.done}
+```
+`W/poses_none.tcl` is `set ::lf_len 60; set ::lf_phases {{none {}}}` (nothing injected: the real logic);
+`W/prod` the product, `W/l3o` `build.sh W/l3o/rc2_l3o.rom LV_TEST=3 LV_CARRY=10050:0:1:1` (no script: no
+life, a credit, a score that enters the table). `lf_start_jobs`' guard ends at its SECS, or wait: the drive
+pauses the machine at its last row and the guard's emulated seconds stop there; a job that wants the guard
+over the drive alone ends it then (`rc2_rg_end` after cancelling its `after time`; step D's chain did that
+from an `after realtime` loop). The verdicts:
+```sh
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv W/O/l3 W/R            # check 1: "level 3: PASS (16 traces)"
+$PY -I tools/bstest/fieldcheck.py W/lf/NAME/M build/msx/level3 OUT.png --level 3          # check 3, each window and machine
+$PY -I tools/msxframe.py W/st/M/gNNNN build/msx/level3 build/msx/hud OUT.png --sprites build/msx/sprites --level 3 --field
+python3 -I tools/bstest/fxcheck.py check W/fx/d_kill_scc.txt W/R/l3/rc2_l3.rom W/R/l3/rc2_l3.labels --bench build/emu/l3_kill_ram.jsonl --expect scc
+python3 -I tools/bstest/fxcheck.py check W/fx/cont3_scc.txt W/R/l3c/rc2_l3c.rom W/R/l3c/rc2_l3c.labels --bench build/emu/l3_cont3_ram.jsonl --expect scc
+python3 -I tools/bstest/fxcheck.py check W/fx/brief3_scc.txt W/R/l3/rc2_l3.rom W/R/l3/rc2_l3.labels --expect scc
+python3 -I tools/bstest/bonuscheck.py W/np f3_ex2 --result time --range time --brief l3 --level3 --gen W/prod/gen
+python3 -I tools/bstest/endcheck.py W/np f3_ex2 RET --score S --gen W/prod/gen        # S: the score at the end (f3_ex2_end.txt)
+python3 -I tools/bstest/endcheck.py W/ke kill - --script --score S
+python3 -I tools/bstest/endcheck.py W/ov ov_ex "C A I N RET" --over --score 10050
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv W/ke W/R kill kill_fx kill_tr   # the won level's traces
+for t in l3_cont3 l3_cont3_fx l3_cont3_tr; do python3 -I tools/bstest/contcheck.py W/O/l3 $t --fire --level 3 --gen W/R/l3c/gen; done   # check 8
+```
+- **`fxl_l3_jobs`** (`fxlog.tcl`): kill and park on the three chip sets (the cartridge's SCC, an SCC in slot B,
+  the PSG), boss on the SCC, cont3 on the SCC and the PSG with the offer taken as `hz_l3_jobs`' cont3
+  (`hz_l2_cont_setup`), the level-3 briefing on the SCC and the PSG.
+- **`np_l3flow_setup`** (`np.tcl`): the product's whole flow as `np_title_setup` (EXACT 1), with level 3
+  recorded after the level-3 briefing (`hz.tcl` `hb_l2_go` with `::hb_l3rec`: `TAG2_l3g0`, "level 3 at
+  tick_n" at its game frame 100), its end asked there (`np_t_l3`: the stages' records remove `np_t_l2`'s
+  breakpoint, so the other flows reach level 3 and play it until a game over), the game completed recorded
+  under TAG2 by `ending.tcl` `ge_arm` (`::ge_nopause`: its end does not pause the flow), the name entry
+  left blank by `ge_ret_arm`'s RETURN, the title recorded as `np_title_setup`'s.
+- **`ge_kill_job`** (`ending.tcl`): kill's drive on the l3 build, its trace as `hz_l3`'s job `l3_kill`
+  (`_fx`, `_tr`), then the game completed in a script build (no entry, no title: the job ends at the new
+  game; `endcheck.py --script`). **`ge_l3over_job`**: a game over in level 3 (RoboCop put into floor 25's
+  beam at its game frame 30), PIC9, the entry, the table, the offer taken (`endcheck.py --over`); its end
+  notes `ac_flash` (`$F826`).
+- **`contcheck.py --level 3`**: level 3's lists by their lengths, no vats, every frame-cache place empty at
+  `lv_cont`'s entry (PIC9's G7 overwrote page 2, the cache's lines; the continue's `fe_text` emptied it), the
+  first picture `TAG_l3g0` (`bonuscheck.py` `first_picture(level=3)`). `hz.tcl` `hz_l2c_poll` takes the
+  offer's record only once the text pointer moved after `front_over` (an `LV_TEST=3` build's briefing ends
+  where `txt_cont` starts).
+- `tools/recframes.py` reads `rc2_jumprec`'s records only (the field check's carry 1,301 more bytes); the
+  field check is the coherence check of the play field (a picture of a big item behind its list, or torn,
+  differs), `msxframe.py`'s stills that of the sprites (every sprite pixel exact).
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its
