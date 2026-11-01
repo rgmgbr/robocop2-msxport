@@ -137,6 +137,30 @@ class EngineSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"ld hl,lv_fid0", b)), 2)
         self.assertIn("set 7,c", b)                         # (fb_add: a hit flash's mark)
 
+    def test_staged_pieces_one_chain(self):
+        # (level 3's step 7: a staged item's copies as one chain started by the split interrupt, one
+        # copy a band of pieces side by side in page 3; VAT_ANIM=1 builds keep the piece-by-piece copies)
+        f = re.sub(r";.*", "", asm("field.asm"))
+        i = f.index("fst_chain:")
+        guard = f[:i].rindex("if VAT_ANIM = 0")
+        self.assertNotIn("endif", f[guard:i])
+        end = f.index("endif", i)
+        body = f[i:end]
+        self.assertIn("call fb_pcmd", body)
+        self.assertIn("ld (fb_cq),a", body)                 # (the item's last copy: 3, waiting)
+        self.assertIn("ld (fb_vok),a", body)                # (never the VBLANK's)
+        self.assertIn("cp 3", body)                         # (fb_cmd2 holds three more commands)
+        self.assertIn("fch_hf:", body)
+        cp = f[f.index("fst_cp:"):f.index("fst_load:")]
+        self.assertIn("call fst_chain", cp)
+        more = f[f.index("fst_more:"):f.index("fst_more:") + 60]
+        self.assertIn("dec a", more)                        # (fb_scp 2: the split interrupt's chain)
+        inc = asm("msx.inc")
+        for name, addr in (("fb_scol", 0x065A), ("fb_sord", 0x065B)):
+            m = re.search(rf"^{name}:\s+equ 0x([0-9A-F]+)", inc, re.M)
+            self.assertIsNotNone(m, name)
+            self.assertEqual(int(m.group(1), 16), addr)
+
 
 if __name__ == "__main__":
     unittest.main()

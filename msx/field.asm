@@ -2848,23 +2848,7 @@ fb_copy:
         jp nc,fcp_redo
         ld a,(fb_cpi)
         or a
-        jr nz,fcp_part
-        ld hl,(fb_px)               ; the parts: right of the next x 256 (V9958), below y 256
-        ld l,0
-        inc h
-        ld a,(fb_eng)
-        or a
-        jr z,fcp_xs
-        ld hl,0x7FFF
-fcp_xs: ld (fb_xs),hl
-        ld hl,(fb_px + 2)
-        ld l,0
-        inc h
-        ld (fb_ys),hl
-        ld hl,0                     ; (all its columns)
-        ld (fb_lx0),hl
-        ld hl,0x7FFF
-        ld (fb_lx1),hl
+        call z,fcp_sp
 fcp_part:
         ld a,(fb_cpi)
         cp 4
@@ -2965,6 +2949,26 @@ fwt_c:  ld a,(fb_cq)                ; (it ran: the VDP is idle again; the last p
 fwt_4:  ld a,FP_COPY
         ld (fb_ph),a
         jp fb_copy
+
+; The piece's parts: right of the next x 256 (V9958), below y 256 (fb_xs, fb_ys), all its columns
+; (fb_lx0, fb_lx1).
+fcp_sp: ld hl,(fb_px)
+        ld l,0
+        inc h
+        ld a,(fb_eng)
+        or a
+        jr z,fcp_xs
+        ld hl,0x7FFF
+fcp_xs: ld (fb_xs),hl
+        ld hl,(fb_px + 2)
+        ld l,0
+        inc h
+        ld (fb_ys),hl
+        ld hl,0
+        ld (fb_lx0),hl
+        ld hl,0x7FFF
+        ld (fb_lx1),hl
+        ret
 
 ; HL = 15 bytes: the copy of fb_r from the scratch onto fb_cur's page (HMMM; the V9958's ring: x
 ; 256 and up on page 1; a V9938 page: x less its first column's).
@@ -3138,8 +3142,16 @@ fsg_m:  add a,c
         cp 5
         ret nc                      ; (more than four: one at a time)
         ld (fb_stg),a
+        if VAT_ANIM = 0
+        ld a,c
+        ld (fb_scol),a
+        xor a
+        ld (fb_sbx),a               ; (piece k composed at page 3 x 64k: a band's pieces side by side,
+        ld b,3                      ;  one copy a band, fst_chain; the three caches lent, piece 3 in the
+        else                        ;  scratch)
         dec a
-        ld b,a                      ; the caches lent: 0 .. pieces - 2
+        ld b,a                      ; (VAT_ANIM=1: piece 0 in the scratch, the caches lent 0 .. pieces - 2)
+        endif
         ld hl,fb_cache
         ld de,FB_CSZ
 fsg_c:  ld (hl),0xFF                ; (owner FFFFh: free)
@@ -3175,18 +3187,37 @@ fst_done:
         cp (hl)
         jr z,fst_cp
         ld a,(hl)
+        if VAT_ANIM
         dec a
+        endif
         rrca
-        rrca                        ; (the cache's x: * 64)
+        rrca                        ; (its x in page 3: * 64)
         ld (fb_sbx),a
         jp fcp_next
-fst_cp: ld a,1
+fst_cp:
+        if VAT_ANIM = 0
+        ld a,2
+        ld (fb_scp),a
+        call fst_chain
+        ret z                       ; (one chain, waiting for the split)
+        endif
+        ld a,1
         ld (fb_scp),a
         xor a
         ld (fb_spk),a
         ; (falls through)
-; The staged piece fb_spk's place back (fb_px, fb_pe, fb_sbx), then its copy.
+; The staged piece fb_spk's place back, then its copy.
 fst_load:
+        call fst_place
+        xor a
+        ld (fb_cpi),a
+        ld (fb_c2),a
+        ld a,FP_COPY
+        ld (fb_ph),a
+        jp fb_copy
+
+; The staged piece fb_spk's place back: fb_px, fb_pe, fb_sbx.
+fst_place:
         call fst_slot
         ld de,fb_px
         ld bc,4
@@ -3195,20 +3226,144 @@ fst_load:
         ld bc,4
         ldir
         ld a,(fb_spk)
+        if VAT_ANIM
         or a
         ld a,FB_SX
         jr z,fsl_x
         ld a,(fb_spk)
         dec a
+        endif
         rrca
         rrca
 fsl_x:  ld (fb_sbx),a
+        ret
+
+        if VAT_ANIM = 0
+; The staged pieces' copies as one chain (fb_scp 2): one copy a band of pieces (side by side in page
+; 3: fb_stage), cut where the V9958's ring is crossed, the last band's first, the first band's last and
+; of a band's parts the larger last (fb_sord), so that the split interrupt's wait covers the small ones:
+; it starts the first and each next one as soon as the one before is done (isr.asm isr_fbgo; what its
+; wait leaves, the VBLANK's ifg_fin or fb_wait), and no picture shows the item between two of its
+; pieces (until 2026-11-01 each piece after the first waited for the main loop to find the VDP idle,
+; 2-15 ms later, and was copied while the beam drew it: level 3's big enemies showed partly old, partly
+; new in 5-14 % of the pictures) -> Z with fb_cmd, fb_cmd2 (fb_cn, fb_cp), fb_vok, fb_cq and FP_WAIT set
+; (fcw_one's); NZ when a piece left its page's window or the chain takes more than four commands
+; (fb_cmd2 holds three): then piece by piece, as before.
+fst_chain:
         xor a
-        ld (fb_cpi),a
+        ld (fb_cn),a
+        ld (fb_c2),a                ; (0: fb_cmd not prepared yet)
+        ld a,(fb_stg)
+fch_pc: ld hl,fb_scol
+        sub (hl)
+        ld (fb_spk),a               ; (the band's first piece: its corner, fb_sbx)
+        call fst_place
+        ld a,(fb_scol)
+        dec a
+        jr z,fch_b1
+        ld hl,fb_spk
+        add a,(hl)
+        add a,a
+        add a,a
+        add a,a
+        ld e,a
+        ld d,0
+        ld hl,fb_spx + 4
+        add hl,de
+        ld de,fb_pe
+        ld bc,4
+        ldir                        ; (its other corner: the band's last piece's)
+fch_b1: call fb_inwin
+        jp nc,fch_no                ; (the window moved: fb_copy redoes the item)
+        call fcp_sp
+        xor a
+        ld (fb_sord),a
+        ld hl,(fb_ys)               ; (the part above y 256 the taller: the one below first)
+        ld de,(fb_px + 2)
+        ld bc,(fb_pe + 2)
+        call fch_hf
+        jr c,fch_o1
+        ld a,2
+        ld (fb_sord),a
+fch_o1: ld hl,(fb_xs)               ; (the part left of x 256 the wider: the right one first)
+        ld de,(fb_px)
+        ld bc,(fb_pe)
+        call fch_hf
+        jr c,fch_o2
+        ld hl,fb_sord
+        inc (hl)
+fch_o2: xor a
+fch_pt: ld (fb_cpi),a
+        ld hl,fb_sord
+        xor (hl)
+        call fb_part
+        jr nc,fch_nx
+        ld a,(fb_c2)
+        or a
+        jr nz,fch_2
+        inc a
         ld (fb_c2),a
-        ld a,FP_COPY
+        ld hl,(fb_r + 2)            ; (its top: fb_fits, when it is the only one)
+        ld (fb_cpy),hl
+        ld hl,fb_cmd
+        jr fch_cm
+fch_2:  ld a,(fb_cn)
+        cp 3
+        jr nc,fch_no
+        ld e,a
+        inc a
+        ld (fb_cn),a
+        ld a,e
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        sub e
+        ld e,a
+        ld d,0
+        ld hl,fb_cmd2               ; (fb_cmd2 + 15 x the parts before it)
+        add hl,de
+fch_cm: call fb_pcmd
+fch_nx: ld a,(fb_cpi)
+        inc a
+        cp 4
+        jr c,fch_pt
+        ld (fb_cpi),a               ; (4: fb_copy ends the item when the chain is done)
+        ld a,(fb_spk)
+        or a
+        jp nz,fch_pc
+        ld a,(fb_stg)
+        dec a
+        ld (fb_spk),a               ; (fcp_done: the last piece)
+        ld a,(fb_c2)
+        or a
+        jr z,fch_no
+        ld a,(fb_cn)
+        or a
+        jr z,fch_1                  ; (one command)
+        ld hl,fb_cmd2
+        ld (fb_cp),hl
+        ld a,1
+fch_1:  ld (fb_c2),a
+        xor a
+        ld (fb_vok),a               ; (the split interrupt's, or the main loop's in the blank: fb_mayq)
+        ld a,3
+        ld (fb_cq),a                ; (the item's last copy, waiting)
+        ld a,FP_WAIT
         ld (fb_ph),a
-        jp fb_copy
+        xor a
+        ret
+fch_no: or 1
+        ret
+
+; HL = where a band is cut, DE = its first coordinate, BC = past its last -> NC when the part before
+; the cut is the longer or as long (2 HL >= DE + BC; no cut: HL 7FFFh or past BC, any order).
+fch_hf: add hl,hl
+        or a
+        sbc hl,de
+        sbc hl,bc
+        ret
+        endif
 
 ; -> HL = the staged piece fb_spk's place (fb_spx + 8 * fb_spk). Keeps BC.
 fst_slot:
@@ -3226,8 +3381,8 @@ fst_slot:
 ; DE, HL.
 fst_more:
         ld a,(fb_scp)
-        or a
-        jr z,fsm_n
+        dec a
+        jr nz,fsm_n                 ; (2: one chain, the split interrupt's)
         ld a,(fb_spk)
         or a
         jr z,fsm_n

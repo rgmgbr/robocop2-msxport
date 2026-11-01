@@ -1148,7 +1148,9 @@ fb_ftab:    equ 0x0652              ;   2: its field_tab,
 fb_flook:   equ 0x0654              ;   2: its field_look,
 fb_fdyt:    equ 0x0656              ;   2: its field_dyn (per dynamic frame its entry in level 1's dyn_tab),
 fb_fwm:     equ 0x0658              ;   80h when its hit flashes are white copies (level 3), else 0,
-fb_fcb:     equ 0x0659              ;   its frame cache's first bank (0: none; level 3's L3_FC) (065Ah-065Fh free)
+fb_fcb:     equ 0x0659              ;   its frame cache's first bank (0: none; level 3's L3_FC)
+fb_scol:    equ 0x065A              ; field.asm fb_stage: the staged item's pieces across,
+fb_sord:    equ 0x065B              ;   fst_chain: a band's parts' order (065Ch-065Fh free)
 fb_sn:      equ 0x0660              ; the item being composed: its page's list when it started
 fb_snap:    equ 0x0661              ;   (how many, then FB_MAX entries)
 fb_own:     equ 0x0699              ; 2: the owner of a rectangle going into the queue (FFFFh: none)
