@@ -355,6 +355,24 @@ class VatAnimTests(unittest.TestCase):
         self.assertEqual((mapcmp.vat_look(bytes(ramf), 5, 0), mapcmp.vat_look(bytes(ramf), 5, 1)), (0x0A, 0x0C))
 
 
+class RingQueueTests(unittest.TestCase):
+    """The V9958 ring's queued columns and rows draw only the cells still in the kept area (scroll9958.asm
+    draw_kept; found with the static vats: a row queued long before drew columns 32 to the right of the
+    view into the slots of columns on the screen)."""
+
+    def test_the_queues_draw_through_draw_kept(self):
+        src = (ROOT / "msx" / "scroll9958.asm").read_text()
+        code = [l.split(";")[0].strip() for l in src.splitlines()]
+        self.assertEqual([c for c in code if c.startswith(("jp draw_", "jp nz,draw_"))],
+                         ["jp draw_kept", "jp nz,draw_kept", "jp draw_kept"])
+        kept = routine("scroll9958.asm", "draw_kept", "draw_tile:")
+        self.assertEqual(kept, ["draw_kept:", "ld c,a", "ld a,(prev_cy)", "dec a", "ld b,a", "ld a,c", "sub b",
+                                "cp VIEW_ROWS", "ret nc", "ld a,(prev_cx)", "dec a", "ld b,a", "ld a,e", "sub b",
+                                "cp 19", "ld a,c", "ret nc"])
+        rest = [c for c in code[code.index("draw_kept:") + 17:] if c]
+        self.assertEqual(rest[0], "draw_tile:")                                   # (it falls into draw_tile)
+
+
 class DamageTests(unittest.TestCase):
     """DAMAGE_X 2 (the user's choice of 2026-10-31) and the missiles' own damage in every build: enemy
     bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied; the other bullets, the touch

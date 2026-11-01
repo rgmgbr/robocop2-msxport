@@ -4,6 +4,31 @@
 ; is queued one step ahead and drawn one tile per scroll_work call while the VDP is idle;
 ; then the cells the game changed (tiles.asm rd_queue).
 
+; draw_kept: A = row, E = column (world) of a queued column or row: draw_tile when the cell is still in
+; the kept area ([prev_cy-1, prev_cy+12] x [prev_cx-1, prev_cx+17], as swr_one's changed cells), else
+; nothing. A row waits while columns are queued (column first), and a column while a row is: the
+; camera may have moved on meanwhile, and a cell it left shares its ring slot with one on the screen
+; (32 columns or 16 rows away): drawn, it showed the far cell's tile there until the slot was drawn
+; again (found on 2026-10-31 in level 2's tour with the static vats, the FS-A1FX: a row queued at
+; column 64 drew columns 80-81 over 48-49 when the camera had run to column 47). A cell it skips is
+; queued again when it comes back into the area.
+draw_kept:
+        ld c,a
+        ld a,(prev_cy)
+        dec a
+        ld b,a
+        ld a,c
+        sub b
+        cp VIEW_ROWS
+        ret nc
+        ld a,(prev_cx)
+        dec a
+        ld b,a
+        ld a,e
+        sub b
+        cp 19
+        ld a,c
+        ret nc
 ; draw_tile: A = row, E = column (world). Ignores tiles outside the map.
 draw_tile:
         call dt_prep
@@ -160,8 +185,8 @@ su_vset:
 su_work:
         jp scroll_work
 
-; Draws one queued tile if the VDP is idle (column first, then row); between the HUD split and
-; the VBLANK the cells the game changed come first.
+; Draws one queued tile if the VDP is idle (column first, then row; draw_kept: none the camera has
+; left since it was queued); between the HUD split and the VBLANK the cells the game changed come first.
 scroll_work:
         call vdp_busy
         ret nz
@@ -188,7 +213,7 @@ sw_cq:  ld a,(q_col)
         ld a,0xFF
         ld (q_col),a
 sw_col: pop af
-        jp draw_tile
+        jp draw_kept
 sw_row: ld a,(q_row)
         cp 0xFF
         jr z,sw_idle
@@ -200,12 +225,12 @@ sw_row: ld a,(q_row)
         ld a,(q_row_end)
         cp b
         ld a,(q_row)
-        jp nz,draw_tile
+        jp nz,draw_kept
         ld b,a
         ld a,0xFF
         ld (q_row),a
         ld a,b
-        jp draw_tile
+        jp draw_kept
 
 ; No column or row to draw: the changed cells, and with none waiting either nothing to do until
 ; the next update or a changed cell sets iw_more again.
