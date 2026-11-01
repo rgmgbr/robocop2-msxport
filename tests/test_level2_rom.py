@@ -398,11 +398,15 @@ class DamageTests(unittest.TestCase):
     def test_the_missiles_skip_the_multiplication(self):
         x = if_blocks("hits.asm", "DAMAGE_X > 1")
         self.assertEqual(x[:3], ["ld a,c", "cp 3", "jr c,phb_mx"])                         # (types 1 and 2)
-        self.assertEqual(x[3:], ["ld l,e", "ld h,d", "add hl,de", "if DAMAGE_X > 2", "add hl,de", "endif",
+        self.assertEqual(x[3:5], ["cp 0x11", "jr z,phb_mx"])        # (level 3's rocket: docs/LEVEL3.md default 11)
+        self.assertEqual(x[5:], ["ld l,e", "ld h,d", "add hl,de", "if DAMAGE_X > 2", "add hl,de", "endif",
                                  "ex de,hl", "phb_mx:"])
         self.assertEqual(if_blocks("hits.asm", "DAMAGE_X > 2"), ["add hl,de"])
         drone = routine("level2obj.asm", "t49_hit", "t49_boom")
         self.assertEqual(drone, ["t49_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
+                                 "ld (AM + 0x169A),hl"])
+        touch = routine("level3obj.asm", "t38_hit", "t38_boom")     # (types 38, 39, 52: default 12)
+        self.assertEqual(touch, ["t38_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
                                  "ld (AM + 0x169A),hl"])
 
     def test_damage_x_where_the_rule_says(self):

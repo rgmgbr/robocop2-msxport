@@ -2134,7 +2134,7 @@ start, carry `10050:2:0:good`): `tour3` (1,401 rows: the street from the start, 
 35 and 20, the lifts L0, L1 and L2 up and down, the roof, by teleports, energy and lives poked every 25
 frames) and `beam` (501 rows: a beam's death at frame 100, the restart). `python3 -I tools/l3drives.py
 make`, `refs`, `check`, `path REF` (RoboCop's place and the slots' types every N rows). `cont3`'s drive
-exists, not its reference: the bench faults after its game over (PC `$FDB8`, A1 800000h; the plan's step D).
+exists; its reference came with step B (5.28: the fault at PC `$FDB8` after its game over was the drive's).
 
 **The stubbed references** (`tools/bstest/l3stub.py OUT [--drop NAME]`, `l2stub.py`'s twin): the
 bench with the port's stubs written into the main code before `level_init` (`--pre-poke`): the 19 new
@@ -2200,6 +2200,38 @@ the level reaches by itself: `tour3` from frames 2 and 600, 0 differ on the thre
 `W/lf/<m>/fc.txt`: the frame cache's copies (count, emulated microseconds, the longest) and the lost
 counters. **The start check**: `hz_chain [lf_start_jobs {W/sc} {W/R} 42] {W/sc/all.done}` (with POSES
 as its fourth argument the scripted enemies run under the guard).
+
+### 5.28 Level 3's logic (level 3's step B)
+
+`docs/LEVEL3.md` 3.3-3.4 and 3.11 (as built); the step's account: `docs/level3/HANDOFF.md`, "Step 6 (plan
+step B)". Every routine of level 3 is ported: `tools/bstest/l3stub.py`'s table is empty and the plain
+references are the ones to compare with (no `--refs`).
+
+**The drives and references** (`tools/l3drives.py`, energy and lives poked every 25 frames, no god mode):
+`park` (1,201 rows: the street from x 1000 firing, the trucks and type 21 shot, frames 40-240; floor 35
+under the turrets 41 and 40 from x 600, 250-600; the car park's ground floor from x 1700, 600-1100),
+`boss` (1,401 rows: the roof's left end for type 47's mode 1, the roof from x 900 firing; Cain comes at
+about 125, falls into the car park at 260; floor 20 to its end, act_20's piece opens at 600; floor 30
+leftwards in mode 2, the second piece at 1000; floor 40 rightwards until Cain falls onto the ground floor
+at 1400), `kill` (1,861 rows: boss's route without fire, RoboCop on the ground floor from 1500 firing left:
+Cain dies at about 1765, the end count, the level's end at row 1860) and `cont3` (401 rows, carry
+`0:0:1:good`: the beam's death with no life left, fire held at the death's end, row 149; the continue,
+level 3 again from row 150).
+
+**The builds**: `hz.sh l3builds W/R` builds `W/R/l3/rc2_l3.rom` and `W/R/l3c/rc2_l3c.rom` (`LV_CARRY=0:0:1:1`:
+cont3's game over with a credit).
+
+**The traces** (`hz_l3`): `tour3`, `park`, `boss`, `kill` on C-BIOS_MSX2 and the FS-A1FX (`_fx`), `beam` on
+C-BIOS_MSX2, `cont3` (and `_fx`) on the l3c build through `hz_l2_cont_setup` (the offer taken by SPACE as
+level 2's `cont`); with `tr` all five on the FS-A1GT (`_tr`): 16 traces. `analysis/amiga_ram_l3.tsv` has
+780 fields: `$D583` and `$E9F5` compared through `tools/tracecmp.py`'s field option `xor=` (the port keeps
+those patched bytes XOR'ed with the image's 3 and 42h, so that AC_VARS' zero at the power-on reads as them).
+```
+sh tools/bstest/hz.sh l3builds W/R
+python3 -I tools/l3drives.py refs                 # the six references (Unicorn: about 1.5 min)
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_l3 {W/O/l3} {W/R} tr
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv W/O/l3 W/R   # "level 3: PASS (16 traces)"
+```
 
 ## 6. The whole suite in order
 

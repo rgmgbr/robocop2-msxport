@@ -633,6 +633,38 @@ What step C built and where it departs from 3.5-3.6 (the account and the checks:
   none; the guard counts the copies running into shown lines. Not the cache's: its frames and places
   are right in every picture; the same with the picture held 60 VBLANKs. Step D's (open issue).
 
+### 3.11 As built by step B (2026-11-01) [V]
+
+What step B built and where it departs from 3.3-3.4 (the account and the checks: `docs/level3/HANDOFF.md`,
+"Step 6 (plan step B)"):
+
+- **The types** (`msx/level3obj.asm`, `BANK_L3B`): the 19 new types as 3.3 lists them, the bank's own copies
+  of the shared helpers (`l3_xy`, the muzzle flash as its own owner `l3_flash`, type 38's flight from
+  level 2's `t49` with `fly_dx3`, `fly_dy3`, `fly_gfx3`), `obj_push` (`$EF18`) and the turrets' map writes
+  (`tur_pnl`, `tur_put`: the panel's `map_cell` cell, the turret one row below and 10 or 7 columns right);
+  39 and 52 one routine with their tables; 40 and 42 one routine (Q6). Their tables in bank `l3b` of
+  `analysis/amiga_tables.tsv` (`t21_*`, `c22_*`, `t34_tab` ... `t47_cam`). Type 36's turn test reads map
+  words of 2D00h: the port knows the 22 cells (its shafts, columns 2 and 75) as constants, which
+  `tools/mapcells.py --level 3` checks against the map and every writer.
+- **The patched bytes** (Q3): `obj22_step` holds `$D583` XOR 3 and `obj40_flag` `$E9F5` XOR 42h, so that
+  AC_VARS' zero at the power-on reads as the image's bytes (`analysis/amiga_ram_l3.tsv`'s `xor=`).
+- **The original's D1 that Cain reads** (found by this step): `update_objects` calls each handler with
+  D1 as the slot before left it, and type 22 tests it (`cmpi.w #$30,D1` at `$D53A`: sound 0Eh while its
+  fire counter is 0). The port keeps that D1 in `objects.asm`'s `uo_d1` (the free slot's own D1): every
+  level-3 handler writes its last D1 there (after a last BOB, `l3_tail`: draw_bob's shift ror 4 | 0FCAh,
+  or y - camera y when out), types 4 and 12 and the deaths through `level3.asm`'s wrappers (`t4_w`,
+  `t12_w`, `d3_c31e`, `d3_c35a`); slot 0's is `read_joystick`'s FF00h/FF10h.
+- **`act_20`** (`mapobj.asm`, `ao_acts` entry 8), **the two-part lift** (`special.asm` `spl_two`: AG `$8050`
+  = 2) and **the rocket x 1** (`hits.asm`: bullet 11h beside types 1 and 2, default 11). The touches of
+  38, 39 and 52 take 18h in their own code (default 12).
+- **ENEMY_CAP**: `l3_noten` (step A) holds with the types: a product-option run of `kill` (ENEMY_CAP 1,
+  DAMAGE_X 2) brings Cain, his bombs and missiles and his death as the trace builds do.
+- **The continue** (`front.asm` `fo_flash`, both levels): the two countdown steps of the palette flash
+  (`$F826`) the original takes between the death's end and the continued game (`$82A8`'s `$FEDA`, the
+  continue's text `$10768`).
+- **Bytes** (product): `BANK_L3B` 2,383 free (5,662 used), `BANK_L3` 3,867, LC1 50, LC2 4,827, LC3
+  4,794, FRONT 1,119; the fixed area unchanged.
+
 ## 4. The checks
 
 Every step: `make test` with the four known failures only; the build logs without errors or new
