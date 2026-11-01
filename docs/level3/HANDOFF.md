@@ -404,8 +404,17 @@ scratch `S=$SCRATCH/g/s04`. The plan: `docs/LEVEL3.md` step A; as built: its new
   `variants.sh` (six `LV_TEST=3` sets), the Makefile's level-3 conversions; `docs/HARNESS.md` 5.26.
 
 ### Commits
-- (this step's two commits on `g-s04`; their SHAs and the integration into `level2` at the end of this
-  section)
+- On `g-s04` (rebased onto `d0985a4`): `acfe7d2` (level 3 in the ROM: the banks, the flow, `msx.inc`,
+  `mkrom.py`, `mapcells.py`, the tables) and `7145596` (the deaths, the bench, the harness, the docs).
+- Integrated into `level2` (clean tree, from `d0985a4`) by cherry-pick as **`69c9081`, `74c4554`**. In
+  the main tree then: level 3's conversions made (`build/msx/level3.*`, byte-identical to the
+  worktree's); the product (`e1fa3562861d8fc1`) and the `l3` trace build (`75fb186fa03b8c93`)
+  byte-identical to the worktree's; `l3drives.py refs` (both references at their sha256), `l3stub.py`
+  (byte-identical to the worktree's), `hz_l3 ... tr` and `hz.sh compare --fields
+  analysis/amiga_ram_l3.tsv`: "level 3: PASS (4 traces)"; `make test`: 339 tests, the 4 known failures
+  only. The level-1 and level-2 traces above ran on builds made before the deaths were added: those
+  differ from the final ones in `BANK_L3` alone (`romdiff.py`: bank 144, 1,808 bytes), which levels 1
+  and 2 never map. The small records in `build/archive/level3_stepA_records_2026-11-01.tar.gz`.
 
 ### Checks (each with its command and result)
 - The conversions: `python3 -I tools/msxlvpal.py palette build/extracted/files/DATAL3_22.bin --pal-file
