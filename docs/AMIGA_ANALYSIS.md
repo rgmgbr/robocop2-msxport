@@ -753,6 +753,43 @@ bench runs); the items marked *REA 10-28* were read again on 2026-10-28. Names:
     (393 calls) and 412 for `$110B4` (411) without fire **[verified: bench VBL count of `$110F0`; the
     port's records, step 18]**.
 
+### Level 3: the Civic Centrum **[verified: REA (Ghidra 12.1.4 through the REA CLI and MCP, raw-binary m68k, entry `0x0`, `analysis/ghidra_seeds.tsv` with level 3's ten `+entry` seeds) on `build/ram/level3_full.bin`; data reads; bench runs of the original (`tools/amigaemu.py game --level 3`, `tools/amigacov.py --level 3`); inferences marked]**
+
+The plan and every table: `docs/LEVEL3.md` section 2 (2026-11-01). The facts in short:
+- **The image**: `make ram` builds it with SPERMA under DATAL3 (RB1, MU1, SPERMA, DATAL3, PERMA; sha256
+  `700df44d…3515ca`): DATAL3 (185,356 B) covers `$28000-$5540B`, SPERMA's tail `$5540C-$5884D` stays (the
+  frames of types 4 and 12 that level 3's markers spawn). The main code is byte-identical to the other
+  images. Seeds: REA creates 125 functions, finds 1, applies 303 labels, 0 failed; the ten new
+  `+entry` seeds are code reached by `bsr` from type handlers or through branches Ghidra does not
+  follow (`$C398`, `$D0A6`, `$D478`, `$EF18`, `$EA50`, `$EAA6`, `$EBB8`, `$9F74`, `$F98C`, `$F12A`).
+- **The way in** (`load_level2` `$8524`): the statistics, `sperma_resident` cleared, both stages'
+  second visits, the briefing `$110B4`, PIC7, MU1, DATAL3; `level_init` reads the header `$86B4`
+  (objects `$AA3A`, hazards `$95EC`, specials `$9008`, spawns `$99E2`, start (1184, 784), relocation
+  (224, 544), markers `$C624`, lowest camera 624, 7:30, delay 3Ch, marker mask 3, **palette `$10036`,
+  level 2's**) and runs `$88AC`: `$15CA` set (no gun-opening sequence), aim 5, `$15DE` 4, state 6,
+  `$F89D` = 0Bh.
+- **The level**: 160 × 50 cells, floors on rows 7 (the roof), 20, 25, 30, 35, 40, 49; seven electric
+  beams two cells wide (`level_tick_2` `$9436`: 32 frames on, 32 off, − 0Ch a frame); three lifts drawn
+  in two parts (`$8ED2`: `$5397C` 32 × 29 and `$53BC0` 32 × 16, because `$8050` = 2); 15 map objects
+  (two relocations, ten crates with pickups, three entries of `act_20` `$9F74`, which opens them
+  once type 22 sets `$16A9`); wall turrets (types 40-42) that write two 2 × 3 blocks of map words.
+- **The objects**: spawn list `$99E2` (39 entries), markers `$C624` with type-0 entries (no spawn) and
+  `$C662` (type 43's table of type-0 entries: the markers off from the roof on); new types 21, 22,
+  33-43, 46-48, 50-52 (4,222 B of level-3-only code with the deaths `$C25C`, `$C360`, `$C3A8`, the
+  debris helper `$C398`, the beams, `act_20` and the two-part lift).
+- **Cain as RoboCop 2** (type 22 `$D49C`, 764 B): spawns on the roof (entry 36 at (1280, 56)), "CHASE
+  CAIN"; keeps its x in the code (`$D798`) and patches its step mask into `$D583`; hit points set to
+  2Ch every frame while its y < 290h; launches through the mailbox `$E67A-$E67E` (its only writer:
+  `$D72C`), which types 38, 39 and 52 take; its death `$C25C` throws its parts (debris bullets
+  12h-14h), sets `$16D0`, `$16C4` = 40h and queues "CAIN DESTROYED." **[bench: met at game frame 243
+  of a roof drive; killed after a poke (coverage only), the level's end 94 frames later]**. Its chase
+  ahead of RoboCop and down through the car park **[inferred from the code and two drives]**.
+- **The end**: `$8050` = 3, `level_init`'s entry 7, `level_load_3` `$86DE`: the text `$112C5`,
+  `$11C54` (PICF, CMP), `high_score_entry`, the title; no statistics, no stage.
+- **The frames**: 202 drawn on the bench (136 in DATAL3, 58 of them 48 px wide or more); `bobcatalog.py`
+  does not follow their PC-relative tables. **The sound**: effects 0Eh, 22h-25h, 27h, 28h of MU1,
+  nothing new.
+
 ### Music and sound effects (MU1 player) **[verified: REA listing of `$18000-$18B35` (level-1 image); `tools/rc2music.py --verify` runs that code in Unicorn and matches the model's Paula writes and player RAM on every tick of every tune of the five files (49986 ticks); the paths the data never takes (vibrato, 86h, 81h-83h in patterns, 83h in sequences, stop tune, the effect priority, effects over music) matched the same way on patched images and call scripts]**
 
 - **Files.** TITM (title), MU1 (in-game sound effects), CH1 (a jingle), CMP (game completed)

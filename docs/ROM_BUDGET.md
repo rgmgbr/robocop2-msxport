@@ -860,11 +860,11 @@ banks.
   risk on the V9938.
 
 **Tooling**
-- **`build/ram/level3_full.bin` is built without SPERMA** (Makefile line 33), so the frames of
-  types 4 and 12 read as zeros. Build it with `RB1 MU1 SPERMA DATAL3 PERMA`.
+- ~~`build/ram/level3_full.bin` is built without SPERMA~~: fixed on 2026-11-01 (`RB1 MU1 SPERMA
+  DATAL3 PERMA`, `docs/LEVEL3.md` 2.1).
 - **`tools/bobcatalog.py`** does not follow `lea (d,PC)` + `adda.w` tables. It finds about 30 %
   of level 3's BOB bytes and 69 % of level 2's.
-- **No coverage run exists for levels 2 and 3.**
+- Coverage runs exist for levels 2 and 3 (`tools/amigacov.py --level 2/3`; level 3's since 2026-11-01).
 
 **Level 1 correctness (not space)**
 - The catalogue reads obj04's frames at $57192 as 16 × 16.
