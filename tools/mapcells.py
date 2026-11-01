@@ -30,6 +30,10 @@ data, the way the ported writers compute them, and fails when they do not fit:
         $EAA6, tur_panel's 3 looks) and the turret, 2 x 3 cells one row below and 10 (41: 7) columns
         right of the panel ($EA50, tur40_look's 5 looks; $EBB8, tur41_look's 4)
 
+Level 3's type 36 ($E356) turns where the map word 18h below it is not 2D00h (its shaft): the port
+(msx/level3obj.asm t36_w) knows those cells as constants, so the level's map must hold 2D00h exactly in
+SHAFTS_L3 and no writer may change one of them (checked with --level 3).
+
 The map objects' cell is map_cell's (msx/logic.asm, $EF8E: column (x >> 4) - 8 as a byte, row
 the low byte of y >> 4, 0 when y is negative or that byte is 51 or more: $EF8E's own limit in
 every level, $EFA4 cmpi.w #$66). The writers step rows and columns as bytes (the Z80's D and E),
@@ -79,6 +83,8 @@ BEAM2_OFF_WORDS = (0x1900, 0x1880, 0x1800, 0x1780)        # level_tick_2 $9510: 
 TURRETS = {40: (0xA0, 10, "tur40_look"), 41: (0x70, 7, "tur41_look"), 42: (0xA0, 10, "tur40_look")}
                                     # level 3's turrets: the panel's x offset, the turret's column offset
                                     # from the panel, its looks (6 words each)
+SHAFTS_L3 = ((2, 25, 33), (75, 13, 18), (75, 27, 33))   # type 36's shafts: (column, first row, last row) of
+                                    # the 2D00h words (msx/level3obj.asm t36_w's constants)
 VAT_WORDS = ("vat_top", "vat_odd", "vat_even")    # level_tick_1's T0, T1, T2: 16 words each, by d
 MAP_ADDR = 0x38000                  # draw_background $BCCA: the map in every level (DATAL at $28000)
 
@@ -387,6 +393,15 @@ def main(argv: list[str]) -> int:
                                      len(sheet.with_suffix(".til").read_bytes()) // 128)
         print(f"mapcells: vats: {summary}" if not vbad else "mapcells: vats: checks failed")
         bad += [f"vats: {b}" for b in vbad]
+    if level == "l3":
+        shafts = {(r, c) for c, r0, r1 in SHAFTS_L3 for r in range(r0, r1 + 1)}
+        found = {(r, c) for r in range(rows) for c in range(cols)
+                 if struct.unpack_from(">H", img, 0x38000 + 2 * (r * cols + c))[0] == 0x2D00}
+        if found != shafts:
+            bad.append(f"type 36's shafts (2D00h): the map has {sorted(found ^ shafts)[:8]} other than SHAFTS_L3")
+        if every & shafts:
+            bad.append(f"a writer changes type 36's shafts: {sorted(every & shafts)[:8]}")
+        print(f"mapcells: level 3: type 36's shafts: {len(found)} cells of 2D00h, as SHAFTS_L3, no writer's")
     for b in bad:
         print(f"mapcells: error: {b}", file=sys.stderr)
     return 1 if bad else 0

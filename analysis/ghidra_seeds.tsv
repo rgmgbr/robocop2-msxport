@@ -129,6 +129,7 @@
 0xb04	label	camera_x
 0xb06	label	camera_y
 0xb08	label	camera_y_max
+0xb0a	label	scroll_nibble
 0xb16	label	back_buffer
 0xb1e	label	level_data_base
 0xb26	label	vscroll_line_offset
@@ -355,6 +356,7 @@
 0xd2da	label	t6_gfx_offs
 0xd46c	label	msg_chase_cain
 0xd494	label	obj22_masks
+0xd53a	label	boss_d1_sound
 0xd583	label	obj22_step_imm
 0xd798	label	obj22_x
 0xdc76	label	msg_arrest
@@ -420,6 +422,7 @@
 0x10762	label	text_screen_stop
 0x10768	label	text_screen
 0x1079a	label	text_screen_curtain
+0x11062	label	text_plot
 0x118ce	label	text_char_at
 0x11932	label	file_cache_restore
 0x1195e	label	file_cache_store

@@ -471,3 +471,7 @@ f12a  explosion_draw0      effects_update: the draw of an explosion whose type's
 16d4  boss_seen            byte: type 22 met (its x copied to $D798 once)
 16d9  boss_hit_look        byte: 6 frames of type 22's hit look after a hit (its third part's other frame)
 16da  boss_close           byte: type 22's step mask negative (it stands)
+# --- found via REA/Ghidra and the bench (level 3's step B, 2026-11-01) ---
+11062 text_plot            D0 = x, D1 = y (< A0h), A2 = the glyph: 4 planes through the screen pointer at $109A2 (98h a line, 26h a plane); the title's text (from $10972, $109A2 = $725A2) writes through chip RAM's mirrors
+d53a  boss_d1_sound        type 22 reads the D1 the slot before left it (update_objects keeps no D1): 30h or more with the fire counter 0, sound 0Eh ($B2D); read_joystick $BDEC leaves FF00h/FF10h for slot 0, draw_bob the shift ror 4 | 0FCAh (0BFAh for a hit flash)
+b0a   scroll_nibble        word: ~camera x & 15 in both nibbles of the low byte (draw_bob subtracts its low nibble: the BOB's shift is (x + 1) & 15); written outside the analysed code (no direct writer)
