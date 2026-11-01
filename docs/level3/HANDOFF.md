@@ -754,3 +754,85 @@ the level-2 builds made from the main tree (`tools/bstest/build.sh`, `hz.sh l3bu
 l2builds`) byte-identical to the worktree's (the product `fb06ae0faab13802`); `hz_l3_jobs` from the main
 tree's harness: "level 3: PASS (16 traces)", lost counters 0; `make test`: 347 tests, the 4 known failures
 only. The scratch tools, the BOB logs and the lost counters: `build/archive/level3_stepB_records_2026-11-01.tar.gz`.
+
+## Step 9 (plan step E, its documentation): the docs at 56e8f56 and the option sets (2026-11-01)
+
+**Done.** Worktree `g/wt09`, branch `g-s09` from `level2` 56e8f56; scratch `S9` = `$SCRATCH/g/s09`. No
+emulator (steps 7 and 8 held both openMSX instances); REA with the Ghidra provider for the ledger's
+evidence. The numbers below are of 56e8f56's builds: steps 7 and 8 change some of them.
+
+### What it did
+- **`docs/MSX_ARCHITECTURE.md`**, the engine as it is: the VRAM map and the per-level tables with level
+  3 (`fld_l3`, `lv_fid0`); the play field's level-3 part (the frame cache's seven places, `fc_res`,
+  `fbb_fc` / `fc_find` / `fc_get`, the white copies and `fb_fwm`, the bullets routed into the play field,
+  the known tear); `DAMAGE_X`'s x1 rule with the rocket and the 18h touches; ENEMY_CAP's level-3 types;
+  the descriptor (`LV_SIZE` 33, `lv_fid0`, `lv_desc3`); level 2's bank table at 56e8f56 and a new "Level
+  3's modules and banks" (`BANK_L3`, `BANK_L3B`, `l3b_call`, the D1 in `uo_d1`, the code-area words,
+  `fade_st`, `act_20`, `spl_two`, `place_banks`); the flow into `ml_end`; `fo_flash`; the vats' display code
+  only with `VAT_ANIM=1`; the ending's banks; `LV_TEST=3`; the 2 MiB image (163 banks, the 3Fh blocks,
+  `rom_guard` in `frontx.asm` through `ci_hook`). The V9958 `draw_kept` fix was already described.
+- **`docs/ROM_BUDGET.md`**: a 2026-11-01 update line and summary rows; **2.4** (the bank map from
+  mkrom's output, the free bytes of every code bank in the product, `DIAG=1 PZ_TEST=1` and the least of
+  the 58 sets, level 3's real cost against 3.3-3.4 and `docs/LEVEL3.md` 3.2, the ending's against
+  3.5-3.6), as-built lines in 3.3, 3.5, 3.6; section 7: a table of what became of each limit level 3
+  was expected to break.
+- **`docs/AMIGA_ANALYSIS.md`**, level 3's section: step 6's three findings (Cain's read of the slot
+  before's D1, the `cont3` bench fault with `text_plot`'s code, the palette flash's two countdown steps)
+  and what steps 4 and 5 had left out of the ledger (`act_20` before row 0, level 3's explosions and
+  bullet frames, the frames the code can draw beyond the bench's, the flash's colour 15), each tagged
+  verified or inferred with its evidence.
+- **`README.md`** (public): a "Playing" section (the complete game's order, the game over and the
+  continue, the controls with the name entry on the keyboard, the sound with the ending's tune), the
+  Requirements' 2 MiB line (163 of 256 banks; the rest of the requirements as they were), the sound
+  line, `make msx`, `LV_TEST=3`, `DAMAGE_X`'s missiles, `docs/LEVEL3.md` in the list.
+- **`docs/LEVEL3.md`**: italic as-built notes where the build changed a design or estimate of sections
+  1 and 3.1-3.8 (pointing at 3.9-3.11 and `docs/ROM_BUDGET.md` 2.4); section 6's defaults marked **In**
+  (6 as white copies in the ROM, 13's rule in with bank 127 the ending's, 15 superseded); section 7's
+  risks marked as they turned out (1: the cache held, the big items tear; 4: happened, `place_banks`; 5
+  averted; 6 solved).
+- **The `DIAG=2` sets** (found by this step's builds): `diag2` and `p_pzdiag2` stopped at z80asm since
+  step 6 (`level3obj.asm:128` and `:134` "relative jump out of range", `:140` "duplicate definition of
+  label lt_h"): `level3obj.asm`'s `l3_tail` and the VDP lab (`msx/lab.asm`, `DIAG=2` builds only) both
+  define `lt_h`. `lab.asm`'s label is now `lab_lth` (two lines): the safest fix, in a test build's file no
+  other step edits; no other build includes `lab.asm`, so every other ROM keeps its bytes (below).
+
+### Commits
+`46c4172` (`lab.asm`), `a178d0b` (`MSX_ARCHITECTURE.md`), `c7d4b28` (`ROM_BUDGET.md`), `b50936c`
+(`AMIGA_ANALYSIS.md`), `b9b0666` (`README.md`, `LEVEL3.md`) and this section's.
+
+### Checks (each with its command and result; `W` = the worktree)
+- **The option sets** on 56e8f56: `sh tools/bstest/variants.sh S9/V` -> 56 of 61: the three known
+  fixed-area overflows (`demoact`, `demoact5` -F3h, `demohud` -3Ah, as at step 5) and `diag2`, `p_pzdiag2`
+  (above). With the fix: `sh tools/bstest/variants.sh S9/V2` -> **58 of 61** (the three known only); the
+  56 ROMs built both times byte-identical (`cmp`, 0 differ); `diag2` `f0a3535bd730f5da`, `p_pzdiag2`
+  `9bea38e5ebb2e48b`. Every log: build.sh's checks (mkrom's exit, no error, the 12 known z80asm warnings
+  only); mkrom's checks (the 3Fh rule, the SCC test values, the guard's tag) in all 58. The product
+  `fb06ae0faab13802` (2 MiB, 163 of 256 banks), the same bytes as step 6's.
+- **The free bytes**: `python3 -I tools/bstest/l2base.py banks S9/V2` (all 58 sets) -> the product: fixed
+  area 164, LC1 50, LC2 4,827, `BANK_L1` 874, LC3 4,794, INPUT 11, FRONT 1,119, FIELD 300, MUSIC 1,251,
+  PUZL 4,483, FRNG 264, `BANK_L2` 1,429, `BANK_FRONT2` 7,041, `BANK_L3` 3,867, `BANK_L3B` 2,383; the lowest
+  set (`DIAG=1 PZ_TEST=1`) fixed area 29, FRONT 721, MUSIC 1,280; the least per bank in
+  `docs/ROM_BUDGET.md` 2.4. The bank map: the product's `rc2.log` and `gen/banks.inc`.
+- **REA** (MCP, Ghidra 12.1.4, `build/ram/level3_full.bin` sha256 `700df44d…3515ca`, the seeds: 125
+  functions created, 1 present, 317 labels, 0 failed): `read_function_instructions` `0xd49c`
+  (`obj22_update`: `$D53A` `cmpi.w #$30,D1`, no D1 write before it, the fire counter's test at `$D526`),
+  `0xc3e4` (`update_objects`: the handler's `jsr` at `$C432`, D1 loaded only on the dying path `$C40A`),
+  `0x11062` (`text_plot`, 22 instructions); `xrefs 0xf878` -> `$80F8`, `$FEFC`, `$1080C`, `$10902`, `$12112`,
+  `$121E0`.
+- **`make test`** (the worktree, with the fix): 347 tests, **the 4 known failures only** (failures=3,
+  errors=1, skipped=56).
+
+### Numbers the later steps must refresh
+- `docs/ROM_BUDGET.md` 2.4 (the product's hash, the free bytes, the bank map if a block grows, the 58
+  of 61), the summary rows and section 7's "(new)" row; `docs/MSX_ARCHITECTURE.md`'s bank tables (`BANK_L2`
+  1,429, `BANK_L3` 3,867, `BANK_L3B` 2,383), its "163 of 256 banks" and the "Known at 56e8f56" tear
+  paragraph; `README.md`'s 163 banks; `docs/LEVEL3.md` risk 1 and the tear's "open at 56e8f56".
+
+### Open issues
+1. The tear of big play-field items (step 7) and checks 3-8 (step 8) are described as open at 56e8f56.
+2. The `DIAG=2` sets count MUSIC's free bytes as 0 (`music_end` at C000h in that build): not looked into
+   (a test build that plays no game; it builds and its other banks are as the product's).
+3. The ledger records that the address arithmetic by which `text_plot`'s write reached `$10FD9F` was
+   not traced (no emulator here).
+4. Not run here (no emulator): checks 9-12 of `docs/LEVEL3.md` 4 (the fresh machines, the matrix, the
+   bank-select log) belong to the candidates' builds.
