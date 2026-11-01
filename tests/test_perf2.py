@@ -96,6 +96,27 @@ class KitVerdictTests(unittest.TestCase):
         self.assertIn("FAIL", r.stdout)
         self.assertEqual(run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed").returncode, 1)
 
+    def pics_every(self, d, name, step):
+        # the run's pictures thinned to one in STEP (its ticks unchanged)
+        p = d / f"{name}_pics.txt"
+        lines = p.read_text().splitlines()
+        p.write_text("".join(x + "\n" for k, x in enumerate(lines) if k % step == 0))
+
+    def test_win_level1_frame_rate(self):
+        # level 1's play "must stay at 25 ticks/s and 25 pictures/s": with its ticks/s unchanged, half its
+        # pictures fail l1play; the same on kill (pictures/s reported, not judged) passes
+        for d in (self.base, self.new):
+            self.speed_run(d / "speed", "l1play_m2")
+            self.speed_run(d / "speed", "kill_m2")
+        self.assertEqual(run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed").returncode, 0)
+        self.pics_every(self.new / "speed", "kill_m2", 2)
+        r = run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.pics_every(self.new / "speed", "l1play_m2", 2)
+        r = run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("pictures/s", r.stdout)
+
     def test_win_and_holds_missing_runs(self):
         for d in (self.base, self.new):
             self.speed_run(d / "speed", "kill_m2")

@@ -15,10 +15,12 @@ emulated time, ...; its pics file a line per picture: time, tick, fb_hold, game 
 
 The gate (docs/PERF2_PLAN.md 5.4 G-SPEED): FAIL when a window's ticks/s in NEW is below BASE's by more than
 its tolerance: 1 % for a window of 400 ticks or more, 5 % for a shorter one (the ground floor, kill
-1500-1765, is the plan's example; tour3's street, beams and roof, l2_tour 2080-2350 are as short). A
-window NEW has not reached (a run that ended early) FAILs, and so does a run BASE holds that NEW lacks
-(--partial: listed, not judged, for a deliberate subset); a run BASE lacks is listed, not judged; a gate
-that judged no window FAILs. Exit 0 only when nothing FAILs.
+1500-1765, is the plan's example; tour3's street, beams and roof, l2_tour 2080-2350 are as short).
+Level 1's drive_play (l1play) "must stay at 25 ticks/s and 25 pictures/s": its ticks/s sit at the logic's
+cap (24.96 at HEAD), where CAD_MAX 2 would hide a slower frame, so its pictures/s and progress pictures/s
+are judged too, with the same tolerance. A window NEW has not reached (a run that ended early) FAILs, and
+so does a run BASE holds that NEW lacks (--partial: listed, not judged, for a deliberate subset); a run
+BASE lacks is listed, not judged; a gate that judged no window FAILs. Exit 0 only when nothing FAILs.
 """
 import json
 import os
@@ -34,6 +36,7 @@ WINDOWS = {
     'l1play': [(40, 1450)],
 }
 SHORT = 400          # ticks: a shorter window's tolerance is 5 %, a longer one's 1 %
+FRAME_RATE = ('l1play',)  # drives whose pictures/s and progress pictures/s the gate judges as well
 
 
 def tolerance(t0, t1):
@@ -156,11 +159,20 @@ def main(argv):
                 tol = tolerance(r['from'], r['to'])
                 d = 100.0 * (r['ticks_s'] - b['ticks_s']) / b['ticks_s']
                 ok = d >= -tol
-                bad += not ok
                 extra = ''
                 if 'pictures_s' in r and 'pictures_s' in b:
                     extra = (f"; pictures/s {b['pictures_s']:.2f} -> {r['pictures_s']:.2f}, with progress "
                              f"{b['progress_s']:.2f} -> {r['progress_s']:.2f}")
+                    if name.rsplit('_', 1)[0] in FRAME_RATE:
+                        for k, what in (('pictures_s', 'pictures/s'), ('progress_s', 'progress pictures/s')):
+                            dk = 100.0 * (r[k] - b[k]) / b[k] if b[k] else 0.0
+                            if dk < -tol:
+                                ok = False
+                                extra += f" ({what} {dk:+.2f} %: FAIL)"
+                elif name.rsplit('_', 1)[0] in FRAME_RATE:
+                    ok = False
+                    extra = "; no pictures record (the drive's pictures/s are judged)"
+                bad += not ok
                 print(f"{name:16s} {w:10s} ticks/s {b['ticks_s']:6.2f} -> {r['ticks_s']:6.2f} ({d:+6.2f} %, "
                       f"tolerance {tol:.0f} %){extra}{'' if ok else '  FAIL'}")
         for name in sorted(set(base) - set(new)):
