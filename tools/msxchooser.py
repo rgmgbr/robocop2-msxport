@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The frame chooser page (build/review/quadros.html): every animation frame at its full look, the
 Amiga's beside the MSX's, for the user to remove frames (their list comes back as JSON, which goes
-into msx/level1_frames.json and msx/level2_frames.json for tools/msxsprites.py).
+into msx/level1_frames.json, msx/level2_frames.json and msx/level3_frames.json for tools/msxsprites.py).
 
 It reads the converter's outputs (tools/msxsprites.py --pool: POOL.bin, .inc, _l1.json, _l2.json,
 _l1_field_vram.bin, _l2_field_vram.bin): the MSX views are the records the ROM holds, decoded
@@ -12,7 +12,11 @@ the RAM images. Sections:
   - level 1: its BOB frames (enemies, objects, the hostage) as level 1 shows them;
   - level 2: the frames level 1 never showed: type 1 (joint compositions), types 2, 5, 6, 14,
     16 (its body; its legs are walker1's, shared), 49, the trolley, type 4's new aims and muzzle
-    flash; every one kept until the user chooses (msx/level2_frames.json).
+    flash; every one kept until the user chooses (msx/level2_frames.json);
+  - level 3: its own frames (DATAL3's: Cain, type 21, the truck, types 34-39 and 50-52, the lift's two
+    parts; docs/LEVEL3.md 3.5): its sprite frames' records, its play-field frames from its atlas or its
+    frame cache (the big animated ones); every one kept until the user chooses (msx/level3_frames.json,
+    docs/LEVEL3.md default 14).
 A frame that is another's exact mirror shares its card (a removal goes for both). The MSX colours
 are the game's (the joint palette, palette C in level 2, through the colour grade).
 
@@ -20,7 +24,7 @@ are the game's (the joint palette, palette C in level 2, through the colour grad
 beside the MSX's (3x), for the review.
 
 usage: msxchooser.py POOL OUT.html [--sheet OUT.png] [--level1-frames msx/level1_frames.json]
-                     [--level2-frames msx/level2_frames.json]
+                     [--level2-frames msx/level2_frames.json] [--level3-frames msx/level3_frames.json]
        (e.g. msxchooser.py build/msx/sprites build/review/quadros.html)
 """
 from __future__ import annotations
@@ -84,9 +88,13 @@ class Pool:
 
     def __init__(self, prefix: Path):
         self.sd = ms.SpriteData(prefix.with_suffix(".bin"), prefix.with_suffix(".inc"))
-        self.levels = {n: json.loads(prefix.with_name(f"{prefix.name}_l{n}.json").read_text()) for n in (1, 2)}
+        ns = (1, 2, 3) if prefix.with_name(f"{prefix.name}_l3.json").exists() else (1, 2)
+        self.levels = {n: json.loads(prefix.with_name(f"{prefix.name}_l{n}.json").read_text()) for n in ns}
         self.atlas = {n: np.frombuffer(prefix.with_name(f"{prefix.name}_l{n}_field_vram.bin").read_bytes(), np.uint8)
-                      for n in (1, 2)}
+                      for n in ns}
+        if 3 in ns:                                     # (level 3's frame cache: its big frames)
+            import msxframe
+            self.looks3 = msxframe.FieldLooks(3, prefix)
 
     def bob(self, level: int, k: int, one: bool = False) -> tuple[np.ndarray, int, int]:
         return self.sd.look(self.sd.bob_entry(level, k), one)
@@ -95,7 +103,10 @@ class Pool:
         return self.sd.look(self.sd.entry(n))
 
     def field(self, level: int, f: dict) -> np.ndarray:
-        """A play-field frame's pixels from its atlas (the dynamic slot's are not there)."""
+        """A play-field frame's pixels from its atlas (the dynamic slot's are not there; level 3's frame
+        cache's from its ROM)."""
+        if level == 3 and f.get("kind") == 1:
+            return np.array([list(r) for r in self.looks3.pixels(f["fid"])], np.uint8)
         a = self.atlas[level].reshape(-1, 128)
         rows = a[f["y"]:f["y"] + f["sh"], f["x"] // 2:(f["x"] + f["sw"]) // 2]
         out = np.zeros((f["sh"], f["sw"]), np.uint8)
@@ -188,7 +199,7 @@ def robocop_groups(pool: Pool, game: player.Game, sppal: str, pal: str, only: tu
     return groups
 
 
-def build(prefix: Path, removed1: dict, removed2: dict) -> dict:
+def build(prefix: Path, removed1: dict, removed2: dict, removed3: dict | None = None) -> dict:
     pool = Pool(prefix)
     main = (ROOT / "build/extracted/boot/main_8000.bin").read_bytes()
     perma = (ROOT / "build/extracted/files/PERMA_05.bin").read_bytes()
@@ -239,8 +250,28 @@ def build(prefix: Path, removed1: dict, removed2: dict) -> dict:
         for c in g["items"]:
             c["note"] = "level 1 never shows it; the same record in both levels (a removal goes for both)"
         groups.append(dict(g, section="Level 2", name="RoboCop hanging (states 14/15)"))
+    # level 3: its own frames (DATAL3's), every one kept until the user chooses
+    if 3 in pool.levels:
+        l3 = pool.levels[3]
+        ram3 = (ROOT / "build/ram/level3_full.bin").read_bytes()
+        own = lambda b: 0x28000 <= b["addr"] < 0x5540C                  # noqa: E731
+        procs3: dict[str, list] = {}
+        sprites3 = {(b["addr"], b["w"], b["h"]) for b in l3["bobs"]}
+        for b in l3["bobs"]:
+            if own(b) and "new" in b and not b.get("repeat"):
+                procs3.setdefault(f"{b['proc']} ({b['w']}x{b['h']})", []).append(b)
+        for f in l3["field"]:
+            if own(f) and (f["addr"], f["w"], f["h"]) not in sprites3 and f["src"] == f"{f['addr']:x}:{f['w']}:{f['h']}":
+                procs3.setdefault(f"the play field: {f['proc']} ({f['w']}x{f['h']})", []).append(dict(f, id=-1))
+        for proc, frames in procs3.items():
+            cards = bob_cards(pool, 3, ram3, frames, "msx2", "bg2", lambda b: f"{b['addr']:05X}", near2)
+            for c in cards:
+                c["key"] = "l3:" + c["key"]
+                c["also"] = ["l3:" + k for k in c["also"]]
+            groups.append({"section": "Level 3", "name": proc, "items": cards, "anim": [1]})
     removed = sorted(["rc:" + k for k in removed1.get("rc", {})] + ["bob:" + k for k in removed1.get("bob", {})] +
-                     ["l2:bob:" + k for k in removed2.get("bob", {})])
+                     ["l2:bob:" + k for k in removed2.get("bob", {})] +
+                     ["l3:bob:" + k for k in (removed3 or {}).get("bob", {})])
     return {"palette": graded(pal1), "palette2": graded(pal2), "sppal": amiga(sp), "bgpal": amiga(bg1),
             "bgpal2": amiga(bg2), "groups": groups, "removed": removed}
 
@@ -439,10 +470,11 @@ function tick() {
 }
 tick(); setInterval(tick, 125); updateStats();
 function result() {
-  const out = {rc2_frames: 3, level1: [], level2: []};
+  const out = {rc2_frames: 3, level1: [], level2: [], level3: []};
   for (const g of D.groups) for (const it of g.items) if (removed.has(it.key))
-    for (const k of [it.key, ...it.also]) (k.startsWith("l2:") ? out.level2 : out.level1).push(k.replace(/^l2:/, ""));
-  out.level1.sort(); out.level2.sort();
+    for (const k of [it.key, ...it.also])
+      (k.startsWith("l2:") ? out.level2 : k.startsWith("l3:") ? out.level3 : out.level1).push(k.replace(/^l[23]:/, ""));
+  out.level1.sort(); out.level2.sort(); out.level3.sort();
   return JSON.stringify(out);
 }
 document.getElementById("copy").addEventListener("click", async () => {
@@ -504,8 +536,9 @@ def main() -> int:
     ap.add_argument("--sheet", type=Path, help="a contact sheet of level 2's section (Amiga | MSX)")
     ap.add_argument("--level1-frames", type=Path, default=ROOT / "msx" / "level1_frames.json")
     ap.add_argument("--level2-frames", type=Path, default=ROOT / "msx" / "level2_frames.json")
+    ap.add_argument("--level3-frames", type=Path, default=ROOT / "msx" / "level3_frames.json")
     a = ap.parse_args()
-    rem = [json.loads(p.read_text()) if p.exists() else {} for p in (a.level1_frames, a.level2_frames)]
+    rem = [json.loads(p.read_text()) if p.exists() else {} for p in (a.level1_frames, a.level2_frames, a.level3_frames)]
     data = build(a.pool, *rem)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(PAGE.replace("%DATA%", json.dumps(data, separators=(",", ":"))))

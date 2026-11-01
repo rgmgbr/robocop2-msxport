@@ -104,6 +104,7 @@ mainloop:
         call cam_mark               ; (the view the objects are placed against)
         call pl_show                ; RoboCop's composition and place against the view shown
         call bob_flush              ; the BOBs of the tick as sprite objects
+ml_fbn:                             ; (the harness's mark: the tick's play-field list is whole, fb_new)
         if DEMO_ACTORS
         call demo_tick              ; the demo's objects
         endif

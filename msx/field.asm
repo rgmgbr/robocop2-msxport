@@ -2757,7 +2757,7 @@ fc_get: ld b,a
         jp z,fcg_ok                 ; (resident)
         call vdp_busy
         jp nz,fcg_bz                ; (a command runs: later)
-        ld (hl),b                   ; (the place holds it now; the places it overlaps nothing)
+fcg_ld: ld (hl),b                   ; (the place holds it now; the places it overlaps nothing)
         ld a,(fc_ovl)
         ld hl,fc_res
         ld e,FC_MAX
@@ -2822,7 +2822,7 @@ fcg_ln: push hl                     ; VRAM 10000h (page 2) + line * 128 + x / 2
         dec a
         ld (fc_lines),a
         jr nz,fcg_ln
-        call vram_done
+fcg_dn: call vram_done              ; (fcg_ld, fcg_dn: the harness's marks of a copy)
 fcg_ok: pop de                      ; D = x, E = line
         pop af
         call bank_8000

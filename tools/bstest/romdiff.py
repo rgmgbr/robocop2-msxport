@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 BANK = 8192
-EXTRA = ("L2_TILES", "L2_MAP", "L2_ATR", "L2_TAB", "L2_ATLAS", "L3_TILES", "L3_MAP", "L3_ATR", "L3_TAB", "L3_ATLAS")
+EXTRA = ("L2_TILES", "L2_MAP", "L2_ATR", "L2_TAB", "L2_ATLAS", "L3_TILES", "L3_MAP", "L3_ATR", "L3_TAB", "L3_ATLAS",
+         "L3_FC")
 
 
 def blocks(rom: bytes, inc: str) -> dict[str, tuple[int, int]]:

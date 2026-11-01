@@ -3,7 +3,7 @@
 the tile (map + patches) under it, or the play-field BOB the shown page's list (fb_dr0/fb_dr1)
 has there (the first in the list on top, as fb_bobs composes). A pixel matching the previous
 record's list passes too (the engine composes changes over a few pictures). Writes a contact
-sheet (2x, mismatches magenta). usage: fieldcheck.py RECDIR LEVEL_PREFIX OUT.png [--level 2]
+sheet (2x, mismatches magenta). usage: fieldcheck.py RECDIR LEVEL_PREFIX OUT.png [--level 2|3]
 
 Level 1's scratch tool of 2026-10-21/22 (the play-field engine's checks), brought into the harness
 at level 2's step 0 (the plan's 4.2) from its copy of 2026-10-23 (build/perf_2026-10-23). The
@@ -36,7 +36,13 @@ age and the first one a column shows has none). A column the page has not drawn 
 None) is expected at the map's own tile, as any cell, and is in neither vat class: so it is in the
 product (VAT_ANIM=0, the vats as the map's static images) for every column; a VAT_ANIM=1 build draws
 a visible column's nibble with its first cell (msx/field.asm vat_tile). The summary line counts both
-kinds of columns seen."""
+kinds of columns seen.
+
+--level 3 (the level-3 plan's step C): level 3's play-field frames (build/msx/sprites_l3.json "field",
+sprites_l3_field.inc) as its ROM holds them (tools/msxframe.py FieldLooks: its static atlas, the smoke in
+level 1's dynamic frames, its frame cache's frames, sprites_l3_fc.bin); a list entry's frame with bit 7
+is that frame's white copy (a hit flash, msx/bob.asm fb_add; its normal look when it has none), judged
+as the frame itself is (one picture ahead allowed, never behind or torn); LEVEL_PREFIX build/msx/level3."""
 import json
 import struct
 import sys
@@ -67,10 +73,12 @@ def load(level=1):
     import numpy as np
     import msxsprites
     b = ROOT / "build"
-    if level == 2:                              # (level 2's frames as its ROM holds them)
+    if level in (2, 3):                         # (level 2's or 3's frames as its ROM holds them)
         from msxframe import FieldLooks
-        LOOKS = FieldLooks(2, b / "msx/sprites")
-        FT = LOOKS.frames
+        LOOKS = FieldLooks(level, b / "msx/sprites")
+        FT = dict(LOOKS.frames)
+        if level == 3:                          # (bit 7: a frame's white copy, its look's pixels)
+            FT.update({k | 0x80: dict(f, fid=k | 0x80) for k, f in LOOKS.frames.items()})
         INC = LOOKS.inc
         FIELD_Y0, FIELD_LATE = INC["FIELD_Y0"], INC["FIELD_LATE"]
         DYN0, DYN1 = INC["FIELD_DYN0"], INC["FIELD_DYN1"]
@@ -157,7 +165,12 @@ DYN_HIST = 12                                   # (explosions and smoke: any ste
 
 
 def is_dyn(fid):
-    return fid is not None and DYN0 <= fid < DYN1
+    return fid is not None and DYN0 <= (fid & 0x7F) < DYN1
+
+
+def fid_base(fid):
+    """A frame id without its white copy's mark (level 3: bit 7)."""
+    return None if fid is None else fid & 0x7F
 
 
 def bob_fid(lst, wx, wy):
@@ -189,7 +202,7 @@ def tear_note(shown, newest, lst, tlst, wx, wy):
     smoke's) of the shown list and of the newest one, into the picture's sets."""
     for s, L in ((shown, lst), (newest, tlst)):
         e = bob_ent(L, wx, wy)
-        if e is not None and e[0] < FIELD_LATE and not is_dyn(e[0]):
+        if e is not None and fid_base(e[0]) < FIELD_LATE and not is_dyn(e[0]):
             s.add(e)
 
 
@@ -249,7 +262,7 @@ def main():
     if len(sys.argv) == 6 and sys.argv[4] == "--level":
         level = int(sys.argv.pop(5))
         sys.argv.pop(4)
-    if len(sys.argv) != 4 or level not in (1, 2):
+    if len(sys.argv) != 4 or level not in (1, 2, 3):
         sys.exit(__doc__.split("\n\n")[0])
     load(level)
     d, level, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
@@ -411,8 +424,8 @@ def main():
                     # matching only the newest, the hostage is half old, half new)
                     fo = bob_fid(lst, wx, wy)
                     fn = bob_fid(tlst, wx, wy)
-                    if (fo is not None and fo < FIELD_LATE and not is_dyn(fo)) or \
-                            (fn is not None and fn < FIELD_LATE and not is_dyn(fn)):
+                    if (fo is not None and fid_base(fo) < FIELD_LATE and not is_dyn(fo)) or \
+                            (fn is not None and fid_base(fn) < FIELD_LATE and not is_dyn(fn)):
                         c = bob_at(tlst, wx, wy)
                         if c is None:
                             t = vtile(patches, wy // 16, wx // 16)
@@ -427,7 +440,7 @@ def main():
                     # ahead: a hostage pixel of the newest list (never a lift's or the vehicle's)
                     fn = bob_fid(tlst, wx, wy)
                     fo = bob_fid(lst, wx, wy)
-                    if (fn is None or fn < FIELD_LATE) and (fo is None or fo < FIELD_LATE) and \
+                    if (fn is None or fid_base(fn) < FIELD_LATE) and (fo is None or fid_base(fo) < FIELD_LATE) and \
                             not is_dyn(fn) and not is_dyn(fo) and \
                             (fn is not None or fo is not None):
                         c = bob_at(tlst, wx, wy)

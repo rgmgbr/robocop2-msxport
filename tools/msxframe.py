@@ -85,9 +85,6 @@ SPLIT_LIST = 0xC0C0
 VIEW, HUD_TOP = 162, 167
 TC_TILE = 0x0400                                # page-0 RAM: the tile in each cache slot (msx/msx.inc)
 TC_SLOTS = {1: 256, 2: 224, 3: 160}             # the cache's slots per level (tools/mkrom.py TC_SLOTS)
-POOL_LEVEL = {3: 2}                             # the level whose pool frames a level shows: level 3 level 2's
-                                                # until the plan's step C converts its own (tools/mkrom.py
-                                                # l3_stub_hash, its descriptor's BOB index and atlas)
 FB_VIS = 0xF248                                 # test builds: the play-field BOBs of the list on screen
 FB_MAX = 8
 HUD_MSK = 0xC02B
@@ -97,9 +94,12 @@ COLS = 160
 class FieldLooks:
     """A level's play-field frames as the ROM uploads them (tools/msxsprites.py --pool's files: POOL_lN.json
     "field", the atlas as VRAM holds it, POOL_lN_field_vram.bin, and the dynamic frames, POOL_fdyn.bin with
-    the level's field_dyn and dyn_tab, POOL_lN_field.inc): per frame its entry (x, y, sw, sh in the atlas; a
-    removed frame's are those of the frame shown, moved by ox, oy) and its pixels (joint palette indices,
-    0 transparent). Level 1 without a pool: build/msx/robocop.*."""
+    the level's field_dyn and dyn_tab, POOL_lN_field.inc; level 3's dyn_tab is level 1's, and its frame
+    cache's frames POOL_l3_fc.bin): per frame its entry (x, y, sw, sh in the atlas; a removed frame's are
+    those of the frame shown, moved by ox, oy) and its pixels (joint palette indices, 0 transparent). A
+    frame id's bit 7 (level 3: a hit flash, msx/field.asm fb_wants) asks for its white copy, the frame
+    cache's (its normal pixels when it has none, as msx/field.asm fc_find). Level 1 without a pool:
+    build/msx/robocop.*."""
 
     def __init__(self, level: int = 1, pool: Path | None = None):
         import json
@@ -115,19 +115,35 @@ class FieldLooks:
         self.dyn = dyn.read_bytes()
         inc = Path(f"{pre}_field.inc").read_text()
         self.inc = {m[1]: int(m[2], 0) for m in re.finditer(r"^(\w+): equ (\S+)", inc, re.M)}
+        self.fc, self.fc_ent = None, 0
+        if "dyn_tab:" not in inc:                   # (level 3: level 1's dyn_tab, its frame cache)
+            inc = Path(f"{pool.with_name(pool.name + '_l1')}_field.inc").read_text()
+            self.inc.setdefault("DYN_H", 24)
+            self.inc.setdefault("FIELD_Y0", 0)
+            self.fc = Path(f"{pre}_fc.bin").read_bytes()
+            self.fc_ent = self.inc["FC_ENT"] - 0x8000
         tab = inc.partition("dyn_tab:")[2]
         nums = [int(v, 0) for v in re.findall(r"0x[0-9A-Fa-f]+|\b\d+\b", re.sub(r";.*", "", tab))]
         self.dyn_tab = [tuple(nums[k:k + 5]) for k in range(0, len(nums), 5)]   # bit, evict, bank, addr, 0
         self._img: dict[int, list[bytes]] = {}
 
     def pixels(self, fid: int) -> list[bytes]:
-        """Frame fid's pixels, a bytes object a line (sw x sh)."""
+        """Frame fid's pixels, a bytes object a line (sw x sh); bit 7: its white copy (level 3)."""
         if fid in self._img:
             return self._img[fid]
-        f = self.frames[fid]
+        f = self.frames[fid & 0x7F]
         w, h = f["sw"], f["sh"]
         rows = []
-        if "dyn" in f:                              # (its strips of DYN_H lines side by side, a line of
+        c = 0xFF
+        if self.fc is not None:                     # (level 3's frame cache: msx/field.asm fc_find)
+            c = self.fc[2 * (fid & 0x7F) + 1] if fid & 0x80 else 0xFF
+            if c == 0xFF:
+                c = self.fc[2 * (fid & 0x7F)]
+        if c != 0xFF:
+            bank, addr, _pl = struct.unpack_from("<BHB", self.fc, self.fc_ent + 4 * c)
+            o = bank * 0x2000 + addr - 0x8000
+            src = [self.fc[o + y * (w // 2):o + (y + 1) * (w // 2)] for y in range(h)]
+        elif "dyn" in f:                              # (its strips of DYN_H lines side by side, a line of
             _bit, _ev, bank, addr, _z = self.dyn_tab[f["dyn"]]   # the slot after another: field.asm fb_dyn)
             o = bank * 0x2000 + addr - 0x8000
             dh = self.inc["DYN_H"]
@@ -150,7 +166,7 @@ class FieldLooks:
         """The colour of the top BOB of lst (frame, map x, map y; the first on top) with a pixel at map
         (wx, wy), or None."""
         for fi, bx, by in lst:
-            f = self.frames.get(fi)
+            f = self.frames.get(fi & 0x7F)
             if f is None:
                 continue
             dx, dy = wx - bx, wy - by
@@ -412,8 +428,8 @@ def main() -> int:
     lv = int(sys.argv[sys.argv.index("--level") + 1]) if "--level" in sys.argv else 1
     pool = Path(sys.argv[sys.argv.index("--sprites") + 1]) if "--sprites" in sys.argv else None
     if pool:
-        use_pool(pool, POOL_LEVEL.get(lv, lv))
-    looks = FieldLooks(POOL_LEVEL.get(lv, lv), pool)
+        use_pool(pool, lv)
+    looks = FieldLooks(lv, pool)
     vram = (snap / "vram.bin").read_bytes()
     ram = (snap / "ram.bin").read_bytes()
     ram0 = (snap / "ram0.bin").read_bytes() if (snap / "ram0.bin").exists() else None

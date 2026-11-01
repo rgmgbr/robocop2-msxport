@@ -364,8 +364,8 @@ proc hz_l3 {dir R {tr ""} {only ""}} {
 # DRIVE's input (default l3_tour3), rc2_snap at the HUD split of the first new list from each game frame
 # of FRAMES (default 0 and 50) with lv_cur's logic bank BANK_L3 and the display on: DIR/<m2|fx|tr>/gNNNN
 # with when.txt and pos.txt. Check each with "$PY -I tools/msxframe.py SNAP build/msx/level3 build/msx/hud
-# OUT.png --sprites build/msx/sprites --level 3 [--field] [--no-sprites]" (level 3 shows level 2's
-# frames until the plan's step C: msxframe.py POOL_LEVEL).
+# OUT.png --sprites build/msx/sprites --level 3 [--field] [--no-sprites]" (level 3's own pool frames,
+# its frame cache's and their white copies: the plan's step C).
 proc hz_l3_still_jobs {dir R {frames {0 50}} {drive l3_tour3}} {
 	set e "$::hz_root/build/emu"
 	set jobs {}
