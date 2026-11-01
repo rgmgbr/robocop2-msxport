@@ -11,7 +11,9 @@ docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4).
       (default ~/.venvs/msxports/bin/python); FIELDCHECK: another checker (a change of the converters
       brings its own, e.g. docs/PERF2_PLAN.md item 1's, with its own conversions in REPO); N: windows
       checked at once (default 4; a 900-record window takes about a minute).
-      A window already checked is not checked again unless --force.
+      A window already checked is not checked again unless --force, or unless it was recorded again
+      since (its level.txt or holds.txt newer than its .fc.txt: pf_fd_setup writes level.txt at every
+      recording's start, holds.txt at its end).
   fieldsum.py table DIR    the summary per window: pictures, pictures with differences, the classes
   fieldsum.py gate BASE NEW [--partial]
       every window of BASE: FAIL when NEW shows a difference class that BASE's same window does not
@@ -23,7 +25,8 @@ docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4).
       A window is judged only when fieldcheck.py checked every record it wanted (its summary line's
       "N pictures (M checked)" with M the window's n, level.txt): a check that stopped (no summary: a
       crash, a wrong --root), records of another length (skipped), a recording cut short (a timed-out
-      job) or a window NEW lacks (--partial: listed, not judged) FAIL, as does a gate that judged none.
+      job), a check older than its records (the window recorded again since) or a window NEW lacks
+      (--partial: listed, not judged) FAIL, as does a gate that judged none.
 
 The classes are fieldcheck.py's "CLASS picture kind" lines (hostage-tear, smoke-tear, vat-look, vat-older,
 other: a play-area pixel no sprite covers that is neither the tile nor the BOB the shown list has there,
@@ -50,6 +53,16 @@ def windows(d):
         if p.is_dir() and (p / 'level.txt').exists():
             out.append(p)
     return out
+
+
+def stale(win):
+    """the window was recorded again after its check: its level.txt (written when a recording starts) or
+    holds.txt (when it ends) is newer than its .fc.txt"""
+    fc = win.parent / (win.name + '.fc.txt')
+    if not fc.exists():
+        return False
+    t = fc.stat().st_mtime
+    return any((win / f).exists() and (win / f).stat().st_mtime > t for f in ('level.txt', 'holds.txt'))
 
 
 def parse(win):
@@ -88,14 +101,17 @@ def parse(win):
     wanted = int(lv[lv.index('n') + 1]) if 'n' in lv[:-1] and lv[lv.index('n') + 1].isdigit() else None
     return {'records': n, 'checked': fc.exists(), 'classes': cls, 'hold_classes': cls_hold,
             'pictures_with_differences': len(pics_bad), 'pictures_nonhold': len(pics_nonhold), 'first_record': first,
-            'records_held': held, 'summary': summary, 'wanted': wanted}
+            'records_held': held, 'summary': summary, 'wanted': wanted, 'stale': stale(win)}
 
 
 def incomplete(r):
     """why a window's check does not cover the window (None when it does): fieldcheck's summary line
-    "N pictures (M checked)" must be there with M = the records the window wanted (level.txt's n)"""
+    "N pictures (M checked)" must be there with M = the records the window wanted (level.txt's n), and
+    the check must be newer than the recording"""
     if not r['checked']:
         return 'not checked'
+    if r.get('stale'):
+        return 'the check predates the records (recorded again since: fieldsum.py run checks it again)'
     m = re.match(r'(\d+) pictures \((\d+) checked\)', r.get('summary') or '')
     if not m:
         return 'the check did not finish (no summary line)'
@@ -125,7 +141,7 @@ def run(d, root, py, check, force, only, jobs=4):
         if only and win.name not in only:
             continue
         fc = win.parent / (win.name + '.fc.txt')
-        if fc.exists() and not force:
+        if fc.exists() and not force and not stale(win):
             continue
         todo.append(win)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:

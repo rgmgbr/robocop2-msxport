@@ -189,6 +189,27 @@ class KitVerdictTests(unittest.TestCase):
             summary = f"{records} pictures ({records} checked): {len(classes)} with differences, 0 pixels"
         (d / "field" / f"{name}.fc.txt").write_text("\n".join(lines + [summary]) + "\n")
 
+    def test_fieldsum_stale_check(self):
+        # a window recorded again after its check (level.txt newer than its .fc.txt) fails the gate until
+        # fieldsum.py run checks it again (here with a stand-in checker that finds no difference)
+        import os
+        self.field_window(self.base, [])
+        self.field_window(self.new, [])
+        self.assertEqual(run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field").returncode, 0)
+        fc = self.new / "field" / "kill300_m2.fc.txt"
+        lv = self.new / "field" / "kill300_m2" / "level.txt"
+        old = lv.stat().st_mtime - 20                      # (the check made 20 s before the new recording)
+        os.utime(fc, (old, old))
+        r = run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("predates", r.stdout)
+        fake = self.tmp / "fakecheck.py"
+        fake.write_text("import sys, pathlib\nn = len(list(pathlib.Path(sys.argv[1]).glob('*.bin')))\n"
+                        "print(f'{n} pictures ({n} checked): 0 with differences, 0 pixels')\n")
+        run(KIT / "fieldsum.py", "run", self.new / "field", "--py", sys.executable, "--check", fake, "--root", self.tmp)
+        self.assertGreater(fc.stat().st_mtime, old)        # (checked again)
+        self.assertEqual(run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field").returncode, 0)
+
     def test_fieldsum_incomplete(self):
         self.field_window(self.base, [("j001_f0001", "other")])
         for kw in ({"records": 40},                                             # a recording cut short
