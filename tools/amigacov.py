@@ -81,23 +81,28 @@ def parse_run(spec: str) -> dict:
 def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: str = "") -> None:
     if level in (2, 3):
         b = (amigaemu.Level2Bench if level == 2 else amigaemu.Level3Bench)(ROOT / "build" / "extracted", ram)
-        b.start_direct(amigaemu.parse_carry(carry or (amigaemu.CARRY_L2 if level == 2 else amigaemu.CARRY_L3)))
-        b.stop_at_level_end(level)
     else:
         b = amigaemu.GameBench(ROOT / "build" / "extracted", ram)
-        b.start_level()
     frames = run.get("frames") or frames
     blocks = cov["blocks"]
     code_w = cov["code_writes"]
     ram_w = cov["ram_writes"]
-    state = {"gf": 0}
+    # (the hooks go in before the level's start, which records nothing ("on" False): Unicorn instruments
+    #  a block when it translates it, so a hook added after the start never saw the blocks the start had
+    #  translated when the play ran them again, such as act_20's $9F74-$9F78, which level_init's
+    #  map-object pass runs first)
+    state = {"gf": 0, "on": False}
 
     def on_block(uc, address, size, user_data):
+        if not state["on"]:
+            return
         k = (address, size)
         if k not in blocks:
             blocks[k] = state["gf"]
 
     def on_write(uc, access, address, size, value, user_data):
+        if not state["on"]:
+            return
         pc = uc.reg_read(amigaemu.UC_M68K_REG_PC)
         if CODE[0] <= address < CODE[1]:
             e = code_w.setdefault(address, [0, set(), state["gf"]])
@@ -115,6 +120,8 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
         e[2] += 1
 
     def on_frame(uc, address, size, user_data):
+        if not state["on"]:
+            return
         gf = state["gf"]
         for f, x, y in run["tele"]:
             if f == gf:
@@ -142,12 +149,18 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
     cur = {}
 
     def on_draw(uc, address, size, user_data):          # draw_bob ($AB08): A2, D4
+        if not state["on"]:
+            return
         cur["k"] = (uc.reg_read(amigaemu.a_reg(2)) & 0xFFFFFF, uc.reg_read(amigaemu.d_reg(4)) & 0xFFFF)
 
     def on_drawn(uc, address, size, user_data):         # its drawn exit ($AC40)
+        if not state["on"] or "k" not in cur:
+            return
         bobs[cur["k"]] = bobs.get(cur["k"], 0) + 1
 
     def on_msg(uc, address, size, user_data):          # message_queue ($FD76): A0's text
+        if not state["on"]:
+            return
         a0 = uc.reg_read(amigaemu.a_reg(0)) & 0xFFFFFF
         text = ""
         for c in bytes(b.uc.mem_read(a0, 40)):          # (the text ends at a byte 0 or from 80h)
@@ -158,6 +171,8 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
         e[0] += 1
 
     def on_vat(uc, address, size, user_data):          # level_tick_1 ($91BC) / _2 ($9436): A3 the record
+        if not state["on"]:
+            return
         e = cov["vats" if level == 2 else "hazards"].setdefault(f"{uc.reg_read(amigaemu.a_reg(3)) & 0xFFFFFF:05x}", [0, len(cov["runs"]), state["gf"]])
         e[0] += 1
 
@@ -171,6 +186,12 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
     b.uc.hook_add(UC_HOOK_MEM_WRITE, on_write, None, 0, 0x7FFFF)
     b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_frame, None, amigaemu.GAME_FRAME_START,
                   amigaemu.GAME_FRAME_START + 1)
+    if level in (2, 3):
+        b.start_direct(amigaemu.parse_carry(carry or (amigaemu.CARRY_L2 if level == 2 else amigaemu.CARRY_L3)))
+        b.stop_at_level_end(level)
+    else:
+        b.start_level()
+    state["on"] = True
     try:
         b.play(frames, run["script"])
     except RuntimeError as e:                               # (the bench lacks some hardware)
