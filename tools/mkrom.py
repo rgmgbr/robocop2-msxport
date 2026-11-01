@@ -253,6 +253,10 @@ OPTIONS = {
                     " whether the scroll engines are idle or not (msx/tiles.asm vat_tick) and drawn in the next window"
                     " between the HUD split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle"
                     " points"),
+    "FLASH_LOOK": (0, "the look of an enemy's hit flash, for the user's choice (docs/PERF2_PLAN.md D1; msx/bob.asm"
+                      " fl_due; docs/MSX_ARCHITECTURE.md): 0 = one white picture for each hit (as always); 6 = at"
+                      " most one white picture in 4 per enemy; 7 = an enemy stays white while hit less than 2"
+                      " pictures apart, and turns normal 2 pictures after its last hit; the logic as always"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -862,6 +866,9 @@ def main(argv: list[str]) -> int:
         opts[k] = int(v, 0)
     if not 1 <= opts["DAMAGE_X"] <= 3:
         print("DAMAGE_X must be 1, 2 or 3 (msx/hits.asm)", file=sys.stderr)
+        return 2
+    if opts["FLASH_LOOK"] not in (0, 6, 7):
+        print("FLASH_LOOK must be 0, 6 or 7 (msx/bob.asm)", file=sys.stderr)
         return 2
     if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1, 2) or not 0 <= opts["TAG"] <= 99 \
             or opts["RG_ADJ"] not in (0, 1):

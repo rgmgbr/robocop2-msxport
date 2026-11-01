@@ -644,7 +644,9 @@ os_mode:    equ 0xEC47              ; obj_set: the silhouette asked for (0, BM_F
 lb_mode:    equ 0xEC48              ; lb_fill: the entry's silhouette
 spl_bas:    equ 0xEC4E              ; 2: sp_lift: the record's first path point
 fl_pend:    equ 0xEC49              ; 5: per enemy slot, a hit flash drawn in a tick the display
-                                    ;   skipped, shown with the next tick shown (bob.asm)
+                                    ;   skipped, shown with the next tick shown (bob.asm); with
+                                    ;   FLASH_LOOK 6 or 7 that is bit 0, bits 1-4 the look's
+                                    ;   pictures to come (bob.asm fl_due)
 snd_fm:     equ 0xEC42              ; 1: an OPLL was found (sound.asm snd_detect)
 snd_slot:   equ 0xEC43              ;   the slot searched / found
 vram_busy:  equ 0xEC50              ; 1 while the main program streams to VRAM (vram_write ...

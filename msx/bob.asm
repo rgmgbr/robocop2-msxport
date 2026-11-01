@@ -38,7 +38,9 @@ bbg_c:  ld (hl),a
 
 ; $AC44: flash-aware; the result also goes into $16BA (the first part of a multi-part object).
 ; (The port: a hit flash drawn in a tick whose picture the display skips is held for the next
-; tick shown - fl_pend - or it would never be seen; only the BOBs' look changes.)
+; tick shown - fl_pend - or it would never be seen; only the BOBs' look changes. FLASH_LOOK 6
+; and 7: the look of a hit, a choice for the user, decided per enemy and picture by fl_note and
+; fl_held; the logic, OS_FLASH and the result, as always.)
 bob_part:
         ld a,(ix+OS_FLASH)
         or a
@@ -49,7 +51,11 @@ bob_part:
         ld (AM + 0x16BB),a
         ret
 bp_fl:  call fl_note
+        if FLASH_LOOK
+        jr bd_mode                  ; (fl_note gives the look)
+        else
         jr bob_flashd
+        endif
 
 ; $AC56: flash-aware (the flash byte is cleared: the object's last part); when this part is not
 ; drawn the result is $16BA's (the first part's).
@@ -59,13 +65,19 @@ bob_part2:
         jr z,bp2_n
         ld (ix+OS_FLASH),0
         call fl_note
+        if FLASH_LOOK
+        jr bd_mode
+        else
         jr bob_flashd
+        endif
 bp2_n:  call fl_held
+        if FLASH_LOOK = 0
         or a
         jr z,bp2_d
         call fl_slot                ; (the object's last part: the held flash is done)
         ld (hl),0
         ld a,BM_FLASH
+        endif
 bp2_d:  call bd_mode
         ret z
         ld a,(AM + 0x16BB)
@@ -86,6 +98,63 @@ fl_slot:
         ld h,fl_pend / 256          ; (fl_pend does not cross a 256-byte boundary)
         ret
 
+        if FLASH_LOOK
+; The hit flash's look, FLASH_LOOK 6 or 7 (docs/MSX_ARCHITECTURE.md, "The hit flash's look"),
+; per enemy slot and per picture shown (a tick shown: rc2.asm's frame end ages the count once a
+; picture). fl_pend's byte: bit 0 a hit held from a skipped tick (as without FLASH_LOOK), bits
+; 1-4 the slot's pictures to come, one bit each (the frame end shifts them right: bit 1 is this
+; picture's). Bit 1 set: 7, white (the picture after a hit's); 6, no white (one of the 3 pictures
+; after a white one). A hit sets bits from bit 2 up only, so that every part of the enemy takes
+; the same look in its picture.
+
+; A hit flash now (OS_FLASH) -> A = the look: in a skipped tick held for the tick shown (this
+; tick's look is not shown).
+fl_note:
+        call fl_slot
+        ld a,(bob_skip)
+        or a
+        jr z,fl_due
+        set 0,(hl)
+        xor a
+        ret
+
+; No hit now -> A = the look: a hit held from the skipped tick before (shown now), else 7's
+; picture after a hit's white.
+fl_held:
+        ld a,(bob_skip)
+        or a
+        ld a,BM_NORMAL
+        ret nz
+        call fl_slot
+        bit 0,(hl)
+        jr nz,fl_due
+        if FLASH_LOOK = 7
+        ld a,(hl)
+        and 2
+        rrca                        ; (BM_FLASH)
+        else
+        xor a
+        endif
+        ret
+
+; HL = the slot's fl_pend byte, a hit shown in this picture -> A = the look. 7: white, and white
+; in the next picture (bit 2). 6: white unless one of the 3 pictures before was (bit 1); a white
+; one starts its 3 pictures without white (bits 2-4).
+fl_due:
+        if FLASH_LOOK = 7
+        set 2,(hl)
+        ld a,BM_FLASH
+        else
+        ld a,BM_NORMAL
+        bit 1,(hl)
+        ret nz
+        ld a,(hl)
+        or 0x1C
+        ld (hl),a
+        ld a,BM_FLASH
+        endif
+        ret
+        else
 ; A flash drawn now: held when this tick's picture is skipped (bob_skip).
 fl_note:
         ld a,(bob_skip)
@@ -107,6 +176,7 @@ fl_held:
         ret z
         ld a,BM_FLASH
         ret
+        endif
 
 ; $AC6E: drawn as a colour 15 silhouette (minterm $FA).
 bob_flashd:
