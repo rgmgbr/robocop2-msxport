@@ -29,7 +29,7 @@
 - Medium: a Konami SCC MegaROM. The complete game requires a device that runs a **2 MiB**
   Konami SCC image (the user's decision, 2026-10-26); the 0.1.x releases (level 1) are 1 MiB.
   Keep this minimum in `README.md` (Requirements) and in every release's notes. Images over
-  1 MiB carry the boot guard (`msx/cold.asm` `rom_guard`).
+  1 MiB carry the boot guard (`msx/frontx.asm` `rom_guard`, run by `cold.asm` through `ci_hook`).
 - Generic hardware support. The game relies only on what README.md lists as requirements: the
   standard Konami SCC mapper, the PSG, and the optional SCC/SCC+ (in any slot) and
   MSX-MUSIC/FM-PAC. Never tie the design to one device, such as the user's MSX Pico+.
