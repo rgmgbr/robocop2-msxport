@@ -76,6 +76,7 @@ front_over:
         xor a
         ld (fo_cont),a              ; (first: a continue taken earlier in this power-on must not
                                     ;  leave it set for a game over without a credit)
+        call fo_flash               ; ($82A8's $FEDA: its pl_fade)
         call snd_stop               ; (show_picture $11E06: $FE14)
         ld a,PIC_GAMEOVER_BANK
         ld b,PIC_GAMEOVER_LINES
@@ -132,7 +133,8 @@ fc_on:  call cpu_title
         ld a,(cpu_tr)
         or a
         call z,display_on
-fc_txt: ld hl,txt_cont              ; (frontx.asm fo_hsc comes here after an entry: the display on)
+fc_txt: call fo_flash               ; ($10768's pl_fade, $1080C)
+        ld hl,txt_cont              ; (frontx.asm fo_hsc comes here after an entry: the display on)
         call fe_text
         ld a,(fs_done)
         or a
@@ -142,6 +144,23 @@ fc_txt: ld hl,txt_cont              ; (frontx.asm fo_hsc comes here after an ent
 fc_yes: ld a,1
         ld (fo_cont),a
 fc_x:   jp cpu_title
+
+; One step of pl_fade's ($F878) countdown of the palette flash ($F826, ac_flash: player.asm pl_fade),
+; which the original takes at the game over ($82A8's display set-up $FEDA, $FEFC) and at the continue's
+; text screen ($10768, $1080C), its two calls between the death's end and the continued game (bench
+; cont3: a beam's flash running at the death's end, 4, comes back as 2): at 0 the level's colours are
+; chosen again (PAL_LEVEL; the continue's level start draws them), then -1 (idle).
+fo_flash:
+        ld hl,(ac_flash)
+        bit 7,h
+        ret nz
+        ld a,h
+        or l
+        jr nz,fof_d
+        ld (ac_flpal),a             ; (PAL_LEVEL)
+fof_d:  dec hl
+        ld (ac_flash),hl
+        ret
 
 ; ----- the level's statistics -----
 

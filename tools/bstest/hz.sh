@@ -27,7 +27,8 @@
 #                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom; and
 #                            R/flow/rc2_flow.rom (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 without LV_TEST:
 #                            the product's way into level 2 for hz_l2's flow_l2_end, step 18)
-#   hz.sh l3builds R         level 3's trace build (hz.tcl hz_l3; docs/LEVEL3.md 3.8): R/l3/rc2_l3.rom
+#   hz.sh l3builds R         level 3's trace builds (hz.tcl hz_l3; docs/LEVEL3.md 3.8): R/l3/rc2_l3.rom
+#                            and R/l3c/rc2_l3c.rom (LV_CARRY=0:0:1:1: cont3's game over with a credit)
 #                            (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry)
 #   hz.sh fxbuilds R         level 2's sound logs' builds (fxlog.tcl fxl_jobs; docs/LEVEL2.md 4.3),
 #                            each R/<b>/rc2.rom: l2, l2x (+ NO_SCC_INT=1), l2n (+ NO_SCC=1) EXTJOY=1
@@ -99,7 +100,8 @@ compare)
     [ "$P" = l3 ] && JOBS="tour3:l3:l3_tour3:1401 tour3_fx:l3:l3_tour3:1401 tour3_tr:l3:l3_tour3:1401
       beam:l3:l3_beam:501 park:l3:l3_park:1201 park_fx:l3:l3_park:1201 park_tr:l3:l3_park:1201
       boss:l3:l3_boss:1401 boss_fx:l3:l3_boss:1401 boss_tr:l3:l3_boss:1401 kill:l3:l3_kill:1861
-      kill_fx:l3:l3_kill:1861 kill_tr:l3:l3_kill:1861"
+      kill_fx:l3:l3_kill:1861 kill_tr:l3:l3_kill:1861 cont3:l3c:l3_cont3:401 cont3_fx:l3c:l3_cont3:401
+      cont3_tr:l3c:l3_cont3:401"
     want_jobs="$*"
     bad=0; seen=0
     cd "$ROOT" || exit 2
@@ -230,9 +232,16 @@ l2builds)
 l3builds)
   [ $# -ge 1 ] || usage
   R="$(absdir "$1" mk)" || exit 2
-  echo "== l3 EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3"
-  sh "$H/build.sh" "$R/l3/rc2_l3.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 && echo "l3builds: PASS ($R)" \
-    || { echo "l3builds: FAIL"; exit 1; }
+  bad=0
+  # (l3c: the continue's carry, no life and a credit, for cont3)
+  for spec in "l3" "l3c LV_CARRY=0:0:1:1"; do
+    set -- $spec
+    b="$1"; shift
+    echo "== $b EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 $*"
+    sh "$H/build.sh" "$R/$b/rc2_$b.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 "$@" || bad=1
+  done
+  [ $bad -eq 0 ] && echo "l3builds: PASS ($R)" || echo "l3builds: FAIL"
+  exit $bad
   ;;
 fxbuilds)
   [ $# -ge 1 ] || usage

@@ -335,8 +335,10 @@ proc hz_l2 {dir R {tr ""} {only ""}} {
 # hz_l2's jobs (no tick runs before level 3 in that build: tick_n is the drive's index), with the lost
 # counters at every tick (hz_l2_drive, appended to DIR/lost.txt): DIR/l3_<job>.txt, n rows each. tour3,
 # park, boss and kill on C-BIOS_MSX2 and the FS-A1FX (_fx), beam on C-BIOS_MSX2; with "tr", those four on
-# the FS-A1GT (the R800, _tr) too. ONLY: a list of job names. Compare with "hz.sh compare --fields
-# analysis/amiga_ram_l3.tsv DIR R [--refs STUBBED]".
+# the FS-A1GT (the R800, _tr) too; cont3 (and _fx, _tr) on R/l3c (one credit): the game over at row 149,
+# the continue offer taken by fire as level 2's (hz_l2_cont_setup: SPACE from its tick 60; TAG_cont.txt,
+# over_ram.bin, lvc_ram.bin), level 3 again from row 150. ONLY: a list of job names. Compare with "hz.sh
+# compare --fields analysis/amiga_ram_l3.tsv DIR R [--refs STUBBED]".
 proc hz_l3_jobs {dir R {tr ""} {only ""}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
@@ -345,16 +347,21 @@ proc hz_l3_jobs {dir R {tr ""} {only ""}} {
 		beam l3 l3_beam 501 C-BIOS_MSX2  park l3 l3_park 1201 C-BIOS_MSX2 \
 		park_fx l3 l3_park 1201 Panasonic_FS-A1FX  boss l3 l3_boss 1401 C-BIOS_MSX2 \
 		boss_fx l3 l3_boss 1401 Panasonic_FS-A1FX  kill l3 l3_kill 1861 C-BIOS_MSX2 \
-		kill_fx l3 l3_kill 1861 Panasonic_FS-A1FX]
+		kill_fx l3 l3_kill 1861 Panasonic_FS-A1FX  cont3 l3c l3_cont3 401 C-BIOS_MSX2 \
+		cont3_fx l3c l3_cont3 401 Panasonic_FS-A1FX]
 	if {$tr eq "tr"} {
 		lappend spec tour3_tr l3 l3_tour3 1401 Panasonic_FS-A1GT  park_tr l3 l3_park 1201 Panasonic_FS-A1GT \
-			boss_tr l3 l3_boss 1401 Panasonic_FS-A1GT  kill_tr l3 l3_kill 1861 Panasonic_FS-A1GT
+			boss_tr l3 l3_boss 1401 Panasonic_FS-A1GT  kill_tr l3 l3_kill 1861 Panasonic_FS-A1GT \
+			cont3_tr l3c l3_cont3 401 Panasonic_FS-A1GT
 	}
 	set jobs {}
 	foreach {name b drive n m} $spec {
 		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
 		set done "\$::rc2_trace_done && \[hz_l2_lost {$lost}\]"
 		set setup [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" "$dir/l3_$name.txt" $n "$e/$drive.drive"]
+		if {[string match cont* $name]} {
+			set setup [list hz_l2_cont_setup $setup "$R/$b/rc2_$b.labels" $dir l3_$name 1]
+		}
 		lappend jobs [list l3_$name $m $setup $done 1800]
 	}
 	return $jobs

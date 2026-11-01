@@ -32,7 +32,7 @@ step 6; energy and lives poked every 25 frames in all but beam and cont3, no god
           him, low: hurt) and fires left until Cain dies (CAIN DESTROYED., the end count, the level's
           end at about frame 1860)
   cont3   the game over with a continue (carry 0:0:1:good): the beam's death with no life left, fire
-          held at the death's end; the offer taken, level 3 again (the drive only: no reference yet)
+          held at the death's end (row 149); the offer taken, level 3 again from row 150
 
 Files (DIR = build/emu by default; not committed: they hold the game's state):
   DIR/l3_DRIVE.drive (+ .args)     the drives (make)
@@ -106,7 +106,7 @@ DRIVES = {
     "park": dict(joy=PARK_JOY, tele=PARK_TELE, poke=energy_lives(1200)),
     "boss": dict(joy=BOSS_JOY, tele=BOSS_TELE, poke=energy_lives(1400)),
     "kill": dict(joy=KILL_JOY, tele=BOSS_TELE, poke=energy_lives(2600)),
-    "cont3": dict(tele="30:420:400", joy="200:20:f"),
+    "cont3": dict(tele="30:420:400", joy="140:20:f"),
 }
 
 # The references: name -> (drive, carry, game frames asked, rows, sha256 prefix, what it covers). The
@@ -119,10 +119,13 @@ REFS = {
              "ground floor"),
     "boss": ("boss", CARRY, 1400, 1401, "6454a63800dea384", "Cain's chase from the roof down to the ground floor, shot at high up"),
     "kill": ("kill", CARRY, 2600, 1861, "83ff8fd40281d2af", "Cain followed down and killed: the level's end"),
+    "cont3": ("cont3", "0:0:1:good", 400, 401, "094defd80670fc84", "the game over (row 149) and a continue: level 3 again "
+              "from row 150"),
 }
-# (cont3's drive is made, its reference not yet: the bench faults after its game over, PC $FDB8 at bench
-# frame 735 (A1 = 800000h), the continue's text or the high-score entry on level 3's RAM image; the
-# plan's step D, contcheck.py --level 3)
+# (cont3's fire was at frames 200-219 until step B: the game frames stop at the death's end, row 149, so
+# the offer went unanswered and the title came, whose plot ($11062 at $725A2) writes into chip RAM's
+# mirror of the message slots ($FD9F = 80h); the message ticker then read a string at $800000, unmapped
+# on the bench (an A500 reads open bus there): the fault at PC $FDB8 was the drive's)
 
 
 def python() -> str:
