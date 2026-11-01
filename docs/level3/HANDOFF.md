@@ -836,3 +836,13 @@ evidence. The numbers below are of 56e8f56's builds: steps 7 and 8 change some o
    not traced (no emulator here).
 4. Not run here (no emulator): checks 9-12 of `docs/LEVEL3.md` 4 (the fresh machines, the matrix, the
    bank-select log) belong to the candidates' builds.
+
+### Integrated
+Cherry-picked onto `level2` 56e8f56 (the main tree clean) as **`e5ec4b8`** (`lab.asm`), **`ac1fe6b`**
+(`MSX_ARCHITECTURE.md`), **`31678f0`** (`ROM_BUDGET.md`), **`e5db439`** (`AMIGA_ANALYSIS.md`), **`af05f35`**
+(`README.md`, `LEVEL3.md`), **`c1a25d8`** (this section), **`0f81c37`** (a table row's indentation) and this
+note's. In the main tree then: the product, `DIAG=2` and `DIAG=1 PZ_TEST=1` built with
+`tools/bstest/build.sh` byte-identical to the worktree's (the product `fb06ae0faab13802`), so the results
+above hold; `make test`: 347 tests, the 4 known failures only. The summaries (the two option-set runs,
+the free bytes of the 58 sets, the logs) in `build/archive/rest_step9_records_2026-11-01.tar.gz`; the
+option sets' ROMs deleted.
