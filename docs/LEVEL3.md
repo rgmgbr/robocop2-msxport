@@ -389,7 +389,7 @@ is the original's design (Q1, Q4, Q7).
     `fb_clip` leaves empty, a V9938 page keeps 256 px and the V9958's ring 19 columns. A white
     copy is fetched (`fc_get`) only for a BOB it composes. So a view showing more of Cain could
     only add VDP work, in the game's slowest scene.
-- Records, drives and tools: `build/archive/cain_2026-11-01` (local).
+- Records, drives and tools: `build/archive/cain_2026-11-01.tar.gz` (local).
 
 ## 3. The MSX design
 
