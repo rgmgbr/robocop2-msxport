@@ -743,3 +743,14 @@ and the pictures looked at: `build/archive/rest_step5_records_2026-11-01.tar.gz`
 - A marker spawn into the slot before Cain's on the frame he runs leaves the original's D1 at the marker's
   y, the port's at 20h + 8 x step (`objects.asm` `uf_mk`): it changes nothing while type 43 (markers off,
   the roof) has run, as in every drive here.
+
+### Integrated
+Cherry-picked onto `level2` `a80288d` (the main tree clean) as **`4d742b3`** (the types, act_20, the lift, the
+rocket, xor=), **`da4a1e7`** (park, boss, kill), **`bbbf802`** (cont3, `fo_flash`), **`13a155a`** (the
+findings, mapcells' shafts), **`ef672f0`** (the docs, the test), **`9bd2de8`** (this section) and this note's.
+In the main tree then: `python3 -I tools/l3drives.py refs park boss kill cont3` and `check` ("references: 6
+of 6 as expected"); the l3 and l3c trace builds, the product, the lowest set, the level-1 trace build and
+the level-2 builds made from the main tree (`tools/bstest/build.sh`, `hz.sh l3builds`, `hz.sh trace`, `hz.sh
+l2builds`) byte-identical to the worktree's (the product `fb06ae0faab13802`); `hz_l3_jobs` from the main
+tree's harness: "level 3: PASS (16 traces)", lost counters 0; `make test`: 347 tests, the 4 known failures
+only. The scratch tools, the BOB logs and the lost counters: `build/archive/level3_stepB_records_2026-11-01.tar.gz`.
