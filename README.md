@@ -18,8 +18,8 @@ anything generated in `build/`.
 - A cartridge device that runs a **Konami SCC MegaROM** (the Konami5 mapper) of the game's size:
   - releases 0.1.x, with level 1 only: **1 MiB**;
   - **the complete game: 2 MiB**, the minimum device for it (the user's decision, 2026-10-26:
-    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). Since the ending's music is in, the game in
-    development (levels 1 and 2 and the ending, not released yet) is a 2 MiB image (132 of its 256
+    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). The complete game (the three levels, both bonus
+    stages and the ending; in development, not released yet) is a 2 MiB image (163 of its 256
     banks). A 2 MiB image checks the device at power-on: on one that holds less, the game shows
     "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM." and stops.
 
@@ -38,11 +38,50 @@ anything generated in `build/`.
 | 1 MiB devices (1 MiB MegaRAM, the original MegaFlashROM SCC+) | releases 0.1.x only |
 
 - Sound: always the PSG. An SCC or SCC+ (in the game's cartridge or in another slot) and
-  MSX-MUSIC / FM-PAC are used when present, by the title music, the in-game effects and the bonus
-  stages' music and effects.
+  MSX-MUSIC / FM-PAC are used when present, by the title music, the in-game effects, the bonus
+  stages' music and effects and the ending's tune.
 
 Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank test) and
 [docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md) (decision 2, "2 MiB").
+
+## Playing
+
+The complete game, in order:
+
+1. The title (fire starts a game).
+2. Level 1, the River Rouge complex, then its statistics.
+3. The bonus stages: Brainstorm (the chip puzzle; solving it gives a game credit), then the shooting
+   range (its rating sets the next level's enemy hit points).
+4. The level-2 briefing and level 2, the Tokugawa brewery, then its statistics.
+5. Both bonus stages again (Brainstorm's second set of boards, the range's darker street).
+6. The level-3 briefing and level 3, the Civic Centrum: up through the building to the roof, where
+   Cain, now RoboCop 2, appears; the chase down through the car park ends with his death.
+7. The game completed: WELL DONE, with the ending's tune (no statistics after level 3, as in the
+   original).
+8. The high-score entry, when the score enters TODAYS BEST (six names and scores, kept from the
+   power-on), then the table.
+9. The title again.
+
+A game over shows the game-over picture, then the high-score entry when the score enters the
+table; when Brainstorm has given a credit, a continue screen follows, and fire restarts the same
+level with two lives and the score kept, the map as it was left (the first offer can come in level
+2).
+
+**Controls.**
+- RoboCop: joystick port 1 (button A fires, button B jumps, also while walking or firing and from a
+  crouch, up aims) or the keyboard as on the Amiga (cursor keys, up jumps; SPACE or RETURN fire). The
+  bonus stages take the same joystick or keys.
+- The text screens (statistics, briefings, the stages' intros and results, WELL DONE, the table) end
+  with fire after their first second; the game-over picture after 30 s or with fire; the ending's
+  tune with fire (pressed once released); the continue screen continues with fire.
+- The name entry is typed on the MSX keyboard, as the original's on the Amiga's: the letters A-Z,
+  the digits (the main row or the keypad) and SPACE, up to nine characters; BACKSPACE deletes the
+  last one, RETURN ends the name. No joystick and no time limit, as the original.
+
+**Sound.** The title music, the bonus stages' tunes and the ending's tune play on the chips the
+machine has: with an SCC the melody there and the drums on the PSG, or on MSX-MUSIC / FM-PAC's
+rhythm when there is one; MSX-MUSIC / FM-PAC alone; or the PSG alone. The in-game effects use the
+SCC when there is one, else the PSG.
 
 ## Quick start
 
@@ -115,7 +154,7 @@ shooting range*); FRNG's names live in `analysis/frng_1ea00.sym`.
 ## MSX build
 
 ```sh
-make msx      # the conversions: joint palette, the sprite pool (RoboCop and both levels' BOBs), level 1's and level 2's tiles, maps, attributes and palettes, HUD and its run-time data, RoboCop's logic tables, both stages' graphics (Brainstorm's two visits), tables, texts, music and effects (build/msx/)
+make msx      # the conversions: joint palette, the sprite pool (RoboCop and the three levels' BOBs), the three levels' tiles, maps, attributes and palettes, level 3's frame cache, HUD and its run-time data, RoboCop's logic tables, both stages' graphics (Brainstorm's two visits), tables, texts, music and effects, the ending's tune (build/msx/)
 make rom      # MegaROM (KonamiSCC/MegaRAM mapper) in build/msx/rc2.rom
 make rom ROMOPTS="DEMO_ACTORS=2"    # build options (tools/mkrom.py OPTIONS: DEMO_ACTORS, FORCE_V9938, PZ_TEST, PZ_LEVEL, TAG, ...)
 make rom ROMOPTS="JOY=70:30:r,105:10:d"   # test ROM playing a joystick script instead of the controls
@@ -123,22 +162,17 @@ make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brains
 make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TEST 2 on the bonus text screens
 make rom ROMOPTS="PZ_TEST=2"        # test ROM: at power-on straight into the shooting range, then the title
 make rom ROMOPTS="LV_TEST=2"        # test ROM: at power-on the level-2 briefing and level 2 (LV_CARRY's score, lives, credits, rating)
+make rom ROMOPTS="LV_TEST=3"        # test ROM: at power-on the level-3 briefing and level 3, the same way
 make rom ROMOPTS="END_TEST=1"       # test ROM: at power-on the game completed (WELL DONE, the ending's tune, the high-score entry)
 make rom ROMOPTS="END_TEST=2 LV_CARRY=10050:0:1:1"   # test ROM: at power-on a game over, the entry, the continue offer
-make rom ROMOPTS="CHEAT=1"          # F5 ends the level, F4 fills the energy (the original's F10/F9)
+make rom ROMOPTS="CHEAT=1"          # F5 ends the level (level 3: the game completed), F4 fills the energy (the original's F10/F9)
 ```
 
-The game's flow: the title, level 1, its statistics, Brainstorm, the shooting range, the level-2
-briefing, level 2 (the Tokugawa brewery), its statistics, both bonus stages' second visits, the
-level-3 briefing, then, until level 3 is in, the game completed: WELL DONE with the ending's tune
-(CMP), the high-score entry and the table, then the title again. Level 2 and the ending are in
-development on the branch `level2` and not released yet: they go out only complete and tested
-([docs/LEVEL2.md](docs/LEVEL2.md): level 2's plan, as built; [docs/ENDING.md](docs/ENDING.md): the
-ending and the high scores). A game over shows the game-over picture, then the high-score entry
-when the score enters the table (TODAYS BEST: six names and scores, kept from the power-on; the
-name typed on the MSX keyboard, BACKSPACE and RETURN as the original's, and the table after it);
-when Brainstorm has given a credit, a continue screen follows, and fire restarts the same level with
-two lives and the score kept, the map as it was left (the first offer can come in level 2).
+The game's flow is under "Playing" above. Levels 2 and 3 and the ending are in development on the
+branch `level2` and not released yet: they go out only complete and tested
+([docs/LEVEL2.md](docs/LEVEL2.md): level 2's plan, as built; [docs/LEVEL3.md](docs/LEVEL3.md): level 3's plan
+and, in its sections 3.9-3.11, what was built; [docs/ENDING.md](docs/ENDING.md): the ending and the high
+scores).
 - Brainstorm (its intro, the chip puzzle, its result): [docs/BRAINSTORM.md](docs/BRAINSTORM.md).
   Solving it gives a credit. Its second visit, after level 2, has its own boards and Ellen's face.
 - The shooting range (its intro; a crosshair over a street of targets, 25 shots and 2:00; its
@@ -157,14 +191,14 @@ PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build o
 | `PZ_TEST=1` | power-on without the title: level 1's set-up, then Brainstorm and the shooting range once, then the title and a new game |
 | `PZ_TEST=2` | the same with the shooting range alone |
 | `PZ_LEVEL=1` or `2` | `PZ_TEST`'s visit: after level 1 (default) or after level 2 (Brainstorm's second set of boards and Ellen's face, the range's darker palette) |
-| `LV_TEST=2` | power-on without the title: level 1's set-up, then the level-2 briefing and level 2 once, as the product reaches them after the range; later games as the product's |
+| `LV_TEST=2` or `3` | power-on without the title: level 1's set-up, then that level's briefing and the level once, as the product reaches them after the range; later games as the product's |
 | `END_TEST=1` | power-on without the title: level 1's set-up, then the game completed (WELL DONE, the ending's tune, the high-score entry and the table) with `LV_CARRY`'s score, then the title and a new game |
 | `END_TEST=2` | the same with a game over instead: the game-over picture, the high-score entry, the continue offer with `LV_CARRY`'s credits (a continue restarts level 1) |
 | `LV_CARRY=S:L:C:R` | `LV_TEST`'s or `END_TEST`'s carry: score, lives, credits and the rating 0-3 (SHARP to POOR; default `10050:2:0:1`) |
 | `CHEAT=1` | F5 ends the level, F4 fills the energy (the original's F10/F9 cheat keys) |
 | `VAT_ANIM=1` | level 2's vats redrawn as they bubble, as built for test7 (a comparison only: the product shows them as static images, the map's own look, the user's choice for the game's speed; `docs/LEVEL2.md` 3.5) |
 | `VAT_TICK=1` | with `VAT_ANIM=1`: the vats redrawn more often, for a little of the game's speed (the other comparison; refused without `VAT_ANIM=1`) |
-| `DAMAGE_X=n` | the enemies' damage to RoboCop times n, 1-3 (default 2, the user's choice; 1 = the original, for the trace tests): their bullets, touching them, level 2's drips; the missiles (enemy bullet types 1 and 2, level 2's drone) keep the original's damage in every build |
+| `DAMAGE_X=n` | the enemies' damage to RoboCop times n, 1-3 (default 2, the user's choice; 1 = the original, for the trace tests): their bullets, touching them, level 2's drips; the missiles (enemy bullet types 1 and 2, level 2's drone, level 3's rocket and Cain's bombs and missiles) keep the original's damage in every build |
 | `TAG=n` | a test candidate (1-99): the text screens (the stages', the briefings, the ending's and the high scores') show TEST n below their text |
 | `RG_ADJ=0` | the range's camera in 16-pixel steps without R#18 (the VDP's horizontal adjust), for a VDP that ignores R#18 |
 | `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stages' timers stand still |
@@ -188,10 +222,8 @@ which the stage's passes advance) must go up between samples at 20 s and 27 s fr
 with the display on and no DI; HALT.
 
 The engine is Z80 assembly in `msx/` (z80asm 1.8). Run it in openMSX with
-`carta insert build/msx/rc2.rom -romtype KonamiSCC`. RoboCop is played with joystick port 1
-(button A fires, button B jumps, also while walking or firing and from a crouch, up aims) or
-the keyboard as on the Amiga (cursor keys, up jumps; SPACE/RETURN fire), at the PAL original's
-25 game frames per second on 50 and 60 Hz machines (`msx/player.asm`).
+`carta insert build/msx/rc2.rom -romtype KonamiSCC`. The game runs at the PAL original's 25 game
+frames per second on 50 and 60 Hz machines (`msx/player.asm`); the controls are under "Playing".
 
 The game logic is checked against the original: `tools/amigaemu.py game --ram
 build/ram/level1_full.bin --gframes N --joy F:C:KEYS ... --trace A.jsonl` runs the Amiga code
@@ -245,6 +277,7 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [The shooting range, the second bonus stage](docs/RANGE.md)
 - [Level 2, the Tokugawa brewery: the plan, as built](docs/LEVEL2.md), and its steps' accounts
   ([docs/level2/HANDOFF.md](docs/level2/HANDOFF.md))
+- [Level 3, the Civic Centrum: the plan, and what was built](docs/LEVEL3.md)
 - [The rest of the game: the user's last changes, level 3 and the ending, step by step](docs/level3/HANDOFF.md)
 - [The game completed and the high scores](docs/ENDING.md)
 - [The bonus stages' acceptance harness (`tools/bstest/`)](docs/HARNESS.md)

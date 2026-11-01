@@ -54,11 +54,15 @@ main code (`update_objects`, the lifts, the bullets, the explosions, the pickups
   - The play field gets a **dynamic frame cache** in VRAM page 2 lines 160-231 for the big animated
     frames (Cain and type 21), filled on demand from ROM like today's explosion slot;
     their hit flash is a white copy uploaded into the cache (no sprite silhouettes); a **per-level
-    `FIELD_ID0`** gives level 3 its ids (about 123 sprite + 83 play-field frames).
-  - The sprite pool grows in place by about 1-2 banks (levels 1 and 2's records unchanged).
+    `FIELD_ID0`** gives level 3 its ids (about 123 sprite + 83 play-field frames). *As built (3.10):
+    seven fixed places, not filled least-recently-used; the white copies stored in the ROM (colour
+    9); 150 sprite and 66 play-field ids, `lv_fid0` 98h.*
+  - The sprite pool grows in place by about 1-2 banks (levels 1 and 2's records unchanged). *As
+    built: one bank (3.10).*
 - **ROM [E].** Level 3 about 22-25 banks (logic 2, tiles 8, map 2, attributes 1, tables 1, atlas 1-2,
   big frames 6-7, pool +1-2); with step 3's ending about **153-157 of 256 banks**. The image is 2 MiB
-  from level 3's first block on (the boot guard).
+  from level 3's first block on (the boot guard). *As built: 31 banks (the frame cache 14, with its
+  white copies), the whole game 163 of 256 at 56e8f56 (3.10; `docs/ROM_BUDGET.md` 2.4).*
 - **The plan [D]**: five steps (section 5): A data, descriptor, flow and bench; B the logic ∥ C the
   sprites and the play field; D the boss, the end and the sound; E acceptance.
 
@@ -343,11 +347,13 @@ The coverage and the boss drives drew **202 distinct frames** (address and BLTSI
   atlas since VRAM holds another level's); `l3_init` (the level bank) does `level_init`'s level-3
   part: the lists from the bank (fresh starts), the header's values (timer 7:30, delay 3Ch, mask 3,
   the relocation target), **`$15CA` set, aim 5, `$15DE` 4, state 6, the fade's forced state 0Bh**
-  (the port's `$F89D`), `set_weapon(0)` on fresh starts (as `l2_init`).
+  (the port's `$F89D`), `set_weapon(0)` on fresh starts (as `l2_init`). *As built: the fade's state is
+  a variable, `fade_st` (3.9).*
 - **The flow** (`rc2.asm` `ml_ev`, fixed area): `$8050` = 3 goes first to **step 3's ending** (no
   statistics, no stages: `level_load_3`), then the title; `$8050` = 1 or 2 runs `front_stats`,
   `front_bonus` (the stages and `front_brief`, built for both briefings) and `lv_next` (A =
-  `$8050`). Today's `dec a` / `jr nz,ml_ttl` goes (−4 B), the test for 3 comes (+8 B).
+  `$8050`). Today's `dec a` / `jr nz,ml_ttl` goes (−4 B), the test for 3 comes (+8 B). *As built:
+  `ml_ev` +1 B and `ml_end` 3 B (3.9).*
 - **Deaths and the continue**: as level 2 (`level_restart`, `lv_cont`: the level's VRAM again, the map
   kept). The continue offer can come in level 3 (credits from both Brainstorms).
 - **Test builds**: `LV_TEST=3` (start in level 3 at power-on, after its briefing, with `LV_CARRY`);
@@ -370,6 +376,9 @@ in its worktree]:
 | `BANK_FIELD` | 143 | 143 | 143 | 150 |
 | MUSIC | 1,331 | 1,331 | 1,280 | 1,331 |
 | `BANK_L2` | 28 | 28 | 28 | 28 |
+
+*As built: the banks in 3.9 (step A) and 3.10 (step C: 163 of 256 banks, `place_banks`); the free
+bytes at 56e8f56 and level 3's real cost in `docs/ROM_BUDGET.md` 2.4.*
 
 **What level 3 adds where:**
 
@@ -410,7 +419,8 @@ in its worktree]:
   `mkrom.py`'s `a000_only` today holds the pictures only; it must learn the blocks read at A000h only
   (`BANK_L3` and `BANK_L3B`, mapped by `lvl_bank` and `l3b_call`; the map banks only if every reader
   maps them at A000h) so that one of them can take bank 127 (default 13; else pad). Every build checks
-  it (mkrom's error).
+  it (mkrom's error). *As built: the ending's `BANK_FRONT2` holds bank 127; `place_banks` would give
+  191 to `BANK_L3` or `BANK_L3B` (3.9, 3.10).*
 - **The SCC test values** (banks 36, 63, 90, 137, 191 at 1800h in a 2 MiB image): data-dependent,
   checked by mkrom on every build; the pool's shift moves what sits there: reorder or pad when one
   fails.
@@ -444,6 +454,7 @@ Routine by routine, in the AM mirror's layout, traced against the bench:
   no sprite or BOB), **43, 46, 47, 48** (triggers that free their slot at once). Effect: from Cain's
   spawn to his death no other counted enemy comes (he holds the one slot; he is never freed by
   clipping [I: as type 2]): the chase is one on one, with his bombs and missiles.
+- *As built (3.11): every routine above, 40 and 42 one routine; 10,134 B used in the two banks.*
 - **CPU [E]**: a busy tick (type 21 or Cain with three projectiles) about 50,000-60,000 Z80
   T-states, below level 1's measured 74,000; the frame cache's uploads add about 15,000-30,000 T a
   tick while a big enemy animates (about 1 KiB a tick at most), the R800 four times faster.
@@ -462,16 +473,20 @@ Routine by routine, in the AM mirror's layout, traced against the bench:
 | F1C0h | `lv_fid0` (the descriptor's 33rd byte) | free (F1C0h-F1C1h) |
 | the frame cache's table | slot → (frame, white), age: about 24 B | `BANK_FIELD`'s RAM (step C finds the home; `msx.inc` is step A's to edit first) |
 
+*As built: the code-area words in another order (words even) and the frame cache's `fc_tab` at
+ECF0h (3.9); `fc_res` holds one byte a place (3.10).*
+
 ### 3.5 The play field and the sprites [D]
 
 - **Where each frame goes** (decision 13): the 58 DATAL3 frames 48 px wide or more and the lift's
   two parts into the play field; the other 76 DATAL3 frames as sprites (type 1's joint-composition
   rule, 3 a line at most beside RoboCop's 5, for any 48 × n frame the user would rather keep as
-  sprites: none by default). Cain is four play-field parts plus a sprite muzzle flash.
+  sprites: none by default). Cain is four play-field parts plus a sprite muzzle flash. *As built
+  (3.10): three play-field parts; his 32 x 40 part and every frame under 48 px stay sprites.*
 - **Static atlas** (page 3 lines 0-111, as level 2's): the frames that do not animate fast or are
   few: the lift's two parts, type 35's 48 × 18 and 48 × 28, the rocket's 48 × 16 × 2, Cain's 48 × 16
   × 4, type 51's 48 × 49 × 2, the truck's 80 × 48 and 48 × 24 × 2: about 19,100 px, 75-90 lines with
-  the converter's shelves [E].
+  the converter's shelves [E]. *As built: 18 frames in 109 lines, two banks (3.10).*
 - **The dynamic frame cache** (new; page 2 lines 160-231, three rows of 24 lines: 768 px of strips;
   the tile cache keeps 160 slots, `lv_tcn` −160, against the 106 + ~40 tiles level 3 can show):
   Cain's legs (48 × 44 × 18, 64 × 34 × 2) and his 64 × 32 part (× 6), type 21's legs (64 × 40 × 16)
@@ -480,18 +495,22 @@ Routine by routine, in the AM mirror's layout, traced against the bench:
   it is copied from its ROM bank into a free (or the least recently used) place, in strips of 24
   lines side by side as `fb_dyn` does for the explosions today. A place in use by an item in
   flight, or by a page that has still to be composed with it (the V9938's two pages), is not reused.
+  *As built (3.10): seven fixed places, one per kind of frame; the frames shown together never share
+  one (ENEMY_CAP 1), so nothing is evicted while in use.*
 - **The explosions' dynamic slot** stays the engine's (256 × 24), on page 2 lines 232-255 (level 2's
   is on page 2 too).
 - **The hit flash**: on the Amiga `$AC44`/`$AC56` draw every part white for the frame of the hit.
   Level 3's play-field frames get it from the cache: the frame uploaded with every non-zero nibble
   turned to 15 (a flag on the upload), so **no sprite silhouettes** (default 6). Levels 1 and 2 keep
-  theirs.
+  theirs. *As built (3.10): white copies stored in the ROM, in colour 9 (the Amiga's flash is colour 15
+  of its palette, (11, 11, 11)), uploaded as any cache frame.*
 - **Frame ids**: level 3 needs about 123 sprite ids (76 DATAL3, 12 SPERMA, about 31 PERMA, the spark's
   4) and 83 play-field ids (60 DATAL3, about 17 explosion frames, 6 smoke): 206 of 254. No single
   `FIELD_ID0` serves the three levels (level 2 needs 204 sprite ids, level 3 83 play-field ids), so
   **`FIELD_ID0` becomes per level** (`lv_fid0`: D0h in levels 1 and 2; in level 3 between 7Bh and
   ABh, about 90h, from `msxsprites.py`'s counts; default 7). 16-bit ids (the alternative) would
-  change the sprite engine's records and the fixed area far more.
+  change the sprite engine's records and the fixed area far more. *As built: 150 sprite ids, 66
+  play-field ids from 98h (3.10).*
 - **Debris that draws big frames** (2.6): the bullet class goes to the sprite path today (`bob.asm`
   `bob_flush`: only enemies, specials and explosions reach the play field); a record whose frame id
   is a play-field id must go to the play field whatever its class (a few bytes in the fixed area).
@@ -515,7 +534,8 @@ Routine by routine, in the AM mirror's layout, traced against the bench:
 | page 3 lines 112-255 | caches and scratch, sprites, HUD (unchanged) |
 
 `lv_select` uploads page 2's tiles and the atlas when VRAM holds another level's (`lv_vram`); the
-cache starts empty at every level start, restart and continue.
+cache starts empty at every level start, restart and continue. *As built: so (3.10); the atlas takes
+page 3 lines 0-108.*
 
 ### 3.7 Sound [D]
 
@@ -527,11 +547,11 @@ Nothing to convert. Step D logs level 3's requests per tick on the three chip se
 | Tool | Level 3 |
 |---|---|
 | `Makefile` | `ram` builds `level3_full.bin` with SPERMA (`934e2f1`); `msx` gets level 3's conversions (`msxlvpal.py` palette C, `msxconv.py level`, `mapcells.py --level 3`) and the pool's level-3 arguments |
-| `tools/amigaemu.py` | `game --level 3` (**built**, `d0afe4c`): the direct start, `CODE_BLOCKS_L3`; to add: `--flow` through level 2's end (level 2's flow + `load_level2` for real) for `flow_l3` |
+| `tools/amigaemu.py` | `game --level 3` (**built**, `d0afe4c`): the direct start, `CODE_BLOCKS_L3`; to add: `--flow` through level 2's end (level 2's flow + `load_level2` for real) for `flow_l3` (*not built: `cheat.tcl` checks the flow, `docs/level3/HANDOFF.md` step 4*) |
 | `tools/amigacov.py` | `--level 3 --scenario level3` (**built**); to add: a car-park run that follows Cain down |
 | `tools/l3drives.py` (new, from `l2drives.py`) | the drives and references: `tour3` (the building, the beams, the lifts, a relocation), `park` (the car park: the truck, the turrets, types 37, 51), `boss` (the roof, the chase, Cain's projectiles), `kill` (Cain down and dead; the level's end), `cont3` (a game over with a credit), `flow_l3` (level 2's end into level 3) |
 | `analysis/amiga_ram_l3.tsv`, `tools/tracecmp.py --fields` | level 3's trace fields: `$B00-$16EB`, `$8000-$80FF` and `CODE_BLOCKS_L3` |
-| `tools/bstest/hz.tcl` (`hz_l3`), `openmsx_rc2.tcl` (`rc2_l3_arm`) | the MSX trace of `LV_TEST=3` builds, as `hz_l2` |
+| `tools/bstest/hz.tcl` (`hz_l3`), `openmsx_rc2.tcl` (`rc2_l3_arm`) | the MSX trace of `LV_TEST=3` builds, as `hz_l2` (*as built: `hz_l3`, `hz_l3_jobs`; `openmsx_rc2.tcl` unchanged, `rc2_l2_arm` arms at the next `lv_next`*) |
 | `tools/cellmasks.py` | `cells_l3.inc` (39 entries: `SW_MAX` 40 holds them) |
 | `tools/amitab.py` | `analysis/amiga_tables.tsv` bank `l3`: `spawn_l3`, `objl_l3`, `sp_l3`, `mk_tab3` (with `markers_off`), `hz_l3`, `beam2_*`, the types' tables, copies of the shared tables |
 | `tools/mapcells.py` | `--level 3`: the beams' and turrets' cells, `act_20`'s looks |
@@ -706,50 +726,74 @@ step 3 owns `front*.asm`'s ending and high scores.
 
 ## 6. Defaults taken for the user's choices
 
+*Where each stands at 56e8f56 is marked **In** (or what replaced it) at its end.*
+
 1. **The palette**: level 2's palette C as it is (identical bytes; ΔE76 2.18 against level 1's
    palette's 2.68). Alternative: refit entries 8-15 for level 3 (every shared frame changes meaning).
-2. **PIC7 dropped** (decision 5), as PIC4 was.
-3. **No statistics after level 3**: the original shows none (`level_load_3`).
+   **In** (3.9: `level3.pal` = `level2.pal`, the tables bank's graded palette level 2's bytes).
+2. **PIC7 dropped** (decision 5), as PIC4 was. **In** (`front_brief`: the briefing alone).
+3. **No statistics after level 3**: the original shows none (`level_load_3`). **In** (`ml_ev` → `ml_end`,
+   3.9).
 4. **Both sides of every big frame stored** in ROM (about 58 KiB): no flip while streaming.
-   Alternative: flip at upload (half the ROM, more CPU).
+   Alternative: flip at upload (half the ROM, more CPU). **In** (the frame cache's ROM, 3.10).
 5. **The tile cache 160 slots in level 3**, page 2 lines 160-231 the frame cache, 232-255 the
-   explosions' slot.
+   explosions' slot. **In** (3.9, 3.10).
 6. **The hit flash of level 3's play-field frames drawn white by the play field** (an upload with the
    nibbles turned to 15), no sprite silhouettes; levels 1 and 2 unchanged. Alternative: silhouettes
-   as level 2's (then the ids do not fit: 16-bit ids).
-7. **`FIELD_ID0` per level** (D0h, D0h, about 98h). Alternative: 16-bit ids.
-8. **Two logic banks**, the new types in `BANK_L3B` behind stubs.
+   as level 2's (then the ids do not fit: 16-bit ids). **In, as white copies stored in the ROM** (colour
+   9, 55 of them) instead of a conversion at the upload (3.10).
+7. **`FIELD_ID0` per level** (D0h, D0h, about 98h). Alternative: 16-bit ids. **In** (`lv_fid0`: D0h,
+   D0h, 98h; 3.9, 3.10).
+8. **Two logic banks**, the new types in `BANK_L3B` behind stubs. **In** (`l3b_call`, 3.9, 3.11).
 9. **The vats' display code assembled only with `VAT_ANIM=1`** (the user chose static vats): it frees
    `BANK_FIELD` for the frame cache. If a `VAT_ANIM=1` build then overflows `BANK_FIELD`, such builds
-   stop at mkrom with level 3 in (they serve level 2's comparison only).
+   stop at mkrom with level 3 in (they serve level 2's comparison only). **In** (3.10); the
+   `VAT_ANIM=1` builds do build, without level 3's play field (`fld_l3` empty).
 10. **ENEMY_CAP in level 3**: Cain's bombs and missiles (38, 39, 52), the turrets (40-42) and the
     triggers (43, 46, 47, 48) not counted (3.3). Alternative: count the projectiles (Cain would never
-    attack).
+    attack). **In** (`l3_noten`, 3.9; checked with the product's options on `kill`, 3.11).
 11. **The rocket (bullet 11h, 40h) × 1**, as the missiles (the user's order of 2026-10-31 covers
-    missiles; this rocket is one). Alternative: × `DAMAGE_X`.
-12. **The touches of 38, 39 and 52 (18h) × 1**, as level 2's drone.
+    missiles; this rocket is one). Alternative: × `DAMAGE_X`. **In** (`hits.asm` `phb_en`, 3.11).
+12. **The touches of 38, 39 and 52 (18h) × 1**, as level 2's drone. **In** (their own code, 3.11).
 13. **Bank 127**: an A000h-only block of level 3 (its logic or its map) takes it when the order puts
-    one there; padding otherwise.
-14. **Level 3's frames kept whole until the user's choices** (`msx/level3_frames.json` empty).
+    one there; padding otherwise. **The rule is in** (`place_banks`), but bank 127 holds the ending's
+    `BANK_FRONT2`; 191 would take `BANK_L3` or `BANK_L3B` (3.9, 3.10).
+14. **Level 3's frames kept whole until the user's choices** (`msx/level3_frames.json` empty). **In**
+    (3.10).
 15. **The ending's hook**: until step 3's ending is in `level2`, `$8050` = 3 goes to the title.
+    **Superseded**: the ending was in first; `ml_end` calls `fr_ending`, then the title (3.9).
 
 ## 7. Risks
+
+*Which of them happened, at 56e8f56, is marked at each one's end.*
 
 1. **The dynamic frame cache** is the one new engine piece (step C): VDP time and CPU while Cain and
    type 21 animate, and the V9938's two pages (a place reused while the other page still needs its
    frame). It can show wrong frames if its bookkeeping slips: check 3 must pass before D starts. If
    it cannot be made glitch-free tonight, the fallback is a static per-type upload at spawn (Cain's
-   frames alone fit 128 lines) with a short pause when a big enemy spawns.
-2. **`BANK_FIELD` room**: the cache needs the vats' section out of the product (default 9).
+   frames alone fit 128 lines) with a short pause when a big enemy spawns. **The cache's bookkeeping
+   held** (its frames and places right in every picture checked on both VDPs; the fallback was not
+   needed), but **a big item tears**: copied in several 64 x 64 pieces of about 13 ms each, which no
+   blank holds, Cain and type 21 can show partly old, partly new frames while they move or animate
+   (3.10; open at 56e8f56).
+2. **`BANK_FIELD` room**: the cache needs the vats' section out of the product (default 9). **As
+   foreseen**: default 9 gave 958 B, the cache and the flash took 808, 300 B are left.
 3. **The fixed area**: about 30-45 B for level 3 against 181 (196 after step 1), 46 (89) in the
-   lowest set: log after every change.
+   lowest set: log after every change. **Within it**: level 3 took 41 B and default 9 gave 31 back:
+   164 B free in the product, 29 in the lowest set.
 4. **The pool's shift and the 3Fh / SCC rules**: data-dependent; mkrom stops the build, the step pads
-   or reorders.
+   or reorders. **Happened**: the pool's growth put Brainstorm's visit-2 pictures on bank 127; step C
+   made `place_banks` lay out every late block (3.10). mkrom's checks pass in all 58 option sets that
+   build.
 5. **Frames the bench did not draw** (rare states of Cain, types 36, 37): REA's tables must complete
-   the catalogue, else a frame is missing on the MSX.
+   the catalogue, else a frame is missing on the MSX. **Averted**: the catalogue has 212 frames, 10 of
+   them from REA's tables, and the 178 frames the new drives draw are all in it (3.10, 3.11).
 6. **Cain's chase in the drives**: a drive must follow him down to y 290h and kill him without god
    mode for the `kill` reference; the bench's boss drives used god mode and a poke (coverage only).
-7. **ENEMY_CAP with Cain**: no other enemy from his spawn to his death; the user may want more.
+   **Solved**: `kill` follows him down through `act_20`'s three floor pieces and shoots him on the
+   ground floor (energy and lives poked, no god mode), 1,861 rows to the level's end (3.11).
+7. **ENEMY_CAP with Cain**: no other enemy from his spawn to his death; the user may want more. **As
+   foreseen** (the product's options on `kill`, 3.11); the user's choice stays open.
 8. **Time**: A 3 h, B and C 3 h each side by side, D 2 h, E 1-2 h: about 9-10 hours of agents; if C
    slips, B's logic can still be accepted (traces) and the candidates carry level 3 with the
-   static-upload fallback, said in their notes.
+   static-upload fallback, said in their notes. **C did not slip**: the fallback was not needed.
