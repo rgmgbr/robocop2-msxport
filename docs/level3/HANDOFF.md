@@ -1360,3 +1360,118 @@ Cherry-picked onto `level2` `41cf830` (the main tree clean; step 10's section ke
 `np.tcl`'s header, `LEVEL3.md` 3.11), and this note's. In the main tree then: the product and `e1` built with
 `tools/bstest/build.sh` byte-identical to the worktree's (`d8c4637cca9f904f`, `f6db5fee52a62e3d`), so every
 result above holds; `make test`: 348 tests, the 4 known failures only.
+
+## Step 12: the test8 candidates and the final acceptance (2026-11-01)
+
+**Done.** Built from `level2` `e90e6a3` (worktree `g/wt12`, branch `g-s12`), outside the repository and outside
+`build/msx`: `S12/test8/` holds the four files and `ROBOCOP2_v0.1.3-test8-NOTES.txt` (`S12` = `scratchpad/g/s12`);
+the main thread copies them to `build/msx` once it has read the notes. No code, tool or harness file changed: this
+section only. Scratch (`S12/tools`): `cands.sh` (the four builds), `matrix.sh`, `t8.tcl` (the jobs below; with step
+23's `c7.tcl` copied), `brief8.py` (a briefing record against `msxtext.py`'s render, as `bonuscheck.py`
+`check_brief`), `vatpix.py`, `bkcount.py`, `sheet.py`; step 7's `poses_none.tcl` and `tears.py` copied. One
+openMSX: the in-process MSX-AI MCP session (`msx_local_boot`, `source load.tcl`, `c7.tcl`, `t8.tcl`), plus the
+matrix's own instances one at a time.
+
+| File | Options | SHA-256 |
+|---|---|---|
+| `ROBOCOP2_v0.1.3-test8.ROM` | `TAG=8` | ae527f8c2d76fcec871ebbe2bafb6127f6167d051320cfcf49bb51c0e3c52132 |
+| `ROBOCOP2_v0.1.3-test8-cheat.ROM` | `TAG=8 CHEAT=1` | 9ac2988a97d21776bf6ef7e0ef0df9a897919099c8edea606a766a29b54bccf5 |
+| `ROBOCOP2_v0.1.3-test8-l2.ROM` | `TAG=8 LV_TEST=2 CHEAT=1` | 6668b3fd7bc963dbf72d3177d7c46abb20b3af6286129ac0a6b766e4ec92297c |
+| `ROBOCOP2_v0.1.3-test8-l3.ROM` | `TAG=8 LV_TEST=3 CHEAT=1` | 6af7cbd2e98cecbf8774ea8b336afc2024f183191d32fc9ee3aab305e4f7cdf6 |
+
+All four 2 MiB (256 banks), the same bank map (level 3's code in 161, its types in 162, tiles 136-143, map
+124-125, attributes 126, tables 144, atlas 145-146, frame cache 147-160; `BANK_FRONT2` 127, the ending's sound
+132-135).
+
+### Checks (`docs/LEVEL3.md` 4, checks 9-12; exact commands, results)
+- **Check 11, the builds** (twice to the same bytes): `sh S12/tools/cands.sh S12/c8a` and `... S12/c8b` from the
+  worktree (each `sh tools/bstest/build.sh OUT/NAME/ROBOCOP2_v0.1.3-NAME.ROM OPTIONS`): "build OK" for all four,
+  each label file the 12 known z80asm warnings, no error in any log (mkrom's checks: the 3Fh rule, the SCC test
+  values, the guard's tag); `cmp c8a/... c8b/...`: **the same bytes, all four**.
+- **Check 10, the matrix**: `python3 -I tools/msxmatrix.py ROM --labels LABELS --home <msx-ai>/.openmsx-home
+  --jobs 1` (`--no-title` for `-l2` and `-l3`; `S12/tools/matrix.sh`, `S12/matrix/*.txt`): **10 of 10 PASS on
+  each of the four** (msx2, msx2p, turbor, cbios50, disk, subslot, fmpac, megaram, megaram+, megaram_psg).
+- **Check 9, the whole game on a fresh machine** (`t8c_job S12/cheat ROM LABELS Gradiente_Expert20_64K`: cheat.tcl's
+  run with level 3's F4/F5, ending.tcl's records armed before F5 with the keys M S X RET, then a new game): the
+  `-cheat` file from the power-on: the title (5.5 emulated s), SPACE, level 1 (frame 100 at 16.7 s), F5, the
+  statistics, Brainstorm and the range left alone, the level-2 briefing (recorded at `fs_n` 384), level 2, its energy
+  40h, F4 (102h), F5, the statistics, both second visits, the level-3 briefing, **level 3** (frame 100 at 469.5 s),
+  energy 40h, F4 (102h), F5 at its frame 166: **`$16D0` FFh at the next tick, the end count** (100 points a tick:
+  6400 -> 9600), `front_ending` at 475.6 s; WELL DONE recorded at `fs_n` 201; the CMP tune 4,917 ticks to `tn_left`
+  0 (482.5-581.0 s); **the name entry** (the score 9600 beats the defaults' ANDY 9000): M, S, X, RETURN; **TODAYS
+  BEST**; **the title** at 600.2 s (R#0 0Eh, R#1 62h, `front_mode` 1); SPACE; **the new game's level 1** at its
+  frame 100 (612.7 s). `python3 -I tools/bstest/endcheck.py S12/cheat t8c "M S X RET" --tag 8 --score 9600`:
+  **PASS** (WELL DONE, TEST 8, equal to the render pixel for pixel; the tune 4,917 ticks in 98.5 s; the entry's
+  four waits equal to the renders; the table IAN 100000, KAREN 90000, COLIN 50000, KEITH 45000, MSX 9600, ANDY
+  9000 equal to the render; the table in RAM equal to the model's). The level-2 briefing: `python3 -I
+  S12/tools/brief8.py WT S12/cheat t8c_brief2 l2 8`: 0 bytes differ, R#0 16h R#1 62h. (The job's level-3
+  briefing record fired at the level-2 briefing's end, `fs_ptr` then at `txt_l3_brief`, display off: a scratch
+  poll's error; the `-l3` runs below record and check that briefing.)
+- **What F5 does in level 3**: `frame.asm` `frame_end` (CHEAT): F5 writes FFh to `$16D0`, as Cain's death does;
+  the end count (100 points a tick), the fade, `ml_ev` (`$8050` = 3), `fr_ending`: WELL DONE, the tune, the entry,
+  the table, the title. Seen in all three runs: the end set one tick after F5, 32 ticks of count (+3,200), then
+  `front_ending`.
+- **`-l3` from the power-on** (`t8_l3_job S12/w TAG ROM LABELS {M S X RET} MACHINE`, C-BIOS_MSX2 `l3m2` and the
+  FS-A1FX `l3fx`): the level-3 briefing recorded at `fs_n` 381, `brief8.py ... l3m2_brief l3 8` and `l3fx_brief`:
+  **0 bytes differ from `msxtext.py`'s render of `txt_l3_brief` with TEST 8**, R#0 16h R#1 62h; SPACE; level 3:
+  RoboCop at (1184, 784) at game frames 2-100, the score 10050, two lives; snapshots s0, s1, s2 (frames 2, 100,
+  200); at 210 and 225 RoboCop teleported to (300, 112) and (900, 112) (`l3drives.py` `BOSS_TELE`), RIGHT held
+  200 frames with fire pulsed, F4 every 50 frames, snapshots c1-c8 every 30 frames from 260: **CHASE CAIN.** and
+  Cain on the roof (c3-c6, firing), going down (c7); F5 at 500, the end set at 501, the count to 531; then
+  `endcheck.py S12/w l3m2 "M S X RET" --tag 8 --score 13250` and `l3fx`: **PASS** both (WELL DONE, the tune 4,917
+  ticks, the entry, the table with MSX 13250, the title). Renders (`$PY -I tools/msxframe.py SNAP build/msx/level3
+  build/msx/hud OUT.png --sprites build/msx/sprites --level 3`): C-BIOS_MSX2 s0-c8 the play area 0 differ (c4
+  exit 1: one tile-cache slot, 141, not holding its tile at the snapshot's instant, nothing shown from it); the
+  FS-A1FX's renders count RoboCop's sprites and the BOBs against the static map (a candidate has no sprite or
+  field record): looked at, whole. Cain was not killed in these runs (F5 instead): his death is step 8's check 7.
+- **`-l2` from the power-on** (`c7_l2_job S12/w t8l2 ROM LABELS`, C-BIOS_MSX2): the level-2 briefing at `fs_n`
+  181, `brief8.py ... t8l2_brief l2 8`: 0 bytes differ, R#0 16h R#1 62h; level 2, RoboCop teleported onto the rim
+  (1087, 624) at frame 50, snapshots at frames 110, 200, 290 (the camera (834, 523) in all three); `msxframe.py
+  ... --level 2 --no-sprites` and `$PY -I S12/tools/vatpix.py S12/w t8l2`: **vat 0 on the screen (x 0-77, y 117-161,
+  3,510 pixels): 0 pixels changed** v1-v2, v2-v3, v1-v3 (the play area elsewhere 534, 212, 572: the hook, the
+  hostage, the timer). The vats are static.
+- **The 2 MiB guard** (`t8g_job`, a fresh Expert, 15 s): the whole product: the title (R#0 0Eh, R#1 62h,
+  `front_mode` 1); its first 1 MiB alone (`head -c 1048576`): SCREEN 0 (R#0 00h, R#1 70h), `msx_local_screen`:
+  "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM. If yours is one, reset the MSX."
+- **Check 12, the Pico+'s target** (a measure): the build `cap` (`sh tools/bstest/build.sh S12/cap/rc2_cap.rom
+  EXTJOY=1 LV_TEST=3`: the product's options with the script input; `romdiff.py --blocks` against the product: the
+  same bank map, 34 data blocks identical, only code banks differ) on `tools/l3drives.py`'s drives with a write
+  watchpoint on the bank registers 5000h, 7000h, 9000h and B000h (`t8b_job`), selects counted from level 3's first
+  tick to the drive's end ("play") and before ("start": the cold start, the briefing, the level's start); `python3
+  -I S12/tools/bkcount.py S12/bk/*_banks.txt`: **kill (Cain's chase from the roof to his death, 1,861 ticks) 57
+  banks in play on the FS-A1FX and on C-BIOS_MSX2** (33 at 8000h, 24 at A000h); tour3 51, park 46; **the three
+  drives together 62** (FS-A1FX): the code banks 2, 3, 5, 6, 8, 9, the sprite pool (21-48, 24 of them), the HUD's
+  49-50, 3Fh, `SCCFX_BANK` 82, 56 (park), level 3's 124-125, 136-144, the frame cache 147-160 and 161-162. The start
+  adds 25 more (0-1, 4, 7, 10-20, 51-54, 72, 126, 127, 145, 146, 255). **Over the target of 53** (`docs/PICO_CACHE.md`:
+  53 slots for 8000h/A000h): by 4 in Cain's chase, by 9 over the level. A speed target only; the notes tell the
+  user (a possible stall on the Pico+ when a bank reloads; not measured on the device).
+- **Step 8's open issue 3 with the product's options** (`lf_jobs S12/lf S12/capR S12/tools/poses_none.tcl 40 500
+  {m2 ... fx ... tr ...} l3_park`, the `cap` build as `capR/l3/rc2_l3.rom`; then `lf_jobs S12/lf2 ... 190 1500 {fx
+  ...} l3_park`; `$PY -I tools/bstest/fieldcheck.py DIR build/msx/level3 OUT.png --level 3`): **0 pictures with
+  differences** in all four runs (m2 ticks 40-187, fx 40-194 and 190-602, tr 40-244); the lists held one or two
+  items a picture (a hit flash at 181-188, then a single item thrown in an arc at 190-204). Whether a type 21 died
+  there was not established (the trace build's death at 49-85 does not happen with `ENEMY_CAP` 1 at the same
+  ticks); the notes list the issue as seen only in the trace build (`ENEMY_CAP` 0), with this doubt.
+- **`make test`** (the worktree): 348 tests, the 4 known failures only (failures=3, errors=1, skipped=56).
+- **Looked at** (`S12/test8_sheet.png`): the level-3 briefing (CIVIC CENTRUM, TEST 8), level 3 at frame 100
+  (RoboCop at his start, a big walker coming), the roof with CHASE CAIN. and Cain firing, the cheat run's level 3,
+  WELL DONE, the name entry with MSX typed, TODAYS BEST with MSX 9600, the new game's level 1, `-l2` at vat 0.
+  Cain whole in the roof snapshots (crops at 2x). **The name entry's screen: the TEST 8 label (row 10) touches the
+  line "RETURN TO FINISH."** (test builds only; the render has it too, so endcheck passes): in the notes.
+
+### The notes
+`S12/test8/ROBOCOP2_v0.1.3-test8-NOTES.txt`, from the main thread's draft: the commit, the SHA-256s, level 3, what
+F5 does in level 3, what to look at, the known issues (Cain's speed: step 8's 6-10.5 / 9-10.6 / 14-19 ticks a
+second against 25, level 3's start 15-22, level 2's 14-18 / 17-22 from step 1; the beam's one-picture copies:
+step 10's 0 / 15 / 22 on the roof and step 8's 124 / 250 / 234 over the kill drive; type 21's death with the
+doubt above; the Pico+'s bank count; the keyboard-only entry; the TEST 8 label; test7's items still true; the
+half-old pieces' item rewritten for step 7's chain, not measured again in levels 1-2), the static vats' gain
+(step 1: +3-4 % ticks on the MSX2, +2.5-9 % on the MSX2+, +6-10 % pictures on the turbo R) and "Checked in
+openMSX". Step 8's open issue 4 (the muzzle flash's 2 px) is left out: 2 pixels at the gun for a picture.
+
+### Open issues
+1. Check 12: level 3 selects 57-62 banks in play against the Pico+'s 53 (a speed target).
+2. Type 21's death lag (step 8's open issue 3) not reproduced with `ENEMY_CAP` 1, nor its absence proven.
+3. The name entry's TEST label touches its last line in the test builds (`TAG`); the product without `TAG` is
+   unaffected.
+4. Step 8's open issues 1-2 (Cain's speed, the beam's copies) and step 10's stay; they are in the notes.
