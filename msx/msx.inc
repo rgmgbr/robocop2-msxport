@@ -957,7 +957,23 @@ su_vrchk:   equ 0xF16C              ; spr_upload: 1 to stop at the vertical blan
 spr_dsp:    equ 0xF16D              ; R#5 of the sprite set on screen (the interrupt's: sprites.asm iv_sat)
 pcr_next:   equ 0xF16E              ; rows_sync: the SAT entry whose colour row follows the last one
                                     ;   written (FFh: none; pc_rows sets an address only otherwise)
-                                    ; (F170h-F190h: free since the alternation went)
+; The map-write caches of level 3's beams and turrets (2026-11-01, docs/MSX_ARCHITECTURE.md "Map-write
+; caches": a write of the words the cells hold is skipped); F170h-F190h was free since the
+; alternation went, ECFBh-ED08h after fc_tab and EDF0h-EDFBh after fb_cmd2's state, 59 bytes
+mw_gen:     equ 0xF170              ; 2: map changes counted (tiles.asm atr_put's change, fb_invf: a
+                                    ;   tile changed or a patch taken; cold.asm tiles_init)
+mc_prev:    equ 0xF172              ; 2: the caches used in the last tick (low byte: bit k for beam
+                                    ;   record k, level3.asm lt2_off; high byte: bit e for turret entry e,
+                                    ;   level3obj.asm tur_put),
+mc_cur:     equ 0xF174              ; 2:   and in this one (special.asm hz_update ages them each tick;
+                                    ;   level3.asm l3_init clears both)
+tc_ptr:     equ 0xF176              ; 2: tur_put: its entry,
+tc_bitv:    equ 0xF178              ;   its bit
+tc_ent0:    equ 0xF179              ; 4 x 6: turret entries 0-3 (type 40's panel and turret, 41's):
+                                    ;   the look's address (2), row, column, mw_gen after its writes (2)
+tc_ent4:    equ 0xEDF0              ; 2 x 6: entries 4-5 (type 42's)
+bm_gen:     equ 0xECFB              ; BM_N x 2: per beam record mw_gen after its off looks' writes
+BM_N:       equ 7                   ; level 3's beam records it holds (tools/mapcells.py checks)
 ; The level's descriptor (tools/mkrom.py gen/levels.inc: lv_desc, LV_SIZE bytes a level, in FRONT),
 ; copied here at each level's start and at power-on before vdp_setup (cold.asm lv_copy): what the
 ; engine reads instead of build-time equates (docs/LEVEL2.md 3.1). F1A0h-F1C2h.
@@ -1060,16 +1076,17 @@ fc_tab:     equ 0xECF0              ; 32: level 3's frame cache (docs/LEVEL3.md 
 fc_res:     equ 0xECF0              ; 8 (FC_MAX): per place the cache frame it holds (FFh: none),
 fc_ovl:     equ 0xECF8              ;   the places a copy's place overlaps (fc_get),
 fc_bpl:     equ 0xECF9              ;   its bytes a line,
-fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED0Fh free)
+fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED08h: bm_gen; ED09h-ED0Fh free)
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
 ; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
-; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDF0h-EDFFh, E0FEh-E0FFh,
-; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; ECF0h-ED0Fh:
-; fc_tab since level 3's step A; F1A0h-F1C2h:
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFCh-EDFFh, E0FEh-E0FFh,
+; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; ECF0h-ED0Fh:
+; fc_tab since level 3's step A, its ECFBh-ED08h bm_gen; F170h-F190h and EDF0h-EDFBh the map-write
+; caches since 2026-11-01; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
 ; vat_phase, F012h-F0E6h the vats' display since its step 5, F0E7h-F0FBh since its step 14);
 ; EA60h-EC41h: bob_list,

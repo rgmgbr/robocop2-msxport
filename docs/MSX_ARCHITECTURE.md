@@ -736,6 +736,27 @@ which as sprites were striped, cut or left out.
   differs in any frame of `drive_cov0`, `drive_cov1`, `drive_die`, `drive_over`, `drive_end`,
   the Z80 and the R800), and `atr_rc` no longer walks a row's patches (the beams' corridor:
   22.15 ticks a second on a 3.58 MHz V9938 against 21.93).
+- **Map-write caches (level 3's beams and turrets; performance campaign 2, 2026-11-01)**: a beam in
+  its off phase (`level3.asm` `lt2_off`: 1900h/1880h on top, 1800h/1780h below, the same words every
+  tick) and a wall turret (`level3obj.asm` `tur_put`: the panel's and the turret's 2 × 3 words) write
+  their cells every tick they run, and most of those writes put back the word the cell holds. Such a
+  write changes nothing (`map_write`: no patch taken, no attribute, no redraw, no count), so the port
+  skips it when it can prove the cells hold those words. Every map change counts in `mw_gen` (16 bits:
+  `atr_put`'s change path, `fb_invf`, which `map_write` calls only when a tile changes or a patch is
+  taken, and `tiles_init`). Each writer has an entry: per beam record `bm_gen` (`mw_gen` after its off
+  looks' writes; at most `BM_N` = 7 records, `tools/mapcells.py` checks), per turret type and block
+  `tc_ent0`/`tc_ent4` (the look's address, the row, the column, `mw_gen` after its writes; one turret
+  of each type at a time, `$16A6-$16A8`). An entry stands only in the tick right after its own use
+  (`mc_cur`, `mc_prev`: a bit per entry, aged at the start of every tick by `special.asm` `hz_update`,
+  before the beams and before `update_objects`; both cleared by `l3_init` at every life) and only while
+  no write was ever lost (`mp_lost` and `atr_lost` 0: a lost write is retried and counted again, as
+  before). Between two uses one tick apart fewer than 65,536 changes can happen, so an equal count
+  means none: the cells hold what the entry wrote, and the skipped writes would have changed nothing.
+  The logic and the map stay the original's tick for tick (the logic traces against the bench, the
+  map's state against the base's every 100 ticks). `cam_cells` takes the cells with `add hl,hl` four
+  times (the same B and C for every camera value; 18 bytes and about 48 T-states a call less). RAM: 59
+  bytes (F170h-F190h, ECFBh-ED08h, EDF0h-EDFBh); the fixed area 4 bytes smaller, `LC3` +9, `FRONT` +7,
+  `BANK_L3` +83, `BANK_L3B` +145.
 - **Palette on screen**: `pf_pal` (RAM) is the play field's palette the VBLANK loads (the HUD
   keeps its own, loaded at the split). It changes as the original's copper colours do: the
   fade (`pal_fade`: every 3-bit component at most the fade level / 4, the original's eight

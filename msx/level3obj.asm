@@ -2336,6 +2336,7 @@ tpt_go: add hl,de
         ld a,(ao_col)
         add a,c
         ld e,a
+        ld c,1                      ; (the port: the turret's block, tur_put's cache entry)
         jr tur_put
 
 ; DE = the panel's x offset (-A0h, 41: -70h): the flashing panel's 2 x 3 map words ($EAA6: tur_panel's
@@ -2369,8 +2370,80 @@ tp_go:  ld d,0
         ld d,a
         ld a,(ao_col)
         ld e,a
+        ld c,0                      ; (the port: the panel's block, tur_put's cache entry)
 ; HL = 6 map words, D = row, E = column: written two a row from that cell, three rows.
+; (The port) C = the block (0 the panel, 1 the turret): with the turret's type (40-42; one of each at
+; a time, $16A6-$16A8) one of six map-write cache entries (tc_tab: the look's address, the row, the
+; column, mw_gen after its writes). Nothing is written when that entry wrote the same look into the
+; same cell in the last tick (or skipped it so: mc_prev's high byte), no map cell changed since (mw_gen:
+; tiles.asm map_write's changes) and no write was ever lost (mp_lost, atr_lost 0): the cells hold those
+; words, and writing a cell's own word again changes nothing (map_write: no patch, attribute, redraw
+; or count). The callers use none of the registers it leaves.
 tur_put:
+        push de
+        push hl
+        ld a,(ix+OS_TYPE)
+        sub 40
+        add a,a
+        add a,c                     ; the entry, 0-5
+        ld e,a
+        ld d,0
+        ld hl,tc_bit
+        add hl,de
+        ld a,(hl)
+        ld (tc_bitv),a              ; its bit (mc_prev's and mc_cur's high byte)
+        ld hl,tc_tab
+        add hl,de
+        add hl,de
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        ld (tc_ptr),hl              ; HL = the entry
+        ld a,(mc_prev + 1)
+        ld c,a
+        ld a,(tc_bitv)
+        and c
+        jr z,tpu_go                 ; (not written last tick)
+        ld a,(mp_lost)
+        ld c,a
+        ld a,(atr_lost)
+        or c
+        jr nz,tpu_go
+        pop bc                      ; BC = the words
+        pop de                      ; DE = the cell
+        push de
+        push bc
+        ld a,(hl)
+        cp c
+        jr nz,tpu_go
+        inc hl
+        ld a,(hl)
+        cp b
+        jr nz,tpu_go
+        inc hl
+        ld a,(hl)
+        cp d
+        jr nz,tpu_go
+        inc hl
+        ld a,(hl)
+        cp e
+        jr nz,tpu_go
+        inc hl
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        ld hl,(mw_gen)
+        or a
+        sbc hl,de
+        jr nz,tpu_go
+        pop hl                      ; (no change since: the cells hold the words)
+        pop de
+        jr tpu_m
+tpu_go: pop hl
+        pop de
+        push hl
+        push de
         ld b,3
 tpu_r:  push bc
         call tpu_w
@@ -2380,7 +2453,28 @@ tpu_r:  push bc
         inc d
         pop bc
         djnz tpu_r
+        pop de                      ; DE = the cell
+        pop bc                      ; BC = the words
+        ld hl,(tc_ptr)
+        ld (hl),c
+        inc hl
+        ld (hl),b
+        inc hl
+        ld (hl),d
+        inc hl
+        ld (hl),e
+        inc hl
+        ld de,(mw_gen)
+        ld (hl),e
+        inc hl
+        ld (hl),d                   ; (the count after its writes)
+tpu_m:  ld a,(tc_bitv)
+        ld hl,mc_cur + 1
+        or (hl)
+        ld (hl),a                   ; (used this tick)
         ret
+tc_tab: dw tc_ent0, tc_ent0 + 6, tc_ent0 + 12, tc_ent0 + 18, tc_ent4, tc_ent4 + 6
+tc_bit: db 1, 2, 4, 8, 16, 32
 tpu_w:  ld c,(hl)
         inc hl
         ld b,(hl)

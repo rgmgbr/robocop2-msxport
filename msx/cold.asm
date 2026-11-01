@@ -421,6 +421,9 @@ tiles_init:
         ld (rd_phase),a
         ld (rd_lost),a
         ld (tc_loads),a
+        ld hl,(mw_gen)              ; (the patches, and atr_load's attributes next, start again: a map
+        inc hl                      ;  change for level 3's map-write caches, msx.inc mw_gen)
+        ld (mw_gen),hl
         ret
 
 ; The tile cache alone (tiles_init's first part; lv_cfront: the continue keeps the map patches): the

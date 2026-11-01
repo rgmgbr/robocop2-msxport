@@ -264,7 +264,10 @@ ar_none:
 ; that: its attributes (the low 7 bits) in the packed map (atr_put; a patched cell keeps those it
 ; was given last, MPF_ATR, so the beams and belts that write their cells every tick do not read
 ; the packed map), its tile (through the level's offset table) a patch of the row's pool unless
-; it is the ROM map's. A changed tile is queued for redrawing. Keeps DE.
+; it is the ROM map's. A changed tile is queued for redrawing. Every change counts in mw_gen
+; (atr_put, fb_invf); a write of the word the cell holds changes nothing, no patch, attribute,
+; redraw or count (level 3's map-write caches skip those: level3.asm lt2_off, level3obj.asm
+; tur_put). Keeps DE.
 map_write:
         push de
         ld a,l
@@ -393,7 +396,7 @@ mp_pages:                           ;  with inc h / dec h)
         endif
 
 ; A = attributes (7 bits), D = row, E = column 0..159: the cell's attributes become those
-; (field.asm atr_new, when they are not already). Keeps BC, DE, HL.
+; (field.asm atr_new, when they are not already: a map change, counted in mw_gen). Keeps BC, DE, HL.
 atr_put:
         push bc
         ld c,a
@@ -401,6 +404,9 @@ atr_put:
         cp c
         jr z,ap_x
         push hl
+        ld hl,(mw_gen)              ; (level 3's map-write caches: level3.asm lt2_off,
+        inc hl                      ;  level3obj.asm tur_put)
+        ld (mw_gen),hl
         ld hl,atr_new
         call field_call
         pop hl
@@ -590,9 +596,13 @@ fm38_bb:
         pop bc
         ret
 
-; D = row, E = column of a cell whose tile changed: the play-field caches holding it copy it
-; again when they need it (field.asm fb_inval). Keeps DE.
+; D = row, E = column of a cell whose tile changed (map_write's only calls: a patch's tile changed
+; or a patch taken): the play-field caches holding it copy it again when they need it (field.asm
+; fb_inval); a map change, counted in mw_gen (level 3's map-write caches). Keeps DE.
 fb_invf:
+        ld hl,(mw_gen)
+        inc hl
+        ld (mw_gen),hl
         push de
         ld hl,fb_inval
         call field_call
@@ -897,28 +907,19 @@ set_src:
         ld (cmdbuf+3),a
         ret
 
-; B = cam_x >> 4, C = cam_y >> 4
+; B = cam_x >> 4, C = cam_y >> 4 (their low bytes: bits 4-11, the high byte of the word << 4, for
+; every value). Changes HL and the flags; keeps A, DE.
 cam_cells:
         ld hl,(cam_x)
-        ld a,l
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        ld b,a
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld b,h
         ld hl,(cam_y)
-        ld a,l
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        ld c,a
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld c,h
         ret

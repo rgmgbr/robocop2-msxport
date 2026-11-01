@@ -32,7 +32,8 @@ data, the way the ported writers compute them, and fails when they do not fit:
 
 Level 3's type 36 ($E356) turns where the map word 18h below it is not 2D00h (its shaft): the port
 (msx/level3obj.asm t36_w) knows those cells as constants, so the level's map must hold 2D00h exactly in
-SHAFTS_L3 and no writer may change one of them (checked with --level 3).
+SHAFTS_L3 and no writer may change one of them (checked with --level 3). Level 3's beams keep a
+map-write cache entry per record (msx/level3.asm lt2_off, msx/msx.inc bm_gen): at most BM_N records.
 
 The map objects' cell is map_cell's (msx/logic.asm, $EF8E: column (x >> 4) - 8 as a byte, row
 the low byte of y >> 4, 0 when y is negative or that byte is 51 or more: $EF8E's own limit in
@@ -98,6 +99,7 @@ def msx_equ(name: str) -> int:
 
 
 MP_N = msx_equ("MP_N")              # patches in a pool
+BM_N = msx_equ("BM_N")              # level 3's beam records the map-write cache holds (level3.asm lt2_off)
 
 
 def words(img: bytes, addr: int, n: int) -> list[int]:
@@ -402,6 +404,10 @@ def main(argv: list[str]) -> int:
         if every & shafts:
             bad.append(f"a writer changes type 36's shafts: {sorted(every & shafts)[:8]}")
         print(f"mapcells: level 3: type 36's shafts: {len(found)} cells of 2D00h, as SHAFTS_L3, no writer's")
+        beams = sum(1 for name in cells if name.startswith("beam "))
+        if beams > BM_N:
+            bad.append(f"{beams} beam records, msx/msx.inc BM_N {BM_N} (level3.asm lt2_off's bm_gen entries)")
+        print(f"mapcells: level 3: {beams} beam records, {BM_N} map-write cache entries (BM_N)")
     for b in bad:
         print(f"mapcells: error: {b}", file=sys.stderr)
     return 1 if bad else 0
