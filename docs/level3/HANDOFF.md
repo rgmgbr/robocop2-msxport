@@ -1482,3 +1482,60 @@ the main tree then: `sh S12/tools/cands.sh S12/I`: **the four candidates byte-id
 SHA-256s above; the 12 known warnings each), so every result above holds; the notes name this note's commit (the
 same code as `e90e6a3`); `make test`: 348 tests, the 4 known failures only. The records (the summaries, the notes,
 the scratch tools, the pictures looked at; no ROM): `build/archive/rest_step12_records_2026-11-01.tar.gz`.
+
+## Step 13: INVULN=1, the play-test candidates (test9) (2026-11-01)
+
+The user asked, after test8, for test candidates in which RoboCop cannot die, to play the whole game through
+for their notes and changes.
+
+### What was built (`bae3d63`)
+- **`INVULN=1`** (`tools/mkrom.py`; refused without `CHEAT=1`): four `if INVULN` blocks in `msx/frame.asm`
+  `frame_end`, 11 bytes in LC3 (`lc3_end` 8D46h in the product, 8D72h with `CHEAT=1 INVULN=1`: 4,750 bytes free),
+  none in the fixed area:
+  1. the energy target `$169A` = 102h at every tick, after the hits and `en_update` (F4 held): a hit takes the
+     shown level 8 down for a tick, never to 0, so `en_update` never sets the death flag;
+  2. `fe_time` skipped: no death at the time out, the timer stays at 0:00;
+  3. `fe_late`: no lost head drawn;
+  4. `fe_nohd`: no life taken, so a death that still comes (level 2's vats set `$16CC` themselves) restarts
+     the level as any death does.
+- Not the existing `GOD` (the `INPUT_SCRIPT` builds' trace aid in `script_tick`: energy 100h, two lives and the
+  level's end kept away).
+- The candidates: test9 is test8's game; `TAG=9`; the three play-test files with `INVULN=1`.
+
+### Checks
+- **Nothing else changed**: `sh tools/bstest/build.sh OUT TAG=8` and `TAG=8 CHEAT=1` from `bae3d63`'s tree are
+  byte-identical to test8's product and `-cheat` (`ae527f8c...`, `9ac2988a...`).
+- **The candidates**, each built twice to the same bytes, the 12 known warnings each:
+
+  | File | Options | SHA-256 |
+  |---|---|---|
+  | `ROBOCOP2_v0.1.3-test9.ROM` | `TAG=9` | `0bc1bef2d16e2c242427a40adbba747ab141b84d212d864b9a33c4677cfc7751` |
+  | `-cheat` | `TAG=9 CHEAT=1 INVULN=1` | `71cdb747b3c75ebd5e7b18ba32b5b963c9a5b6405b9482735f1e4985ac1f0407` |
+  | `-l2` | `TAG=9 LV_TEST=2 CHEAT=1 INVULN=1` | `efcd6602ee75ed2e5171a7314df823dc2d1ff8cc31c6a5967d8f1c9f1a928f20` |
+  | `-l3` | `TAG=9 LV_TEST=3 CHEAT=1 INVULN=1` | `40de512e492f049b18e3adc077f94ca0be3f2710165a2a042436d8ef0f87116d` |
+
+  The product differs from test8's in one byte, the label's digit (`cmp -l | wc -l`: 1).
+- **`make test`**: the 4 known failures only.
+- **openMSX** (the MSX-AI MCP, a fresh `Gradiente_Expert20` for each file; a write watchpoint on `$16CC`'s byte
+  DBCDh recording each FFh with its PC; `poke16 0xDB9A 0xFF00` as a hit of -100h):
+  - `-l2`: level 2 left alone for about 24 emulated minutes: the timer reached 0:00 (`$804C` FFh), no death,
+    the game still ticking, two lives. Then 80 such hits, one every 0.25 s: no FFh written to `$16CC` but the
+    boot's two (the BIOS at 04BCh, the ROM's start at 7D65h, before the game); the shown level never below
+    F8h; two lives. A forced death (`$16CC` = FFh, as the vats write it): `level_restart` once, `head_draw`
+    never, two lives; the frame after the restart (`rc2_snap` + `tools/msxframe.py`: 0 differ) has the full
+    can, both heads and the timer from level 2's 7:30 again.
+  - **The control**, test8's `-l2` with one such hit: `$16CC` FFh 1.3 s later from `en_update` (846Eh), the
+    restart, one life left. So each of the 80 hits above would have killed without `INVULN`.
+  - `-l3`: 40 such hits at level 3's start, then RoboCop walked left into the big walker: 12 hit flashes
+    (`pal_flash` with `PAL_SHOT` or `PAL_ENEMYHIT`), no death, two lives. The frames looked at: the walker
+    against RoboCop, the full can, two heads.
+  - `-cheat`: from the power-on, the title (unchanged), SPACE, level 1 with the cheat mode on (`$804F` FFh),
+    40 such hits: no death.
+- **The matrix**: `python3 -I tools/msxmatrix.py ROM --labels LABELS --home <msx-ai>/.openmsx-home --jobs 2`
+  (`--no-title` for `-l2` and `-l3`): **10 of 10 PASS on each of the three play-test files**. The product's is
+  test8's (one byte apart).
+
+### Open issues
+- None new. The timer counts real seconds, as the Amiga's; where the MSX runs slower than the Amiga (Cain's
+  fight) the same play takes more of it. The play tests will show whether level 3's 7:30 is enough; the notes
+  ask.
