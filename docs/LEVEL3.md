@@ -514,7 +514,10 @@ Routine by routine, in the AM mirror's layout, traced against the bench:
 - *As built (3.11): every routine above, 40 and 42 one routine; 10,134 B used in the two banks.*
 - *Performance campaign 2 (2026-11-01): `lt2_off` and `tur_put` skip a write of the words their cells
   hold (the map-write caches: `docs/MSX_ARCHITECTURE.md`, "Map-write caches"; RAM 59 B at F170h-F190h,
-  ECFBh-ED08h, EDF0h-EDFBh); the logic and the map stay the original's tick for tick.*
+  ECFBh-ED08h, EDF0h-EDFBh), and the beams and turrets write their looks with the tiles looked up at
+  build time (`gen/tt_l3.inc`, `tt_l3b.inc` from `tools/mapcells.py` `look_tables`; `lt2_putt` and
+  `tpu_w` call `tiles.asm` `map_write_t` instead of `map_write_lin`: their columns 18-63 never wrap);
+  the logic and the map stay the original's tick for tick.*
 - **CPU [E]**: a busy tick (type 21 or Cain with three projectiles) about 50,000-60,000 Z80
   T-states, below level 1's measured 74,000; the frame cache's uploads add about 15,000-30,000 T a
   tick while a big enemy animates (about 1 KiB a tick at most), the R800 four times faster.

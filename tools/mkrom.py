@@ -69,7 +69,9 @@ map bank, msx/tiles.asm get_tile; the attributes' rows; view_offx), levels.inc (
 descriptors, msx/msx.inc lv_cur's fields, levels 1, 2 and 3 in a row, with level 1's palette and
 view_offy: msx/cold.asm lv_select; level 2's and level 3's are in their tables banks), field_l2.inc (level 2's
 play-field tables for msx/field.asm, field_inc), vats_l2.inc (vat_shown's start for msx/level2.asm,
-tools/mapcells.py vat_tables), options.inc (build options, see OPTIONS; LV_CARRY's values),
+tools/mapcells.py vat_tables), tt_l3.inc and tt_l3b.inc (level 3's beams' and turrets' looks, each
+map word as its tile and attributes, for msx/level3.asm and level3obj.asm: tools/mapcells.py
+look_tables), options.inc (build options, see OPTIONS; LV_CARRY's values),
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
 headers, the SCC's waveforms, the OPLL's patch, the voices' state after the speech), tune.inc
 (Brainstorm's and the shooting range's tune descriptors and effects' tables for msx/tune.asm, from
@@ -1017,8 +1019,8 @@ def main(argv: list[str]) -> int:
     sys.path.insert(0, str(ROOT / "tools"))
     import mapcells
     from amitab import parse
-    vat_tab, vat_sh0 = mapcells.vat_tables(img2, {r["label"]: r for r in parse(ROOT / "analysis" / "amiga_tables.tsv")},
-                                           "l2", COLS, rows2, l2.with_suffix(".otile").read_bytes())
+    tabs = {r["label"]: r for r in parse(ROOT / "analysis" / "amiga_tables.tsv")}
+    vat_tab, vat_sh0 = mapcells.vat_tables(img2, tabs, "l2", COLS, rows2, l2.with_suffix(".otile").read_bytes())
     if len(tab2) > L2_VAT_AT:
         print("error: level 2's palette and view_offy overlap its vat tables (L2_VAT_AT)", file=sys.stderr)
         return 1
@@ -1064,6 +1066,10 @@ def main(argv: list[str]) -> int:
     (gen / "field_l3.inc").write_text(field_inc_l3((level.parent / f"{POOL}_l3_field.inc").read_text()))
     field_img3 = atlas_banks((level.parent / f"{POOL}_l3_field.bin").read_bytes())
     fc_rom = (level.parent / f"{POOL}_l3_fc.bin").read_bytes()
+    # level 3's beams' and turrets' looks with their tiles (tools/mapcells.py look_tables: gen/tt_l3.inc,
+    # tt_l3b.inc; msx/level3.asm and level3obj.asm write them through msx/tiles.asm map_write_t)
+    for name, text in mapcells.look_tables(img3, tabs, l3.with_suffix(".otile").read_bytes()).items():
+        (gen / f"{name}.inc").write_text(text)
     tab3 = l3.with_suffix(".otile").read_bytes() + l3.with_suffix(".atr2").read_bytes()
     tab3 += b"\xff" * (0x600 - len(tab3)) + l3_hash(spool[3], above[3], not opts["VAT_ANIM"])
     if len(tab3) > L3_PAL_AT:

@@ -2191,13 +2191,13 @@ t40_n:  ld a,(g_frame)
         ld (eb_dir),a
         call ebullet_add            ; the rocket
 t40_lk: call tur_d2x3
-        ld hl,tur40_look
+        ld hl,tur40_look_t
         ld a,(ix+OS_HP)
         or a
         jr z,t40_dd
         call tur_put40
         jp tur_alive
-t40_dd: ld e,0x30
+t40_dd: ld e,0x48                   ; (the look 30h, 3 bytes a word: tt_l3b.inc)
         call tur_put40              ; its wreck
         ld hl,(t_y)
         ld de,0x10
@@ -2250,7 +2250,7 @@ t41_8:  ld a,(g_frame)
         ld (eb_dir),a
         call ebullet_add
 t41_lk: call tur_d2x3
-        ld hl,tur41_look
+        ld hl,tur41_look_t
         ld a,(ix+OS_HP)
         or a
         jr z,t41_dd
@@ -2260,7 +2260,7 @@ tur_alive:
         ld (uo_d1),hl               ; (D1 = y)
         xor a                       ; (D0 = 0)
         ret
-t41_dd: ld e,0x24
+t41_dd: ld e,0x36                   ; (the look 24h, 3 bytes a word: tt_l3b.inc)
         call tur_put41              ; its wreck
         ld hl,(t_y)
         ld de,0x10
@@ -2312,10 +2312,13 @@ tur_step:
         ld (ix+OS_L0+1),h
         ret
 
-; -> DE = D2 x 3 (D2 = t_d2, a multiple of 4: the look's offset, 12 bytes a look).
+; -> DE = D2 x 3 (D2 = t_d2, a multiple of 4: the look's offset, 12 bytes a look), in the port's look
+; tables (tt_l3b.inc: 3 bytes a word, 18 a look) D2 x 4.5 (at most 54).
 tur_d2x3:
         ld a,(t_d2)
         ld e,a
+        srl e
+        add a,a
         add a,a
         add a,e
         ld e,a
@@ -2323,7 +2326,8 @@ tur_d2x3:
         ret
 
 ; HL = a turret's look table, DE = the look's offset: its 2 x 3 words one row below the panel's cell
-; and 10 columns right of it ($EA50: A0 + 154h; 41's $EBB8: 7 columns, A0 + 14Eh).
+; and 10 columns right of it ($EA50: A0 + 154h; 41's $EBB8: 7 columns, A0 + 14Eh). (The port: the look
+; tables of tt_l3b.inc, each word as its tile and attributes.)
 tur_put40:
         ld c,10
         jr tpt_go
@@ -2358,8 +2362,12 @@ tur_pnl:
 tp_b2:  bit 2,a
         jr nz,tp_go
         ld e,0x18
-tp_go:  ld d,0
-        ld hl,tur_panel
+tp_go:  ld a,e                      ; (the port: 3 bytes a word in tt_l3b.inc, the look's offset x 1.5)
+        srl a
+        add a,e
+        ld e,a
+        ld d,0
+        ld hl,tur_panel_t
         add hl,de
         ex (sp),hl
         ld de,(t_y)
@@ -2371,7 +2379,8 @@ tp_go:  ld d,0
         ld a,(ao_col)
         ld e,a
         ld c,0                      ; (the port: the panel's block, tur_put's cache entry)
-; HL = 6 map words, D = row, E = column: written two a row from that cell, three rows.
+; HL = 6 map words (the port: each as its tile and attributes, 3 bytes, tt_l3b.inc), D = row, E =
+; column: written two a row from that cell, three rows.
 ; (The port) C = the block (0 the panel, 1 the turret): with the turret's type (40-42; one of each at
 ; a time, $16A6-$16A8) one of six map-write cache entries (tc_tab: the look's address, the row, the
 ; column, mw_gen after its writes). Nothing is written when that entry wrote the same look into the
@@ -2475,14 +2484,17 @@ tpu_m:  ld a,(tc_bitv)
         ret
 tc_tab: dw tc_ent0, tc_ent0 + 6, tc_ent0 + 12, tc_ent0 + 18, tc_ent4, tc_ent4 + 6
 tc_bit: db 1, 2, 4, 8, 16, 32
+; (The port) The original's words through map_write_lin; their tiles looked up at build time go to
+; map_write_t, which takes the same path after its lookup (the turrets' columns are 21-63: map_write_lin
+; never wraps them, tools/mapcells.py checks).
 tpu_w:  ld c,(hl)
         inc hl
         ld b,(hl)
         inc hl
+        ld a,(hl)
+        inc hl
         push hl
-        ld h,b
-        ld l,c
-        call map_write_lin          ; (keeps DE)
+        call map_write_t            ; (keeps DE)
         pop hl
         ret
 
@@ -2648,3 +2660,5 @@ t51_f:  ld a,0x05
         ld c,e
         call l3_at
         jp l3_p2                    ; (the result: D0)
+
+        include "tt_l3b.inc"        ; (the turrets' looks with their tiles: tools/mapcells.py look_tables)
