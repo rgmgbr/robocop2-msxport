@@ -524,8 +524,16 @@ tng_m:  call mst_one                ; (HL then on its ticks + 1)
 tng_t:  ld (tn_snd),a
         ret
 
+; msx/ending.asm's front_ending and hs_name (through mus_call): the ending's music, CMP tune 1 as $11C54
+; plays it, with HI1's effects 3 and 4 (the name entry's) in its table (tools/msxtune.py --end,
+; docs/ENDING.md; its descriptor in tune_cm.inc, after this code). Its tick 0 is held as any tune's
+; (tn_hold): the front end clears it.
+tn_cmp: ld hl,cm_desc               ; (its layout checked after tune_cm.inc: msx/rc2.asm)
+        jp tn_start
+
         else                        ; (DIAG builds: no byte here, DIAG=2 fills BANK_MUSIC)
 tn_pzm:     equ mus_stop            ; (msx/puzl.asm's set-up: the stop all only)
 fx_tkd:     equ fx_tick             ; (sound.asm fx_tk: the in-game effects' tick, as before tune.asm)
 tn_frm:     equ mus_stop            ; (msx/frng.asm's set-up: the stop all only)
+tn_cmp:     equ mus_stop            ; (msx/ending.asm: the stop all only)
         endif

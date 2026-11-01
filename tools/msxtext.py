@@ -49,6 +49,17 @@ high scores").
   lasts the original's calls. The continue ($11590, txt_cont: $11FD2 after the game over) is the
   original's bytes. Their play areas (text_l2_brief.sc5, text_l3_brief.sc5, text_cont.sc5, each
   with its preview .png) are the references for the port's screens.
+- The game completed and the high scores (docs/ENDING.md; msx/ending.asm, BANK_FRONT2), into
+  ending.inc next to OUT.inc (text.inc keeps its bytes): the ending's text screen ($112C5 through
+  $10762 from level_load_3 $86DE, txt_end: its particle title WELL DONE typed as the briefings', 341
+  calls), the name entry's ($115C9 through $10768 from $1215C, txt_hisc: the original's bytes, 92
+  calls, its last line at row 9 as there; the name drawn apart at x 96 + 8i, lines 80-87: $12218's
+  bitplane x 128, line 80), the table screen's script (txt_best: waits for the attract's particles 0
+  and 1, 748 calls; the table itself drawn at once from the RAM table, BEST_COL and BEST_ROW, a line
+  every 2 rows) and the table's header and defaults ($11FF6: hs_head, hs_def, per entry the name and
+  the score as 4 BCD bytes). Their play areas (text_end.sc5, text_hisc.sc5 with the field at its
+  start, text_best.sc5 with the defaults, each with its preview .png) are the references for the
+  port's screens (tools/bstest/endcheck.py renders the others: hisc_area, best_text).
 - The port's credit on the title picture (with TITLE.sc8 and OUT.sc8: the SCREEN 8 picture of
   tools/msxpic.py): CREDIT's lines in the same font (capitals only), centred over the dark band
   below RoboCop's chin, the strokes in the logo's light grey-blue and their shadow in dark blue
@@ -133,6 +144,30 @@ BRIEF = (("txt_l2_brief", 0x110F0, 393), ("txt_l3_brief", 0x110B4, 411))
 CONT = (("txt_cont", 0x11590, 304),)
 BRIEF_SHIFT = 32                    # the port's x = the bitplane's x - 32 (fs_char 8c - 16, $116CA 16 + 8c)
 TEXT_ROWS = range(-8, 9)            # rows inside the play area above the TAG line (row 10), a row free between
+# The ending (docs/ENDING.md): level_load_3 $86DE's text screen ($112C5 through $10762: its particle
+# title WELL DONE typed as the briefings' are), and high_score_entry $12082's ($1215C: $115C9 through
+# $10768, the name drawn by $12218 at bitplane x 128 + 8i, lines 80-87: the port's x 96 + 8i, the same
+# lines); its last line is at row 9, the original's, right above the TAG line
+END = (("txt_end", 0x112C5, 341),)
+HISC = (("txt_hisc", 0x115C9, 92),)
+HISC_ROWS = range(-8, 10)
+HS_FIELD = (96, 80)                 # the name's first cell (x, line) in the play area
+HS_MARK = 0x67                      # 'g': glyph 38, the '?' that marks the next position ($1217E)
+# The high-score table ($11FF6: the attract script's particle text 0, "   TODAYS BEST " and 6 entries of
+# 19 bytes from $12006: ' ', a name of 9, ' ', a score of 7 digits '[' + digit, CR): its defaults go
+# into the port's RAM table at power-on (hs_def: per entry the name, then the score as 4 BCD bytes,
+# the high digit first and the eighth digit 0), and the table screen after an entry (front.asm
+# hs_best: the attract's write and unwrite of it, particles 0 and 1, 1 + 373 calls each, become the
+# table typed at once in the 8 x 8 font and kept for their calls; the header and the 6 lines at a
+# 2-row pitch, the original's 16-line one, from BEST_ROW; each 18-character line at BEST_COL, the
+# column whose cells are centred nearest the stroke text's box)
+HS_TABLE = 0x11FF6
+HS_FIRST = 0x12006
+HS_ENTRY = 19
+HS_COUNT = 6
+BEST_CALLS = 2 * (1 + 373)          # (set-ups 0 and 1, rc2front.py's model of the defaults)
+BEST_COL = 11
+BEST_ROW = -4
 
 
 def glyph_sc5(ram: bytes, g: int) -> bytes:
@@ -448,12 +483,12 @@ def brief_port(ram: bytes, start: int) -> bytes:
     return title + script[5:]
 
 
-def check_text(label: str, script: bytes, calls: int) -> None:
+def check_text(label: str, script: bytes, calls: int, rows: range = TEXT_ROWS) -> None:
     """A text screen's script as fe_text runs it, its elements in any order: positions,
     characters and waits (80-FF 02 n), the end (80-FF 07) its last bytes; every glyph in the font;
-    every character's cell inside the play area where $116CA puts it (its row signed, TEXT_ROWS:
-    fs_char's 8-bit line 67 + 8r is then the same), above the TAG line, no cell written twice; its
-    calls."""
+    every character's cell inside the play area where $116CA puts it (its row signed, in rows:
+    TEXT_ROWS, fs_char's 8-bit line 67 + 8r is then the same), above the TAG line, no cell written
+    twice; its calls."""
     a = col = row = 0
     seen = set()
     while True:
@@ -468,7 +503,7 @@ def check_text(label: str, script: bytes, calls: int) -> None:
             a += 3
         else:
             x = 8 * col - 16
-            assert 0 <= x <= 248 and row in TEXT_ROWS, f"{label}: a character at x {x}, row {row}"
+            assert 0 <= x <= 248 and row in rows, f"{label}: a character at x {x}, row {row}"
             assert fs_glyph(b) < rc2front.BITMAP_GLYPHS, f"{label}: a code outside the font"
             assert (x, row) not in seen, f"{label}: the cell at x {x}, row {row} written twice"
             seen.add((x, row))
@@ -479,11 +514,12 @@ def check_text(label: str, script: bytes, calls: int) -> None:
     assert n == calls, f"{label}: {n} calls, the original {calls}"
 
 
-def brief_scripts(ram: bytes) -> list[tuple[str, int, bytes]]:
-    """The briefings as the port holds them (label, address, bytes), checked: the original's calls
-    (rc2front.py's model of $116CA, the particle writer's run included) kept."""
+def brief_scripts(ram: bytes, table: tuple = BRIEF) -> list[tuple[str, int, bytes]]:
+    """The briefings (or the ending's text screen: END) as the port holds them (label, address,
+    bytes), checked: the original's calls (rc2front.py's model of $116CA, the particle writer's run
+    included) kept."""
     out = []
-    for label, start, calls in BRIEF:
+    for label, start, calls in table:
         elements, end = rc2front.Interpreter(ram).run(start)
         assert end - start == len(brief_script(ram, start)), f"{label}: the original's end"
         assert sum(e["calls"] for e in elements) == calls, f"{label}: the original's calls"
@@ -514,6 +550,106 @@ def brief_inc(scripts: list[tuple[str, int, bytes]]) -> str:
                                   if label in (b[0] for b in BRIEF) else "")
         text += f"{label}:{' ' * (35 - len(label))}; {note}: {elements} elements, {calls} calls\n" + db_lines(script)
     return text
+
+
+def hisc_scripts(ram: bytes) -> list[tuple[str, int, bytes]]:
+    """The name entry's text screen as the port holds it (label, address, bytes): the original's,
+    checked (its last line at row 9: HISC_ROWS)."""
+    out = []
+    for label, start, calls in HISC:
+        script = bonus_script(ram, start)
+        check_text(label, script, calls, HISC_ROWS)
+        out.append((label, start, script))
+    return out
+
+
+def hs_defaults(ram: bytes) -> tuple[bytes, list[tuple[bytes, int]]]:
+    """The high-score table's header line (its characters before the CR) and its 6 entries (name of
+    9 characters, score) from the RAM image, checked: the layout, the scores' digits, the end."""
+    head = ram[HS_TABLE:HS_FIRST]
+    assert head[-1] == 0x0D and len(head) == 16, "the table's header"
+    out = []
+    for k in range(HS_COUNT):
+        e = ram[HS_FIRST + HS_ENTRY * k:HS_FIRST + HS_ENTRY * (k + 1)]
+        assert e[0] == 0x20 and e[10] == 0x20 and e[18] == 0x0D, f"the table's entry {k}"
+        assert all(0x5B <= d <= 0x64 for d in e[11:18]), f"the table's entry {k}: a score digit"
+        assert all(c == 0x20 or 0x41 <= c <= 0x5A for c in e[1:10]), f"the table's entry {k}: a name character"
+        out.append((bytes(e[1:10]), int("".join(str(d - 0x5B) for d in e[11:18]))))
+    assert ram[HS_FIRST + HS_ENTRY * HS_COUNT:HS_FIRST + HS_ENTRY * HS_COUNT + 2] == b"\xff\x00", "the table's end"
+    assert [s for _, s in out] == sorted((s for _, s in out), reverse=True), "the defaults' order"
+    return bytes(head[:-1]), out
+
+
+def hs_bcd(score: int) -> bytes:
+    """A score as the port's table holds it: 4 BCD bytes, the high digits first (8 digits: the
+    original keeps the low 7, $120BC)."""
+    s = f"{score % 10 ** 8:08d}"
+    return bytes(int(s[i]) << 4 | int(s[i + 1]) for i in range(0, 8, 2))
+
+
+def best_script() -> bytes:
+    """The table screen's script: waits for BEST_CALLS calls, then the end (the table is drawn
+    before it runs: front.asm hs_best)."""
+    n, extra = divmod(BEST_CALLS, 4)
+    assert extra == 0 and n <= 255, "BEST_CALLS"
+    script = bytes((0xFF, 2, n, 0xFF, 7))
+    assert fs_run(script)[1] == BEST_CALLS
+    return script
+
+
+def hs_line(name: bytes, score: int) -> bytes:
+    """An entry's 18 characters as the table shows them: ' ', the name, ' ', the score's 7 digits
+    ('[' + digit, leading zeros kept)."""
+    return b" " + name + b" " + bytes(0x5B + int(c) for c in f"{score % 10 ** 7:07d}")
+
+
+def best_text(head: bytes, table: list[tuple[bytes, int]]) -> bytes:
+    """The table as script bytes (positions and characters: what hs_best draws at once): the header
+    at (BEST_COL, BEST_ROW), entry k at row BEST_ROW + 2 (k + 1)."""
+    out = bytes((0, BEST_COL, BEST_ROW & 0xFF)) + head
+    for k, (name, score) in enumerate(table):
+        out += bytes((0, BEST_COL, (BEST_ROW + 2 * (k + 1)) & 0xFF)) + hs_line(name, score)
+    return out
+
+
+def end_inc(ram: bytes, end: list, hisc: list) -> str:
+    """text.inc's part for the ending and the high scores, after the continue's."""
+    head, table = hs_defaults(ram)
+    check_text("the table", best_text(head, table) + best_script(), BEST_CALLS + 7 * 1 + len(head)
+               + HS_COUNT * 18)
+    text = ("; generated by tools/msxtext.py: the ending ($86DE: $112C5 through $10762) and the high scores\n"
+            "; ($12082: the name entry $1215C, $115C9 through $10768; the table $11FF6) for msx/ending.asm\n"
+            "; (BANK_FRONT2) front_ending and hs_entry, with front.asm's text screens (fe_keep, fe_go)\n"
+            f"HS_COUNT: equ {HS_COUNT}{' ' * 23}; the table's entries ($12006, 19 bytes each)\n"
+            f"HS_X: equ {HS_FIELD[0] // 2}{' ' * 27}; the name's first cell: its byte in the line (x / 2),\n"
+            f"HS_Y: equ {HS_FIELD[1]}{' ' * 27};   its first line ($12218: bitplane x 128, line 80)\n"
+            f"HS_MARK: equ 0x{HS_MARK:02X}{' ' * 21}; the next position's mark ('?': $1217E)\n"
+            f"BEST_COL: equ {BEST_COL}{' ' * 23}; the table screen: the lines' first column,\n"
+            f"BEST_ROW: equ {BEST_ROW}{' ' * 22};   the header's row (a line every 2 rows)\n")
+    for label, start, script in end + hisc:
+        elements, calls, _ = fs_run(script)
+        note = f"${start:05X}" + (f", its particle title typed at column {script[1]}, row {s8(script[2])}"
+                                  if label in (e[0] for e in END) else "")
+        text += f"{label}:{' ' * (35 - len(label))}; {note}: {elements} elements, {calls} calls\n" + db_lines(script)
+    text += (f"txt_best:{' ' * 27}; the table screen: {BEST_CALLS} calls (the attract's particles 0 and 1)\n"
+             + db_lines(best_script())
+             + f"hs_head:{' ' * 28}; $11FF6: the table's header line ({len(head)} characters)\n" + db_lines(head)
+             + f"hs_def:{' ' * 29}; $12006: the defaults, per entry the name (9) and the score (4 BCD bytes)\n"
+             + "".join(f"        ; {decode(n).rstrip()} {s}\n" + db_lines(n + hs_bcd(s)) for n, s in table))
+    return text
+
+
+def hisc_area(glyphs: list[bytes], script: bytes, name: bytes) -> bytes:
+    """The name entry's play area: its script typed (fs_render), then the name's 9 cells at
+    HS_FIELD (the mark HS_MARK where the next character goes)."""
+    area = bytearray(fs_render(glyphs, script))
+    x0, y0 = HS_FIELD
+    for i, c in enumerate(name):
+        g = glyphs[fs_glyph(c)]
+        for k in range(8):
+            a = (y0 + k) * 128 + (x0 + 8 * i) // 2
+            area[a:a + 4] = g[4 * k:4 * k + 4]
+    return bytes(area)
 
 
 def fs_render(glyphs: list[bytes], script: bytes) -> bytes:
@@ -648,7 +784,9 @@ def main(argv: list[str]) -> int:
     bonus = bonus_scripts(ram)
     rg, names = range_scripts(ram), rg_names(ram)
     brief = brief_scripts(ram) + cont_scripts(ram)
+    end, hisc = brief_scripts(ram, END), hisc_scripts(ram)
     out.write_text(level_inc(ram) + bonus_inc(bonus) + range_inc(rg, names) + brief_inc(brief))
+    (out.parent / "ending.inc").write_text(end_inc(ram, end, hisc))
     print(f"{out}: {rc2front.BITMAP_GLYPHS} glyphs, statistics script {len(stats_script(ram))} bytes")
     glyphs = [glyph_sc5(ram, g) for g in range(rc2front.BITMAP_GLYPHS)]
     pal = grade_pal(msx_palette(ram))
@@ -673,6 +811,16 @@ def main(argv: list[str]) -> int:
     print(f"{out}: the briefings and the continue, " + ", ".join(f"{label} {len(s)} bytes ({fs_run(s)[1]} calls)"
                                                                for label, _, s in brief)
           + f"; their play areas in {out.parent / 'text_l?_brief.sc5'} and {out.parent / 'text_cont.sc5'} (.png)")
+    head, table = hs_defaults(ram)
+    write_sc5(out.parent / "text_end.sc5", fs_render(glyphs, end[0][2]), pal)
+    write_sc5(out.parent / "text_hisc.sc5", hisc_area(glyphs, hisc[0][2], b" " + bytes([HS_MARK]) + b" " * 7), pal)
+    write_sc5(out.parent / "text_best.sc5", fs_render(glyphs, best_text(head, table) + best_script()), pal)
+    print(f"{out.parent / 'ending.inc'}: the ending and the high scores, " + ", ".join(f"{label} {len(s)} bytes ({fs_run(s)[1]} calls)"
+                                                               for label, _, s in end + hisc)
+          + f", txt_best {len(best_script())} bytes ({BEST_CALLS} calls), hs_head {len(head)} and hs_def "
+          + f"{13 * len(table)} bytes; their play areas in {out.parent / 'text_end.sc5'}, "
+          + f"{out.parent / 'text_hisc.sc5'} (the name field at its start) and {out.parent / 'text_best.sc5'} "
+          + "(the defaults) (.png)")
     if len(argv) > 4:
         write_sc8(Path(argv[4]), credit_sc8(ram, Path(argv[3]).read_bytes()))
         print(f"{argv[4]}: the title with the credit ({len(CREDIT)} lines)")

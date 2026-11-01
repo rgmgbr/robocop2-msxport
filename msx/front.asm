@@ -66,10 +66,11 @@ sfd_lp: halt
 ; ----- the game over -----
 
 ; PIC9 with GAME OVER below it (tools/msxtext.py) for 30 seconds, or until fire is pressed once
-; released (the fire held as RoboCop fell does not skip it); then the continue offer when a credit
-; is left (front_cont), and the answer (fo_cont) also as the flags: NZ continues (rc2.asm ml_ov:
+; released (the fire held as RoboCop fell does not skip it); then the high-score entry when the score
+; enters the table and the continue offer when a credit is left (frontx.asm fo_hsc: ending.asm
+; hs_entry, front_cont), and the answer (fo_cont) also as the flags: NZ continues (rc2.asm ml_ov:
 ; lv_cont), Z the title. (The original: 128 VBLs, main_loop $82A8: show_picture D0 = 8; the user's
-; choice: longer, and a way out; the high-score entry $12082 is not ported.)
+; choice: longer, and a way out.)
 FO_TICKS:   equ 30 * 50             ; 50 Hz ticks (fs_tick: the same time at 60 Hz)
 front_over:
         xor a
@@ -97,10 +98,11 @@ fo_n:   dec hl
         ld a,h
         or l
         jr nz,fo_lp
-fov_x:  ld a,0xFF                   ; ($82C4: high_score_entry $12082, not ported (default 6): its
-        ld (g_key),a                ;  st.b $8032 (the key byte: FFh, no key), which a continued
-                                    ;  game's frame_keys then takes as handled ($8033))
-        call front_cont             ; ($82CA: $11FD2; a turbo R: the Z80 again, cold.asm cpu_title)
+fov_x:  ld a,0xFF                   ; ($82C4: high_score_entry $12082: its st.b $8032 first (the key
+        ld (g_key),a                ;  byte: FFh, no key), which a continued game's frame_keys then
+                                    ;  takes as handled ($8033))
+        call fo_hsc                 ; (the rest of $12082, then $82CA's $11FD2 (front_cont); a turbo
+                                    ;  R: the Z80 again, cold.asm cpu_title)
         ld a,(fo_cont)
         or a
         ret
@@ -121,7 +123,7 @@ front_cont:
         ld (AG + 0x805E),hl
         bit 7,h
         jr z,fc_on
-        xor a
+fc_neg: xor a
         ld (AG + (0x805E ^ 1)),a    ; ($11FEE: clr.b $805E, the word's high byte)
         jp cpu_title
 fc_on:  call cpu_title
@@ -130,7 +132,7 @@ fc_on:  call cpu_title
         ld a,(cpu_tr)
         or a
         call z,display_on
-        ld hl,txt_cont
+fc_txt: ld hl,txt_cont              ; (frontx.asm fo_hsc comes here after an entry: the display on)
         call fe_text
         ld a,(fs_done)
         or a
@@ -450,7 +452,8 @@ fb_res: add a,a
         ld l,a
         call fe_text                ; ($8400: the result through $10762)
         call front_range            ; ($8590: moveq #1,D0 / bsr $8420; visit 2 runs the same code)
-        call front_brief            ; ($859E: the next level's briefing; load_level2's $8548)
+        call fb_brief2              ; ($859E: the next level's briefing; load_level2's $8548; after
+                                    ;  level 2's stages the game completed: frontx.asm)
         jp cpu_title                ; (a turbo R: the hardware pause on again, the display off)
 fb_texts:
         dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)

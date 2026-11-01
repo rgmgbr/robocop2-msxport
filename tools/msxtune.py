@@ -59,6 +59,23 @@ effects 2 (a shot), 3 (an armed target hit) and 4 (a dummy hit) on Amiga channel
   SCC, msx/tune.asm plays it on PSG voice B. Effect 5 is never requested: not converted.
 Output: build/msx/frm.bin, in pzm.bin's layout.
 
+The ending (docs/ENDING.md): the game completed, $11C54 (from level_load_3 $86DE) loads CMP and
+plays its tune 1 for 1801h passes of its loop (one a frame) or until fire, ticking the tune on 4 of
+every 5 passes ($11C52: subq / beq skip / bpl tick / else 4 and tick, from 0): 4,916 ticks. The
+tune is 4,800 ticks long and loops from tick 192 (rc2music.py: the audible loop), so the original
+plays it once and the loop's first 116 ticks; here those 4,916 ticks are the tune, unrolled (no
+loop: msx/tune.asm plays a tune once). Then high_score_entry $12082: HI1 is loaded and its tune 1
+started ($12300), but the name entry's text screen ($1215C through $10768: $FE14) stops it before its
+first tick; what sounds are HI1's effects 3 (each key taken, $1225C) and 4 (Return, $121FA):
+- CMP tune 1 in the three versions as FRM's (msxscc's octave rule on), its instrument 16 (sample 1,
+  RoboCop's speech by its measures, docs/ROM_BUDGET.md 3.9) silent as the title's speech instrument
+  (it waits for the user), its drums 19 BDRM as BD, 20 SNARE as SD, 21 CLOSEDHAT as HH and 22
+  (sample 7, a short noise) as TCY on the OPLL's rhythm;
+- HI1's effects 3 and 4 at CMP's reference, numbered 3 and 4 in the blob's effect table: one blob
+  for the ending's sound; the name entry plays them through CMP's descriptor with the tune cut to
+  no ticks (msx/front.asm).
+Output: build/msx/end.bin, in pzm.bin's layout.
+
 Output: build/msx/pzm.bin for tools/mkrom.py (all offsets 24-bit little-endian from its start):
   0-32  eleven streams: the SCC version's voices 0-2 and its PSG drum stream (msxscc's formats),
         the OPLL version's channels 0-2 and its rhythm (msxfm's), the PSG version's voices A-C
@@ -80,10 +97,11 @@ Every stream is decoded back and checked against what it was made from; every tu
 the tune. --wav DIR writes previews: the Amiga's tune 1 and the three versions decoded on the
 converters' chip models (pzm_amiga.wav, pzm_scc.wav, pzm_psg.wav, pzm_fm.wav; with --frm the
 frm_*.wav of the whole tune, the SCC with the OPLL's rhythm, frm_sccfm.wav, and the effects, as
-msxsccfx.py's sfx_all files: frm_fx_amiga.wav, frm_fx_scc.wav, frm_fx_psg.wav). Needs numpy (the
-project's venv). About a minute for PZM, two for FRM.
+msxsccfx.py's sfx_all files: frm_fx_amiga.wav, frm_fx_scc.wav, frm_fx_psg.wav; with --end the
+end_*.wav and end_fx_*.wav the same way). Needs numpy (the project's venv). About a minute for PZM,
+two for FRM and the ending.
 
-usage: msxtune.py [--frm] [--out build/msx] [--cache build/music] [--wav DIR]
+usage: msxtune.py [--frm | --end] [--out build/msx] [--cache build/music] [--wav DIR]
 """
 from __future__ import annotations
 
@@ -131,6 +149,14 @@ BUZZ = 6                                # designed (the module docstring)
 BUZZ_HZ = 50.0                          # the pass rate (the port's: 50 passes a second)
 BUZZ_WAVE = [127] * 8 + [-42] * 24      # 8 of 32 high: the Amiga's 24 % duty, no DC
 BUZZ_PASSES = 31                        # a fade-out's passes (the level's measure)
+CMP = FILES / "CMP_24.bin"              # the ending's music file (the game completed: $11C54)
+HI1 = FILES / "HI1_26.bin"              # the high-score entry's ($12300)
+END_TUNE = 1
+END_PASSES = 0x1801                     # $11C54's loop: dbf from 1800h, one pass a frame
+END_DIV = 0                             # $11C52's word at the start (the tune's divider)
+END_SPEECH = 16                         # CMP's speech instrument (sample 1): silent
+END_DRUMS = {19: "bd", 20: "sd", 21: "hh", 22: "tcy"}     # BDRM, SNARE, CLOSEDHAT, sample 7
+END_FX = (3, 4)                         # HI1's effects: a key ($1225C), Return ($121FA)
 HEADER = 47
 
 
@@ -1063,6 +1089,116 @@ def convert_frm(out: Path, cache: Path, log=print) -> dict:
             "fx_psg": fx_psg, "fx_len": fx_len}
 
 
+# ---------------------------------------------------------------------------------------------
+# The ending's CMP and the high-score entry's HI1 effects
+# ---------------------------------------------------------------------------------------------
+
+def end_ticks(passes: int = END_PASSES, div: int = END_DIV) -> int:
+    """The tune's ticks in $11C54's passes: $11C52 - 1 each pass; 0: no tick; above 0: a tick;
+    below 0: 4 again, and a tick (4 of every 5 passes)."""
+    ticks = 0
+    for _ in range(passes):
+        div -= 1
+        if div == 0:
+            continue
+        if div < 0:
+            div = 4
+        ticks += 1
+    return ticks
+
+
+def unrolled(tune: dict, T: int) -> dict:
+    """A looping tune as the player plays its first T ticks: from its loop's end on, tick t plays
+    tick start + (t - start) mod length (rc2music.py's loop: the audible output repeats from its
+    start tick); the frames and key-ons extended so, no loop left."""
+    lp = tune["loop"]
+    s, n = lp["start_tick"], lp["length_ticks"]
+    def src(t: int) -> int:
+        return t if t < s + n else s + (t - s) % n
+    frames = {}
+    for ch, runs in tune["frames"].items():
+        ticks = [r[1:] for r in runs for _ in range(r[0])]
+        if len(ticks) != s + n:
+            raise SystemExit("error: CMP's frames on channel %s last %d ticks, the loop's end %d" % (ch, len(ticks), s + n))
+        out: list = []
+        for t in range(T):
+            v = ticks[src(t)]
+            if out and out[-1][1:] == v:
+                out[-1][0] += 1
+            else:
+                out.append([1] + list(v))
+        frames[ch] = out
+    by_tick: dict = {}
+    for k in tune["key_ons"]:
+        by_tick.setdefault(k[0], []).append(k)
+    key_ons = [[t] + k[1:] for t in range(T) for k in by_tick.get(src(t), [])]
+    return dict(tune, frames=frames, key_ons=key_ons, loop=None, ends_at_tick=None, ticks=T)
+
+
+def convert_end(out: Path, cache: Path, log=print) -> dict:
+    """The ending's sound (the module docstring): CMP tune 1 as $11C54 plays it, unrolled, and HI1's
+    effects 3 and 4; writes out/end.bin. Returns the parts (previews, tests)."""
+    rep, data = cached_model(CMP.read_bytes(), cache, "CMP")
+    hrep, hdata = cached_model(HI1.read_bytes(), cache, "HI1")
+    T = end_ticks()
+    tune = rep["tunes"][END_TUNE - 1]
+    if not tune["loop"] or tune["loop"]["start_tick"] + tune["loop"]["length_ticks"] >= T:
+        raise SystemExit("error: CMP's tune 1 does not loop before %d ticks: the unrolling's assumption" % T)
+    rep = dict(rep, tunes=[unrolled(tune, T) if t is tune else t for t in rep["tunes"]])
+    with converter_constants(END_SPEECH, {}):
+        rt = Routing(rep, data, END_TUNE, drums=set(END_DRUMS), speech={END_SPEECH})
+        log("CMP tune %d as $11C54 plays it (%d passes, %d ticks: its loop from %d unrolled): %s" % (
+            END_TUNE, END_PASSES, T, tune["loop"]["start_tick"], rt.summary()))
+        if rt.loop_tick or rt.stolen_notes:
+            raise SystemExit("error: CMP's routed tune loops or steals notes: the routing's assumptions")
+        gt = RoutedTitle(rt)
+        psg = psg_version(gt, TITLE_LAMBDA)
+        scc = scc_version(gt, octave_up=True)
+        ft, fmv = fm_version(gt, END_DRUMS)
+    with converter_constants(-1, {}):
+        fx = fx_effects(hrep, hdata, END_FX, gt.a_ref)
+        fsc = scc_effects(fx, 1 / scc["ref"])
+        fps = psg_effects(fx)
+    table = [bytes(x.astype(np.int8).tobytes()) for x in scc["table"]]    # the tune's, the effects'
+    def wave_no(b: bytes) -> int:
+        if b not in table:
+            table.append(b)
+        return table.index(b)
+    fx_scc, fx_psg, fx_len = effect_streams(fsc, fps, END_FX, wave_no)
+    tab = np.frombuffer(b"".join(table), np.int8).reshape(-1, 32)
+    blob = assemble(scc, fmv, psg, fx_scc, fx_psg, fx_len, tab, T)
+    bad = check_blob(blob, scc, fmv, psg, fx_scc, fx_psg)
+    if b"OPLL" in blob:
+        bad.append("\"OPLL\" in the blob (tools/mkrom.py refuses it)")
+    if bad:
+        raise SystemExit("error: " + "; ".join(bad))
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "end.bin").write_bytes(blob)
+    hd = parse(blob)
+    fb = fmv["blob"]
+    log("PSG (lambda %.4f): voices %s = %d bytes; octaves up: %s" % (
+        TITLE_LAMBDA, "+".join(str(len(s)) for s in psg["streams"]), sum(len(s) for s in psg["streams"]),
+        ", ".join("%s %d" % (gt.insts[i].name, k) for i, k in sorted(gt.octave.items()) if k) or "none"))
+    log("SCC: voices %s, drums %d, the tune's %d waveforms: %d bytes; the octave rule: %s" % (
+        "+".join(map(str, scc["sizes"][:3])), scc["sizes"][3], len(scc["waves"]), len(scc["blob"]),
+        "; ".join("voice %d: %d notes (%d ticks)" % (v, len(r), sum(x[1] for x in r))
+                  for v, r in enumerate(scc["raised"]) if r) or "no note below N 4095"))
+    log("OPLL: melodic %s, rhythm %d (%d hits), patch 14: %d bytes; %s; custom patch for %s; drums %s" % (
+        "+".join(str(len(x)) for x in fmv["mel"]), len(fmv["rhy"]), len(fmv["drum_log"]), len(fb),
+        ", ".join("%s -> %s" % (ft.insts[i].name, fm.PRESET_NAMES[k]) for i, k in sorted(ft.mapping.items())),
+        ft.insts[ft.custom_for].name,
+        ", ".join("%s %.0f Hz" % (k, v) for k, v in sorted(ft.drum_hz.items()))))
+    log("effects (HI1): %s" % "; ".join(
+        "%d: %d ticks, SCC %d B (%d ticks), PSG %d B (%d ticks)" % (
+            n, fx_len[n], len(fx_scc[n]["bytes"]), fx_scc[n]["ticks"], len(fx_psg[n]["bytes"]),
+            fx_psg[n]["ticks"]) for n in sorted(fx_len)))
+    log("end.bin: %d bytes (%d banks of 8 KiB), %d SCC waveforms, every tune stream %d ticks, decoded "
+        "back: identical" % (len(blob), -(-len(blob) // 8192), hd["W"], T))
+    return {"rep": rep, "data": data, "rt": rt, "gt": gt, "psg": psg, "scc": scc, "ft": ft, "fmv": fmv,
+            "fx": fx, "fsc": fsc, "fps": fps, "blob": blob, "table": tab, "fx_scc": fx_scc,
+            "fx_psg": fx_psg, "fx_len": fx_len}
+
+
 def previews(res: dict, wav: Path, seconds: float = 60.0, name: str = "pzm") -> None:
     """The Amiga's tune 1 (the model rendered) and the three versions decoded from the blob on the
     converters' chip models (msxscc's SCC, msxsound's PSG, msxfm's OPLL), each normalised as
@@ -1087,7 +1223,7 @@ def previews(res: dict, wav: Path, seconds: float = 60.0, name: str = "pzm") -> 
     ms.write_wav(wav / f"{name}_fm.wav", ms.dc_block(mel + rhy))
 
 
-def frm_previews(res: dict, wav: Path) -> None:
+def frm_previews(res: dict, wav: Path, name: str = "frm") -> None:
     """FRM's previews: previews() over the whole tune (frm_*.wav); the SCC's melody with the
     OPLL's rhythm (frm_sccfm.wav: msx/tune.asm with an SCC and an OPLL), each part scaled back to
     the Amiga's units by its converter's reference (an assumption: real machines set their own
@@ -1097,13 +1233,13 @@ def frm_previews(res: dict, wav: Path) -> None:
     blob, gt = res["blob"], res["gt"]
     hd = parse(blob)
     T = hd["T"]
-    previews(res, wav, T / ms.TICK_HZ, "frm")
+    previews(res, wav, T / ms.TICK_HZ, name)
     table = np.frombuffer(blob[hd["waves"]:hd["waves"] + 32 * hd["W"]], np.int8).reshape(-1, 32)
     scc = sum(sc.render_scc(sc.decode_scc(blob, hd["streams"][v], T), table, T) for v in range(3))
     patch = blob[hd["patch"]:hd["patch"] + 14]
     rhy = fm.Rhythm(fm.decode_rhythm(blob, hd["streams"][7], T), patch[8:]).render(T)
     fm_to_scc = gt.a_ref * 10 ** (-res["ft"].ref / 20) / res["scc"]["ref"]
-    ms.write_wav(wav / "frm_sccfm.wav", scc + ms.dc_block(rhy) * fm_to_scc)
+    ms.write_wav(wav / f"{name}_sccfm.wav", scc + ms.dc_block(rhy) * fm_to_scc)
     gap = np.zeros(int(0.4 * ms.FS))
     amiga, with_scc, alone = [], [], []
     for n, e in sorted(hd["effects"].items()):
@@ -1115,7 +1251,7 @@ def frm_previews(res: dict, wav: Path) -> None:
         else:
             with_scc.append(sc.render_scc(sx.decode_scc(blob, e["scc"], hd["W"], L)[0], table, L))
         alone.append(ms.dc_block(ms.Psg().render(sx.psg_states(sx.decode_psg(blob, e["psg"], L)[0]))[0]))
-    for f, outs in (("frm_fx_amiga.wav", amiga), ("frm_fx_scc.wav", with_scc), ("frm_fx_psg.wav", alone)):
+    for f, outs in ((f"{name}_fx_amiga.wav", amiga), (f"{name}_fx_scc.wav", with_scc), (f"{name}_fx_psg.wav", alone)):
         ms.write_wav(wav / f, np.concatenate([x for o in outs for x in (o, gap)]))
 
 
@@ -1123,11 +1259,20 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--frm", action="store_true",
                     help="convert the shooting range's FRM (frm.bin) instead of Brainstorm's PZM (pzm.bin)")
+    ap.add_argument("--end", action="store_true",
+                    help="convert the ending's CMP tune and HI1's effects 3-4 (end.bin) instead")
     ap.add_argument("--out", type=Path, default=ROOT / "build" / "msx", help="directory of pzm.bin or frm.bin")
     ap.add_argument("--cache", type=Path, default=ROOT / "build" / "music",
                     help="directory of PZM_00.bin and PZM.json, or FRM_00.bin and FRM.json (rc2music.py's model)")
     ap.add_argument("--wav", type=Path, help="directory of the previews")
     args = ap.parse_args()
+    if args.end:
+        res = convert_end(args.out, args.cache)
+        print("wrote", args.out / "end.bin")
+        if args.wav:
+            frm_previews(res, args.wav, "end")
+            print("wrote the previews in", args.wav)
+        return 0
     if args.frm:
         res = convert_frm(args.out, args.cache)
         print("wrote", args.out / "frm.bin")

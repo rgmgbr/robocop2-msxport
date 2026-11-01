@@ -43,7 +43,11 @@
         tools/mapcells.py vat_tables); then Brainstorm's visit-2 TV pictures (tools/msxpuzl.py
         --visits 1,2 puzl_tv2.bin: Ellen's face, raw, a blob of its own after the last block, so
         that no bank moves: docs/LEVEL2.md 3.9; msx/puzl.asm streams it into VRAM through the 8000h
-        window from bank PUZL_TV2_BANK); up to
+        window from bank PUZL_TV2_BANK); then the front end's second bank (the section after level
+        2's code, msx/ending.asm: STAGES, bank BANK_FRONT2, read at A000h only) and the ending's sound
+        (tools/msxtune.py --end end.bin, pzm.bin's layout: CMP tune 1 and HI1's effects 3-4,
+        docs/ENDING.md; msx/tune.asm reads it through the 8000h window) from bank END_BANK, after a
+        padding bank when the next is one the 8000h window must not map (below); up to
         256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
@@ -59,7 +63,8 @@ tools/mapcells.py vat_tables), options.inc (build options, see OPTIONS; LV_CARRY
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
 headers, the SCC's waveforms, the OPLL's patch, the voices' state after the speech), tune.inc
 (Brainstorm's and the shooting range's tune descriptors and effects' tables for msx/tune.asm, from
-pzm.bin and frm.bin), grade.inc
+pzm.bin and frm.bin), tune_cm.inc (the ending's, from end.bin: after tune.asm, so that nothing before
+it moves), grade.inc
 (the fade's limits through the colour grade, tools/msxbright.py) and the
 original's tables the logic banks include (tools/amitab.py
 with analysis/amiga_tables.tsv, from the level's RAM image build/ram/level1_full.bin) and the
@@ -109,10 +114,13 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK = 0x2000
 LOGIC = ("LC1", "LC2", "L1", "LC3", "INPUT", "FRONT", "FIELD", "MUSIC")  # logic banks after the two code banks (msx/rc2.asm
                                     # sections): modules at 8000h (one at a time), the level at A000h
-STAGES = ("PUZL", "FRNG", "L2")     # the late code banks (msx/rc2.asm's last sections, at A000h: the
-                                    # bonus stages while they run, PUZL: Brainstorm, msx/puzl.asm; FRNG:
-                                    # the shooting range, msx/frng.asm; and level 2's logic, L2,
-                                    # msx/level2.asm), each before its own data: PUZL's after the
+STAGES = ("PUZL", "FRNG", "L2", "FRONT2")  # the late code banks (msx/rc2.asm's last sections, at A000h:
+                                    # the bonus stages while they run, PUZL: Brainstorm, msx/puzl.asm;
+                                    # FRNG: the shooting range, msx/frng.asm; level 2's logic, L2,
+                                    # msx/level2.asm; the front end's second bank, FRONT2: the game
+                                    # completed and the high scores, msx/ending.asm, read at A000h only,
+                                    # so in a bank the 3Fh rule leaves to such data, before the ending's
+                                    # sound: docs/ENDING.md), each before its own data: PUZL's after the
                                     # sound effects, so that no bank before them moves (with PUZL after
                                     # MUSIC every data bank moved up by one, and bank 24h's 1800h then
                                     # held 24h, an SCC test value: msx/sound.asm scc_pat), FRNG's after
@@ -205,6 +213,10 @@ OPTIONS = {
     "CHEAT": (0, "1 = test build: the original's cheat mode at each new game (AG $804F FFh, msx/cold.asm ng_init) and its"
                  " keys on F5 and F4 (key codes 59h and 58h, the Amiga's F10 and F9: msx/frame.asm fe_keys): F5 ends"
                  " the level, F4 fills the energy; not with DIAG (no game)"),
+    "END_TEST": (0, "1 = test build: at power-on, without the title, level 1's set-up, then the game's end (front.asm"
+                    " front_ending: WELL DONE, the CMP tune, the high-score entry) with LV_CARRY's score, then the"
+                    " title and a new game; 2 = the game over instead (PIC9, the entry, the continue offer with"
+                    " LV_CARRY's credits); once, later games as the product's; not with PZ_TEST or LV_TEST"),
     "VAT_ANIM": (0, "level 2's vats: 0 = static images, the map's own look (the product: the user's choice of"
                     " 2026-10-31, the time for the game; the logic, the sinking and the phases, as always); 1 = redrawn"
                     " as they bubble, the display as built for test7 (docs/LEVEL2.md default 18, a comparison only:"
@@ -666,12 +678,15 @@ def pzm_check(blob: bytes, name: str = "pzm.bin") -> None:
 
 TUNES = {"pz": ("PZ_TICKS", "Brainstorm's music and effects (tools/msxtune.py pzm.bin", "PZM tune 1"),
          "fr": ("FR_TICKS", "the shooting range's music and effects (tools/msxtune.py --frm frm.bin",
-                "FRM tune 1")}
+                "FRM tune 1"),
+         "cm": ("CM_TICKS", "the ending's music and the name entry's effects (tools/msxtune.py --end end.bin",
+                "CMP tune 1")}
 
 
 def tune_inc(blob: bytes, bank: int, tune: str = "pz") -> str:
     """tune.inc's part for one tune (BANK_MUSIC, after voice.inc: msx/tune.asm): `tune`'s descriptor
-    (pz_desc for Brainstorm's pzm.bin, fr_desc for the range's frm.bin: tune.asm TD_...: per chip set
+    (pz_desc for Brainstorm's pzm.bin, fr_desc for the range's frm.bin, cm_desc for the ending's
+    end.bin: tune.asm TD_...: per chip set
     the streams' bank and address in the 8000h window, the length, the OPLL's patch block, the
     effects' table, the SCC waveforms' bank and address) and its effects (pz_fx, fr_fx; per effect,
     TF_...: its length, its SCC-mode stream and ticks + 1 (bit 7: the stream in the PSG format,
@@ -788,8 +803,12 @@ def main(argv: list[str]) -> int:
     if opts["LV_TEST"] not in (0, 2) or (opts["LV_TEST"] and opts["PZ_TEST"]):
         print("LV_TEST must be 0 or 2, and not with PZ_TEST (one test start at a time)", file=sys.stderr)
         return 2
-    if carry is not None and not opts["LV_TEST"]:
-        print("LV_CARRY needs LV_TEST=2 (it is the test start's carry)", file=sys.stderr)
+    if opts["END_TEST"] not in (0, 1, 2) or (opts["END_TEST"] and (opts["PZ_TEST"] or opts["LV_TEST"] or opts["DIAG"])):
+        print("END_TEST must be 0, 1 or 2, and not with PZ_TEST, LV_TEST or DIAG (one test start at a time)",
+              file=sys.stderr)
+        return 2
+    if carry is not None and not (opts["LV_TEST"] or opts["END_TEST"]):
+        print("LV_CARRY needs LV_TEST=2 or END_TEST (it is the test start's carry)", file=sys.stderr)
         return 2
     if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
         print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
@@ -815,7 +834,7 @@ def main(argv: list[str]) -> int:
                                    "fade_cap:                           ; per fade step its limit (msx/logic.asm pal_fade)\n"
                                    "        db " + ", ".join(map(str, BRIGHT)) + "\n")
     for name in (f"{POOL}.inc", f"{POOL}_flash.inc", f"{POOL}_l1_field.inc", "hud_rt.inc", "player.inc",
-                 "sound.inc", "text.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr",
+                 "sound.inc", "text.inc", "ending.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr",
                  "range.inc", "range_tab.inc", "range_line.spr"):
         shutil.copy(level.parent / name, gen / name)
     # the global sprite pool (tools/msxsprites.py --pool): per level its frames (ids, play-field
@@ -1092,15 +1111,35 @@ def main(argv: list[str]) -> int:
         return 1
     puzl_tv2 += b"\xff" * (-len(puzl_tv2) % BANK)
     bank_puzl_tv2 = bank_l2_atlas + len(field_img2) // BANK
-    banks_used = bank_puzl_tv2 + len(puzl_tv2) // BANK
+    # the ending's sound (tools/msxtune.py --end end.bin, pzm.bin's layout: CMP tune 1 and HI1's effects
+    # 3-4; msx/tune.asm reads its streams through the 8000h window), after the last block; a bank the
+    # 8000h window must not map ((b & 3Fh) = 3Fh, below) stays empty before it: padding, never mapped.
+    # Test builds that never play the game (DIAG) leave it out, as pzm.bin
+    end = b""
+    if not opts["DIAG"]:
+        if not (level.parent / "end.bin").exists():
+            print("error: no end.bin (tools/msxtune.py --end)", file=sys.stderr)
+            return 1
+        end = (level.parent / "end.bin").read_bytes()
+        pzm_check(end, "end.bin")
+    # the front end's second bank (STAGES' FRONT2, msx/ending.asm), read at A000h only: after the last
+    # block, where the 3Fh rule leaves a bank to such code (bank 127 in this layout)
+    stage_bank["FRONT2"] = bank_puzl_tv2 + len(puzl_tv2) // BANK
+    bank_end = stage_bank["FRONT2"] + 1
+    end_pad = []
+    while end and any(b & 0x3F == 0x3F for b in range(bank_end, bank_end + -(-len(end) // BANK))):
+        end_pad.append(bank_end)
+        bank_end += 1
+    banks_used = bank_end + -(-len(end) // BANK)
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
     nbanks = rom_banks(banks_used, MAX_BANKS if opts["ROM_2M"] else 0)
     # every bank but those read only at A000h may be mapped at 8000h (a Konami SCC mapper: a bank
     # number with (b & 3Fh) = 3Fh selects the SCC's registers at 9800h instead on most cartridges;
-    # the MSX Pico+ for 3Fh only): only the pictures (front.asm, through bank_a000) may take one
-    a000_only = set(range(pic_first[0], bank_voice))
+    # the MSX Pico+ for 3Fh only): only the pictures (front.asm, through bank_a000) may take one, and
+    # the padding before end.bin (never mapped)
+    a000_only = set(range(pic_first[0], bank_voice)) | set(end_pad) | {stage_bank["FRONT2"]}
     bad = [b for b in range(2, banks_used) if b & 0x3F == 0x3F and b not in a000_only]
     if bad:
         print(f"error: bank(s) {bad} could be mapped at 8000h (the SCC's registers)", file=sys.stderr)
@@ -1124,6 +1163,7 @@ def main(argv: list[str]) -> int:
         + "".join(f"BANK_{n}: equ {stage_bank[n]}\n" for n in STAGES) +
         f"PUZL_GFX_BANK: equ {bank_puzl_gfx}\nPUZL_GFX_BANKS: equ {len(puzl_gfx) // BANK}\n"
         f"PUZL_TV2_BANK: equ {bank_puzl_tv2}\nPUZL_TV2_BANKS: equ {len(puzl_tv2) // BANK}\n"
+        f"END_BANK: equ {bank_end}\n"
         f"PZM_BANK: equ {bank_pzm}\n"
         f"RANGE_GFX_BANK: equ {bank_range_gfx}\nRANGE_GFX_BANKS: equ {len(range_gfx) // BANK}\n"
         f"RANGE_HIT_BANK: equ {bank_range_hit}\nFRM_BANK: equ {bank_frm}\n"
@@ -1142,10 +1182,13 @@ def main(argv: list[str]) -> int:
                                              vq["VOICE_TICK"] + vq["VOICE_TICKS"], vq["VOICE_TICK"], sccfx))
     (gen / "tune.inc").write_text(tune_inc(pzm, bank_pzm) + tune_inc(frm, bank_frm, "fr") if pzm else
                                   "; generated by tools/mkrom.py: no tunes after the title in this build (DIAG)\n")
+    (gen / "tune_cm.inc").write_text(tune_inc(end, bank_end, "cm") if end else
+                                     "; generated by tools/mkrom.py: no ending's sound in this build (DIAG)\n")
     (gen / "options.inc").write_text("; generated by tools/mkrom.py: build options\n" + "".join(
         f"{k}: equ {v}{' ' * max(1, 12 - len(str(v)))}; {OPTIONS[k][1]}\n" for k, v in opts.items())
         + f"INPUT_SCRIPT: equ {1 if script or opts['EXTJOY'] else 0}           ; 1: the JOY script plays (input.inc)\n"
-        + "".join(f"{k}: equ 0x{v:04X}{' ' * max(1, 6 - len(k))}; LV_CARRY (LV_TEST's carry: msx/front.asm front_l2test)\n"
+        + "".join(f"{k}: equ 0x{v:04X}{' ' * max(1, 6 - len(k))}; LV_CARRY (the test start's carry: msx/front.asm"
+                  " front_l2test, front_etest)\n"
                   for k, v in carried.items()))
     atr_rows = "".join(f"        dw {'ATR_RAM0' if r < 48 else 'ATR_RAM1'} + {(r if r < 48 else r - 48) * 80}\n"
                        for r in range(rows))
@@ -1239,7 +1282,8 @@ def main(argv: list[str]) -> int:
            + voice + scc + fm + sccfx + stage_code["PUZL"] + puzl_gfx + pzm + b"\xff" * (-len(pzm) % BANK)
            + stage_code["FRNG"] + range_gfx + range_hit + frm + b"\xff" * (-len(frm) % BANK)
            + stage_code["L2"] + tiles2 + b"".join(map2_banks) + atr_2 + bytes(BANK - len(atr_2)) + tab2
-           + field_img2 + puzl_tv2)
+           + field_img2 + puzl_tv2 + stage_code["FRONT2"] + b"\xff" * (len(end_pad) * BANK) + end
+           + b"\xff" * (-len(end) % BANK))
     if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
            != stage_code[n] for n in STAGES):
         print("error: a late code section (a bonus stage's, level 2's) is not at its bank", file=sys.stderr)
@@ -1282,7 +1326,11 @@ def main(argv: list[str]) -> int:
           f"data in {bank_range_hit}-{bank_frm - 1}" + (f", its music in {bank_frm}-{bank_l2 - 1}" if frm else "")
           + f"; level 2's code in {bank_l2}, tiles in {bank_l2_tiles}-{bank_l2_map - 1}, map in {bank_l2_map}-"
           f"{bank_l2_atr - 1} ({rows2} rows), attributes in {bank_l2_atr}, tables in {bank_l2_tab}, atlas in "
-          f"{bank_l2_atlas}-{bank_puzl_tv2 - 1}; Brainstorm's visit-2 pictures in {bank_puzl_tv2}-{banks_used - 1}"
+          f"{bank_l2_atlas}-{bank_puzl_tv2 - 1}; Brainstorm's visit-2 pictures in {bank_puzl_tv2}-"
+          f"{bank_puzl_tv2 + len(puzl_tv2) // BANK - 1}"
+          + f"; the front end's second bank in {stage_bank['FRONT2']}"
+          + (f"; the ending's sound in {bank_end}-{banks_used - 1}" + (f" (bank {', '.join(map(str, end_pad))}: padding)"
+                                                                       if end_pad else "") if end else "")
           + (f"; joystick script {script}" if script else ""))
     return 0
 

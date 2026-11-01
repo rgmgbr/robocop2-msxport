@@ -739,15 +739,13 @@ cold_init:
         jr nc,ci_ok                 ; (less than 128 KiB of VRAM: the tiles, the HUD and the
 ci_nm2: jp no_msx2                  ;  sprite tables need pages 2-3: a message, and the machine
 ci_ok:                              ;  stays on it)
-        if ROM_BANKS > 128
-        call rom_guard              ; over 1 MiB: stops on a device that holds less
-        endif
         if DIAG
         di
         ld b,'1'
         call dg_probe
         endif
-        call snd_detect             ; an OPLL (with the BIOS: before page 0 becomes RAM)
+        call ci_hook                ; (frontx.asm: over 1 MiB the guard, the high scores' table) and
+                                    ;  snd_detect: an OPLL (with the BIOS: before page 0 becomes RAM)
         di
         if DIAG
         ld b,'2'
@@ -799,10 +797,10 @@ ci_ok:                              ;  stays on it)
         ld (tick_n),hl              ; (the test scripts' game frames)
         xor a
         ld (front_mode),a
-        if PZ_TEST + LV_TEST
+        if PZ_TEST + LV_TEST + END_TEST
         ld a,1
-        ld (pz_first),a             ; (test build: Brainstorm first, or level 2, without the title:
-        else                        ;  rc2.asm pz_test, lv_test)
+        ld (pz_first),a             ; (test build: Brainstorm first, level 2 or the game's end,
+        else                        ;  without the title: rc2.asm pz_test, lv_test, end_test)
         call title                  ; (rc2.asm: front.asm fr_title, or nothing in a script's build)
         endif
         jp ng_go
@@ -1202,39 +1200,6 @@ no2_msg:
         db "with 128 KB of VRAM."
         db 0
 
-        if ROM_BANKS > 128
-; A ROM over 1 MiB (cold_init; the interrupts off): the tag mkrom.py
-; writes at the last bank's 1FF0h, read at A000h. A device that holds less wraps, masks or
-; ignores the higher bank numbers and shows another bank there: a message, and the machine stays
-; on it (the BIOS still serves page 0). So does an SCC+ cartridge whose SCC+ mode an earlier
-; program left on (its registers at B800h-BFFFh): a reset clears it, hence the message's last line.
-rom_guard:
-        ld a,ROM_BANKS - 1
-        ld (BANK_A000),a
-        ld hl,0xA000 + 0x1FF0
-        ld de,rg_tag
-        ld b,8
-rg_lp:  ld a,(de)
-        cp (hl)
-        jr nz,rg_bad
-        inc de
-        inc hl
-        djnz rg_lp
-        ld a,(act_a000)
-        ld (BANK_A000),a
-        ret
-rg_bad: ei
-        call INITXT
-        ld hl,rg_msg
-        jr nm_lp
-rg_tag: db "RC2BANK", ROM_BANKS - 1  ; (tools/mkrom.py guard_tag)
-rg_msg: db "ROBOCOP 2 needs a 2 MB Konami"
-        db 13, 10
-        db "SCC cartridge or MegaRAM."
-        db 13, 10
-        db "If yours is one, reset the MSX."
-        db 0
-        endif
 
 ; (tiles.asm) At power-on (cold_init).
 ; Page 0 (0000h-3FFFh) switched to the main RAM (the slot of page 3) once the BIOS is not

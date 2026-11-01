@@ -737,6 +737,20 @@ fs_n:       equ 0xCFBE              ; 2: ticks so far
 fs_done:    equ 0xCFC0              ; 1: the script ended ($16D1)
 fs_div:     equ 0xCFC1              ; VBLANKs into the sixth one (60 Hz: skipped)
 vp_rel:     equ 0xCFC2              ; front_fire, music.asm vm_play: fire released since they began
+; the high scores (front.asm hs_entry; the Amiga keeps the table in its code, $11FF6: docs/ENDING.md):
+; 6 entries of HS_SIZE bytes, the name's 9 characters ($12296's codes: 'A'-'Z', '[' + digit, space)
+; and the score's 7 digits as 4 BCD bytes, the high ones first (the first byte's high digit 0), from
+; text.inc's hs_def at the power-on (cold.asm cold_init) on, kept across games until the power goes:
+; entries 0-2 at hs_tab0, 3-5 at hs_tab1 (free blocks of the RAM audit below)
+HS_SIZE:    equ 13
+hs_tab0:    equ 0xC5D0              ; 3 x HS_SIZE: C5D0h-C5F6h (after demo_tab's 5 x 16 at most)
+hs_tab1:    equ 0xC2D9              ; 3 x HS_SIZE: C2D9h-C2FFh (after tune.asm's)
+HS_NAME5:   equ hs_tab1 + 2 * HS_SIZE   ; the last entry's name: the new score's ($12066)
+; the name entry's work while it runs (fs_buf: no script with numbers is shown then)
+hs_i:       equ fs_buf              ; the next position in the name, 0-9 ($15D0)
+hs_lat:     equ fs_buf + 1          ; 1: a key taken is still held (the next waits for none: $15EF)
+hs_sc:      equ fs_buf + 2          ; 4: the score's low 7 digits (BCD, the high ones first: $1207B)
+hs_ran:     equ fs_buf + 6          ; 1 when an entry ran (frontx.asm fo_hsc: the display on already)
 pl_gs:      equ 0xCFD0              ; 16: sprite plan: per object its parts' state (sprites.asm pw_gs)
 pg_or:      equ 0xCFE0              ; sprite plan: pg_each's result
 pl_seq:     equ 0xCFE1              ; sprite plan: plans so far (low byte: pl_stamp)
@@ -1019,8 +1033,9 @@ ph_h:       equ 0xF166              ; 2:   height
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
-; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h, C2D9h-C2FFh (C2B6h-C2C1h and
-; C2C5h-C2D8h: tune.asm's), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
+; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
+; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
+; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
 ; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDF0h-EDFFh, E0FEh-E0FFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh

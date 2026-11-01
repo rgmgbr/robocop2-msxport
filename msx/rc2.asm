@@ -85,6 +85,11 @@ lv_gs:  call front_call
         or a
         jp nz,lv_test               ; (test build: level 2 once, instead of level 1's main loop)
         endif
+        if END_TEST
+        ld a,(pz_first)
+        or a
+        jp nz,end_test              ; (test build: the game's end once, instead of level 1's main loop)
+        endif
 mainloop:
         call wait_frame             ; feeds the VDP while waiting; returns right after the VBLANK
         call sprites_vblank         ; SAT of the list now on screen (still in the VBLANK)
@@ -159,8 +164,9 @@ ml_ev:  ld a,(g_event)
         call front_call             ;  $8588-$85A4, load_level2 $8524-$8548: front.asm)
         ld a,(AG + 0x8050)          ; (the word's low byte: the mirror keeps words little-endian)
         dec a
-        jr nz,ml_ttl                ; (after level 2: level 3 is not ported, the title and a new
-                                    ;  game: docs/LEVEL2.md default 5)
+        jr nz,ml_ttl                ; (after level 2: level 3 is not ported; front_bonus showed the
+                                    ;  game completed after the level-3 briefing, frontx.asm
+                                    ;  fb_brief2; the title and a new game: docs/ENDING.md)
 ; The next level (load_level1's tail $85B8-$85C4 and level_init $871A: AG $8050 its number, 1 for
 ; level 2): the display and the VDP's interrupts off (as a new game), then its start (lv_go).
 lv_next:
@@ -223,6 +229,27 @@ lv_test:
         ld hl,front_l2test
         call front_call
         jr lv_next
+        endif
+
+        if END_TEST
+; (Test build, tools/mkrom.py END_TEST=1 or 2) Once after the power-on, instead of level 1's main
+; loop: LV_CARRY's score, lives and credits over level 1's set-up (frontx.asm front_etest), then the
+; game completed as level 3's end will reach it (END_TEST=1: frontx.asm fr_ending: WELL DONE, the
+; CMP tune, the high-score entry; then the title and a new game) or a game over (2: ml_ov: PIC9, the
+; entry, the continue offer with the credits: a continue restarts level 1); later games as the
+; product's (pz_first: one shot).
+end_test:
+        xor a
+        ld (pz_first),a
+        ld hl,front_etest
+        call front_call
+        if END_TEST = 1
+        ld hl,fr_ending
+        call front_call
+        jp ml_ttl
+        else
+        jp ml_ov
+        endif
         endif
 
 ; The CIA-B interrupt ($1015E, an alarm of 15625 lines: once a second) unless paused: the timer's
@@ -494,6 +521,7 @@ input_end:
         include "split8.asm"        ; the same on a turbo R's R800 (cold.asm cpu_set installs it)
         include "text.inc"          ; the text screens' font and the statistics (tools/msxtext.py)
         include "levels.inc"        ; the levels' descriptors, palettes and view_offy (tools/mkrom.py)
+        include "frontx.asm"        ; the game completed and the high scores' ways in (docs/ENDING.md)
 front_end:
         ds 0xA000 - front_end, 0xFF
 
@@ -523,6 +551,11 @@ music_tab:
         include "tune.inc"          ; the tunes after the title: Brainstorm's descriptor (tools/mkrom.py)
         include "tune.asm"          ;   and its player (after the title's code and tables: those keep
                                     ;   their places and bytes)
+        include "tune_cm.inc"       ; the ending's descriptor (tools/mkrom.py, end.bin), after the player:
+                                    ;   Brainstorm's and the range's keep their places and bytes
+        if DIAG = 0
+        ds (cm_fx - cm_desc - TD_SIZE) * 0x4000   ; (tools/mkrom.py's layout: an error if not)
+        endif
 music_end:
         ds 0xC000 - music_end, 0xFF
 
@@ -548,3 +581,10 @@ frng_end:
         include "cells_l2.inc"      ; the camera-cell masks of its spawn list and hazards (tools/cellmasks.py)
 l2_end:
         ds 0xC000 - l2_end, 0xFF
+
+; ----- the front end's second bank: the game completed and the high scores (BANK_FRONT2 at A000h
+; around their calls, FRONT at 8000h: frontx.asm front2_call; docs/ENDING.md) -----
+        org 0xA000
+        include "ending.asm"
+front2_end:
+        ds 0xC000 - front2_end, 0xFF
