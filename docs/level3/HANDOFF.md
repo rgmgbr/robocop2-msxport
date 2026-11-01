@@ -1095,3 +1095,14 @@ section's (with `docs/LEVEL3.md` 3.12 and `docs/HARNESS.md` 5.29).
    asks the end itself.
 6. `rc2_sprlines` counts sprites while R#8 hides them (WELL DONE); `lf_start_jobs`' guard waits past a
    drive's last row (the drive pauses the machine): step D's chains ended it there.
+
+### Integrated
+Cherry-picked onto `level2` `03ba0ca` (the main tree clean) as **`debb106`** (the fix), **`e456e76`** (the
+harness), **`8d4f90b`** (the flow's level-3 end and records), **`cc01a96`** (this section, `LEVEL3.md` 3.12,
+`HARNESS.md` 5.29) and this note's. In the main tree then: the product, the lowest set, l3, l3c, l3o and cap
+built with `tools/bstest/build.sh` and `hz.sh l3builds` byte-identical to the worktree's R3 (the product
+`8f87721ef2ad3f2a`), so every R3 result above holds; from the main tree's harness kill and cont3 on the three
+machines 0 differ ("level 3: PASS (4 traces)"), `contcheck.py --level 3` PASS on the three, `ge_l3over_job`'s
+`endcheck.py --over` PASS with `ac_flash` FFFFh at `lv_cont`; `make test`: 348 tests, the 4 known failures
+only. The summaries (the field checks, the guard's lines, the sound checks, the speed logs, the notes), the
+chains' Tcl and the pictures looked at: `build/archive/level3_stepD_records_2026-11-01.tar.gz`.
