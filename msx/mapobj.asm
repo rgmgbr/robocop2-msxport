@@ -141,7 +141,7 @@ ao_lp:  ld hl,(ao_cnd)
         ld l,a
         jp (hl)
 ao_acts:                            ; per offset / 4 (offsets 0Ch, 20h: levels 2 and 3)
-        dw ao_look, act_04, act_08, act_0c, act_10, act_14, act_18, act_1c, ao_look
+        dw ao_look, act_04, act_08, act_0c, act_10, act_14, act_18, act_1c, act_20
 
 ; ($9C76) the default: a collision slot unless A4 is $BEC, then the look.
 ao_look:
@@ -577,6 +577,18 @@ a04_l:  call ao_lookp               ; ($9FAE)
         jp nc,ao_copy
         ld (iy+3),0xFF
         jp ao_next
+
+; $9F74 (offset 20h: level 3's last three entries, the car park's): once $16A9 is set (type 22, Cain,
+; sets it every frame RoboCop and Cain are both outside x 690h-9D7h) it is cleared and the entry
+; switched on (hits' high byte FFh: its look animates); then as the floor switch ($9FAE): its look,
+; no collision slot.
+act_20: ld hl,AM + (0x16A9 ^ 1)
+        ld a,(hl)
+        or a
+        jr z,a04_l
+        ld (hl),0
+        ld (iy+5),0xFF              ; (st (4,A1))
+        jr a04_l
 
 ; $9EA4 (offset 8): at look index 4 an explosion (type 0) at x + 10h; then as the default.
 act_08: ld a,(iy+2)

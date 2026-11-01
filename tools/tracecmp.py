@@ -48,12 +48,14 @@ MSX_DUMPS = (0xD000, 0xDC00, 0xDD00, 0xEE00, 0xE900)     # openmsx_rc2.tcl rc2_t
 
 def fields(path: Path | None = None) -> list[dict]:
     """A field file, analysis/amiga_ram.tsv by default (level 2: analysis/amiga_ram_l2.tsv):
-    ADDRESS SIZE NAME [msx=ADDRESS] [ptr=AMIGA_BASE:LABEL] [comment].
+    ADDRESS SIZE NAME [msx=ADDRESS] [ptr=AMIGA_BASE:LABEL] [xor=VALUE] [comment].
     SIZE 1, 2 or 4 (a long: two little-endian words, the high one first, on the MSX), or
     rec:PATTERN:COUNT (COUNT records of b/w fields). Without msx= the MSX address is the mirror's
     (AM/AG, msx/msx.inc). The MSX dumps are read swapped back (swapped()), so msx= addresses
     follow the mirror's rule too: a byte the port keeps at M is given as M ^ 1. ptr= compares
-    pointers as offsets from AMIGA_BASE and from the MSX label."""
+    pointers as offsets from AMIGA_BASE and from the MSX label; xor= compares the MSX value XOR'ed
+    with VALUE (hex: a patched byte of the original's code the port keeps XOR'ed with the image's
+    value, so that its zero at the power-on reads as that value)."""
     out = []
     for line in (path or FIELDS).read_text().splitlines():
         if not line.strip() or line.startswith("#"):
@@ -77,6 +79,8 @@ def fields(path: Path | None = None) -> list[dict]:
         if "ptr" in opt:
             base, label = opt["ptr"].split(":")
             f["ptr"] = (int(base, 16), label)
+        if "xor" in opt:
+            f["xor"] = int(opt["xor"], 16)
         out.append(f)
     return out
 
@@ -159,6 +163,7 @@ def compare_ram(amiga: Path, msx: Path, show: int, label_file: Path = LABELS, fi
             if "ptr" in f:
                 base, label = f["ptr"]
                 va, vm = (va - base) & 0xFFFF, (vm - lab.get(label, 0)) & 0xFFFF
+            vm ^= f.get("xor", 0)
             if va != vm:
                 diff.append(f"{f['name']} {va:#x}/{vm:#x}")
         if diff:

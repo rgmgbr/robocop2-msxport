@@ -173,3 +173,21 @@ t45_dy_l3       ee02    16    w             l3      copy of t45_dy
 tur_panel       eae2    18    w             l3b     types 40, 41, 42: the flashing panel's 2 x 3 map words at $EF8E(x & -16 - A0h (41: - 70h), y) ($EAA6: 3 looks of 6 words, by $21(A3) and the game frame's bits 2 and 4)
 tur40_look      ea6a    30    w             l3b     types 40, 42: the turret's 2 x 3 map words one row below and 10 columns right of the panel ($EA50: 5 looks of 6 words by ((A3) & 0Ch) x 3, the last, 30h, destroyed)
 tur41_look      ebd2    24    w             l3b     type 41: the turret's 2 x 3 map words one row below and 7 columns right of the panel ($EBB8: 4 looks of 6 words, 24h destroyed)
+t21_step        d2ea    8     w             l3b     type 21 $D2FA: its step ($EF42's D4) by D2 = (A3) & 0Eh
+t21_dy          d41c    8     w             l3b     type 21: the torso's and the head's y offset by D2 & 0Eh
+t21_lx          d42c    16    w             l3b     type 21: the legs' x offset by D2 (+ 10h facing right)
+t21_lg          d44c    16    w             l3b     type 21: the legs' frame offset from $46970 by D2
+c22_spd         d47c    8     w             l3b     type 22 $D49C (Cain): its step by D2 = (A3) & 0Eh (4 while falling, 0 standing)
+c22_fx          d48c    8     b             l3b     type 22: its facing's XOR by its distance class D0 (0-7)
+c22_msk         d494    8     b             l3b     type 22: its step mask by D0 (the moveq immediate written into $D583; FFh: it stands, $16DA)
+c22_tab         d79a    94    w             l3b     type 22's offsets ($D79A-$D855): the 32 x 40 part's frames (+0), x (+8), y (+10h) by D3; the 48 x 16 part's x (+18h), y (+20h); the burst's x (+28h), flash x (+2Ch), flash frame (+30h); the parts' y (+34h) and the legs' frames (+54h) by D2; the 48 x 16 and 64 x 32 frames (+74h), the 64 x 32 x (+84h), the legs' x (+94h); the mailbox's x (+B4h) and direction (+B8h)
+t34_tab         e18c    37    w             l3b     type 34 $E1D6's records ($E18C-$E1D5): by direction $D0A6 D3 the record D7 = [$E1C6 + D3], A4 = $E1A0 + D7: bullet y (-14h), direction (-0Ah), x (0), gun BLTSIZE (+8), frame (+12h) and y (+1Ch)
+t35_tab         e34a    6     w             l3b     type 35 $E28C: BLTSIZE, y offset and frame offset from $4E080 by D7 (0, 2)
+t36_tab         e446    18    w             l3b     type 36 $E356: the legs' BLTSIZE (+0), frame offset from $5171C (+0Ch), x offset (+18h) by D4 = (A3).b & 2, + 6 facing right
+t37_tab         e642    28    w             l3b     type 37 $E470's offsets ($E642-$E679) by D4 = (-3Eh).w (0, 2, 4): frames (+0), body frames (+6), third part (+0Ch), its x (+12h), first part's x (+18h), second's x (+1Eh), second part (+24h); the animation (+2Ah) by game frame & 6
+fly_dx3         e680    16    w             l3b     type 38 $E722 (copy of fly_dx for BANK_L3B): x step by direction D2 = (A3) & 1Eh
+fly_dy3         e6a0    16    w             l3b     type 38: y step by direction (copy of fly_dy)
+fly_gfx3        e7b2    16    w             l3b     type 38: frame offset from $4D680 by direction (copy of fly_gfx)
+t39_tab         e7f8    11    w             l3b     type 39 $E7D2: vx at launch (longs: 4.0, -4.0), its change a frame (longs: -0.25, +0.25), the frame offset from $4D680 (words at +10h, +14h) by D2 (0, 4)
+t52_tab         e8c8    11    w             l3b     type 52 $E8A2: as t39_tab (the change -0.375, +0.375)
+t47_cam         ee52    6     w             l3b     type 47 $EE30: the camera's x offset ($B2D8) and y offset ($B2FC) by mode (x & 15: 0-2)

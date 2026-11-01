@@ -7,9 +7,9 @@
 # variables there, or the Tcl and this file change together. The references: tools/l3drives.py
 # (build/emu/l3_<name>_ram.jsonl, tools/amigaemu.py game --level 3), and tools/bstest/l3stub.py's with
 # the routines the port has not ported yet stubbed.
-# Two of level 3's code-area bytes are left out until the plan's step B ports their types and chooses
-# how the port keeps them (msx/msx.inc): $D583 (type 22's moveq immediate, the image's 3, written before
-# it is read) and $E9F5 (type 40's addq register field, the image's 42h): see the commented lines below.
+# Two of level 3's code-area bytes are patched instructions: $D583 (type 22's moveq immediate, the
+# image's 3) and $E9F5 (type 40's addq register field, the image's 42h); the port keeps them XOR'ed with
+# those values (msx/level3obj.asm: AC_VARS' zero at the power-on reads as the image's byte), xor=.
 # The game's variables ($0B00-$16EB, cleared by clear_game_vars $FE96) and globals ($8000-$80FF)
 # that the MSX port mirrors (msx/msx.inc AM / AG: the same offsets, words and longs little-endian).
 # tools/tracecmp.py --ram compares the listed fields of both traces, frame by frame.
@@ -289,8 +289,8 @@ e46e 2 obj37_last msx=dd76            type 37: the game frame of its last run ($
 e67a 2 mail_dir msx=dd78              the launch mailbox: direction (type 22's $D72C writes it, 38, 39 and 52 take it)
 e67c 2 mail_x msx=dd7a                ... x
 e67e 2 mail_y msx=dd7c                ... y
-# d583 1 obj22_step msx=dd7f          type 22's moveq immediate (the port's obj22_step at DD7Eh; step B)
-# e9f5 1 obj40_flag msx=dd7e          type 40's addq register field (the port's obj40_flag at DD7Fh; step B)
+d583 1 obj22_step msx=dd7f xor=03    type 22's moveq immediate (the port's obj22_step at DD7Eh, XOR 3)
+e9f5 1 obj40_flag msx=dd7e xor=42    type 40's addq register field (the port's obj40_flag at DD7Fh, XOR 42h)
 # --- level 3's flags in the game's variables ($0B00-$16EB: cleared at each life, as on the Amiga)
 15c4 2 cam_mode        type 47's camera mode (x & 15)
 16a6 1 turret40_on     one turret of each type at a time (types 40, 41, 42)

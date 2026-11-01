@@ -8,14 +8,15 @@ game --level 3, the direct start, Unicorn: $PY or the project's venv) with the p
 table written into the main code before level_init (--pre-poke ADDR:VALUE:SIZE). A step that ports a
 routine drops its stub here (--drop NAME, or the STUBS table) and in the port.
 
-At level 3's step A (docs/LEVEL3.md) the port has level_init's level-3 part, the beams (level_tick_2),
+At level 3's step A (docs/LEVEL3.md) the port had level_init's level-3 part, the beams (level_tick_2),
 the three deaths of types 21, 22 and 33 with debris_add, the shared handlers (types 4 and 12) and
-everything levels 1 and 2 share; stubbed:
+everything levels 1 and 2 share, and these were stubbed:
   the 19 new types (msx/level3obj.asm: ld a,FFh / ret, update_objects frees the slot): moveq #-1,D0 /
       rts (70FF4E75h) at their handlers;
-  act_20 $9F74 (the map objects of activator 20h; the port's ao_acts entry 8 is ao_look, activator 0's
+  act_20 $9F74 (the map objects of activator 20h; the port's ao_acts entry 8 was ao_look, activator 0's
       default): bra.w $9C76 (6000FD00h).
-The lift's two-part look ($8ED2) draws only: no stub (the trace holds no BOB).
+Step B (docs/level3/HANDOFF.md, step 6) ported them all: the table is empty, the stubbed references are
+the plain ones (TYPE_STUB and the old entries stay below for a stub a later step may need).
 
 usage: l3stub.py OUT [--drop NAME ...] [--jobs N] [REF ...]   OUT/l3_<ref>_ram.jsonl (+ .log), every
                                                               reference by default (the drives are
@@ -33,13 +34,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 import l3drives  # noqa: E402
 
 TYPE_STUB = "0x70FF4E75:4"                      # moveq #-1,D0 / rts
-STUBS: dict[str, list[tuple[int, str]]] = {     # name: [(address, value:size), ...]
-    **{f"t{t}": [(a, TYPE_STUB)] for t, a in (
-        (21, 0xD2FA), (22, 0xD49C), (33, 0xE0A4), (34, 0xE1D6), (35, 0xE28C), (36, 0xE356), (37, 0xE470),
-        (38, 0xE6D6), (39, 0xE7D2), (40, 0xE98C), (41, 0xEB0A), (42, 0xE972), (43, 0xEC02), (46, 0xEE22),
-        (47, 0xEE30), (48, 0xEE5E), (50, 0xEEE2), (51, 0xEE68), (52, 0xE8A2))},
-    "act_20": [(0x9F74, "0x6000FD00:4")],
-}
+# (step A's: the types at 21 $D2FA, 22 $D49C, 33 $E0A4, 34 $E1D6, 35 $E28C, 36 $E356, 37 $E470, 38 $E6D6,
+# 39 $E7D2, 40 $E98C, 41 $EB0A, 42 $E972, 43 $EC02, 46 $EE22, 47 $EE30, 48 $EE5E, 50 $EEE2, 51 $EE68 and
+# 52 $E8A2 with TYPE_STUB, act_20 $9F74 with 6000FD00h: all ported by step B)
+STUBS: dict[str, list[tuple[int, str]]] = {}    # name: [(address, value:size), ...]
 
 
 def main(argv: list[str]) -> int:

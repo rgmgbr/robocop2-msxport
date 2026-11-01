@@ -8,16 +8,17 @@
 ; its start (l3_init), the beams (lt2), the 6-byte stubs that run the level's own types in their
 ; bank (level3obj.asm, BANK_L3B, through rc2.asm l3b_call), then its tables (at_l3.inc, cells_l3.inc).
 ;
-; Built by the plan's step A: the types are level3obj.asm's stubs (step B ports them); the three
-; deaths of level 3 ($C25C, $C360, $C3A8 with debris_add $C398) are ported, though no stub dies yet:
-; the table holds them, step B's traces (Cain's, the truck's and type 21's kills) check them.
+; The level's own types run in BANK_L3B (level3obj.asm, the plan's step B); the three deaths of level
+; 3 ($C25C, $C360, $C3A8 with debris_add $C398) are here. The original's D1 that type 22 reads (the
+; slot before's: level3obj.asm, its header) comes from the shared types 4 and 12 and the deaths
+; through the wrappers t4_w, t12_w, d3_c31e and d3_c35a (uo_d1).
 
 lv_htab_l3:
         dw obj_none, death_none     ; 0
         dw obj_none, death_none     ; 1
         dw obj_none, death_none     ; 2
         dw obj_none, death_none     ; 3
-        dw t4_l3, death_c31e        ; 4: level 1's gunner (the markers; SPERMA's tail)
+        dw t4_w, d3_c31e            ; 4: level 1's gunner (the markers; SPERMA's tail)
         dw obj_none, death_none     ; 5
         dw obj_none, death_none     ; 6
         dw obj_none, death_none     ; 7
@@ -25,7 +26,7 @@ lv_htab_l3:
         dw obj_none, death_none     ; 9
         dw obj_none, death_none     ; 10
         dw obj_none, death_none     ; 11
-        dw t12_l3, death_c31e       ; 12: level 1's gunner (the markers)
+        dw t12_w, d3_c31e           ; 12: level 1's gunner (the markers)
         dw obj_none, death_none     ; 13
         dw obj_none, death_none     ; 14
         dw obj_none, death_none     ; 15
@@ -47,15 +48,15 @@ lv_htab_l3:
         dw obj_none, death_none     ; 31
         dw obj_none, death_none     ; 32
         dw t33_s, death_truck       ; 33: the truck ($E0A4; its death $C360)
-        dw t34_s, death_c35a        ; 34: the small walker ($E1D6)
-        dw t35_s, death_c31e        ; 35: the gunner that rises and sinks ($E28C)
-        dw t36_s, death_c35a        ; 36: the robot on its up-and-down cycle ($E356)
-        dw t37_s, death_c35a        ; 37: the flying machine ($E470)
-        dw t38_s, death_c35a        ; 38: the homing missile ($E6D6)
-        dw t39_s, death_c35a        ; 39: the bomb ($E7D2)
-        dw t40_s, death_c35a        ; 40: the wall turret ($E98C)
-        dw t41_s, death_c35a        ; 41: the wall turret ($EB0A)
-        dw t42_s, death_c35a        ; 42: the wall turret ($E972, entering 40's at $E9A0)
+        dw t34_s, d3_c35a           ; 34: the small walker ($E1D6)
+        dw t35_s, d3_c31e           ; 35: the gunner that rises and sinks ($E28C)
+        dw t36_s, d3_c35a           ; 36: the robot on its up-and-down cycle ($E356)
+        dw t37_s, d3_c35a           ; 37: the flying machine ($E470)
+        dw t38_s, d3_c35a           ; 38: the homing missile ($E6D6)
+        dw t39_s, d3_c35a           ; 39: the bomb ($E7D2)
+        dw t40_s, d3_c35a           ; 40: the wall turret ($E98C)
+        dw t41_s, d3_c35a           ; 41: the wall turret ($EB0A)
+        dw t42_s, d3_c35a           ; 42: the wall turret ($E972, entering 40's at $E9A0)
         dw t43_s, death_none        ; 43: markers off ($EC02; its death $C1FA: an rts)
         dw obj_none, death_none     ; 44
         dw obj_none, death_none     ; 45
@@ -63,9 +64,9 @@ lv_htab_l3:
         dw t47_s, death_none        ; 47: the camera mode ($EE30)
         dw t48_s, death_none        ; 48: Cain's bursts ($EE5E)
         dw obj_none, death_none     ; 49
-        dw t50_s, death_c35a        ; 50: the gunner that stays put ($EEE2)
-        dw t51_s, death_c35a        ; 51: the walker ($EE68)
-        dw t52_s, death_c35a        ; 52: the bomb ($E8A2)
+        dw t50_s, d3_c35a           ; 50: the gunner that stays put ($EEE2)
+        dw t51_s, d3_c35a           ; 51: the walker ($EE68)
+        dw t52_s, d3_c35a           ; 52: the bomb ($E8A2)
 lv_init_l3:
         jp l3_init
         jp lt2                      ; (lv_tick: the beams, level_tick_2 $9436)
@@ -414,6 +415,7 @@ dth_ex: push bc
         ld hl,(eb_x)
         add hl,de                   ; HL = x + dx
         pop de                      ; DE = y + dy
+        ld (uo_d1),de               ; (D1: the last one's stays, $F366 keeps it)
         ld bc,0                     ; (D5: type 0)
         call expl_add
         pop hl
@@ -441,6 +443,34 @@ debris_add:
         ld de,0xE3
         add hl,de
         ld (hl),0x80
+        ret
+
+; ----- the original's D1 for type 22 (level3obj.asm's header): the shared types and deaths -----
+
+; Types 4 and 12 (lvshared_l3.asm), whose last BOB leaves D1 as draw_bob does (level3obj.asm l3_tail,
+; run in its bank). Keep what the handler returns.
+t4_w:   call t4_l3
+        jr tw_d1
+t12_w:  call t12_l3
+tw_d1:  push af
+        ld hl,l3_tail
+        call l3b_call
+        pop af
+        ret
+
+; The deaths $C31E (an explosion 12 px up: D1 = y - 0Ch) and $C35A (D1 = y), update_objects' D1 being
+; the slot's y.
+d3_c31e:
+        call death_c31e
+        ld de,-0x0C
+        jr d3_d1
+d3_c35a:
+        call death_c35a
+        ld de,0
+d3_d1:  ld l,(ix+OS_Y)
+        ld h,(ix+OS_Y+1)
+        add hl,de
+        ld (uo_d1),hl
         ret
 
 ; ----- the level's own types (level3obj.asm, BANK_L3B at A000h around each: rc2.asm l3b_call) -----

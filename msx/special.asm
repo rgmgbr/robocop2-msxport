@@ -293,8 +293,8 @@ sp_entry:
 ; one for up and the next for down; past the path's ends the index stays on them. Then it moves
 ; 2 pixels towards the point. Seen by the camera: every 4th frame while moving sound 0Ah ($B2D);
 ; with RoboCop on it, in state 10 his y = its top - 4 and state 10 is asked for ($1696); its flag
-; cleared, its table entry (right edge + 30h), its BOB at (x + 22h, y - 12) (level 3: two BOBs,
-; not yet).
+; cleared, its table entry (right edge + 30h), its BOB at (x + 22h, y - 12); in level 3 ($8050 = 2,
+; $8ED2) two BOBs at x + 20h: $5397C (743h) at y - 52h, $53BC0 (403h) at y - 4.
 sp_lift:
         push ix                     ; (the port: HL points at the path point at the index)
         pop hl
@@ -400,6 +400,9 @@ spl_tab:
         ld (hl),0
         ld hl,0x30
         call sp_entry
+        ld a,(AG + 0x8050)
+        cp 2
+        jr z,spl_two
         ld hl,(sp_y)
         ld de,-12
         add hl,de
@@ -413,6 +416,30 @@ spl_tab:
         ld a,0x04
         ld (bob_a2+2),a             ; $4B68A
         ld hl,0x604
+        ld (bob_d4),hl
+        jp bob_draw
+spl_two: ld hl,(sp_x)               ; ($8ED2)
+        ld de,0x20
+        add hl,de
+        ld (bob_x),hl
+        ld hl,(sp_y)
+        ld de,-0x52
+        add hl,de
+        ld (bob_y),hl
+        ld hl,0x397C
+        ld (bob_a2),hl
+        ld a,0x05
+        ld (bob_a2+2),a             ; $5397C
+        ld hl,0x743
+        ld (bob_d4),hl
+        call bob_draw
+        ld hl,(sp_y)
+        ld de,-4
+        add hl,de
+        ld (bob_y),hl
+        ld hl,0x3BC0
+        ld (bob_a2),hl              ; $53BC0
+        ld hl,0x403
         ld (bob_d4),hl
         jp bob_draw
 

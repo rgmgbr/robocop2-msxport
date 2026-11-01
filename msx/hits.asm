@@ -18,7 +18,8 @@ PK_VY:      equ AM + 0x0DA4
 ;   ($FA35 width: negative, the type never hits; $FA4C height; both unsigned), overlaps it:
 ;   unless the death sequence's counter has its high byte ($16BC) set, the bullet is gone, the
 ;   energy ($169A) loses the type's damage ($FA63; times DAMAGE_X, but the missile of types 1 and
-;   2, whose 40h it keeps in every build: the user's choice of 2026-10-31), the palette flashes
+;   2 and level 3's rocket, type 11h, whose 40h they keep in every build: the user's choice of
+;   2026-10-31), the palette flashes
 ;   (PAL_SHOT) and, when
 ;   the bullet was less than 50 pixels right of him, the hit spark runs 7 frames ($16A0) at
 ;   ($16A2, $16A4) = y + 3Ch - his y, 0..32h, twice (the x written first is overwritten);
@@ -169,8 +170,10 @@ phb_en: ld a,(ph_dmg)
         ld a,c                      ; hits)
         cp 3
         jr c,phb_mx                 ; (the missile, types 1 and 2, damage 40h, of the enemies of
-        ld l,e                      ; types 3 and 27: the original's, never multiplied, the user's
-        ld h,d                      ; choice of 2026-10-31)
+        cp 0x11                     ; types 3 and 27, and level 3's rocket, type 11h, 40h, of the
+        jr z,phb_mx                 ; turrets 40 and 42: the original's, never multiplied, the
+        ld l,e                      ; user's choice of 2026-10-31; docs/LEVEL3.md default 11)
+        ld h,d
         add hl,de
         if DAMAGE_X > 2
         add hl,de
