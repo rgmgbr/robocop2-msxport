@@ -1220,6 +1220,35 @@ def bob_frames(catalog: Path, level: str) -> list[dict]:
     return out
 
 
+def field_trim(img: np.ndarray) -> tuple[int, int, int, int]:
+    """A play-field frame's opaque box (x0, y0, x1, y1: right and bottom excluded), its x edges even
+    (two pixels a byte); the whole frame when it has no pixel."""
+    rows, cols = np.flatnonzero(img.any(1)), np.flatnonzero(img.any(0))
+    if not len(rows):
+        return 0, 0, img.shape[1], img.shape[0]
+    return int(cols[0]) & ~1, int(rows[0]), (int(cols[-1]) + 2) & ~1, int(rows[-1]) + 1
+
+
+def trim_entries(out: list[dict], cuts: dict[str, tuple[int, int, int, int]], atlas: set[str]) -> None:
+    """The entries of the frames whose look is cut (cuts: frame key -> field_trim's box): their size as
+    drawn the box's ("sw", "sh"), their draw offset moved by its corner ("ox", "oy", which field_tab's dx,
+    dy carry: msx/field.asm fb_wants), a removed frame's by the corner of the frame it shows; the place of
+    an atlas frame (its key in 'atlas') the box's inside the frame, which stays in the atlas as it was
+    (the atlas, its ROM and field_upload unchanged); "tx", "ty": the corner, for the checks that draw the
+    frame from the original's image (tools/bstest/fieldcheck.py level 1)."""
+    for e in out:
+        if e["src"] not in cuts:
+            continue
+        x0, y0, x1, y1 = cuts[e["src"]]
+        if e["src"] in atlas:
+            e["x"] += x0
+            e["y"] += y0
+        e["sw"], e["sh"] = x1 - x0, y1 - y0
+        e["ox"] += x0
+        e["oy"] += y0
+        e["tx"], e["ty"] = x0, y0
+
+
 def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, procs: tuple = FIELD_PROCS,
                  ridden: tuple = FIELD_RIDDEN, lines_max: int = FIELD_H, slot_y: int | None = None,
                  rom_max: int = FIELD_ROM, images: dict | None = None, id0: int = FIELD_ID0) -> dict:
@@ -1627,7 +1656,8 @@ def fc_place(w: int, h: int, white: bool) -> int:
     return k
 
 
-def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1_field: dict, flash: int) -> dict:
+def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1_field: dict, flash: int,
+             trim: bool = True) -> dict:
     """Level 3's play-field frames (frames: {proc, procs, addr, w, h}) -> their ids, tables, atlas and
     cache: ids [static][cache][smoke][the lift's parts: FIELD_LATE on]; the static ones packed in shelves
     by height into the atlas (field_frames' ROM form: field_upload; a frame another's exact mirror kept
@@ -1635,7 +1665,12 @@ def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1
     frames (the L3_CACHE sizes, and a white copy of every frame an L3_FLASH enemy draws: colour 'flash'
     where the frame has pixels) into the cache's ROM: a header of [normal, white] cache index per id
     (FFh: none), per cache frame [bank, address (8000h window), place] and per place [x, y, the places
-    it overlaps], then the pixels (VRAM lines, none across a bank's end)."""
+    it overlaps], then the pixels (VRAM lines, none across a bank's end).
+    'trim' (performance campaign 2, field-1): the static and the cache's frames are drawn as their opaque
+    box (field_trim, trim_entries): every LMMM, BOB rectangle and upload walks only the part that has
+    pixels, and the cache's ROM holds only those (a white copy has its frame's box: it is its mask); the
+    atlas keeps the frames whole, and a frame's place in the cache is chosen by its whole size, as before.
+    The smoke (level 1's dynamic frames) and the lift's parts keep their whole frames."""
     key = frame_key
     imgs, byk = {}, {}
     for f in frames:
@@ -1693,19 +1728,27 @@ def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1
         e["look"] = fid[e["src"]]
     fd = [e["fid"] for e in out if "dyn" in e]
     assert fd == list(range(fd[0], fd[-1] + 1)) if fd else True, "level 3's smoke frames' ids not in a row"
+    # field-1: the static and the cache's frames cut to their opaque box (trim_entries below)
+    cuts = {e["src"]: field_trim(imgs[e["src"]]) for e in out if e["src"] == key(e) and e["kind"] in (0, 1)} \
+        if trim else {}
+    cuts = {k: b for k, b in cuts.items() if b != (0, 0, imgs[k].shape[1], imgs[k].shape[0])}
     # the cache: its frames (a frame's normal pixels when it is a cache frame, its white copy when an
-    # L3_FLASH enemy draws it; a removed frame's are the frame shown's)
+    # L3_FLASH enemy draws it; a removed frame's are the frame shown's), as drawn (its box when cut);
+    # the place by the frame's whole size
     cache, cidx = [], {}
     for e in out:
         if e["src"] != key(e):
             continue
         img = imgs[e["src"]]
+        x0, y0, x1, y1 = cuts.get(e["src"], (0, 0, img.shape[1], img.shape[0]))
+        cut = img[y0:y1, x0:x1]
         if e["kind"] == 1:
             cidx[(e["fid"], 0)] = len(cache)
-            cache.append((img, fc_place(e["sw"], e["sh"], False), e["src"], 0))
+            cache.append((cut, fc_place(e["sw"], e["sh"], False), e["src"], 0))
         if any(p in L3_FLASH for p in e["procs"]) and e["kind"] in (0, 1):
             cidx[(e["fid"], 1)] = len(cache)
-            cache.append((np.where(img > 0, flash, 0).astype(np.uint8), fc_place(e["sw"], e["sh"], True), e["src"], 1))
+            cache.append((np.where(cut > 0, flash, 0).astype(np.uint8), fc_place(e["sw"], e["sh"], True), e["src"], 1))
+    trim_entries(out, cuts, {k for k in cuts if k in place})
     for e in out:                                           # (a removed frame: the frame shown's copies)
         for wb in (0, 1):
             if (e["look"], wb) in cidx:
@@ -1760,7 +1803,9 @@ def write_field_l3(path: Path, field: dict, id0: int) -> None:
         f"FC_PLACES: equ {len(L3_FC_PLACES)}\n"
         f"FC_ENT: equ 0x{0x8000 + field['fc_ent']:04X}             ; its header (FC_BANK at 8000h): [normal, white] per\n"
         f"FC_PLC: equ 0x{0x8000 + field['fc_plc']:04X}             ;   frame from 8000h, its frames' entries, its places\n"
-        "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn), dx, dy\n"
+        "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn: the static\n"
+        "                                    ; and the cache's frames their opaque box), dx, dy (signed: the\n"
+        "                                    ; box's corner in the frame; a removed frame shown as another)\n"
         + "".join(f"        db {f['x']}, {f['y']}, {f['sw']}, {f['sh']}, {f['ox'] & 255}, {f['oy'] & 255}"
                   f"      ; {f['proc']} {f['addr']:05X}{' (cache)' if f['kind'] == 1 else ''}\n" for f in fr)
         + "field_look:                         ; per frame: the frame it looks like\n"
@@ -1805,7 +1850,8 @@ def pool_level3(a, palc: np.ndarray, pats: "Pool", cols_pool: "Pool", l1: dict, 
     frames = [f for f in frames if removed.get(frame_key(f), 0) is not None]
     is_field = lambda f: f["w"] >= L3_FIELD_W or any(p in L3_FIELD_RIDDEN for p in f["procs"])  # noqa: E731
     flash = int(nearest(bgpal3[15:16], palc, 1)[0])
-    field = l3_field(ram3, near3, [f for f in frames if is_field(f)], dict(removed, **FIELD_HALF), l1["field"], flash)
+    field = l3_field(ram3, near3, [f for f in frames if is_field(f)], dict(removed, **FIELD_HALF), l1["field"], flash,
+                     not a.no_trim)
     # the sprite frames
     l1_ids = {frame_key(b): k for k, b in enumerate(l1["bobs"]) if not b.get("spark")}
     l2_ids = {frame_key(b): k for k, b in enumerate(l2["bobs"]) if "new" in b}
@@ -2274,6 +2320,9 @@ def main() -> int:
     ap.add_argument("--remove", type=Path,
                     help="frames removed: JSON {\"rc\": {\"state:step\": \"state:step shown\"}, "
                          "\"bob\": {\"addr:w:h\": \"addr:w:h shown\"}} (hex address)")
+    ap.add_argument("--no-trim", action="store_true",
+                    help="the play-field frames drawn whole, not cut to their opaque box (field_trim: the "
+                         "conversion before performance campaign 2's field-1, for the checks)")
     ap.add_argument("--pool", type=Path, help="also the global pool of levels 1 and 2 (FIELD_ID0 D0h) into POOL.* "
                                               "and POOL_l1*, POOL_l2* (OUT keeps level 1's own files)")
     ap.add_argument("--l2-datal", type=Path, help="--pool: DATAL2 (its map: the palette flashes' check)")
