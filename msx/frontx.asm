@@ -23,12 +23,19 @@ fr_ending:
 
 ; front_over's $82C4-$82CA: high_score_entry $12082 (ending.asm hs_entry: the entry when the score
 ; enters the table), then $11FD2 (front_cont); after an entry the game's display is on already and
-; the play area black: the offer without front_cont's set-up (fc_neg, fc_txt).
+; the play area black: the offer without front_cont's set-up (fc_neg, fc_txt). An entry takes three
+; steps of pl_fade's countdown of the palette flash ($F826: front.asm fo_flash), as the original's
+; does: its text screen's ($1215C's $10768: $1080C), Return's ($121E0: the fade level set to 1, then
+; down to 0) and the fade loop's ($12104-$1211A: $12112 once, the level 0 already); a flash running at
+; the death's end thus ends before the continued game, as on the Amiga (level 3's step D).
 fo_hsc: ld hl,hs_entry
         call front2_call
         ld a,(hs_ran)
         or a
         jp z,front_cont
+        ld b,3
+fhs_fl: call fo_flash
+        djnz fhs_fl
         ld hl,(AG + 0x805E)         ; ($11FD2: front_cont's)
         dec hl
         ld (AG + 0x805E),hl
