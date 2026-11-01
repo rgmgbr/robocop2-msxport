@@ -655,10 +655,16 @@ What step C built and where it departs from 3.5-3.6 (the account and the checks:
   copies a staged item as one chain the split interrupt starts (`field.asm` `fst_chain`: one copy a band
   of pieces side by side in page 3, the largest last): with the real logic the field check's torn
   pictures went 84 -> 0 of 1,000 (boss, V9958), 10 -> 0 (V9938), 114 -> 21 (turbo R), kill 65 -> 1 of 700
-  (V9958), 61 -> 0 (V9938). Left: the chain's last band starts after the VBLANK's list when the blank
-  begins during the split's wait, and the beam crosses it in about 1 picture of 170 on the V9958 (15
-  copies in 42 s of the boss window; the V9938 none); the fix is the VBLANK's order in `isr.asm` or a
-  copy racing the beam from a line interrupt (open issue).
+  (V9958), 61 -> 0 (V9938). Left: the beam still crosses one copy of such an item now and then (one
+  picture partly old each time): boss window 15 copies in 42 s on the V9958, 22 on the turbo R, none on
+  the V9938; kill window (frames 1500-1634) 43-45 on all three. **Step 10** found the cause in the volume,
+  not the order: HMMM moves 5.85 us a byte, and from the split the beam reaches an item at shown line 45
+  after 139 lines, so at most ~2,200 bytes stay ahead of it there; Cain's moving bands are 2,600-5,250
+  bytes. No order of the chain and no start from the split's or the VBLANK's interrupt avoids it (the
+  beam's order was tried: no fewer crossings, the VBLANK's interrupt held into the picture); a chain
+  started from a line interrupt right after the beam passes the item's top would hold up to 262 + the
+  item's height lines of copy (Cain on the roof and in the kill window; not the turbo R's two-band
+  poses). Open issue (`docs/level3/HANDOFF.md`, step 10).
 
 ### 3.11 As built by step B (2026-11-01) [V]
 

@@ -1106,3 +1106,117 @@ machines 0 differ ("level 3: PASS (4 traces)"), `contcheck.py --level 3` PASS on
 `endcheck.py --over` PASS with `ac_flash` FFFFh at `lv_cont`; `make test`: 348 tests, the 4 known failures
 only. The summaries (the field checks, the guard's lines, the sound checks, the speed logs, the notes), the
 chains' Tcl and the pictures looked at: `build/archive/level3_stepD_records_2026-11-01.tar.gz`.
+
+## Step 10: the beam crossing a chain's band on the V9958 (step 7's open issue 1) (2026-11-01)
+
+**Done, no code change: the goal is out of reach of a safe change** (the copy volume, below); the current
+state ships, and the numbers below go into the user's notes as a known issue. Worktree `g/wt10`, branch
+`g-s10` from `level2` `03ba0ca`; scratch `S10` = `$SCRATCH/g/s10`. One openMSX: a private MSX-AI MCP
+session (`tools/bstest/mcpd.py S10/mcp`, `mx.sh`).
+
+### What it found
+- **The build measured** is `level2` `03ba0ca`'s: the l3 trace build `7d5eb71e82a31bb5`, the product
+  `fde75be5865bfb72`, the lowest set `b941de7001cd6c49`, byte-identical to step 7's; the guard's lines on
+  the FS-A1FX and the FS-A1GT in the boss window are step 7's line for line (tear 15 and 22).
+- **The chains** (`S10/tools/c3.tcl`: a passive log beside the guard, no VDP reads: each chain `fst_chain`
+  prepares, with its commands; each command the interrupts start, `ifg_send` with its caller, and the
+  main loop's, `fwt_ch`; the split's wait ended by the blank, `ifg_vr`; the guard's frame and line with
+  each). Boss window, FS-A1FX: Cain on the roof is one item of four parts, a 64-line top band 82-104 px
+  wide cut by the ring's x 256 (18-30 px + 46-76 px) and a 3-4-line bottom band. Step 7's order starts
+  the bottom band's two slivers and the top band's narrow part from the split (lines 168, 174, 183-187);
+  the blank begins during the narrow part (VR at line 211); the VBLANK's `ifg_fin` starts the wide part
+  at lines 234-255, and the beam catches it at shown line 108-109 (20-37 of its 64 lines old). Kill
+  window, FS-A1FX (frames 1500-1634): three parts, a 16-line bottom band of 72-92 px cut by the ring's y
+  256 (14 + 2 lines) first, then a 50-line top band of 72-92 px, started by the VBLANK at line 236 and
+  crossed at its bottom (7-18 lines old). Turbo R: it runs the logic faster, so it meets other
+  moments: two full bands of 82-88 px (82 x 64 + 82 x 64 at f=145, 88 x 35 + 88 x 64 at f=153); the
+  split starts the bottom band, the top band is started by the VBLANK (lines 225-228) or, when
+  `ifg_fin`'s polls run out (`fb_c2` 1), by the main loop in the next picture (lines 37, 136): every one
+  crossed.
+- **The cause is the volume, not the order.** HMMM moves 5.85 us a byte here (the 72 x 64 part: lines
+  234 -> 184, 212 lines for 2,304 bytes). From the split (`isr_fbgo` at line ~168) the beam reaches a
+  band at shown line 45 after 139 lines and its last line after 203: at most ~2,200 bytes (68 x 64)
+  stay ahead of it there, in any order of the parts. Cain's top band on the roof is 2,600-3,300 bytes
+  (240-310 lines of copy); the kill window's item 2,900-3,000 bytes against ~2,750 that fit before the
+  beam reaches its last line (shown line 160); the turbo R's two-band poses 4,400-5,250 (more than a
+  frame). So no order of the chain and no earlier start from the split's or the VBLANK's interrupt keeps
+  these items ahead of the beam on the V9958's single ring. Step 7's lever 1 (the VBLANK going on with
+  the rest before its list): the wide part's start is bound by the narrow part's end (lines ~230-240);
+  the list moves it by 0-20 lines, and the band would be crossed even if it started at line 161: no
+  gain.
+- **Tried and reverted**: the beam's order in `fst_chain` (the top band first, of a band's parts the
+  upper first, of two side by side the narrower first; 21 bytes smaller). Guard, boss, 42 s: FS-A1FX
+  tear 15 -> 15, vbl 11 -> **91**; FS-A1GT 22 -> 18, vbl 6 -> **117**; C-BIOS_MSX2 0 -> **3**, vbl 0 ->
+  **40**. With the top band's wide part in the middle of the chain, `ifg_fin` polls for it until its
+  budget ends (the interrupt held into the next picture: the guard's "list applied on line 2-34", taken
+  at `iv_late`, after `ifg_fin`) and the bottom band's slivers go to the main loop, which starts them in
+  the display (the V9938's 3 crossings). In the kill window it would only move the crossing from the top
+  band to the bottom one. Not kept.
+- **What would work** (not done: a is beyond this step's hour, c is the user's choice):
+  a. The chain started from a line interrupt right after the beam passes the item's top: each of its
+     lines then gets a whole frame, so a chain of up to 262 + the item's height lines of copy holds:
+     ~3,580 bytes for Cain's 68-line item on the roof (2,800-3,500 with its slivers) and ~3,560 for the
+     kill window's 66-line one (2,900-3,000), so both windows' crossings would go; ~4,230 for a 128-line
+     item (the turbo R's two-band poses, 4,400-5,250 bytes, would still cross). It needs a second line interrupt a frame (R#19 for the item's
+     top, then the split's), the list held until the chain has started, the later parts started without
+     a long wait in an interrupt (the main loop's `fwt_ch`, the split's and the VBLANK's starts), the
+     R800's path (`split8.asm`), the V9938's FH rule (by interrupt: fine), a fit test so that items the
+     split's start already keeps ahead (levels 1 and 2's) are not held a frame, and room first: the
+     interrupt code belongs in the fixed area (29 bytes free in the lowest option set) and `BANK_FIELD`
+     has 8 in the trace builds.
+  b. Not the V9938 engine on the V9958: the V9938 copies into the page shown too (`fb_shown`), and in
+     the kill window the beam crosses its copies as often (44, the same class: a 50-line band of 80-88 px
+     on page 0, started by the VBLANK at line 235, crossed at its bottom).
+  c. Smaller copies (Cain's frames cropped to what changes from one to the next) or his top band as
+     sprites (decision 13).
+
+### Commits
+This section's only (`docs/level3/HANDOFF.md`, `docs/LEVEL3.md` 3.10's note); no code changed.
+
+### Checks (`W` = the worktree, `PY` the venv's Python, `R0` = `S10/R0`: `sh tools/bstest/hz.sh l3builds R0`)
+- **Builds** (`sh S7/tools/mkb.sh W S10/b0 "prod" "low DIAG=1 PZ_TEST=1"`; `hz.sh l3builds S10/R0`): the
+  12 known warnings only; the product `fde75be5865bfb72`, the lowest set `b941de7001cd6c49`, l3
+  `7d5eb71e82a31bb5` (step 7's). **Free bytes** (`python3 -I tools/bstest/l2base.py banks S10/b0`, `R0`):
+  the fixed area 164, the lowest set 29; `BANK_FIELD` 49 (the product and the lowest set), 8 in the l3
+  trace build (unchanged). The tried order had `BANK_FIELD` 70 and 29.
+- **The windows** (one openMSX; `source load.tcl l2base.tcl l3field.tcl S7/tools/gd.tcl
+  S10/tools/c3.tcl`): the guard in the boss window, `hz_chain [gd_jobs DIR l3_boss 42 {} {fx
+  Panasonic_FS-A1FX R tr Panasonic_FS-A1GT R m2 C-BIOS_MSX2 R}]` (and `c3_jobs DIR R {fx ... tr ...}` with
+  the log); in the kill window, `c4_jobs DIR R0 {fx ... tr ... m2 ...} l3_kill SECS 2400` (`c3_jobs` with
+  the drive traced 2,400 rows: `lf_start_setup`'s 1,401 stop a longer guard; the guard's log uncapped),
+  SECS 185 (FS-A1FX), 150 (FS-A1GT), 265 (C-BIOS_MSX2), crossings counted in frames 1500-1634 (the field
+  check's kill window on the FS-A1FX); the field check in the kill window on the turbo R, `lf_jobs DIR R0
+  S7/poses_none.tcl 1500 700 {tr Panasonic_FS-A1GT} l3_kill`, then `$PY -I tools/bstest/fieldcheck.py
+  DIR/tr build/msx/level3 OUT.png --level 3` and `S7/tools/tears.py DIR/tr FC.txt 0`. Before = after
+  (nothing changed); the boss window's field checks are step 7's:
+
+  | window | V9938 (C-BIOS_MSX2) | V9958 (FS-A1FX) | turbo R (FS-A1GT) |
+  |---|---|---|---|
+  | boss, beam-crossed copies (guard, 42 s) | 0 | 15 | 22 |
+  | boss, torn pictures (field check, 1,000) | 0 | 0 | 21 |
+  | kill, beam-crossed copies (guard, frames 1500-1634) | **44** (new) | **45** (new) | **43** (new) |
+  | kill, torn pictures (field check, 700) | 0 | 1 | **0** (new) |
+
+  The V9938's 0 holds in the boss window only: in the kill window its guard counts 44 crossings, as the
+  V9958's (its field check 0: the field check records at the split, so it sees a copy still running
+  there, not one the beam crossed before it ended). Along the whole kill drive (to frame 1861) the guard
+  counts 124 crossings on the V9938, 250 on the FS-A1FX and 234 on the FS-A1GT (step 8's whole-drive
+  guard, the same numbers; 25 / 41 / 22 before step 7's chain, which in exchange took the field check's
+  torn pictures from 61-114 to 0-21): the same class wherever a big item moves. Looked at: the turbo R's kill sheet (`S10/kf/tr_fc.png`): Cain, RoboCop and the
+  smoke whole in the pictures; a crossing itself shows in no VRAM record (the guard computes it from the
+  command's lines against the beam).
+- **Speed**: unchanged (no code change): ticks reached in the boss guard's 42 s, FS-A1FX 368, FS-A1GT 587,
+  C-BIOS_MSX2 217 (step 7's); the tried order 367, 580, 216.
+- **Levels 1 and 2**: no code changed; the product and the trace builds are byte-identical to `level2`'s,
+  so step 7's comparison holds (2,998 lists, 0 differ; the stills' verdicts); not re-run.
+- **`make test`** (the worktree): 348 tests, the 4 known failures only.
+
+- **Records**: the guard's and the chain log's files, the field check's summary and the sheet looked at,
+  the scratch Tcl (`c3.tcl`: `c3_jobs`, `c4_jobs`) and this section's draft:
+  `build/archive/rest_step10_records_2026-11-01.tar.gz`.
+
+### Open issues
+1. **The beam crosses big moving play-field items** on the V9958 and the turbo R in both windows, and on
+   the V9938 in the kill window (the table above; one picture each time, the item partly old for a
+   frame). Not fixable by the chain's order or start from the existing interrupts (the volume, above);
+   the levers: a (a step of its own, both engines) or c (the user's choice).
