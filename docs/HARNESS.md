@@ -74,7 +74,7 @@ The harness has two sides:
 | `frozen.py SNAP OUT.png` | python | what the VDP shows while the CPU is held (5.12) |
 | `romdiff.py [--blocks] A B [--allow NAME,...]` | python | the 8 KiB banks that differ; `--blocks`: each block of `gen/banks.inc` at its own bank in each image (5.15) |
 | `relocheck.py OLD NEW OLD.labels NEW.labels BANK...` | python | a code bank's differences are only relocated label words and one-byte operands of changed names (`NAME + k`: bank numbers); `OLD:NEW` or a name for a code bank that moved (5.15) |
-| `variants.sh OUT` | shell | the night review's 41 option sets, level 2's 7 `LV_TEST=2` sets, the candidates' 5 `CHEAT=1` sets and 2 `VAT_TICK=1` sets (55), built (5.15, 5.22, 5.24) |
+| `variants.sh OUT` | shell | the night review's 41 option sets, level 2's 7 `LV_TEST=2` sets, the candidates' 5 `CHEAT=1` sets and 2 `VAT_ANIM=1 VAT_TICK=1` sets (55), built (5.15, 5.22, 5.24) |
 | `titlecmp.py DIR A B` | python | two title records taken apart: the picture as the VDP shows it, the VRAM it does not show, the registers, the palette; an `hz_fresh` record's music, PSG writes and game too (5.17 b) |
 | `titlecmp2.py DIR A B [--unheard]` | python | two exact title records: the music per music tick (the SCC's and PSG's registers, named; the PSG writes), the game at its tick 300 (5.17 b) |
 | `partialcheck.py SNAP LABEL [--tag N]` | python | a text screen cut short by fire against the render of its script as far as it got (5.17 d) |
@@ -1995,19 +1995,21 @@ tree ends that.
 sh tools/bstest/l2base.sh builds W                                   # the gate's 25 (regress.sh's, lock24, lock24p)
 sh tools/bstest/hz.sh l2builds W/L2R                                 # l2 l2s l2f l2p l2o l2c flow (4.1)
 sh tools/bstest/build.sh W/GX/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2       # the product's caps: start, field, view
-sh tools/bstest/build.sh W/GV/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_TICK=1   # the vats' variant
+sh tools/bstest/build.sh W/GXA/l2/rc2_l2.rom EXTJOY=1 LV_TEST=2 VAT_ANIM=1                          # the same, the vats drawn
+sh tools/bstest/build.sh W/L2A/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_ANIM=1    # the vats as built (check 8)
+sh tools/bstest/build.sh W/GV/l2/rc2_l2.rom EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2 VAT_ANIM=1 VAT_TICK=1   # the vats' variant
 sh tools/bstest/hz.sh fxbuilds W/FX                                  # 4.3's nine builds (5.23)
 sh tools/bstest/build.sh W/cheat/rc2.rom CHEAT=1                     # 4.3's cheat run
 sh tools/bstest/variants.sh W/V; python3 -I tools/bstest/l2base.py banks W/V > W/banks_variants.txt
 ```
 `variants.sh` builds 55 option sets (the night review's 41, 7 `LV_TEST=2`, 5 `CHEAT=1`, 2
-`VAT_TICK=1`): 52 build, `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1` overflow the fixed area. `l2base.py banks`
+`VAT_ANIM=1 VAT_TICK=1`): 52 build, `DEMO_ACTORS=2`/`5` and `DEMO_HUD=1` overflow the fixed area. `l2base.py banks`
 lists every set's free bytes (the fixed area's lowest: `p_pzdiag`, `DIAG=1 PZ_TEST=1`).
 
 **2. The chain** (one openMSX: `msx_local_boot` headless; a private MSX-AI MCP session,
 `python3 -I tools/bstest/mcpd.py DIR &` and `MCPD_DIR=DIR sh tools/bstest/mx.sh NAME 'TCL'`, when the
-in-process target is another agent's; one `msx_local_cmd` a line, `L` = `W/L2R/l2/rc2_l2`, `X` =
-`W/GX/l2/rc2_l2`, `E` = `<repo>/build/emu`):
+in-process target is another agent's; one `msx_local_cmd` a line, `L` = `W/L2R/l2/rc2_l2`, `LA` =
+`W/L2A/l2/rc2_l2` (the vats drawn: `VAT_ANIM=1`), `X` = `W/GX/l2/rc2_l2`, `E` = `<repo>/build/emu`):
 ```
 source {<repo>/tools/bstest/load.tcl}; source {<repo>/tools/bstest/l2base.tcl}; source {<repo>/tools/bstest/vatlog.tcl}; source {<repo>/tools/bstest/cutview.tcl}
 set J [hz_l2_jobs {W/O/l2} {W/L2R} tr]                                                          ;# 4.1: 25 jobs
@@ -2019,14 +2021,23 @@ set J [concat $J [hz_l2_objs_jobs {W/objs} {W/L2R} {tour end vat trolley barrel 
 set J [concat $J [hz_l2_still_jobs {W/st} {W/L2R} {10 200 520 760 1000 1230 1300 2395 2456 2464 2472 2555} l2_tour]]   ;# check 6
 set J [concat $J [hz_l2_still_jobs {W/cut} {W/L2R} FRAMES l2_vat]]                              ;# check 9: FRAMES every game frame 36-62
 set J [concat $J [cv_view_jobs {W/cvt} {L.rom} {L.labels} {tour 2654 2405 end 259 15}] [cv_view_jobs {W/cv} {X.rom} {X.labels} {end 259 15}]]   ;# check 10
-set J [concat $J [vl_jobs {W/vl/450} {L.rom} {L.labels} 25 450] [vl_jobs {W/vl/850} {L.rom} {L.labels} 25 850] [vl_jobs {W/vl/1250} {L.rom} {L.labels} 25 1250] [vl_jobs {W/vl/2130} {L.rom} {L.labels} 20 2130]]
-set J [concat $J [vl_jobs {W/vl/s540} {L.rom} {L.labels} 20 540 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_still520.drive}] [vl_jobs {W/vl/vat} {L.rom} {L.labels} 20 30 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_vat.drive}]]   ;# check 8
+set J [concat $J [vl_jobs {W/vl/450} {LA.rom} {LA.labels} 25 450] [vl_jobs {W/vl/850} {LA.rom} {LA.labels} 25 850] [vl_jobs {W/vl/1250} {LA.rom} {LA.labels} 25 1250] [vl_jobs {W/vl/2130} {LA.rom} {LA.labels} 20 2130]]
+set J [concat $J [vl_jobs {W/vl/s540} {LA.rom} {LA.labels} 20 540 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_still520.drive}] [vl_jobs {W/vl/vat} {LA.rom} {LA.labels} 20 30 {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {E/l2_vat.drive}]]   ;# check 8
 set J [concat $J [fxl_jobs {W/fx} {W/FX}] [list [ch_job {W/cheat} {W/cheat/rc2.rom} {W/cheat/rc2.labels}]]]   ;# 4.3
 hz_chain $J {W/all.done}
 ```
 Step 16's chain (without 4.3's jobs) ran 345 jobs with 0 time outs; `build/emu/l2_still520.drive` is
 made by 5.22's one-liner ("At step 16"). The vats' variant: the same `vl_jobs` and `vl_speed_jobs` on
 `W/GV/l2` (5.22).
+
+**The vats' checks since the rest of the game's step 1** (2026-10-31: the product's vats are static,
+`VAT_ANIM=0`): check 8 (`vl_jobs`, `vatcheck.py`, the rates) and the field check's `vat-look` and
+`vat-older` classes concern the display of `VAT_ANIM=1` builds (`LA` above, `W/GXA/l2` for the field
+windows, `W/GV/l2` for the variant). On the product's builds (`W/L2R`, `W/GX`) `vatcheck.py` reports 0
+columns drawn and the field check expects every vat cell at the map's own tile (`tools/mapcmp.py`
+`vat_look` None for a column with no nibble on the page shown: the summary's "vat columns seen at the
+map's own tile"), which proves the static image. The vats' cost: `vl_speed_jobs` on `L` against `LA`
+(`docs/level3/HANDOFF.md`, step 1).
 
 **3. The verdicts**, once `W/all.done` exists:
 ```sh

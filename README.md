@@ -154,7 +154,9 @@ PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build o
 | `LV_TEST=2` | power-on without the title: level 1's set-up, then the level-2 briefing and level 2 once, as the product reaches them after the range; later games as the product's |
 | `LV_CARRY=S:L:C:R` | `LV_TEST`'s carry: score, lives, credits and the rating 0-3 (SHARP to POOR; default `10050:2:0:1`) |
 | `CHEAT=1` | F5 ends the level, F4 fills the energy (the original's F10/F9 cheat keys) |
-| `VAT_TICK=1` | level 2's vats redrawn more often, for a little of the game's speed (a comparison for the user: `docs/LEVEL2.md` 3.5) |
+| `VAT_ANIM=1` | level 2's vats redrawn as they bubble, as built for test7 (a comparison only: the product shows them as static images, the map's own look, the user's choice for the game's speed; `docs/LEVEL2.md` 3.5) |
+| `VAT_TICK=1` | with `VAT_ANIM=1`: the vats redrawn more often, for a little of the game's speed (the other comparison; refused without `VAT_ANIM=1`) |
+| `DAMAGE_X=n` | the enemies' damage to RoboCop times n, 1-3 (default 2, the user's choice; 1 = the original, for the trace tests): their bullets, touching them, level 2's drips; the missiles (enemy bullet types 1 and 2, level 2's drone) keep the original's damage in every build |
 | `TAG=n` | a test candidate (1-99): the bonus text screens (both stages') show TEST n below their text |
 | `RG_ADJ=0` | the range's camera in 16-pixel steps without R#18 (the VDP's horizontal adjust), for a VDP that ignores R#18 |
 | `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stages' timers stand still |
@@ -235,4 +237,5 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [The shooting range, the second bonus stage](docs/RANGE.md)
 - [Level 2, the Tokugawa brewery: the plan, as built](docs/LEVEL2.md), and its steps' accounts
   ([docs/level2/HANDOFF.md](docs/level2/HANDOFF.md))
+- [The rest of the game: the user's last changes, level 3 and the ending, step by step](docs/level3/HANDOFF.md)
 - [The bonus stages' acceptance harness (`tools/bstest/`)](docs/HARNESS.md)

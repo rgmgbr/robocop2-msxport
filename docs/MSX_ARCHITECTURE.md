@@ -587,11 +587,16 @@ which as sprites were striped, cut or left out.
   openMSX: entry 10, 23 ticks late, spawned the tick the enemy left). An enemy that waited still
   appears at its place when the slot frees, on screen if its place is in view (kept, the user's
   choice, 2026-10-22, over skipping it or waiting until its place is off screen).
-- **Harder hits** (`tools/mkrom.py` `DAMAGE_X`, 3 in the product): the enemies' bullets take
+- **Harder hits** (`tools/mkrom.py` `DAMAGE_X`, 2 in the product): the enemies' bullets take
   their damage (`$FA63`) times `DAMAGE_X` and touching an enemy costs `DAMAGE_X` instead of 1
-  (`hits.asm`), but the missile, enemy bullet types 1 and 2 (damage 40h, fired only by the
-  enemies of types 3 and 27: REA, the 28 calls of `ebullet_add` `$F5BC`), at most twice its
-  damage: 192 of the 258 energy points was too much (the user's choice, 2026-10-22).
+  (`hits.asm`; level 2's drip its 0Ah times `DAMAGE_X`, `level2obj.asm`), but the missiles keep the
+  original's damage in every build: enemy bullet types 1 and 2 (40h, fired only by the enemies of
+  types 3 and 27: REA, the 28 calls of `ebullet_add` `$F5BC`; `phb_en` skips the multiplication for
+  types below 3) and level 2's drone (18h, `t49_hit`). The user's choices: 3 with the missile at
+  most twice (2026-10-22: 192 of the 258 energy points was too much), then on 2026-10-31 2 ("3 made
+  the game impossible") and the missiles × 1 ("they already do a lot of damage"). Not multiplied
+  either: the beams (a hazard) and the penalties for killing a suspect or a hostage. Trace builds
+  use `DAMAGE_X=1`.
 - **Shortcuts (2026-10-23)**: bookkeeping the original does every frame is skipped where it can
   change nothing, so the logic's decisions stay the Amiga's tick for tick (logic traces 0 differ
   on the bench's cov1, cov0 and death-and-restart drives, the cracked wall's relocation drive and
@@ -749,6 +754,17 @@ which as sprites were striped, cut or left out.
   ring line 32 or 48 and on every MSX2+ the play field stayed almost empty (VRAM's 44h fill).
   `dt_prep` now keeps the row in C. Found by recording the 64 KiB ring and rendering it; the
   compatibility runs before had only checked that the game ran.
+- **The ring's queues draw only kept cells (fixed 2026-10-31)**: a queued column (a horizontal step)
+  and a queued row (a vertical step) are drawn a tile per `scroll_work` call, the column first; a
+  row can wait while the camera runs on and queues column after column (and a column while rows
+  are queued), and a cell the camera has left shares its ring slot with a cell on the screen 32
+  columns or 16 rows away. Drawn late, it showed the far cell's tile there until the slot was drawn
+  again. `draw_kept` (the queues' entry to `draw_tile`) skips a cell outside the kept area
+  (`[prev_cy-1, prev_cy+12] x [prev_cx-1, prev_cx+17]`, as `swr_one` does for the changed cells); it
+  is queued again when it comes back. Found with level 2's static vats on the FS-A1FX (`tour` from
+  game frame 2385, the product's caps: a row queued at column 64 drew columns 80-81 over 48-49
+  when the camera had reached column 47, 45 pictures with two stale cells); the faster pictures had
+  let the camera run 17 columns while the row waited.
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about
@@ -948,10 +964,22 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
 
 ### The vats' display (`msx/vats.asm`, `field.asm`'s vat section)
 
-The original redraws up to 108 cells of a vat every other tick; the MSX shows them as a display
-layer over the map (no map patch, the logic exact: `lt1` keeps each column's look in `vat_shown`, 103
-columns, and marks the vat changed in `vat_chg`), whole columns at the newest look, never torn, never
-older.
+**The product shows the vats as static images** (`tools/mkrom.py` `VAT_ANIM=0`, the user's choice
+of 2026-10-31: "the MSX cannot process so many frames, so we save performance"): the map's own look,
+which is the level's start look (every vat cell of the map has attributes 0 and each static column
+holds one look of the vat tables). `get_tile`'s `gt_rom` takes no level-2 branch (no `vat_tile`, so
+a tile costs what it costs in level 1), `vat_init` leaves `vat_on` 0 (with `vat_disp` cleared, so
+the pictures' models read every column as the map's own: `tools/mapcmp.py` `vat_look` None), and
+`vat_idle`, `vat_win`, `vat_inbox` and `vat_bbinit` do nothing: a play-field piece over a vat cell
+takes the cache as any other. The logic is unchanged in every build (`lt1`: the sinking check,
+`vat_cut_line`, the energy and death flags, sound 10h, `vat_phase` and `vat_shown`), and `vats.asm`
+and this section's code stay assembled (the harness's marks and the tests read their labels).
+**`VAT_ANIM=1`** keeps the display as built for test7, described below, as a comparison only.
+
+The original redraws up to 108 cells of a vat every other tick; the MSX (`VAT_ANIM=1`) shows them as a
+display layer over the map (no map patch, the logic exact: `lt1` keeps each column's look in
+`vat_shown`, 103 columns, and marks the vat changed in `vat_chg`), whole columns at the newest look,
+never torn, never older.
 - **The cell rule** (`tiles.asm` `get_tile` → `field.asm` `vat_tile`, `BANK_FIELD`): in level 2 every
   cell without a map patch goes there; a vat cell (`L2_VATS`' row bits and records) is drawn at its
   column's look on the page being drawn (`vat_pg`: the V9938's `ttp_prep` and `fb_tiles` set it, the
@@ -994,10 +1022,14 @@ older.
   (`vat_bk`, `s38u_step`), and `vat_mmark` re-marks the BOBs over it there; a build's start gives its
   page the looks of the columns its copy brings (`vat_bbinit`).
 - `vat_init` (every `engines_init` and `engines_jump`) clears the state and, in level 2, `vat_disp`,
-  and sets `vat_on`; a play-field BOB piece over a vat cell restores its background from the tiles
-  (`fp_tiles`, `vat_inbox`), never from a cache. The vats never keep the engines' `iw_more`, so that
-  `feed_vdp`'s calls in the logic stay as cheap as in level 1.
-- **`VAT_TICK=1`** (a build option, off by default): after each game tick `tiles.asm` `vat_tick` runs
+  and sets `vat_on` (`VAT_ANIM=1` only); while `vat_on` is set a play-field BOB piece over a vat cell
+  restores its background from the tiles (`fp_tiles`, `vat_inbox`), never from a cache. `vat_inbox`
+  and `vat_bbinit` test `vat_on`: until 2026-10-31 they tested `lv_logic` for level 2, and
+  `vat_inbox`'s `ret nz` there returned NZ in every other level, so from level 2's step 14 on every
+  piece of level 1 went to `fp_tiles` (a standing item composed again from its tiles each time, never
+  from its cache). The vats never keep the engines' `iw_more`, so that `feed_vdp`'s calls in the logic
+  stay as cheap as in level 1.
+- **`VAT_TICK=1`** (a build option, off by default; needs `VAT_ANIM=1`): after each game tick `tiles.asm` `vat_tick` runs
   `vat_prep` whether the engines are idle or not (the VDP busy too, but for the mirror), and while a
   column is ready `sprites.asm` `feed_vdp` takes the engines' path between the HUD split and the
   VBLANK, where `vat_run` draws it. Two to four times the columns for 2-8 % of the speed: the user's
@@ -1043,7 +1075,8 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
 - `CHEAT=1`: AG `$804F` set at each new game (`ng_init`); `frame.asm` `fe_keys`, first in `frame_end`,
   maps F5 to key code 59h (the level's end) and F4 to 58h (energy) in `$8032`, the original's F10/F9.
   Refused with `DIAG`.
-- `VAT_TICK=1`: above.
+- `VAT_ANIM=1`, `VAT_ANIM=1 VAT_TICK=1`: level 2's vats redrawn as they bubble, as built for test7
+  and its variant, for comparison (the product: static, the map's look); above.
 
 ## Front end (`msx/front.asm`, bank `BANK_FRONT` at `8000h`)
 

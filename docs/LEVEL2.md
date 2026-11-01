@@ -14,6 +14,11 @@ review's two findings, section 8.1) and the test candidates `test7` (step 23) ar
 remain. **There is no release**: level 2 goes out only complete and tested, and level 3 is not
 ported.
 
+**The user's last changes (2026-10-31, night, after test7; `docs/level3/HANDOFF.md`, step 1)**: the
+vats are static images in the product (`VAT_ANIM=0`: the map's own look; default 18), the enemies'
+damage multiplier is 2 (`DAMAGE_X`; 3 "made the game impossible"), and the missiles keep the
+original's damage in every build (decisions 17 and 19, default 26).
+
 The workflow that asked for the plan relayed the user's orders:
 - the next phase is **level 2, complete**: the way in after the range, the level itself, and the
   way out through the statistics and both bonus stages' second visits;
@@ -30,7 +35,7 @@ numbers are those of the phase's task):
   gunners that stay put, explosions and smoke (decisions 11-16). Left = right mirrored (14).
 - `ENEMY_CAP` 1, and the hostage does not count (18, 25).
 - The game logic runs at 25 Hz, ported routine by routine, trace-identical to the Amiga bench (10).
-- Damage to RoboCop × 3 (`DAMAGE_X`), the missiles × 2 at most (17, 19).
+- Damage to RoboCop × 2 (`DAMAGE_X`; × 3 until 2026-10-31), the missiles × 1, the original's (17, 19).
 - The colour grade applies to game play only (24).
 - The PSG always; an SCC in any slot and MSX-MUSIC or an FM-PAC when present; the in-game effects
   on the SCC (21, 23).
@@ -653,13 +658,13 @@ FFFB.8000h): with a plain half step 380 of `drone`'s 401 rows differed, with the
 
 **Enemy bullets** (`ebullet_add` `$F5BC`; damage `$FA63`):
 
-| Bullet type | Fired by in level 2 | Damage | Port (`DAMAGE_X` 3, types 1-2 × 2) |
+| Bullet type | Fired by in level 2 | Damage | Port (`DAMAGE_X` 2, types 1-2 × 1; until 2026-10-31 3 and × 2) |
 |---|---|---|---|
-| 1, 2 missile | type 3; type 1's leftover D6 = 2 | 40h | 80h |
-| 3 | types 4, 12, 13, 15, 30, 31 | 6 | 18 |
-| 4 grenade | type 14 (ay 4000h) | 0Ch | 36 |
-| 5 | type 2 (ax −2000h, ay −1000h / +3000h); type 16 facing left | 0Ch | 36 |
-| 6 | type 1 and type 16 facing right | 6 | 18 |
+| 1, 2 missile | type 3; type 1's leftover D6 = 2 | 40h | 40h (was 80h) |
+| 3 | types 4, 12, 13, 15, 30, 31 | 6 | 12 (was 18) |
+| 4 grenade | type 14 (ay 4000h) | 0Ch | 24 (was 36) |
+| 5 | type 2 (ax −2000h, ay −1000h / +3000h); type 16 facing left | 0Ch | 24 (was 36) |
+| 6 | type 1 and type 16 facing right | 6 | 12 (was 18) |
 | 0 | type 1 facing left after a step (no bullet) | — | — |
 
 **Other damage to RoboCop**: touching any enemy-slot object (`$FA7C`) 1 a frame; a falling drip 0Ah
@@ -1048,7 +1053,9 @@ and − 18h in their handlers when they touch RoboCop) are an enemy's touch, whi
 multiplies; it keeps × 1 only for the beams (a hazard) and the penalties for killing a suspect or a
 hostage. So type 5's 0Ah × `DAMAGE_X`, and type 49's 18h × 2 at most, a missile's rule (decision
 19). Level 1 has no such damage (its only direct ones are the beams and the penalties). Trace
-builds (`DAMAGE_X=1`) keep × 1 (default 26).
+builds (`DAMAGE_X=1`) keep × 1 (default 26). **Since 2026-10-31** (the user: the missiles "already
+do a lot of damage"): bullet types 1 and 2 and type 49's 18h take × 1 in every build (`phb_en` skips
+the multiplication for types below 3; `t49_hit` subtracts 18h), and `DAMAGE_X` is 2.
 
 **CPU [E]**: a busy level-2 tick about 45,000-55,000 Z80 T-states (the vat corridors with a trolley
 ride and drips; the top corridor with drones, gunners and the suspect), against level 1's measured
@@ -1068,7 +1075,8 @@ bullet and explosion fields, which the official set leaves out, 0 differ over 11
   changed identity at every shot (the legs showed the flash's frame for a picture); the flash is now
   drawn under its own owner (+1), as RoboCop's is.
 - The own damages (default 26) [V: the ROMs' bytes]: type 5's touch 0 − 0Ah × `DAMAGE_X` (FFE2h in
-  the product, FFF6h in the trace builds); type 49's 30h when `DAMAGE_X` > 1, else 18h.
+  the product, FFF6h in the trace builds); type 49's 30h when `DAMAGE_X` > 1, else 18h. Since
+  2026-10-31: FFECh in the product (`DAMAGE_X` 2), type 49's 18h in every build.
 - `t2` also eases `v_addx` for the arrest's view (3.6). `l2_init`'s fresh path calls `set_weapon(0)`
   (`$8844`, `level_init`'s; step 18): the plan put it in `lv_next`; there it costs no fixed byte and
   runs for `LV_TEST` too, and a death keeps `level_restart`'s own call.
@@ -1288,6 +1296,44 @@ vats' display"):
 - `vat_init` runs at every `engines_init` and `engines_jump`; a play-field BOB piece over a vat cell
   restores its background by tiles (`fp_tiles`, `vat_inbox`); a V9938 page build's start gives its
   page the looks of the columns its copy brings (`vat_bbinit`).
+
+**Since the rest of the game's step 1 (2026-10-31, `docs/level3/HANDOFF.md`): static images in the
+product.** The user chose static vats after test7 (default 18: "the MSX cannot process so many frames,
+so we save performance"). `tools/mkrom.py` `VAT_ANIM` (default 0):
+- The product shows every vat cell at the map's own tile, the level's start look (every vat cell of
+  the map has attributes 0, each static column holds one look of the vat tables: `tools/mapcells.py`
+  `vat_problems`). `get_tile`'s `gt_rom` takes no level-2 branch (`gt_vat` and its test only with
+  `VAT_ANIM=1`), so a tile costs in level 2 what it costs in level 1; `vat_init` clears `vat_disp` and
+  leaves `vat_on` 0, so `vat_idle`, `vat_win`, `vat_inbox` and `vat_bbinit` do nothing and a piece over
+  a vat cell takes the play field's cache as any other. The logic is the same in every build (`lt1`: the
+  sinking check, `vat_cut_line`, `$169A`/`$16CC`, sound 10h, `vat_phase` and `vat_shown`).
+  `vats.asm` (1,401 B in `BANK_L2`) and `field.asm`'s vat section (1,010 B in `BANK_FIELD`; 1,015 with
+  `VAT_ANIM=1`) stay assembled in every build: the harness's marks and the tests read their labels;
+  the fixed area keeps `vat_win`/`vat_idle`/`vat_l2` (33 B) and, with `VAT_ANIM=1`, `gt_rom`'s test
+  and `gt_vat` (15 B).
+- `VAT_ANIM=1` is the display above, as built for test7 (a comparison only); `VAT_TICK=1` needs it.
+- The pictures' models (`tools/mapcmp.py` `vat_look`, `msxframe.py`, `msxreal.py`,
+  `bstest/fieldcheck.py`): a column with no nibble on the page shown is expected at the map's own tile.
+- [V, step 1] The field check on `tour`'s 11 windows and `barrel`'s 2 with the product's caps, and the
+  four vat windows with `VAT_ANIM=1`, on the three machines: 51 windows, 15,180 pictures, 0 differences;
+  the product's vat cells (up to 33 columns a window) at the map's own tile in every picture while the
+  view scrolls over them, `VAT_ANIM=1`'s columns drawn and never older. `vatcheck.py`: the product draws
+  no column (`vat_run` and `vat_prep` 0 calls); the guard's tears: none of a vat column (in `tour` from
+  450 one other on the FS-A1FX and one on the turbo R: the staged pieces, 8.1 item 4). The level-2
+  traces 0 differ (23).
+- [V, step 1] **The speed** (`vatlog.tcl` `vl_speed_jobs`, the trace build `EXTJOY=1 ENEMY_CAP=0
+  DAMAGE_X=1 LV_TEST=2` with `VAT_ANIM` 0 and 1; ticks and pictures a second; the turbo R holds 25
+  ticks a second in both):
+
+  | the product against `VAT_ANIM=1` | MSX2 ticks | MSX2 pictures | MSX2+ ticks | MSX2+ pictures | turbo R pictures |
+  |---|---|---|---|---|---|
+  | `tour` from 450 (25 s) | 14.08 / 13.68 (+2.9 %) | 11.16 / 10.84 (+3.0 %) | 17.00 / 15.60 (+9.0 %) | 9.08 / 7.88 (+15.2 %) | 31.64 / 29.04 (+9.0 %) |
+  | `tour` from 850 (25 s) | 18.32 / 17.76 (+3.2 %) | 17.88 / 16.36 (+9.3 %) | 21.64 / 21.12 (+2.5 %) | 15.08 / 13.64 (+10.6 %) | 41.20 / 38.76 (+6.3 %) |
+  | standing at vat 0 from 540 (20 s) | 16.85 / 16.25 (+3.7 %) | 9.95 / 9.85 (+1.0 %) | 20.00 / 19.20 (+4.2 %) | 10.75 / 10.10 (+6.4 %) | 28.80 / 26.20 (+9.9 %) |
+
+- The faster pictures showed a fault of the V9958 engine (`docs/MSX_ARCHITECTURE.md`, "The ring's
+  queues draw only kept cells"): a row queued while the camera ran on drew cells the camera had left
+  into the ring slots of cells on the screen; `scroll9958.asm` `draw_kept` skips them.
 
 ### 3.6 Sprites and play-field BOBs [D]
 
@@ -2225,7 +2271,7 @@ choice (default 18) instead of stopping the chain.
 | 15 | Script builds | the briefing runs, as the stages' texts do | skipped, as `title` is | one path | taken |
 | 16 | Palette | C: level 1's layout, level 2's values at 9, 11, 13 | A (level 1's as it is: the blues merge); D (8-15 refitted: every shared frame converted again) | best ΔE of the options that keep 0-7; no ROM. **The user's eye** on `png/level2_compare_half.png`, `crop_vat0.png` | taken [V: entries 0-7 level 1's, mean ΔE 2.417]. **The user's eye** |
 | 17 | The vats' cells | a display layer outside the map patches | 604 more patches (pools of 3 × 255 or more; `rd_queue` overflows; ~24,000 T a tick) | the attributes never change; the logic stays exact | taken [V: the map against the bench with the vat rule] |
-| 18 | The vats' rate | whole columns, the newest look, never torn, never older, within the VDP time left | a fixed half rate; tearing allowed (about twice the rate on the V9958); only the surface row while a V9938 scrolls; the logic report's surface row at full rate and the body round-robin | the zero-glitch rule first. **The user's eye** on the records | taken [V: tear 0, never older]; the rates below the plan's estimate (3.5); the variant `VAT_TICK=1` built for the comparison. **The user's eye** |
+| 18 | The vats' rate | whole columns, the newest look, never torn, never older, within the VDP time left | a fixed half rate; tearing allowed (about twice the rate on the V9958); only the surface row while a V9938 scrolls; the logic report's surface row at full rate and the body round-robin | the zero-glitch rule first. **The user's eye** on the records | taken [V: tear 0, never older]; the rates below the plan's estimate (3.5); the variant `VAT_TICK=1` built for the comparison. **The user's choice (2026-10-31, after test7): static images**, "the MSX cannot process so many frames, so we save performance": the product shows the map's own look (`VAT_ANIM=0`), the logic as before; the display as built is `VAT_ANIM=1`, a comparison only (`VAT_TICK=1` needs it) |
 | 19 | `$EF8E`'s ports | `cp 51` in every level | per-level rows (wrong for level 2's row 50) | the original's constant | taken |
 | 20 | Per-level tables in RAM | `rowtab` shared with relative banks; the palette and `view_offy` copied to RAM | everything through the tables bank (a bank switch per `get_tile`) | `get_tile` stays fast; 75 B of RAM | taken |
 | 21 | The tile sheet | raw, 8 banks | per-tile ZX0 (−4 banks, 14-27k T a miss) | 2 MiB has room | taken |
@@ -2233,7 +2279,7 @@ choice (default 18) instead of stopping the chain.
 | 23 | The mine's blinking cell | `map_write_lin` after the look copy | the look block in RAM with the word patched | the existing path | taken |
 | 24 | Type 1 facing left | its leftover D6/D7 reproduced (Q2) | always fire type 6 | the original, trace-exact | taken; the wall turn never happens in level 2 (2.11) |
 | 25 | `ENEMY_CAP` in level 2 | only 45 not counted; 2, 5, 6, 49 counted | 2 not counted too (the suspect beside one more enemy, as the original's crowd; its silhouette's bands then give way on RoboCop's lines); the logic report's: 5 and 6 not counted too (the line budget then needs another way: drips as effects that may vanish, or drawn in the play field) | decision 18 counts every enemy but the hostage and the types that draw nothing; no sprite piece lost. **The user's feel** in the drips corridor and at the arrest | taken. **The user's feel** (the grenadier waits for the suspect's slot, 3.3) |
-| 26 | The own touch damages of types 5 and 49 | type 5's 0Ah × `DAMAGE_X`; type 49's 18h × 2 (a missile) | × 1 (the drip as a hazard, like the beams); type 49 × `DAMAGE_X` (decision 19's letter: only bullet types 1-2 are × 2) | decision 17: touching an enemy is a weapon's damage, × 3; only the beams and the penalties stay × 1; decision 19: missiles × 2 | taken [V: the ROMs' bytes] |
+| 26 | The own touch damages of types 5 and 49 | type 5's 0Ah × `DAMAGE_X`; type 49's 18h × 2 (a missile) | × 1 (the drip as a hazard, like the beams); type 49 × `DAMAGE_X` (decision 19's letter: only bullet types 1-2 are × 2) | decision 17: touching an enemy is a weapon's damage, × 3; only the beams and the penalties stay × 1; decision 19: missiles × 2 | taken [V: the ROMs' bytes]; **changed 2026-10-31** with decisions 17 and 19 (`DAMAGE_X` 2, the missiles × 1): type 5's 0Ah × `DAMAGE_X` (14h in the product), type 49's 18h in every build [V: the ROMs' bytes, step 1 of the rest of the game] |
 | 27 | The SHARP set | moved to `ng_go` | `obj_start` guarded by `$8050` = 0 | the original's place (`$8314`) | taken (`cold.asm` `ng_init`) |
 | 28 | Shared handlers | `msx/lvshared.asm` and a generated, label-suffixed copy | trampolines into one shared bank (no: A000h is the level bank's only window) | z80asm's global labels | taken, the copies at level 1's addresses (no vectors) |
 | 29 | `sp_d7` after the trolley | BCh | — | needed for trace identity (Q3) | taken [V: the traces] |
@@ -2261,7 +2307,7 @@ choice (default 18) instead of stopping the chain.
 
 **The user's first list** (for the candidates' notes): 1, 5, 16, 18, 25, 31, 33, 40, Brainstorm's
 face colours and quirk 5, the range's visit-2 palette. **As built** it grows by the choices section
-8.1 lists: the vats as built or with `VAT_TICK=1` (18), the level-1 walkers' lines above 8 sprites,
+8.1 lists: the vats as built or with `VAT_TICK=1` (18: chosen on 2026-10-31, static images), the level-1 walkers' lines above 8 sprites,
 the shared frames' look under palette C (32), the effects' priority rule on the SCC, RoboCop whole in
 the vat after his death (the original's own rule).
 
@@ -2304,7 +2350,8 @@ Inferences the defaults rest on, as they stand:
 ### 8.1 Open issues and the user's choices, as they stand (2026-10-31)
 
 **The code review of 2026-10-31** (both diffs since milestone 1), for step 22:
-1. **A ready vat column that stops fitting was never dropped.** In `vats.asm` `vr_main` a column that
+1. **A ready vat column that stops fitting was never dropped** (the vats' display: `VAT_ANIM=1` builds only
+   since 2026-10-31; the product draws no vat column). In `vats.asm` `vr_main` a column that
    `vat_fits` refuses stayed ready (`vr_nt`), and `vat_prep` keeps a ready column while the engines show
    what they showed (`vat_same`), so it never looked for another while the camera eased within a tile
    row (stairs, a lift stopping): the review expected every vat to stop redrawing until the view moved.
@@ -2349,7 +2396,10 @@ Inferences the defaults rest on, as they stand:
 6. **Lines above 8 sprites** (4.2 check 7; 3.6).
 
 **The user's choices** (with the candidates' notes):
-7. The vats as built or with `VAT_TICK=1` (default 18; the rates of 3.5).
+7. The vats as built or with `VAT_TICK=1` (default 18; the rates of 3.5). **Chosen (2026-10-31, after
+   test7): static images** (`VAT_ANIM=0`, the product: the map's own look, no column drawn; the logic,
+   the sinking and the phases as always); `VAT_ANIM=1` keeps the display as built, `VAT_ANIM=1
+   VAT_TICK=1` the variant, for comparison only (3.5).
 8. The level-1 walkers beside RoboCop on lines above 8: joint compositions (type 1's way) or another
    budget rule.
 9. **The effects' priority rule on the SCC** (pre-existing, level 1 too): `music.asm` `fxs_one` applies
@@ -2368,14 +2418,17 @@ Inferences the defaults rest on, as they stand:
 12. Against main `6082d3a`'s base the gate keeps two verdicts judged CPU time: the still `m2_g1490`
     (level 1's conveyor one animation step later: its changed cells wait for the window) and one PSG
     tick (an effect restarted on its own channel a VBLANK earlier; `fxcmp.py` cannot tell that from
-    another sound). They stay until a base is made from the integrated tree (`l2base.sh base`).
+    another sound). They stay until a base is made from the integrated tree (`l2base.sh base`). The
+    rest of the game's step 1 found that level 1 had not used the play field's piece cache since step
+    14 (`vat_inbox` returned NZ outside level 2: every piece composed from its tiles) and fixed it; the
+    two verdicts stayed the same to the pixel and the tick, so they do not come from the cache.
 13. `tour` with the product's caps never brings the suspect (risk 11): the arrest's checks run on the
     trace build.
 14. `objcmp.py` on `vat`: 75-226 "extra" objects left of the view during the sinking, the same before
     step 16: not looked into.
 15. `hz_l2_field_jobs`' window from game frame 0 records `LV_TEST`'s briefing since step 18: start at 1.
-16. Room: `BANK_L2` 29 B and the fixed area 46 B in the lowest set; `DEMO_HUD=1` and `DEMO_ACTORS=2`/`5`
-    do not build.
+16. Room: `BANK_L2` 28 B and the fixed area 39 B in the lowest set (`DIAG=1 PZ_TEST=1`; 174 B in the
+    product), since the rest of the game's step 1; `DEMO_HUD=1` and `DEMO_ACTORS=2`/`5` do not build.
 17. `pz_tvb` (C6AAh) is allocated in `msx/msx.inc` but unused, and its `pz_tv` comment speaks of visit 1
     only.
 18. The high-score entry (`$12082`) stays unported (default 6).
