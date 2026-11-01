@@ -22,6 +22,7 @@
 0x9edc	function	obj_activate_50
 0x9ee0	function	obj_activate_58
 0x9ee4	function	obj_activate_80
+0x9f74	function	act_20
 0xab08	function	draw_bob
 0xac56	function	draw_part_last
 0xac6e	function	draw_flash
@@ -39,8 +40,9 @@
 0xc31e	function	death_smoke
 0xc33e	function	death_barrel
 0xc35a	function	death_expl
-0xc360	function
-0xc3a8	function
+0xc360	function	death_truck
+0xc398	function	debris_add
+0xc3a8	function	death_walker21
 0xc736	function	obj01_update
 0xc868	function	obj02_update
 0xc91a	function	obj02_arrest
@@ -53,12 +55,14 @@
 0xce72	function	obj13_update
 0xcef8	function	obj12_update
 0xcfb0	function	obj04_update
+0xd0a6	function	aim_cell
 0xd0e2	function	obj05_update
 0xd1ca	function	obj06_gap_count
 0xd1d0	function	obj06_hold
 0xd1de	function	obj06_free
 0xd1e2	function	obj06_update
 0xd2fa	function	obj21_update
+0xd478	function	obj22_free
 0xd49c	function	obj22_update
 0xd876	function	obj29_update
 0xd9a4	function	obj27_update
@@ -84,7 +88,10 @@
 0xe8a2	function	obj52_update
 0xe972	function	obj42_update
 0xe98c	function	obj40_update
+0xea50	function	map_put_2x3_a
+0xeaa6	function	map_put_2x3_flash
 0xeb0a	function	obj41_update
+0xebb8	function	map_put_2x3_b
 0xec02	function	obj43_update
 0xec22	function	obj44_update
 0xecac	function
@@ -94,12 +101,15 @@
 0xee5e	function	obj48_update
 0xee68	function	obj51_update
 0xeee2	function	obj50_update
+0xef18	function	obj_push
 0xf10a	function
+0xf12a	function	explosion_draw0
 0xf266	function	explosion_draw
 0xf6a0	function
 0xf6b8	function	panel_update_digits
 0xf788	function
 0xf876	function
+0xf98c	function	pickup_drop
 0xf9dc	function	setup_ciab_timer
 0xfbfc	function
 0xfc04	function
@@ -126,6 +136,7 @@
 0xb3c	label	lift_table
 0xbe4	label	object_slots
 0xd78	label	fire_latch
+0x15c4	label	camera_mode
 0x15ca	label	level_started
 0x15cb	label	level_start_step
 0x15cc	label	player_hot_x
@@ -162,7 +173,12 @@
 0x16a0	label	hit_spark_timer
 0x16a2	label	hit_spark_x
 0x16a4	label	hit_spark_y
+0x16a6	label	turret40_on
+0x16a7	label	turret41_on
+0x16a8	label	turret42_on
+0x16a9	label	act20_open
 0x16aa	label	energy_refill
+0x16b4	label	boss_burst
 0x16bc	label	death_counter
 0x16be	label	hostages_rescued
 0x16c0	label	nukes_collected
@@ -174,6 +190,9 @@
 0x16cf	label	level_restarted
 0x16d0	label	level_done
 0x16d1	label	text_done
+0x16d4	label	boss_seen
+0x16d9	label	boss_hit_look
+0x16da	label	boss_close
 0x802c	label	vbl_counter
 0x802d	label	keyboard_joy
 0x802e	label	joystick
@@ -215,6 +234,7 @@
 0x8b8c	label	special_dispatch
 0x8b92	label	special_handlers
 0x8ed0	label	special_rts
+0x8ed2	label	lift_two_parts
 0x8fc0	label	speclist_level0
 0x8fe0	label	speclist_level1
 0x9008	label	speclist_level2
@@ -227,11 +247,17 @@
 0x90ee	label	sp1_trolley1
 0x90fe	label	sp1_trolley2
 0x910e	label	sp1_trolley3
+0x911e	label	sp2_lift0
+0x912e	label	sp2_lift1
+0x913e	label	sp2_lift2
 0x91b0	label	level_tick_table
 0x927a	label	vat_surface_words
 0x929a	label	vat_odd_words
 0x92ba	label	vat_even_words
 0x92da	label	vat_column_phases
+0x94c0	label	beam2_top
+0x94d0	label	beam2_left
+0x94f0	label	beam2_right
 0x9538	label	hazlist_level0
 0x95b2	label	hazlist_level1
 0x95ec	label	hazlist_level2
@@ -246,7 +272,6 @@
 0x9ea4	label	act_explode_look4
 0x9ec4	label	objtype_act_base
 0x9ee8	label	act_0c
-0x9f74	label	act_20
 0x9f84	label	act_floor_switch
 0x9fae	label	act_look_noslot
 0x9fc4	label	obj_relocate
@@ -293,6 +318,7 @@
 0xc59c	label	markers_level0
 0xc5ec	label	markers_level1
 0xc624	label	markers_level2
+0xc662	label	markers_off
 0xc7e0	label	t1_legs_offs
 0xc800	label	t1_torso_dy
 0xc8fe	label	t2_draw
@@ -328,8 +354,12 @@
 0xd1dc	label	barrel_gap
 0xd2da	label	t6_gfx_offs
 0xd46c	label	msg_chase_cain
+0xd494	label	obj22_masks
+0xd583	label	obj22_step_imm
+0xd798	label	obj22_x
 0xdc76	label	msg_arrest
 0xdc8a	label	msg_arrest_ok
+0xe46e	label	obj37_last
 0xe67a	label	obj38_mail_dir
 0xe67c	label	obj38_mail_x
 0xe67e	label	obj38_mail_y
@@ -337,11 +367,10 @@
 0xe6a0	label	homing_dy
 0xe728	label	homing_body
 0xe7b2	label	homing_gfx_offs
-0xea50	label	map_put_2x3_a
-0xeaa6	label	map_put_2x3_flash
-0xebb8	label	map_put_2x3_b
+0xe9f5	label	obj40_look_imm
 0xed04	label	msg_man_rescued
 0xed11	label	msg_extra_life
+0xee52	label	cam_modes
 0xef42	label	obj_walk
 0xef72	label	obj_fall
 0xef8e	label	obj_map_cell
@@ -371,7 +400,6 @@
 0xf8c4	label	palette_fade
 0xf900	label	pickup_update
 0xf964	label	pickup_gfx
-0xf98c	label	pickup_drop
 0xfd52	label	weapon_ammo_table
 0xfd5a	label	weapon_icon_table
 0xfd92	label	message_slots

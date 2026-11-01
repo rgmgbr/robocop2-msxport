@@ -35,6 +35,19 @@
 +entry d1ca
 +entry d1d0
 +entry d1de
+# level 3: code reached only by bsr from the type handlers, by branches Ghidra does not follow or
+# through a table of activators (docs/LEVEL3.md): the debris helper of the deaths, act_20, the
+# 2 x 3 map writers of types 40-42, type 22's other exit, the aim helper of types 34 and 38
++entry c398
++entry 9f74
++entry ea50
++entry eaa6
++entry ebb8
++entry d478
++entry d0a6
++entry ef18
++entry f98c
++entry f12a
 8000  start            BRA to the initialisation; followed by 10 public BRA.W entries
 8050  level_number     word: current level (incremented when completed)
 802c  vbl_counter      byte: incremented by the VBL; the main loop waits for >= 2 (25 Hz)
@@ -214,7 +227,7 @@ ec22  obj44_update         object type 44 (level 1, the flying vehicle's ride): 
 9d0c  objtype_table        per type: +0 look table (long), +$88 flags, +$8a activator offset, +$110/+$112 size (4-byte stride)
 9ea4  act_explode_look4    activator: an explosion while the entry's look index is 4
 9ee8  act_0c               activator 0Ch, level 2's mines (type 30h): act_0c_blink_word = E680h, or 9700h while game frame bit 2 is clear (one cell blinks; sound 28h every 8th frame); RoboCop on it (x + 32..47, y + 8..23): st 4(A1) and 4 explosions (type 0) at x + 10h, 24h, 38h, 4Ch; they do not hurt and drop no pickup
-9f74  act_20               activator (levels 2-3; not analysed)
+9f74  act_20               activator 20h (level 3's object list entries 12-14, map types 80h/84h): while $16A9 is set (type 22: RoboCop and it both outside x 690h-9D7h) clears it and switches the entry on (st 4(A1)), then act_look_noslot $9FAE
 9f84  act_floor_switch     trapdoor activator: on with RoboCop on its row, x in [x - 18, x + 42)
 a038  act_conveyor_left    conveyor activator (offset 14h)
 a03e  act_conveyor_right   conveyor activator (offset 18h)
@@ -410,3 +423,39 @@ f55c  ebullet_anim         ebullet_update: frame step and last offset per bullet
 f5d2  ebullet_sound        sound per bullet type
 f658  ebullet_vx           enemy bullets' x speed by direction (D7)
 f67c  ebullet_vy           enemy bullets' y speed by direction (D7)
+# --- level 3, the Civic Centrum (REA on build/ram/level3_full.bin and the bench, docs/LEVEL3.md, 2026-11-01) ---
++data 911e 914e
++data 94c0 9510
++data c662 c670
++data d494 d49c
++data ee52 ee5e
+911e  sp2_lift0            level 3's lift L0 (handler 0): x 319, y 484, path 404, 484 (special_lift draws it in two parts, $8ED2)
+912e  sp2_lift1            level 3's lift L1: x 1215, y 404, path 324, 404
+913e  sp2_lift2            level 3's lift L2: x 1215, y 564, path 484, 564
+8ed2  lift_two_parts       special_lift when $8050 = 2: $5397C (32 x 29, BLTSIZE 743h) at (x + 20h, y - 52h), then $53BC0 (32 x 16, 403h) 4Eh lower
+94c0  beam2_top            level_tick_2: 4 longs, the beam's top two words by random & 6 (on)
+94d0  beam2_left           level_tick_2: 16 words, the beam's left cells by (random + x) & 1Eh, row by row (on)
+94f0  beam2_right          level_tick_2: 16 words, the beam's right cells (on)
+c398  debris_add           ebullet_add (D6 type, D7 direction); when added, the bullet's +E0h long = 8000h (thrown up): the deaths' flying parts (types 0Bh-14h)
+c360  death_truck          type 33's death: debris 0Bh (dir 0Eh), 0Dh (0), 0Ch (2), three explosions of type 0
+c3a8  death_walker21       type 21's death: debris 0Eh (dir 4), 0Fh (0), 10h (2), three explosions of type 0
+c662  markers_off          a marker table of type-0 entries ((7, 0, 0) twice, FFFF): type 43 points $C598 and $C692 at it, so no marker spawns
+d0a6  aim_cell             D3 = the direction to RoboCop in 32-px cells (x: -1/0/+1, y: -3/0/+3) through the bytes at $D0D6
+d478  obj22_free           moveq -1,D0 / rts: type 22's exit when $16D4 is already set (a second spawn frees itself)
+d494  obj22_masks          type 22: 8 step masks by distance (patched into $D583) and 8 facing bytes 8 before them
+d583  obj22_step_imm       byte: the immediate of moveq at $D582, patched every frame (the step mask: FFh = stand)
+d798  obj22_x              word: type 22's x, kept in the code area (set at its first frame when $16D4 is clear)
+e46e  obj37_last           word: the game frame type 37 last ran (a second one in the same frame frees itself)
+e9f5  obj40_look_imm       byte: the register of the addq at $E9F4, toggled at $EA00 (the turret's firing look every 16 frames)
+ee52  cam_modes            type 47: 3 pairs ($B2D8, $B2FC): 108h/-70h, B0h/-70h, 130h/-70h by x & 15 (also into $15C4)
+ef18  obj_push             type 21: RoboCop's x -= 8 (+8 facing left) while he stands in the 16 px before it and not above it
+f12a  explosion_draw0      effects_update: the draw of an explosion whose type's high byte is 0
+15c4  camera_mode          byte: type 47's camera mode (0-2); type 22 reads it
+16a6  turret40_on          byte: one type 40 at a time (set at its first frame; a second frees itself)
+16a7  turret41_on          byte: one type 41 at a time
+16a8  turret42_on          byte: one type 42 at a time
+16a9  act20_open           byte: set by type 22 while RoboCop and it are outside x 690h-9D7h; act_20 takes it
+16b4  boss_burst           word: type 48 sets FAh; type 22 counts it down and fires a burst every 64 frames while it runs
+16d4  boss_seen            byte: type 22 met (its x copied to $D798 once)
+16d9  boss_hit_look        byte: 6 frames of type 22's hit look after a hit (its third part's other frame)
+16da  boss_close           byte: type 22's step mask negative (it stands)

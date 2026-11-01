@@ -16,6 +16,8 @@ Level 2 (--level 2): each run starts at amigaemu.py's direct start (Level2Bench,
 at the level's end; the output adds the enemy types seen in the slots ($C04 + 4k: their first
 run and game frame, the frames seen, the highest hit points), the messages queued (message_queue
 $FD76: A0's text) and the vat records level_tick_1 ($91BC) ran (A3), and each run's carried state.
+Level 3 (--level 3) the same from Level3Bench's direct start, with the beam records level_tick_2
+($9436) ran ("hazards") in place of the vats.
 
 Runs: --run "SCRIPT[;tele=F:X:Y][;god][;poke=F:ADDR:VALUE:SIZE,...][;frames=N]" (SCRIPT = the
 joystick script of amigaemu.py game, F:C:KEYS,...; tele moves RoboCop and the camera to world X, Y
@@ -28,6 +30,7 @@ usage: amigacov.py --ram build/ram/level1_full.bin --gframes 2000 --run "..." [-
        amigacov.py --scenario level1 OUT.json   (the level's BOB frames for make msx, ~20 minutes)
        amigacov.py --level 2 [--carry 10050:2:0:good] --gframes N --run "..." OUT.json
        amigacov.py --level 2 --scenario level2 OUT.json   (three runs, 29,353 game frames, ~13 minutes)
+       amigacov.py --level 3 --scenario level3 OUT.json   (three runs, docs/LEVEL3.md)
        amigacov.py --report OUT.json [--rea build/rea/lin.json] [--seeds]
 """
 from __future__ import annotations
@@ -49,6 +52,7 @@ MIRRORED = ((0x0B00, 0x16EC), (0x8000, 0x8100))
 STACK = (0x7F000, 0x80000)
 MESSAGE_QUEUE = 0xFD76                     # message_queue: A0 the text
 LEVEL_TICK_1 = 0x91BC                      # level_tick_1, level 2's vats: A3 the hazard record
+LEVEL_TICK_2 = 0x9436                      # level_tick_2, level 3's beams: A3 the hazard record
 
 
 def parse_run(spec: str) -> dict:
@@ -75,10 +79,10 @@ def parse_run(spec: str) -> dict:
 
 
 def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: str = "") -> None:
-    if level == 2:
-        b = amigaemu.Level2Bench(ROOT / "build" / "extracted", ram)
-        b.start_direct(amigaemu.parse_carry(carry or amigaemu.CARRY_L2))
-        b.stop_at_level_end(2)
+    if level in (2, 3):
+        b = (amigaemu.Level2Bench if level == 2 else amigaemu.Level3Bench)(ROOT / "build" / "extracted", ram)
+        b.start_direct(amigaemu.parse_carry(carry or (amigaemu.CARRY_L2 if level == 2 else amigaemu.CARRY_L3)))
+        b.stop_at_level_end(level)
     else:
         b = amigaemu.GameBench(ROOT / "build" / "extracted", ram)
         b.start_level()
@@ -153,13 +157,14 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
         e = cov["messages"].setdefault(f"{a0:05x} {text}", [0, len(cov["runs"]), state["gf"]])
         e[0] += 1
 
-    def on_vat(uc, address, size, user_data):          # level_tick_1 ($91BC): A3 the vat's record
-        e = cov["vats"].setdefault(f"{uc.reg_read(amigaemu.a_reg(3)) & 0xFFFFFF:05x}", [0, len(cov["runs"]), state["gf"]])
+    def on_vat(uc, address, size, user_data):          # level_tick_1 ($91BC) / _2 ($9436): A3 the record
+        e = cov["vats" if level == 2 else "hazards"].setdefault(f"{uc.reg_read(amigaemu.a_reg(3)) & 0xFFFFFF:05x}", [0, len(cov["runs"]), state["gf"]])
         e[0] += 1
 
     if "types" in cov:
         b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_msg, None, MESSAGE_QUEUE, MESSAGE_QUEUE + 1)
-        b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_vat, None, LEVEL_TICK_1, LEVEL_TICK_1 + 1)
+        tick = LEVEL_TICK_1 if level == 2 else LEVEL_TICK_2
+        b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_vat, None, tick, tick + 1)
     b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_draw, None, 0xAB08, 0xAB09)
     b.uc.hook_add(amigaemu.UC_HOOK_CODE, on_drawn, None, 0xAC40, 0xAC41)
     b.uc.hook_add(UC_HOOK_BLOCK, on_block, None, CODE[0], CODE[1] - 1)
@@ -172,7 +177,7 @@ def play(ram: Path, frames: int, run: dict, cov: dict, level: int = 1, carry: st
         print(f"run stopped at game frame {state['gf']}: {str(e).splitlines()[0]}")
     cov["runs"].append({"frames": state["gf"], "level": b.read_word(0x8050), "player": [
         struct.unpack(">h", b.uc.mem_read(0x15D0, 2))[0], struct.unpack(">h", b.uc.mem_read(0x15D4, 2))[0]]})
-    if level == 2:
+    if level in (2, 3):
         cov["runs"][-1] |= b.carried() | {"level_done": b.uc.mem_read(0x16D0, 1)[0]}
 
 
@@ -229,7 +234,33 @@ def scenario_level2(frames: int) -> list[str]:
             ",".join(run2) + ";god;frames=4400", ",".join(top) + ";tele=" + ",".join(f"{t}:{x}:{y}" for t, x, y in top_tele) + ";god;frames=1700"]
 
 
-SCENARIOS = {"level1": (20540, scenario_level1), "level2": (len(range(150, 2551, 150)) * 9 * 150 + 300, scenario_level2)}
+def scenario_level3(frames: int) -> list[str]:
+    """Level 3's coverage runs (god mode, each with its own length): (1) level 2's run 1 on level 3's
+    map: the 150-frame loop teleported every 150 frames over x 150-2550 step 150 and the floors (the
+    map's rows with floor cells, attribute bit 3: 7, 20, 25, 30, 35, 40, 49) y 784, 640, 560, 480,
+    400, 320 and 112; (2) level 1's run 2 (4,401 frames); (3) the roof (row 7, y 112), where the spawn
+    list's type 22 (Cain as RoboCop 2, x 1280) comes: left and right by turns of 40 frames, firing every
+    4th frame, from x 700 and 1000, no keys 10 frames around a teleport (2,400)."""
+    def alt(k: str, a: int, b: int) -> list[str]:
+        return [f"{f}:2:{k}{'f' if (f - a) % 4 == 0 else ''}" for f in range(a, b, 2) if f < frames]
+
+    items = ["70:30:r"] + alt("d", 100, 140)
+    for t in range(80, frames, 150):
+        items += alt("r", max(t, 140), t + 92) + alt("u", t + 90, t + 102) + alt("l", t + 100, t + 140) \
+            + alt("d", t + 140, t + 152)
+    grid = [(x, y) for y in (784, 640, 560, 480, 400, 320, 112) for x in range(150, 2551, 150)]
+    tele = [f"{140 + 150 * i}:{x}:{y}" for i, (x, y) in enumerate(grid) if 140 + 150 * i < frames]
+    run2 = ["70:30:r"] + alt("d", 100, 140) + alt("r", 140, 2140) + alt("u", 2140, 2340) + alt("l", 2340, 4340)
+    roof_tele = ((60, 700, 112), (1260, 1000, 112))
+    roof = [f"{f}:2:{'r' if (f - 80) // 40 % 2 == 0 else 'l'}{'f' if (f - 80) % 4 == 0 else ''}" for f in range(70, 2400, 2)
+            if not any(t - 10 <= f < t + 10 for t, _x, _y in roof_tele[1:])]
+    return [",".join(items) + ";tele=" + ",".join(tele) + f";god;frames={frames}",
+            ",".join(run2) + ";god;frames=4400",
+            ",".join(roof) + ";tele=" + ",".join(f"{t}:{x}:{y}" for t, x, y in roof_tele) + ";god;frames=2400"]
+
+
+SCENARIOS = {"level1": (20540, scenario_level1), "level2": (len(range(150, 2551, 150)) * 9 * 150 + 300, scenario_level2),
+             "level3": (len(range(150, 2551, 150)) * 7 * 150 + 300, scenario_level3)}
 
 
 def collect(a) -> int:
@@ -242,6 +273,8 @@ def collect(a) -> int:
     cov = {"blocks": {}, "code_writes": {}, "ram_writes": {}, "runs": [], "bobs": {}}
     if a.level == 2:
         cov |= {"types": {}, "messages": {}, "vats": {}}
+    elif a.level == 3:
+        cov |= {"types": {}, "messages": {}, "hazards": {}}
     for spec in a.run or [""]:
         play(a.ram, a.gframes, parse_run(spec), cov, a.level, a.carry)
     out = {
@@ -258,12 +291,16 @@ def collect(a) -> int:
         out |= {"level": 2, "carry": a.carry or amigaemu.CARRY_L2,
                 "types": {str(k): v for k, v in sorted(cov["types"].items())},
                 "messages": cov["messages"], "vats": dict(sorted(cov["vats"].items()))}
+    elif a.level == 3:
+        out |= {"level": 3, "carry": a.carry or amigaemu.CARRY_L3,
+                "types": {str(k): v for k, v in sorted(cov["types"].items())},
+                "messages": cov["messages"], "hazards": dict(sorted(cov["hazards"].items()))}
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=0))
     n = sum(hi - lo for lo, hi in out["executed"])
     print(f"{a.out}: {len(out['blocks'])} blocks, {len(out['executed'])} ranges, {n} bytes of code executed; "
           f"{len(out['code_writes'])} code-area addresses written; {len(out['ram_writes'])} other writers; "
-          f"{len(out['bobs'])} BOB frames drawn" + (f"; enemy types {sorted(cov['types'])}" if a.level == 2 else ""))
+          f"{len(out['bobs'])} BOB frames drawn" + (f"; enemy types {sorted(cov['types'])}" if a.level >= 2 else ""))
     return 0
 
 
@@ -294,7 +331,8 @@ def report(a) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ram", type=Path, help="the RAM image (build/ram/level1_full.bin, --level 2: level2_full.bin)")
-    ap.add_argument("--level", type=int, choices=(1, 2), default=1, help="the level played (2: amigaemu.py's direct start)")
+    ap.add_argument("--level", type=int, choices=(1, 2, 3), default=1,
+                    help="the level played (2, 3: amigaemu.py's direct start)")
     ap.add_argument("--carry", default="", help="--level 2: SCORE:LIVES:CONTINUES:TABLE (amigaemu.py --carry)")
     ap.add_argument("--gframes", type=int, default=1000)
     ap.add_argument("--run", action="append", help="SCRIPT[;tele=F:X:Y,...][;god][;poke=F:ADDR:VALUE:SIZE,...][;frames=N]")
@@ -308,8 +346,8 @@ def main() -> int:
         return report(a)
     if not a.out:
         ap.error("OUT.json is required")
-    if a.scenario == "level2":
-        a.level = 2
+    if a.scenario in ("level2", "level3"):
+        a.level = int(a.scenario[-1])
     a.ram = a.ram or ROOT / "build" / "ram" / f"level{a.level}_full.bin"
     return collect(a)
 

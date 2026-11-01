@@ -63,6 +63,12 @@ game frames then run as level 1's do, and the trace holds level 2's code-area bl
 played level's ($8050 = level - 1): at the level's end or, in level 2, at a game over without a
 continue ($8050 = 0).
 
+"game --level 3" plays level 3, the Civic Centrum (Level3Bench): the direct start only, on
+build/ram/level3_full.bin (SPERMA, DATAL3, PERMA: tools/ramimage.py as the Makefile builds it), with
+$8050 = $8052 = 2 (level_init's entry [2], the rts at $86DC) and the same --carry and --pre-poke as
+level 2's (default 10050:2:0:good); the trace holds level 3's code-area blocks (CODE_BLOCKS_L3).
+--stop-at-end stops at level_init once $8050 is 3 (the game completed: entry [7], level_load_3 $86DE).
+
 Depends on Unicorn (pip install unicorn).
 
 usage:
@@ -76,6 +82,8 @@ usage:
   amigaemu.py game --level 2 [--carry 10050:2:0:good] [--pre-poke 0xC44A:13:2 ...] [--flow L1:PZ:FR]
                    --gframes 3000 [--drive build/emu/l2_tour.drive] [--stop-at-end]
                    [--trace OUT.jsonl] [--trace-ram] [--report OUT.json] [--bobs ...] [--dump ...]
+  amigaemu.py game --level 3 [--carry 10050:2:0:good] [--pre-poke ...] --gframes 3000 [--drive ...]
+                   [--stop-at-end] [--trace OUT.jsonl] [--trace-ram] [--report OUT.json] [--bobs ...]
      (TABLE: sharp, good, fair, poor or the table's hex address, put in $8060; SCORE as hex digits,
      BCD as $8046 keeps it; --report: JSON of the start's carried state, with --flow its phases)
   amigaemu.py puzl [--level 1] [--via-8382] --pframes 600 [--joy 0:1:r --joy 2:1:d ...]
@@ -1063,7 +1071,9 @@ LOAD_LEVEL1 = 0x8582                        # load_level1, the load table's entr
 L1_MUSIC = 0x85B6                           # load_level1's bsr $8614: the briefing and PIC4 shown, MU1 next
 DIFF_TABLES = {"sharp": 0xC716, "good": 0xC71E, "fair": 0xC726, "poor": 0xC72E}   # $8060: the range's rating
 CARRY_L2 = "10050:2:0:good"                 # what drive_end, pz_fail and fr_good carry into level 2
-RAM_IMAGES = {1: ROOT / "build" / "ram" / "level1_full.bin", 2: ROOT / "build" / "ram" / "level2_full.bin"}
+CARRY_L3 = "10050:2:0:good"                 # level 3's direct start: the same carry (score, lives, credits, table)
+RAM_IMAGES = {1: ROOT / "build" / "ram" / "level1_full.bin", 2: ROOT / "build" / "ram" / "level2_full.bin",
+              3: ROOT / "build" / "ram" / "level3_full.bin"}
 CODE_BLOCKS_L2 = (                          # state kept inside the code area during level 2 (its coverage's
                                             # code-area writes; this order is the references' JSON order)
     (0x97B0, 0x99E2),                       # the spawn list ($B0E = header +12): 40 x 14 bytes and the end word
@@ -1081,7 +1091,26 @@ CODE_BLOCKS_L2 = (                          # state kept inside the code area du
     (0xF07E, 0xF080),                       # the explosions' frame divider
     (0xF826, 0xF828),                       # the palette flash countdown
 )
-CODE_BLOCKS_BY_LEVEL = {1: CODE_BLOCKS, 2: CODE_BLOCKS_L2}
+CODE_BLOCKS_L3 = (                          # state kept inside the code area during level 3 (docs/LEVEL3.md: its
+                                            # coverage's code-area writes; this order is the references' JSON order)
+    (0x99E2, 0x9C06),                       # the spawn list ($B0E = header +12): 39 x 14 bytes and the end word
+    (0xAA3A, 0xAAF0),                       # the object list ($9C18 = header +0): 15 x 12 bytes and the end word
+    (0x911E, 0x914E),                       # the special objects' records (list $9008): 3 lifts
+    (0xB2D6, 0xB2DA), (0xB2FA, 0xB2FE),     # the camera's offsets (immediates: level_init)
+    (0xC44A, 0xC44C),                       # the marker scan's step
+    (0xC53C, 0xC53E),                       # the marker spawn interval (moveq immediate; header +34)
+    (0xC598, 0xC59C),                       # the marker table's last entry (header +24)
+    (0xC692, 0xC696),                       # its other copy (type 43 $EC02 points both at $C662: no markers)
+    (0xB02A, 0xB02C),                       # player_move's joystick mask (moveq immediate)
+    (0xF07E, 0xF080),                       # the explosions' frame divider
+    (0xF826, 0xF828),                       # the palette flash countdown
+    (0xD582, 0xD584),                       # type 22: its animation mask (the moveq at $D582, patched at $D50C)
+    (0xD798, 0xD79A),                       # type 22: its x (written at $D4C8, $D5DC)
+    (0xE46E, 0xE470),                       # type 37: the game frame of its last run ($E488)
+    (0xE67A, 0xE680),                       # the launch mailbox (type 22 writes it, types 38, 39 and 52 take it)
+    (0xE9F4, 0xE9F6),                       # type 40: its look step's addq (patched at $EA00)
+)
+CODE_BLOCKS_BY_LEVEL = {1: CODE_BLOCKS, 2: CODE_BLOCKS_L2, 3: CODE_BLOCKS_L3}
 
 
 def parse_carry(s: str) -> dict:
@@ -1116,6 +1145,7 @@ class Level2Bench(FrngBench):
     flow start's bonus stages, the game phases run as GameBench runs them (fix_sr off, MU1's player
     skipped; play() is GameBench's), level 2's code-area blocks in the trace."""
     code_blocks = CODE_BLOCKS_L2
+    level = 2                                   # the level played ($8050 = $8052 = level - 1 at the direct start)
     play = GameBench.play
 
     def __init__(self, extracted: Path, ram: Path, *, verbose: bool = False):
@@ -1143,8 +1173,8 @@ class Level2Bench(FrngBench):
         w = self.uc.mem_write
         for addr, v, size in pre:
             w(addr, (v & ((1 << 8 * size) - 1)).to_bytes(size, "big"))
-        w(0x8050, struct.pack(">H", 1))             # level 2
-        w(0x8052, struct.pack(">H", 1))             # level_loaded: level_init takes entry [1], the rts at $86DC
+        w(0x8050, struct.pack(">H", self.level - 1))    # level 2 (or 3: Level3Bench)
+        w(0x8052, struct.pack(">H", self.level - 1))    # level_loaded: level_init takes entry [1] ([2]), the rts at $86DC
         w(0x8046, struct.pack(">I", carry["score"]))
         w(0x8034, struct.pack(">H", carry["lives"]))
         w(0x805E, struct.pack(">H", carry["continues"]))
@@ -1222,9 +1252,27 @@ class Level2Bench(FrngBench):
         uc.emu_stop()
 
 
+class Level3Bench(Level2Bench):
+    """Level 3 on the bench ("game --level 3"): Level2Bench's direct start with $8050 = $8052 = 2
+    (level_init's entry [2], the rts at $86DC: nothing loads) on build/ram/level3_full.bin (SPERMA,
+    DATAL3, PERMA), level 3's code-area blocks in the trace. There is no flow start: the way in
+    (load_level2 $8524) is level 2's end, the statistics, both stages' second visits and the briefing."""
+    code_blocks = CODE_BLOCKS_L3
+    level = 3
+
+
 def game_level2(a) -> int:
-    """game --level 2 (the module's docstring): the direct or the flow start, then the game frames."""
-    if a.flow:
+    """game --level 2 or 3 (the module's docstring): the direct or (level 2) the flow start, then the
+    game frames."""
+    if a.level == 3:
+        if a.flow:
+            sys.exit("game --level 3: no flow start (the direct start only)")
+        bench = Level3Bench(a.extracted, a.ram or RAM_IMAGES[3], verbose=a.verbose)
+        pre = [tuple(int(v, 0) for v in t.split(":")) for t in a.pre_poke]
+        bench.start_direct(parse_carry(a.carry or CARRY_L3), pre)
+        info = {"start": "direct", "carry": bench.carried()}
+        print("start:", json.dumps(info["carry"]))
+    elif a.flow:
         if a.carry or a.pre_poke:
             sys.exit("game --level 2 --flow: the flow carries its own state (no --carry, --pre-poke)")
         l1, pz, fr = (Path(p) for p in a.flow.split(":"))
@@ -1246,7 +1294,7 @@ def game_level2(a) -> int:
         tele += t2
         god = god or g2
     if a.stop_at_end:
-        bench.stop_at_level_end(2)
+        bench.stop_at_level_end(a.level)
     bobs = a.bobs.open("w") if a.bobs else None
     if a.trace:
         a.trace.parent.mkdir(parents=True, exist_ok=True)
@@ -1283,7 +1331,7 @@ def main() -> int:
     ap.add_argument("cmd", choices=("run", "game", "puzl", "frng"))
     ap.add_argument("--ram", type=Path, help="the RAM image (build/ram/level1_full.bin; game --level 2 "
                     "without --flow: level2_full.bin)")
-    ap.add_argument("--level", type=int, default=1, help="game: the level played, 1 or 2; puzl, frng: the "
+    ap.add_argument("--level", type=int, default=1, help="game: the level played, 1, 2 or 3; puzl, frng: the "
                     "level done ($8050): 1 or 2")
     ap.add_argument("--carry", help=f"game --level 2: SCORE:LIVES:CONTINUES:TABLE ({CARRY_L2})")
     ap.add_argument("--pre-poke", action="append", default=[],
@@ -1317,11 +1365,11 @@ def main() -> int:
     ap.add_argument("--bobs", type=Path, help="game: JSON lines of each game frame's draw_bob calls")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
-    if a.cmd == "game" and a.level not in (1, 2):
-        ap.error("game --level: 1 or 2")
-    if (a.carry or a.pre_poke or a.flow or a.report) and not (a.cmd == "game" and a.level == 2):
-        ap.error("--carry, --pre-poke, --flow and --report belong to game --level 2")
-    if a.cmd == "game" and a.level == 2:
+    if a.cmd == "game" and a.level not in (1, 2, 3):
+        ap.error("game --level: 1, 2 or 3")
+    if (a.carry or a.pre_poke or a.flow or a.report) and not (a.cmd == "game" and a.level in (2, 3)):
+        ap.error("--carry, --pre-poke, --flow and --report belong to game --level 2 (3: no --flow)")
+    if a.cmd == "game" and a.level in (2, 3):
         return game_level2(a)
     if a.cmd == "frng":
         bench = FrngBench(a.extracted, a.ram or RAM_IMAGES[1], verbose=a.verbose)
