@@ -958,6 +958,9 @@ spr_dsp:    equ 0xF16D              ; R#5 of the sprite set on screen (the inter
 pcr_next:   equ 0xF16E              ; rows_sync: the SAT entry whose colour row follows the last one
                                     ;   written (FFh: none; pc_rows sets an address only otherwise)
                                     ; (F170h-F190h: free since the alternation went)
+sb_end:     equ 0xED0C              ; sprites_frame: 1 + the highest object wanted after the plan
+                                    ;   (fl_last): rows_sync and sat_build stop there (ED0Ch: in the
+                                    ;   ECFBh-ED0Fh fc_lines leaves, docs/PERF2_PLAN.md 5.2)
 ; The level's descriptor (tools/mkrom.py gen/levels.inc: lv_desc, LV_SIZE bytes a level, in FRONT),
 ; copied here at each level's start and at power-on before vdp_setup (cold.asm lv_copy): what the
 ; engine reads instead of build-time equates (docs/LEVEL2.md 3.1). F1A0h-F1C2h.

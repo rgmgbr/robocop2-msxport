@@ -452,6 +452,28 @@ fl_off: call fl_bit
 fl_bits:
         dw 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768
 
+; -> A = 1 + the highest object wanted (pl_fl), 0 when none: the walks over the objects that act
+; only on shown ones stop there (an object past it shows nothing: O_FLAGS bit 7 and its pl_fl
+; bit come and go together, obj_set, obj_hide; after the plan it shows no version either, pc_not;
+; bob.asm gives a new identity the lowest free object: 3.4 objects a budget run on level 2's
+; tour, 4.4 on Cain's kill drive, 8.5 on his route firing). Keeps BC, DE.
+fl_last:
+        ld hl,(pl_fl)
+        ld a,h
+        or a
+        jr nz,fls_h
+        or l
+        ret z                       ; (none)
+        ld h,8
+        jr fls_lp
+fls_h:  ld h,16
+fls_lp: rla
+        jr c,fls_x
+        dec h
+        jr fls_lp
+fls_x:  ld a,h
+        ret
+
 ; A = object, HL = screen x, DE = screen y of its composition's top-left (obj_pos_ix: IX =
 ; the object).
 obj_pos:
@@ -512,8 +534,10 @@ cam_follow:
         or e
         ret z                       ; (the camera did not move)
         call cam_mark
+        call fl_last                ; (the objects up to the last one wanted)
+        or a
+        jr z,cf_x
         ld ix,obj_tab
-        ld a,MAX_OBJ
 cf_lp:  push af
         bit 7,(ix+O_FLAGS)
         jr z,cf_next
@@ -535,7 +559,7 @@ cf_next:
         pop af
         dec a
         jr nz,cf_lp
-        call sprites_moved
+cf_x:   call sprites_moved
         jp sprites_tick
 
 ; On the frame after the game's tick: the budget, unless nothing it looks at changed since it
@@ -567,8 +591,11 @@ bu_lvl: ld a,(act_a000)
 
 ; The early clock of every shown object (obj_ec).
 obj_ecs:
+        call fl_last                ; (up to the last object wanted)
+        or a
+        ret z
+        ld b,a
         ld ix,obj_tab
-        ld b,MAX_OBJ
 oe_lp:  bit 7,(ix+O_FLAGS)
         call nz,obj_ec
         ld de,OBJ_SIZE
@@ -673,8 +700,11 @@ budget:
         ld (bu_one),a
         ld (bu_cut),a
         ld (bu_wsum),a
+        call fl_last                ; (up to the last object wanted: the others show nothing and
+        or a                        ;  their O_OUT is read only behind O_FLAGS bit 7, which they
+        jr z,bg_r0                  ;  have clear)
+        ld b,a
         ld ix,obj_tab
-        ld b,MAX_OBJ
 bg_r:   push bc
         xor a
         ld (ix+O_OUT),a
@@ -701,7 +731,7 @@ bg_rn:  ld de,OBJ_SIZE
         add ix,de
         pop bc
         djnz bg_r
-        ld ix,obj_tab + SPARK_OBJ * OBJ_SIZE ; the spark has SAT entries 0-1 of its own: it counts
+bg_r0:  ld ix,obj_tab + SPARK_OBJ * OBJ_SIZE ; the spark has SAT entries 0-1 of its own: it counts
         bit 7,(ix+O_FLAGS)          ; in no total (BUD_MAX: the others')
         jr z,bg_sp
         ld hl,bu_tot
@@ -946,8 +976,12 @@ lf_z:   ld (hl),a
         inc l
         djnz lf_z
         call ln_rc
-        ld ix,obj_tab + OBJ_SIZE    ; (the BOBs)
-        ld b,MAX_OBJ - 1
+        call fl_last                ; (the BOBs, up to the last one wanted)
+        sub 1
+        ret c
+        ret z
+        ld b,a
+        ld ix,obj_tab + OBJ_SIZE
 lf_lp:  push bc
         call ft_live
         ld c,0
@@ -1202,16 +1236,6 @@ ver_same:
         ret nz
         ld a,(ix+O_EC)
         cp (iy+V_EC)
-        ret
-
-; IX = object -> A = 80h when it is to be shown (and not left out this tick), else 0.
-obj_want:
-        ld a,(ix+O_OUT)
-        or a
-        ld a,0
-        ret nz
-        ld a,(ix+O_FLAGS)
-        and 0x80
         ret
 
 ; A = object: it has a new owner (bob.asm bf_key): what it showed and prepared was another
@@ -2897,7 +2921,8 @@ rsy_n:  ld de,LAY_SIZE
         ld a,(pl_obj)
         inc a
         ld (pl_obj),a
-        cp MAX_OBJ
+        ld hl,sb_end                ; (up to the last object wanted: sprites_frame)
+        cp (hl)
         jr c,rsy_lp
         ret
 
@@ -3083,7 +3108,12 @@ sb_onext:
         add iy,de
         ld a,(sb_obj)
         inc a
-        cp MAX_OBJ
+        if EXTJOY
+        cp MAX_OBJ                  ; (test builds: every object's pub_cur record)
+        else
+        ld hl,sb_end                ; (up to the last object wanted: sprites_frame)
+        cp (hl)
+        endif
         jr c,sb_olp
         ret
 
@@ -3447,6 +3477,8 @@ sf_xadj:
         jr z,sf_end
         xor a
         ld (sat_dirty),a
+        call fl_last                ; (rows_sync and sat_build go up to the last object wanted:
+        ld (sb_end),a               ;  after the plan no other shows a version, pc_not)
         ld a,(spr_set)              ; the list goes to the other sprite set (the one on screen is
         xor R5_SET_A ^ R5_SET_B     ; the last list's: wait_frame waited for it)
         ld (spr_set),a

@@ -351,7 +351,15 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   set by `obj_set` and cleared by `obj_hide`: any other object shows and prepares nothing and
   keeps `pl_st` and `pl_gs` 0, so the look would do nothing for it; 2.1 of the 16 objects are
   live in normal play, and the skip gave +1.9 % pictures a second, 2026-10-23),
-  colour rows, SAT; publish; then the ticks due. `feed_vdp` gives the scroll engine its next
+  colour rows, SAT; publish; then the ticks due. The other walks over the objects stop after the
+  highest object wanted (`fl_last`, the top bit of `pl_fl`; 2026-11-01): `cam_follow`, `obj_ecs`,
+  the budget's pass and its BOB lines (`ln_fill`), and after the plan `rows_sync` and `sat_build`
+  (`sb_end`, set by `sprites_frame`). An object past it shows nothing (`O_FLAGS` bit 7 and its
+  `pl_fl` bit come and go together, and the plan drops the versions of an object not wanted), its
+  `O_OUT` is read only behind bit 7, and `bob_flush` gives a new identity the lowest free object:
+  1 + the highest wanted is 3.4 a budget run on level 2's tour, 4.4 on Cain's kill drive, 8.5 on
+  his route firing. Test builds (`EXTJOY`) keep `sat_build`'s whole walk for the `pub_cur` records,
+  so the bounded one runs only in the product (checked from the title with `rc2_satcheck`). `feed_vdp` gives the scroll engine its next
   VDP command at many points (the tick's stages, each object the plan works on, the budget, the
   BOB lists): its pages are built only from these points. It looks at the engines only while
   one may have work (`iw_more`: set once a frame by `wait_frame` and by the engine's update,
