@@ -792,8 +792,13 @@ spv_cmp:
 ; [camera y - 64h, + ACh) and x range meets the camera's x + 73h .. + 1A0h runs the level's
 ; handler (lv_tick) with IX = the record. The copper's sprite cut line ($10356) is set to CAh
 ; first, level 2's vats move it up (vat_cut_line: the line RoboCop's sprites are cut from).
+; (The port) Level 3's map-write caches age first, every tick: this tick's marks become the last
+; tick's (level3.asm lt2_off, here; level3obj.asm tur_put, update_objects after this).
 hz_update:
+        ld hl,(mc_cur)
+        ld (mc_prev),hl
         ld hl,0
+        ld (mc_cur),hl
         ld (AM + 0x15F0),hl
         ld a,0xCA
         ld (vat_cut_line),a

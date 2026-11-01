@@ -736,6 +736,57 @@ which as sprites were striped, cut or left out.
   differs in any frame of `drive_cov0`, `drive_cov1`, `drive_die`, `drive_over`, `drive_end`,
   the Z80 and the R800), and `atr_rc` no longer walks a row's patches (the beams' corridor:
   22.15 ticks a second on a 3.58 MHz V9938 against 21.93).
+- **Map-write caches (level 3's beams and turrets; performance campaign 2, 2026-11-01)**: a beam in
+  its off phase (`level3.asm` `lt2_off`: 1900h/1880h on top, 1800h/1780h below, the same words every
+  tick) and a wall turret (`level3obj.asm` `tur_put`: the panel's and the turret's 2 × 3 words) write
+  their cells every tick they run, and most of those writes put back the word the cell holds. Such a
+  write changes nothing (`map_write`: no patch taken, no attribute, no redraw, no count), so the port
+  skips it when it can prove the cells hold those words. Every map change counts in `mw_gen` (16 bits:
+  `atr_put`'s change path, `fb_invf`, which `map_write` calls only when a tile changes or a patch is
+  taken, and `tiles_init`). Each writer has an entry: per beam record `bm_gen` (`mw_gen` after its off
+  looks' writes; at most `BM_N` = 7 records, `tools/mapcells.py` checks), per turret type and block
+  `tc_ent0`/`tc_ent4` (the look's address, the row, the column, `mw_gen` after its writes; one turret
+  of each type at a time, `$16A6-$16A8`). An entry stands only in the tick right after its own use
+  (`mc_cur`, `mc_prev`: a bit per entry, aged at the start of every tick by `special.asm` `hz_update`,
+  before the beams and before `update_objects`; both cleared by `l3_init` at every life) and only while
+  no write was ever lost (`mp_lost` and `atr_lost` 0: a lost write is retried and counted again, as
+  before). Between two uses one tick apart fewer than 65,536 changes can happen, so an equal count
+  means none: the cells hold what the entry wrote, and the skipped writes would have changed nothing.
+  The logic and the map stay the original's tick for tick (the logic traces against the bench, the
+  map's state against the base's at every tick's start over `l3_tour3`, `l3_park` and `l3_kill` on
+  C-BIOS_MSX2, and every 100 ticks of tour3 and park on both VDPs). `cam_cells` takes the cells with
+  `add hl,hl` four times (the same B and C for every camera value; 18 bytes and 16 T-states a call less,
+  34 with the MSX's M1 wait states). RAM: 59
+  bytes (F170h-F190h, ECFBh-ED08h, EDF0h-EDFBh); the fixed area 4 bytes smaller, `LC3` +9, `FRONT` +7,
+  `BANK_L3` +83, `BANK_L3B` +145. Measured alone (EXTJOY drive builds, 60 Hz, ticks a second): `l3_tour3`'s
+  beams, lifts and roof (ticks 215-540, 545-1065, 1085-1400) 8.94, 10.09, 12.75 -> 9.13, 10.59, 14.06 on
+  C-BIOS_MSX2 and 12.73, 13.64, 12.40 -> 13.39, 14.43, 13.63 on the FS-A1FX; `l3_park` (40-1200) 14.52 ->
+  14.72 and 18.31 -> 18.92.
+- **Their writes with the tiles looked up (logic-2, 2026-11-01)**: the words the beams and turrets still
+  write carry their tiles. `tools/mapcells.py` `look_tables` writes each map word of their looks
+  (`lt2_top`, `lt2_left`, `lt2_right`, the off words; `tur_panel`, `tur40_look`, `tur41_look`) as its tile
+  (the level's `OTILE` at the word >> 7, as `map_write` looks it up) and its attributes (the word & 7Fh), 3
+  bytes a word, into `gen/tt_l3.inc` and `tt_l3b.inc` at every build (`tests/test_level3_logic.py`: the
+  tables equal `map_write`'s lookup of the original words). `level3.asm` `lt2_putt` and `level3obj.asm`
+  `tpu_w` call `tiles.asm` `map_write_t` (BC = the tile, A = the attributes), which enters `map_write`
+  after its lookup and its two bank switches; their columns (18-63) never need `map_write_lin`'s wrap
+  (`tools/mapcells.py` in `make msx`, and the same test, fail otherwise). `rd_bit` finds a cell's bit
+  without loops: the column % 20 by three compares and, with r = row & 15 and t = 4r + column % 20, the
+  index 16r + t (byte 2r + t / 8, bit t & 7), the same byte and bit for every row and every column 0-159
+  (`map_write`'s; the same test checks this formula for each of them, not the assembled routine). The
+  fixed area +7 bytes (`map_write_t` 6, `rd_bit` 1), `BANK_L3` +137,
+  `BANK_L3B` +224 (the word tables themselves stay in the banks unread, 80 and 144 bytes, as
+  `tools/amitab.py` copies `analysis/amiga_tables.tsv`'s rows). Both together, measured as above: tour3's
+  beams, lifts and roof 9.49, 10.95, 14.91 ticks a second on the MSX2 (+6 %, +9 %, +17 %), 14.03, 15.13,
+  14.36 on the MSX2+ (+10 %, +11 %, +16 %), park 14.88 (+2 %) and 19.28 (+5 %); the turbo R the same (it
+  waits for its VDP there); the map writes over tour3's 1,400 ticks 64,080 -> 39,924, over park's 1,200
+  14,364 -> 6,550, over kill's 1,860 726 -> 214. The logic traces (levels 1-3) 0 differ and the map's state
+  the base's every 100 ticks (tour3, park, both VDPs). The timing does change the display's own schedule:
+  the redraw queue's latency (a changed beam or turret cell drawn more than a picture after its change,
+  the field check's class `other`: tour3 after the drive's teleports, park's turret opening once) and
+  `rc2_guard`'s tear counts move as they do for builds of the base that change only a few T-states (the
+  base with `cam_cells`' rewrite alone, or with the aging's stores alone: 4-6 such pictures in tour3's lifts
+  window on the MSX2+, tears up to 9 more or fewer per drive).
 - **Palette on screen**: `pf_pal` (RAM) is the play field's palette the VBLANK loads (the HUD
   keeps its own, loaded at the split). It changes as the original's copper colours do: the
   fade (`pal_fade`: every 3-bit component at most the fade level / 4, the original's eight

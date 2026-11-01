@@ -151,6 +151,9 @@ l3i_hdr:
         ld (p_state),hl             ; ($15E2)
         ld l,0x0B
         ld (fade_st),hl             ; ($F89D: move.b #$B at $88CC)
+        ld hl,0
+        ld (mc_prev),hl             ; (the port: no map-write cache entry stands at a life's start,
+        ld (mc_cur),hl              ;  lt2_off, level3obj.asm tur_put)
         jp sw_init_l3               ; (the port: the logic shortcuts' caches from the lists)
 l3i_sp0:
         ld hl,sp_l3                 ; the special objects ($8B54: $9008): records into RAM,
@@ -195,8 +198,10 @@ l3i_spe:
 ; and sound 22h ($B30). Every frame its two columns of cells are written from map_cell(x, top)
 ; ($EF8E, h_row and h_col): on, the top row from lt2_top by (random & 6) x 2 (a long: the left
 ; cell's word, then the right one's) and rows - 1 + 1 rows below from lt2_left and lt2_right by
-; (random + x + 2n) & 1Eh; off, 1900h and 1880h on top, 1800h and 1780h below. Unlike level 1's
-; $933A: two cells wide, 32/32 frames (bit 5), 0Ch, (rows + 2) x 16 below the top in reach.
+; (random + x + 2n) & 1Eh; off, 1900h and 1880h on top, 1800h and 1780h below (the port: not again
+; while the cells hold them, lt2_off; every look from tt_l3.inc, the words with their tiles, through
+; lt2_putt). Unlike level 1's $933A: two cells wide, 32/32 frames (bit 5), 0Ch, (rows + 2) x 16 below
+; the top in reach.
 lt2:    ld a,(g_frame)
         and 0x20
         jp nz,lt2_off
@@ -245,20 +250,19 @@ lt2_map:
         call lt2_cell               ; ($EF8E at x, top)
         ld a,(AM + 0x0B32)
         and 6
+        ld e,a
         add a,a
+        add a,e                     ; (random & 6) x 3: the long's two words, 3 bytes each (tt_l3.inc)
         ld e,a
         ld d,0
-        ld hl,lt2_top
-        add hl,de
-        ld c,(hl)
-        inc hl
-        ld b,(hl)                   ; BC = the long's high word (the left cell)
-        inc hl
-        ld a,(hl)
-        inc hl
-        ld h,(hl)
-        ld l,a                      ; HL = its low word (the right cell)
-        call lt2_put
+        ld hl,lt2_top_t
+        add hl,de                   ; HL = the long's high word (the left cell),
+        ld d,h
+        ld e,l
+        inc de
+        inc de
+        inc de                      ; DE = its low word (the right cell)
+        call lt2_putt
         ld a,(AM + 0x0B32)
         add a,(ix+0)                ; D3 = random + x
         ld c,a
@@ -268,37 +272,88 @@ lt2_bl: push bc
         ld a,c
         and 0x1E
         ld e,a
+        rrca
+        add a,e                     ; the word (D3 & 1Eh) / 2, 3 bytes each
+        ld e,a
         ld d,0
-        ld hl,lt2_left
+        ld hl,lt2_right_t
         add hl,de
-        ld c,(hl)
-        inc hl
-        ld b,(hl)
-        ld hl,lt2_right
+        push hl
+        ld hl,lt2_left_t
         add hl,de
-        ld a,(hl)
-        inc hl
-        ld h,(hl)
-        ld l,a
-        call lt2_put
+        pop de
+        call lt2_putt
         pop bc
         inc c
         inc c
         djnz lt2_bl
         ret
+; (The port) The off looks' map-write cache: nothing is written when this record wrote them (or
+; skipped them so) in the last tick (mc_prev), no map cell changed since (mw_gen: tiles.asm map_write's
+; changes) and no write was ever lost (mp_lost, atr_lost 0): its cells hold those words, and writing a
+; cell's own word again changes nothing (map_write: no patch, attribute, redraw or count). Record k of
+; hz_l3 (in this bank, 8 bytes each, BM_N at most: tools/mapcells.py) has constant cells; h_row and
+; h_col are lt2's own, set before each use.
 lt2_off:
+        push ix
+        pop hl
+        ld de,(0 - hz_l3) & 0xFFFF
+        add hl,de                   ; 8k (record k)
+        ld a,l
+        rrca
+        rrca                        ; 2k
+        ld e,a
+        ld d,0
+        ld hl,bm_gen
+        add hl,de                   ; HL = its mw_gen
+        rrca                        ; k
+        ld b,a
+        inc b
+        ld a,0x80
+lt2_bk: rlca
+        djnz lt2_bk
+        ld c,a                      ; C = its bit, 1 << k
+        ld a,(mc_prev)
+        and c
+        jr z,lt2_ow                 ; (not written last tick)
+        ld a,(mp_lost)
+        ld e,a
+        ld a,(atr_lost)
+        or e
+        jr nz,lt2_ow
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        dec hl
+        push hl
+        ld hl,(mw_gen)
+        or a
+        sbc hl,de
+        pop hl
+        jr z,lt2_om                 ; (no change since: its cells hold the off looks)
+lt2_ow: push hl
+        push bc
         call lt2_cell
-        ld bc,0x1900
-        ld hl,0x1880
-        call lt2_put
+        ld hl,lt2_off_t             ; 1900h,
+        ld de,lt2_off_t + 3         ;   1880h
+        call lt2_putt
         ld b,(ix+6)
         inc b
 lt2_ol: push bc
-        ld bc,0x1800
-        ld hl,0x1780
-        call lt2_put
+        ld hl,lt2_off_t + 6         ; 1800h,
+        ld de,lt2_off_t + 9         ;   1780h
+        call lt2_putt
         pop bc
         djnz lt2_ol
+        pop bc
+        pop hl
+        ld de,(mw_gen)
+        ld (hl),e
+        inc hl
+        ld (hl),d                   ; (the count after its writes)
+lt2_om: ld a,(mc_cur)
+        or c
+        ld (mc_cur),a               ; (used this tick)
         ret
 
 ; h_row, h_col = the cell $EF8E's A0 points at for (x, top) of the record: row y >> 4, or 0 outside
@@ -339,20 +394,31 @@ l2c_0:  xor a
 l2c_r:  ld (h_row),a
         ret
 
-; BC = the left cell's map word, HL = the right one's: both into the row h_row from column h_col on
-; (the linear map: map_write_lin), then the next row.
-lt2_put:
-        push hl
+; HL = the left cell's map word, DE = the right one's, each as its tile and attributes (3 bytes:
+; tt_l3.inc, tools/mapcells.py look_tables): both into the row h_row from column h_col on, then the
+; next row. (The port: the original's words through map_write_lin; their tiles looked up at build time
+; go to map_write_t, which takes the same path after its lookup; the records' columns are 18-59, so
+; map_write_lin never wraps them: tools/mapcells.py checks.)
+lt2_putt:
+        push de
         ld a,(h_row)
         ld d,a
         ld a,(h_col)
         ld e,a
-        ld h,b
-        ld l,c
-        call map_write_lin          ; (keeps DE)
+        ld c,(hl)
+        inc hl
+        ld b,(hl)
+        inc hl
+        ld a,(hl)
+        call map_write_t            ; (keeps DE)
         pop hl
         inc e
-        call map_write_lin
+        ld c,(hl)
+        inc hl
+        ld b,(hl)
+        inc hl
+        ld a,(hl)
+        call map_write_t
         ld hl,h_row
         inc (hl)
         ret
@@ -513,3 +579,5 @@ t51_s:  ld hl,t51
         jp l3b_call
 t52_s:  ld hl,t52
         jp l3b_call
+
+        include "tt_l3.inc"         ; (the beams' looks with their tiles: tools/mapcells.py look_tables)

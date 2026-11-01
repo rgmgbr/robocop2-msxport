@@ -264,7 +264,17 @@ ar_none:
 ; that: its attributes (the low 7 bits) in the packed map (atr_put; a patched cell keeps those it
 ; was given last, MPF_ATR, so the beams and belts that write their cells every tick do not read
 ; the packed map), its tile (through the level's offset table) a patch of the row's pool unless
-; it is the ROM map's. A changed tile is queued for redrawing. Keeps DE.
+; it is the ROM map's. A changed tile is queued for redrawing. Every change counts in mw_gen
+; (atr_put, fb_invf); a write of the word the cell holds changes nothing, no patch, attribute,
+; redraw or count (level 3's map-write caches skip those: level3.asm lt2_off, level3obj.asm
+; tur_put). Keeps DE.
+; map_write_t: the same with the word's tile already looked up, BC = the tile, A = the attributes
+; (the word & 7Fh): level 3's beams and turrets (their looks' tables, tools/mapcells.py
+; look_tables), the column 0..159 as given (no map_write_lin wrap: the build checks theirs).
+map_write_t:
+        push de
+        ld (mw_atr),a
+        jr mw_tl
 map_write:
         push de
         ld a,l
@@ -293,7 +303,7 @@ map_write:
         call bank_8000
         pop de
         push de
-        ld l,d
+mw_tl:  ld l,d
         ld h,MP_ROW/256
         ld a,(hl)                   ; the row's first patch
         cp 0xFF
@@ -393,7 +403,7 @@ mp_pages:                           ;  with inc h / dec h)
         endif
 
 ; A = attributes (7 bits), D = row, E = column 0..159: the cell's attributes become those
-; (field.asm atr_new, when they are not already). Keeps BC, DE, HL.
+; (field.asm atr_new, when they are not already: a map change, counted in mw_gen). Keeps BC, DE, HL.
 atr_put:
         push bc
         ld c,a
@@ -401,6 +411,9 @@ atr_put:
         cp c
         jr z,ap_x
         push hl
+        ld hl,(mw_gen)              ; (level 3's map-write caches: level3.asm lt2_off,
+        inc hl                      ;  level3obj.asm tur_put)
+        ld (mw_gen),hl
         ld hl,atr_new
         call field_call
         pop hl
@@ -502,46 +515,49 @@ rd_pop: ld a,(rd_head)
         ld (rd_phase),a
         ret
 
-; D = row, E = column -> HL = its byte of rd_bits, A = its bit: (row & 15) * 20 + column % 20,
-; one bit for each cell of the window rd_queue keeps (16 rows, 20 columns). Keeps BC, DE.
+; D = row, E = column 0..159 (map_write's: rd_queue, and rd_pop from RD_Q) -> HL = its byte of
+; rd_bits, A = its bit: (row & 15) * 20 + column % 20, one bit for each cell of the window rd_queue
+; keeps (16 rows, 20 columns). Without loops: column % 20 by three compares, and with r = row & 15,
+; t = 4r + column % 20 (below 80), the index 16r + t: byte 2r + t / 8, bit t & 7. Keeps BC, DE.
 rd_bit: push bc
         push de
         ld a,e
-rbt_m:  sub 20
-        jr nc,rbt_m
-        add a,20
-        ld e,a
+        cp 80
+        jr c,rbt_1
+        sub 80
+rbt_1:  cp 40
+        jr c,rbt_2
+        sub 40
+rbt_2:  cp 20
+        jr c,rbt_3
+        sub 20
+rbt_3:  ld e,a                      ; column % 20
         ld a,d
         and 15
-        ld l,a
-        ld h,0
-        add hl,hl
-        add hl,hl
-        ld c,l
-        ld b,h
-        add hl,hl
-        add hl,hl
-        add hl,bc                   ; row * 20
-        ld d,0
-        add hl,de
-        ld a,l
+        ld d,a                      ; r
+        add a,a
+        add a,a
+        add a,e
+        ld e,a                      ; t
         and 7
         ld b,a
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l
-        ld de,rd_bits
+        ld a,e
+        rrca
+        rrca
+        rrca
+        and 0x1F                    ; t / 8
+        add a,d
+        add a,d
+        ld e,a
+        ld d,0
+        ld hl,rd_bits
         add hl,de
         ld a,1
         inc b
-rbt_s:  dec b
-        jr z,rbt_x
-        add a,a
-        jr rbt_s
-rbt_x:  pop de
+        jr rbt_n
+rbt_s:  add a,a
+rbt_n:  djnz rbt_s
+        pop de
         pop bc
         ret
 
@@ -590,9 +606,13 @@ fm38_bb:
         pop bc
         ret
 
-; D = row, E = column of a cell whose tile changed: the play-field caches holding it copy it
-; again when they need it (field.asm fb_inval). Keeps DE.
+; D = row, E = column of a cell whose tile changed (map_write's only calls: a patch's tile changed
+; or a patch taken): the play-field caches holding it copy it again when they need it (field.asm
+; fb_inval); a map change, counted in mw_gen (level 3's map-write caches). Keeps DE.
 fb_invf:
+        ld hl,(mw_gen)
+        inc hl
+        ld (mw_gen),hl
         push de
         ld hl,fb_inval
         call field_call
@@ -897,28 +917,19 @@ set_src:
         ld (cmdbuf+3),a
         ret
 
-; B = cam_x >> 4, C = cam_y >> 4
+; B = cam_x >> 4, C = cam_y >> 4 (their low bytes: bits 4-11, the high byte of the word << 4, for
+; every value). Changes HL and the flags; keeps A, DE.
 cam_cells:
         ld hl,(cam_x)
-        ld a,l
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        ld b,a
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld b,h
         ld hl,(cam_y)
-        ld a,l
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        srl h
-        rra
-        ld c,a
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld c,h
         ret
