@@ -171,6 +171,14 @@ LC3 4,866, INPUT 11, FRONT 1,381, MUSIC 1,331, PUZL 4,483, FRNG 264). The lowest
 4. The matrix of generic set-ups was not run on this step's product (no start path changed); the
    candidates' builds should run it.
 
+### Integrated
+Cherry-picked onto level2 b7934b0 (step 2 integrated first) as **7779f02** (the three changes and level
+1's piece cache), **a08e5c7** (the ring's queues) and **e723623** (the docs; this file resolved with both
+sections in step order). From the main tree (`sh S1/tools/mkb.sh REPO S1/I "prod" "GX EXTJOY=1 LV_TEST=2"
+"l2 EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2" "anim VAT_ANIM=1" "trace EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1"`):
+the five ROMs **byte-identical** to the worktree's (the product bef7857425b227e0), so every result above
+holds for the integrated tree; `make test`: 329 tests, the 4 known failures only.
+
 ## Step 2: level 3's research and plan (2026-11-01)
 
 **Done, offline (REA and Python only, no openMSX).** Worktree `g/wt02`, branch `g-s02` from
