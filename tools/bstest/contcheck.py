@@ -3,6 +3,7 @@
 docs/LEVEL2.md 3.7, 4.2 check 11, 4.4's game-over row) on hz.tcl hz_l2_cont_arm's records.
 
 usage: contcheck.py DIR TAG (--fire | --again | --no-fire | --none) [--tag N] [--gen GEN_DIR] [--py PY]
+                   [--level 2|3]
 
 --fire: the offer shown and taken (fire from its tick 60):
   - DIR/TAG_cont.sc5 (page 0's lines 0-161 once the offer's text is typed, fs_n 50) equals
@@ -26,6 +27,11 @@ usage: contcheck.py DIR TAG (--fire | --again | --no-fire | --none) [--tag N] [-
   used, a new game (the title, which a script build skips).
 --none: no credit: no offer (no record), no continue, AG $805E's high byte cleared (00FFh, as $11FEE
   leaves it), a new game.
+--level 3 (level 3's continue: hz.tcl hz_l3_jobs' cont3, cont3_fx, cont3_tr, its step D; docs/LEVEL3.md 4
+check 8): the same checks with level 3's regions (its lists' own lengths: 39 spawn records, 15 objects;
+no vats; the frame cache's places all empty at lv_cont's entry (fc_res FFh: PIC9's G7 overwrote page 2,
+the cache's lines; the continue's fe_text ran fb_init) and its first picture (DIR/TAG_l3g0, "level 3's first picture": tools/msxframe.py
+--level 3).
 Exit 0 when every check passes. Reads build/ram/level1_full.bin and msx/msx.inc of the repository
 this file is in (tools/bstest/); docs/HARNESS.md 5.22.
 """
@@ -54,6 +60,14 @@ REGIONS = (
     ("the vat state", (("vat_phase", 46), ("vat_shown", 103), ("vat_disp", 103), ("vat_chg", 7))),
     ("the tile cache", (("TC_SLOT", 1024), ("TC_TILE", ("slots", 2)), ("TC_REF", ("slots", 1)))),
 )
+# level 3 (msx.inc: spawn_ram's 39 records of 14 bytes and its end word to DFA3h, objl_ram's 15 of 12 and
+# its end word to EEB5h; the frame cache: fc_res below)
+REGIONS_L3 = (
+    REGIONS[0], REGIONS[1],
+    ("the level's lists", (("spawn_ram", 39 * 14 + 2), ("objl_ram", 15 * 12 + 2), ("SP_RAM", 0x100), ("sp_ptrs", 32))),
+    REGIONS[4],
+)
+FC_RES, FC_MAX = 0xECF0, 8                     # (msx.inc fc_res: per place its cache frame, FFh none)
 
 
 def equates() -> dict[str, int]:
@@ -65,12 +79,12 @@ def equates() -> dict[str, int]:
     return out
 
 
-def regions(before: bytes, after: bytes) -> int:
+def regions(before: bytes, after: bytes, level: int = 2) -> int:
     eq = equates()
     atrn = before[0xF1A5] | before[0xF1A6] << 8
     slots = 0x10000 - (before[0xF1BC] | before[0xF1BD] << 8)
     bad = 0
-    for what, parts in REGIONS:
+    for what, parts in (REGIONS_L3 if level == 3 else REGIONS):
         diffs = []
         for name, size in parts:
             a = eq[name]
@@ -99,6 +113,7 @@ def main() -> int:
     ap.add_argument("--tag", dest="ntag", type=int, default=0, help="the build's TAG")
     ap.add_argument("--gen", type=Path, help="the build's gen folder (hud_grade.pal) for the preview")
     ap.add_argument("--py", default=VPY, help="the Python with numpy for tools/msxframe.py (--fire, --again)")
+    ap.add_argument("--level", type=int, choices=(2, 3), default=2, help="the level continued (default 2)")
     a = ap.parse_args()
     notes = (a.dir / f"{a.tag}_cont.txt").read_text()
     print(notes.rstrip())
@@ -177,9 +192,21 @@ def main() -> int:
             print(f"lv_cont: the credit used ($805E 0000h), fo_cont 1 (the lives at its entry {lvc[1]}: "
                   "lv_cfront sets 2; the trace's row 109 has them)")
         before, after = (a.dir / f"{a.tag}_over_ram.bin").read_bytes(), (a.dir / f"{a.tag}_lvc_ram.bin").read_bytes()
-        bad |= regions(before, after)
+        bad |= regions(before, after, a.level)
+        if a.level == 3:
+            # (PIC9's G7 overwrote page 2, the frame cache's lines 160-231: the cache must hold nothing
+            #  at lv_cont's entry, so that every frame is copied again; fe_text's fb_init empties it)
+            res = after[FC_RES:FC_RES + FC_MAX]
+            held = before[FC_RES:FC_RES + FC_MAX]
+            if any(v != 0xFF for v in res):
+                print(f"the frame cache (fc_res): {res.hex()} at lv_cont's entry: a place still holds a frame "
+                      "that PIC9 overwrote")
+                bad = 1
+            else:
+                print(f"the frame cache (fc_res): every place empty at lv_cont's entry (before PIC9: {held.hex()}): "
+                      "each frame copied again")
         bn = a.dir / f"{a.tag}_bonus.txt"
-        bad |= first_picture(a.dir, a.tag, bn.read_text() if bn.exists() else "", a.py)
+        bad |= first_picture(a.dir, a.tag, bn.read_text() if bn.exists() else "", a.py, a.level)
     else:
         if not done or n != CONT_CALLS + 1:
             print(f"cont: fs_n {n}, fs_done {done}: its whole length ({CONT_CALLS + 1} ticks) expected")

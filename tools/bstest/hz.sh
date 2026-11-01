@@ -30,6 +30,9 @@
 #   hz.sh l3builds R         level 3's trace builds (hz.tcl hz_l3; docs/LEVEL3.md 3.8): R/l3/rc2_l3.rom
 #                            and R/l3c/rc2_l3c.rom (LV_CARRY=0:0:1:1: cont3's game over with a credit)
 #                            (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry)
+#   hz.sh l3fxbuilds R       level 3's sound logs' builds (fxlog.tcl fxl_l3_jobs) besides l3builds':
+#                            R/l3x (+ NO_SCC_INT=1), R/l3n (+ NO_SCC=1), R/l3cn (LV_CARRY=0:0:1:1
+#                            NO_SCC=1), each rc2_<b>.rom, EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3
 #   hz.sh fxbuilds R         level 2's sound logs' builds (fxlog.tcl fxl_jobs; docs/LEVEL2.md 4.3),
 #                            each R/<b>/rc2.rom: l2, l2x (+ NO_SCC_INT=1), l2n (+ NO_SCC=1) EXTJOY=1
 #                            ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2; l2c, l2cn (+ NO_SCC=1) the same with
@@ -241,6 +244,20 @@ l3builds)
     sh "$H/build.sh" "$R/$b/rc2_$b.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 "$@" || bad=1
   done
   [ $bad -eq 0 ] && echo "l3builds: PASS ($R)" || echo "l3builds: FAIL"
+  exit $bad
+  ;;
+l3fxbuilds)
+  [ $# -ge 1 ] || usage
+  R="$(absdir "$1" mk)" || exit 2
+  bad=0
+  # (level 3's sound logs, fxlog.tcl fxl_l3_jobs, besides l3builds' l3 and l3c: the SCC in slot B, the PSG alone)
+  for spec in "l3x NO_SCC_INT=1" "l3n NO_SCC=1" "l3cn LV_CARRY=0:0:1:1 NO_SCC=1"; do
+    set -- $spec
+    b="$1"; shift
+    echo "== $b EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 $*"
+    sh "$H/build.sh" "$R/$b/rc2_$b.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 "$@" || bad=1
+  done
+  [ $bad -eq 0 ] && echo "l3fxbuilds: PASS ($R)" || echo "l3fxbuilds: FAIL"
   exit $bad
   ;;
 fxbuilds)

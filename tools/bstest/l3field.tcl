@@ -92,24 +92,26 @@ proc lf_done {} {
 # 3's first tick (lv_cur's logic bank BANK_L3) SECS (default 42) of emulated time under rc2_guard (tears
 # counted), rc2_patcheck, rc2_sprlines and rc2_satcheck: DIR/start_<m2|fx|tr>.txt (the same lines); with
 # POSES the scripted enemies of lf_jobs too (the frame cache under the guard). The drive's trace goes to
-# DIR/l3_tour3.txt, l3_tour3_fx.txt, l3_tour3_tr.txt.
-proc lf_start_jobs {dir R {secs 42} {poses ""}} {
+# DIR/l3_tour3.txt, l3_tour3_fx.txt, l3_tour3_tr.txt. DRIVE (default tour3, ROWS 1401) another of
+# tools/l3drives.py's (step D: kill, 1861 rows, with SECS 76: Cain's fight and death under the guard);
+# its traces DIR/l3_<drive>.txt, _fx, _tr.
+proc lf_start_jobs {dir R {secs 42} {poses ""} {drive tour3} {rows 1401}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
 	set jobs {}
-	foreach {t m tn} {m2 C-BIOS_MSX2 tour3 fx Panasonic_FS-A1FX tour3_fx tr Panasonic_FS-A1GT tour3_tr} {
+	foreach {t m sfx} {m2 C-BIOS_MSX2 {} fx Panasonic_FS-A1FX _fx tr Panasonic_FS-A1GT _tr} {
 		lappend jobs [list l3start_$t $m [list lf_start_setup "$dir/start_$t.txt" "$R/l3/rc2_l3.rom" \
-			"$R/l3/rc2_l3.labels" "$dir/l3_$tn.txt" "$e/l3_tour3.drive" $secs $poses] {[hz_l2_start_done]} 900]
+			"$R/l3/rc2_l3.labels" "$dir/l3_$drive$sfx.txt" "$e/l3_$drive.drive" $secs $poses $rows] {[hz_l2_start_done]} 1800]
 	}
 	return $jobs
 }
 
-proc lf_start_setup {out rom labels trace drive secs poses} {
+proc lf_start_setup {out rom labels trace drive secs poses {rows 1401}} {
 	set ::hz_l2g_out $out
 	set ::hz_l2g_rom $rom
 	set ::hz_l2g_lab $labels
 	set ::hz_l2g_secs $secs
-	set ::hz_l2g_n 1401
+	set ::hz_l2g_n $rows
 	set ::hz_l2g 0
 	set ::hz_l2g_written 0
 	set ::rg_done 0

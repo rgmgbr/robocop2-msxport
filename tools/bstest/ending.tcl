@@ -106,6 +106,18 @@ proc ge_table {} {
 }
 
 proc ge_setup {dir tag rom labels keys fire} {
+	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
+	foreach {id opts} [debug condition list] { debug condition remove $id }
+	carta eject
+	carta insert $rom -romtype KonamiSCC
+	if {[debug breaked]} { debug cont }
+	set ::pause off
+	reset
+	ge_arm $dir $tag $rom $labels $keys $fire
+}
+
+# ge_setup's records armed on the machine as it runs (no reset; level 3's step D: after a drive)
+proc ge_arm {dir tag rom labels keys fire} {
 	file mkdir $dir
 	set ::ge_dir $dir
 	set ::ge_tag $tag
@@ -118,13 +130,6 @@ proc ge_setup {dir tag rom labels keys fire} {
 	set ::ge_tn 0
 	set f [open "$dir/${tag}_end.txt" w]
 	close $f
-	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
-	foreach {id opts} [debug condition list] { debug condition remove $id }
-	carta eject
-	carta insert $rom -romtype KonamiSCC
-	if {[debug breaked]} { debug cont }
-	set ::pause off
-	reset
 	foreach n {txt_end txt_hisc txt_cont txt_best tn_cmp mus_call tn_tick tn_left iv_late hsn_k front_over
 	           lv_cont fr_title front_ending hs_best BANK_FRONT BANK_FRONT2 BANK_MUSIC front_mode} {
 		set ::ge_$n [rc2_label $labels $n]
@@ -229,7 +234,7 @@ proc ge_poll {} {
 proc ge_end {why} {
 	if {$::ge_fin} return
 	set ::ge_fin 1
-	ge_note "end: $why: [ge_state]"
+	ge_note "end: $why: [ge_state], ac_flash [format %04X [rc2_w 0xDD10]]"
 	ge_note "table: [ge_table]"
 	foreach b $::ge_bps { catch {debug remove_bp $b} }
 	set ::pause on
@@ -237,6 +242,74 @@ proc ge_end {why} {
 
 proc ge_job {dir tag rom labels keys {m Gradiente_Expert20_64K} {fire 1}} {
 	return [list "ending $tag" $m [list ge_setup $dir $tag $rom $labels $keys $fire] {$::ge_fin} 1200]
+}
+
+# ge_kill_job DIR R ?MACHINE? ?SFX?: level 3 won in a script build (level 3's step D, docs/LEVEL3.md 4 check
+# 7): R/l3/rc2_l3.rom (hz.sh l3builds) on tools/l3drives.py's kill drive (1861 rows: Cain's death, the end
+# count, the level's end at row 1860; the trace DIR/l3_killSFX.txt, the lost counters appended to
+# DIR/lost.txt as hz_l3's job l3_killSFX), then, the drive done (its pause lifted), the game completed with
+# ge_job's records under the tag killSFX (DIR/killSFX_end.sc5: the WELL DONE screen; killSFX_end.txt: the
+# CMP tune to its end); a script build skips the name entry and the title (ending.asm hs_entry, rc2.asm
+# title), so the job ends at the new game. SFX: "", _fx, _tr (the machines' names in hz_l3_jobs). Check
+# the traces with "hz.sh compare --fields analysis/amiga_ram_l3.tsv DIR R kill kill_fx kill_tr" and the
+# rest with "endcheck.py DIR killSFX - --script --score S" (S: the score at the level's end).
+proc ge_kill_job {dir R {m C-BIOS_MSX2} {sfx ""}} {
+	set e "$::hz_root/build/emu"
+	set lost [file join $dir lost.txt]
+	return [list "l3_kill$sfx" $m [list ge_kill_setup $dir "kill$sfx" "$R/l3/rc2_l3.rom" "$R/l3/rc2_l3.labels" \
+		"$e/l3_kill.drive"] "\[ge_kill_after\] && \[hz_l2_lost {$lost}\]" 1800]
+}
+
+proc ge_kill_setup {dir tag rom labels drive} {
+	file mkdir $dir
+	hz_l2_drive $rom $labels "$dir/l3_$tag.txt" 1861 $drive
+	ge_arm $dir $tag $rom $labels {} 0
+	set ng [rc2_label $labels new_game]
+	# (the new game after the drive: the LV_TEST start's own way into level 3 passes there too)
+	lappend ::ge_bps [debug set_bp $ng {$::rc2_trace_done} ge_kill_end]
+}
+
+# (the new game comes within a poll's 20 ms of the tune's end in a script build: its end noted here then)
+proc ge_kill_end {} {
+	if {$::ge_st == 1 && $::ge_tn == 2 && [rc2_w $::ge_tn_left] == 0} {
+		ge_note "the tune over (tn_left 0): [ge_state]"
+		set ::ge_st 2
+	}
+	ge_end "the new game (a script build)"
+}
+
+# ge_l3over_job DIR TAG ROM LABELS KEYS ?MACHINE?: a game over in level 3 with a score that enters the table
+# and a credit (level 3's step D, docs/LEVEL3.md 4 check 7): ROM an LV_TEST=3 build without a script
+# (LV_CARRY=10050:0:1:1: no life left, one credit), from the power-on with ge_job's records; at level 3's
+# game frame 30 RoboCop is put into floor 25's beam (x 420, y 400, as tools/l3drives.py's cont3 and beam
+# teleport him; the camera as rc2_drive_rom sets it), where he dies; then PIC9, the name entry (KEYS), the
+# table, the offer (fire) and lv_cont. Check with "endcheck.py DIR TAG KEYS --over".
+proc ge_l3over_job {dir tag rom labels keys {m Gradiente_Expert20_64K}} {
+	return [list "l3over $tag" $m [list ge_l3over_setup $dir $tag $rom $labels $keys] {$::ge_fin} 1200]
+}
+
+proc ge_l3over_setup {dir tag rom labels keys} {
+	ge_setup $dir $tag $rom $labels $keys 1
+	set ts [rc2_label $labels tick_start]
+	set gt [rc2_label $labels game_tick]
+	set bank [expr {[rc2_label $labels BANK_L3]}]
+	set ::ge_obp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $bank && \[rc2_w 0xD000\] == 30" ge_l3over_beam]
+	lappend ::ge_bps $::ge_obp
+}
+
+proc ge_l3over_beam {} {
+	catch {debug remove_bp $::ge_obp}
+	rc2_wset 0xDAD0 420
+	rc2_wset 0xDAD4 400
+	rc2_wset 0xD004 [expr {420 - 0x108}]
+	rc2_wset 0xD006 [expr {400 - 0x70}]
+	ge_note "level 3's game frame 30: RoboCop put into the beam at (420, 400): [ge_state]"
+}
+
+proc ge_kill_after {} {
+	if {$::ge_fin} { return 1 }
+	if {$::rc2_trace_done && [info exists ::pause] && $::pause} { set ::pause off }
+	return 0
 }
 
 set ::ge_loaded "ending.tcl loaded"

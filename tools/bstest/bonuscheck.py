@@ -2,7 +2,7 @@
 """Checks a hz.tcl hz_bonus record: the bonus text screens against renders of the port's scripts.
 
 usage: bonuscheck.py DIR TAG [--tag N] [--result time|ok|fail] [--gen GEN_DIR] [--range time|C,D,M]
-                     [--brief l2|l3] [--level2] [--no-game]
+                     [--brief l2|l3] [--level2 | --level3] [--no-game]
 
 DIR/TAG_intro.sc5 and DIR/TAG_result.sc5 (page 0's lines 0-161 as the emulator held them) must
 equal tools/msxtext.py fs_render of txt_bs_intro and of the result's script (txt_bs_time by
@@ -28,7 +28,10 @@ flow: lv_next after the briefing): no new game but level 2 at its game frame 100
 tick_n"), the lost counters 0 there, with --range the range's rating kept into level 2 (rgcheck.py),
 and its first picture (first_picture: TAG_l2g0, hz.tcl hb_l2_snap) checked: tools/msxframe.py on it
 (--field --no-sprites, the venv's Python or --py PY) must exit 0, and the notes' record of what the
-HUD shows must hold the game's score, ammo, timer, lives (the heads) and full can.
+HUD shows must hold the game's score, ammo, timer, lives (the heads) and full can. With --level3 (level 3's
+step D: the product's flow after level 2's end, np.tcl np_l3flow_setup's TAG2): the same for level 3 after the
+level-3 briefing (TAG_l3g0, "level 3's first picture", "level 3 at tick_n"); with --range the rating level 3
+runs with is the range's (rgcheck.py's fr_rated: POOR, 24, after a time out).
 Exit 0 when every check passed.
 
 Reads build/ram/level1_full.bin and build/msx/text_bs_*.sc5 of the repository this file is in
@@ -75,7 +78,7 @@ VPY = str(Path.home() / ".venvs/msxports/bin/python")      # (msxframe.py needs 
 # msx/hud.asm cell_src: per digit cell the byte of hud_timer, hud_ammo, hud_score (the game's words
 # big-endian) and its nibble (80h: the high one): the timer's 4, the ammo's 3, the score's 7
 CELL_SRC = (0x80, 0x00, 0x81, 0x01, 0x02, 0x83, 0x03, 0x04, 0x85, 0x05, 0x86, 0x06, 0x87, 0x07)
-FIRST = re.compile(r"^level 2's first picture at .*?timer ([0-9A-F]{4}), score ([0-9A-F]{8}), lives (\d+), "
+FIRST = re.compile(r"^level (\d)'s first picture at .*?timer ([0-9A-F]{4}), score ([0-9A-F]{8}), lives (\d+), "
                    r".*?weapon (\d+), ammo ([0-9A-F]{4}), .*?HUD shown ([0-9a-f]{28}) heads (\d+) (\d+) "
                    r"icon (\d+) can ([0-9A-F]{4}) jobs (\d+)/(\d+)", re.M)
 
@@ -86,10 +89,11 @@ def hud_cells(timer: int, ammo: int, score: int) -> list[int]:
     return [b[c & 0x7F] >> 4 if c & 0x80 else b[c & 0x7F] & 15 for c in CELL_SRC]
 
 
-def first_picture(d: Path, tag: str, notes: str, py: str = VPY) -> int:
+def first_picture(d: Path, tag: str, notes: str, py: str = VPY, level: int = 2) -> int:
     """Level 2's first picture (DIR/TAG_l2g0, hz.tcl hb_l2_snap: the split of its first list with the
     display on, the HUD not being drawn; after lv_next or lv_cont), against the level's own and the
-    game's values (docs/LEVEL2.md 4.2 checks 1 and 13):
+    game's values (docs/LEVEL2.md 4.2 checks 1 and 13); level 3's (level=3: DIR/TAG_l3g0, the notes'
+    "level 3's first picture", tools/msxframe.py --level 3; docs/LEVEL3.md 4 checks 7 and 8) the same way:
       - tools/msxframe.py on it with --field --no-sprites exits 0: the play area equal to the map with
         its patches, the vats and the play-field BOBs of the list (the sprites not checked: the list's
         SAT is not published yet at its frame 0), the HUD equal to what hud.asm records as shown, the
@@ -101,13 +105,13 @@ def first_picture(d: Path, tag: str, notes: str, py: str = VPY) -> int:
         (0100h), no HUD job pending.
     Returns 0 when every check passes."""
     bad = 0
-    m = FIRST.search(notes)
+    m = next((x for x in FIRST.finditer(notes) if int(x[1]) == level), None)
     if not m:
-        print("level 2's first picture: not noted (or not in the notes' format)")
+        print(f"level {level}'s first picture: not noted (or not in the notes' format)")
         return 1
-    timer, score, lives, weapon, ammo = int(m[1], 16), int(m[2], 16), int(m[3]), int(m[4]), int(m[5], 16)
-    shown = list(bytes.fromhex(m[6]))
-    heads, icon, can, jobs = (int(m[7]), int(m[8])), int(m[9]), int(m[10], 16), (int(m[11]), int(m[12]))
+    timer, score, lives, weapon, ammo = int(m[2], 16), int(m[3], 16), int(m[4]), int(m[5]), int(m[6], 16)
+    shown = list(bytes.fromhex(m[7]))
+    heads, icon, can, jobs = (int(m[8]), int(m[9])), int(m[10]), int(m[11], 16), (int(m[12]), int(m[13]))
     lives -= 0x10000 if lives >= 0x8000 else 0
     want = hud_cells(timer, ammo, score)
     start = hud_cells(0x0730, ammo, score)
@@ -126,32 +130,32 @@ def first_picture(d: Path, tag: str, notes: str, py: str = VPY) -> int:
     if jobs != (0, 0):
         what.append(f"HUD jobs pending {jobs[0]}/{jobs[1]}")
     if what:
-        print("level 2's first picture: the HUD's record does not hold the game's values: " + "; ".join(what))
+        print(f"level {level}'s first picture: the HUD's record does not hold the game's values: " + "; ".join(what))
         bad = 1
     else:
-        print(f"level 2's first picture: the HUD's record holds the game's values (score {score:08X}h, "
+        print(f"level {level}'s first picture: the HUD's record holds the game's values (score {score:08X}h, "
               f"ammo {ammo:04X}h, timer {''.join(map(str, shown[:4]))}, {lives} lives: heads {heads[0]} "
               f"{heads[1]}, icon {icon}, the can full, no job)")
-    snap = d / f"{tag}_l2g0"
+    snap = d / f"{tag}_l{level}g0"
     if not (snap / "vram.bin").exists():
-        print("level 2's first picture not recorded")
+        print(f"level {level}'s first picture not recorded")
         return 1
-    cmd = [py, "-I", str(ROOT / "tools/msxframe.py"), str(snap), str(ROOT / "build/msx/level2"),
-           str(ROOT / "build/msx/hud"), str(d / f"{tag}_l2g0.png"), "--sprites", str(ROOT / "build/msx/sprites"),
-           "--level", "2", "--field", "--no-sprites"]
+    cmd = [py, "-I", str(ROOT / "tools/msxframe.py"), str(snap), str(ROOT / f"build/msx/level{level}"),
+           str(ROOT / "build/msx/hud"), str(d / f"{tag}_l{level}g0.png"), "--sprites", str(ROOT / "build/msx/sprites"),
+           "--level", str(level), "--field", "--no-sprites"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True)
     except OSError as e:
-        print(f"level 2's first picture: msxframe.py not run ({e}: give --py PY, a Python with numpy)")
+        print(f"level {level}'s first picture: msxframe.py not run ({e}: give --py PY, a Python with numpy)")
         return 1
     for line in r.stdout.splitlines():
         if re.search(r"pixels checked|tile VRAM|HUD job|play field:", line):
             print("  msxframe: " + line.strip()[:200])
     if r.returncode:
-        print(f"level 2's first picture: msxframe.py exit {r.returncode} ({r.stderr.strip()[-200:]})")
+        print(f"level {level}'s first picture: msxframe.py exit {r.returncode} ({r.stderr.strip()[-200:]})")
         bad = 1
     else:
-        print("level 2's first picture: msxframe.py exit 0 (the play area, the HUD, the tiles and the atlas)")
+        print(f"level {level}'s first picture: msxframe.py exit 0 (the play area, the HUD, the tiles and the atlas)")
     return bad
 
 
@@ -219,6 +223,7 @@ def main() -> int:
     ap.add_argument("--no-game", action="store_true", help="the record stops before a new game")
     ap.add_argument("--brief", choices=("l2", "l3"), help="the next level's briefing recorded after the range")
     ap.add_argument("--level2", action="store_true", help="level 2 follows the briefing (no new game)")
+    ap.add_argument("--level3", action="store_true", help="level 3 follows the briefing (no new game)")
     ap.add_argument("--py", default=VPY, help="the Python with numpy for tools/msxframe.py (--level2)")
     a = ap.parse_args()
     ram = (ROOT / "build" / "ram" / "level1_full.bin").read_bytes()
@@ -264,24 +269,41 @@ def main() -> int:
         bad = 1
     if a.brief:
         bad |= check_brief(a, ram, glyphs, notes)
-    if a.level2:
-        m = re.search(r"^level 2 at tick_n (\d+), game frame (\d+).*lost: mp (\d+) atr (\d+) rd (\d+) fb (\d+)", notes, re.M)
+    if a.level2 or a.level3:
+        lv = 2 if a.level2 else 3
+        m = re.search(rf"^level {lv} at tick_n (\d+), game frame (\d+).*ac_diff - diff_tab (\d+).*"
+                      r"lost: mp (\d+) atr (\d+) rd (\d+) fb (\d+)", notes, re.M)
         if not m:
-            print("no level 2 after the briefing (its game frame 100)")
+            print(f"no level {lv} after the briefing (its game frame 100)")
             bad = 1
-        elif any(int(v) for v in m.groups()[2:]):
-            print(f"level 2: lost counters not 0 ({m[0][-40:]})")
-            bad = 1
-        bad |= first_picture(a.dir, a.tag, notes, a.py)
+        else:
+            if any(int(v) for v in m.groups()[3:]):
+                print(f"level {lv}: lost counters not 0 ({m[0][-40:]})")
+                bad = 1
+            else:
+                print(f"level {lv} at its game frame {m[2]}: the lost counters 0")
+            if lv == 3 and a.rg:
+                want = 24 if a.rg == "time" else None      # (rgcheck.py: a time out rates POOR)
+                rn = (a.dir / f"{a.tag}_rg.txt")
+                r = re.search(r"rating (-?\d+) at fr_rated", rn.read_text() if rn.exists() else "")
+                got = int(m[3])
+                if want is None and r:
+                    want = int(r[1])
+                if want is None or got != want:
+                    print(f"level 3 runs with ac_diff - diff_tab {got}, the range's {want} expected")
+                    bad = 1
+                else:
+                    print(f"level 3 runs with the range's rating (ac_diff - diff_tab {got})")
+        bad |= first_picture(a.dir, a.tag, notes, a.py, lv)
         if re.search(r"^game tick_n", notes, re.M):
-            print("a new game after the briefing, not level 2")
+            print(f"a new game after the briefing, not level {lv}")
             bad = 1
     elif not a.no_game and not re.search(r"^game tick_n", notes, re.M):
         print("no new game after the stage")
         bad = 1
     if a.rg:
         print("-- the shooting range after Brainstorm's result")
-        rb = rgcheck.check(a.dir, a.tag, rgcheck.parse_counts(a.rg), a.ntag, level2=a.level2)
+        rb = rgcheck.check(a.dir, a.tag, rgcheck.parse_counts(a.rg), a.ntag, game=not a.level3, level2=a.level2)
         print("  the range:", "PASS" if not rb else "FAIL")
         bad |= rb
     print("bonus check:", "PASS" if not bad else "FAIL")

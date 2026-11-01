@@ -2,7 +2,7 @@
 """Checks an ending.tcl ge_job record (docs/ENDING.md: the game completed and the high scores) against
 tools/msxtext.py's renders of the port's scripts and a model of the original's name entry and table.
 
-usage: endcheck.py DIR TAG KEYS [--tag N] [--score S] [--over [--no-offer]] [--gen GEN_DIR]
+usage: endcheck.py DIR TAG KEYS [--tag N] [--score S] [--over [--no-offer] | --script] [--gen GEN_DIR]
 
 KEYS: the keys ge_job typed (one argument, names separated by spaces: A-Z, 0-9, KP0-KP9, SPACE, BS,
 RET). S: the score the build carries (LV_CARRY's, decimal; default 10050).
@@ -26,7 +26,10 @@ RET). S: the score the build carries (LV_CARRY's, decimal; default 10050).
   name and the score's 4 BCD bytes). A score that does not enter the table: no entry's record and
   KEYS "-" (nothing typed), the table the defaults.
 Writes DIR/TAG_*.png previews (play area 2x over the HUD, as bonuscheck.py) for the eye (--gen: the
-build's gen folder for the HUD's palette). Exit 0 when every check passed.
+build's gen folder for the HUD's palette). --script (level 3's step D: ending.tcl ge_kill_job, the game
+completed by level 3's end in a script build): the WELL DONE screen and the tune as END_TEST=1's, no name
+entry and no table screen (a script build skips hs_entry), the table in RAM the defaults, the end at the
+new game (a script build skips the title); KEYS "-". Exit 0 when every check passed.
 """
 from __future__ import annotations
 
@@ -134,6 +137,7 @@ def main() -> int:
     ap.add_argument("--score", type=int, default=10050, help="the score the build carries (LV_CARRY's)")
     ap.add_argument("--over", action="store_true", help="END_TEST=2: the game over's way")
     ap.add_argument("--no-offer", action="store_true", help="with --over: no credit, the title after the entry")
+    ap.add_argument("--script", action="store_true", help="a script build's game completed: no entry, the new game")
     ap.add_argument("--gen", type=Path, help="the build's gen folder (hud_grade.pal) for the previews")
     a = ap.parse_args()
     ram = (ROOT / "build/ram/level1_full.bin").read_bytes()
@@ -147,9 +151,9 @@ def main() -> int:
     end = msxtext.brief_scripts(ram, msxtext.END)[0][2]
     hisc = msxtext.hisc_scripts(ram)[0][2]
     head, table = msxtext.hs_defaults(ram)
-    enters = a.score % 10 ** 7 > table[-1][1]
+    enters = a.score % 10 ** 7 > table[-1][1] and not a.script
     waits, final = entry_model(keys) if enters else ([], b"")
-    want = table_model(table, final, a.score)
+    want = table if a.script else table_model(table, final, a.score)
     shots = ["end"] if not a.over else []
     if not a.over:
         bad |= compare(a.dir, a.tag, "end", msxtext.fs_render(glyphs, tl + end), txt_pal, f"the WELL DONE screen{tg}")
@@ -165,7 +169,13 @@ def main() -> int:
             print(f"the tune: {n} ticks of tn_tick to tn_left 0 in {secs:.1f} emulated s (T + 1 = {T + 1}): "
                   + ("PASS" if ok else "FAIL"))
             bad |= not ok
-        if not re.search(r"end: the title \(fr_title\)", notes):
+        if a.script:
+            if not re.search(r"end: the new game \(a script build\)", notes) or "front_over" in notes:
+                print("the end: not at the new game (a script build), or a game over")
+                bad = 1
+            else:
+                print("the end: the new game (the script build skips the entry and the title)")
+        elif not re.search(r"end: the title \(fr_title\)", notes):
             print("the end: not at the title")
             bad = 1
     else:
@@ -198,7 +208,8 @@ def main() -> int:
         shots.append("best")
     else:
         ok = not (a.dir / f"{a.tag}_best.sc5").exists() and "hs_best" not in notes
-        print(f"the score {a.score} does not enter the table: no entry, no table screen: " + ("PASS" if ok else "FAIL"))
+        why = "a script build skips the entry" if a.script else f"the score {a.score} does not enter the table"
+        print(f"{why}: no entry, no table screen: " + ("PASS" if ok else "FAIL"))
         bad |= not ok
     m = re.search(r"^\s*[\d.]+ table: (.*)$", notes, re.M)
     if not m:

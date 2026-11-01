@@ -674,6 +674,9 @@ proc hz_l2c_state {} {
 proc hz_l2c_over {} {
 	if {$::hc_st != 0} return
 	set ::hc_st 1
+	# (the text pointer fe_text left: an LV_TEST=3 build's briefing ends where txt_cont starts, which
+	#  must not pass for the offer: hz_l2c_poll wants the pointer moved since; level 3's step D)
+	set ::hc_p0 [rc2_w 0xCFB8]
 	hz_l2c_file over_ram.bin [debug read_block memory 0 0x10000]
 	hz_l2c_note "front_over at [machine_info time] s: [hz_l2c_state]"
 	# (lv_cont's and new_game's breakpoints check their first byte, read now: the game's fixed area is
@@ -688,7 +691,7 @@ proc hz_l2c_over {} {
 proc hz_l2c_poll {} {
 	set p [rc2_w 0xCFB8]
 	set n [rc2_w 0xCFBE]
-	set on [expr {$p >= $::hc_txt_cont && $p < $::hc_txt_cont + 64}]
+	set on [expr {$p >= $::hc_txt_cont && $p < $::hc_txt_cont + 64 && (![info exists ::hc_p0] || $p != $::hc_p0)}]
 	if {$::hc_st == 1 && $on && $n >= 50} {
 		set ::hc_st 2
 		set ::hc_ilbp [debug set_bp $::hc_iv_late {} hz_l2c_rec]
@@ -1012,7 +1015,9 @@ proc hb_l2_go {} {
 	catch {debug remove_bp $::hb_l2bp}
 	set ::hb_l2 1
 	hb_note "lv_next at [machine_info time] s, tick_n [rc2_w 0xCEE0], AG 8050h [rc2_w 0xDC50]"
-	hb_l2_snap_arm
+	# (level 3's start recorded only in a job that asks for it, ::hb_l3rec: np.tcl np_l3flow_setup; the
+	#  other flows reach level 3 as before, with level 2's bank asked: nothing recorded there)
+	hb_l2_snap_arm [expr {[info exists ::hb_l3rec] && $::hb_l3rec}]
 	set ts [rc2_label $::hb_labels tick_start]
 	set gt [rc2_label $::hb_labels game_tick]
 	set ::hb_l2tbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $::hb_l2bank && \[rc2_w 0xD000\] >= 100" hb_l2_100]
@@ -1025,14 +1030,17 @@ proc hb_l2_state {} {
 	return "RoboCop [rc2_w 0xDAD0] [rc2_w 0xDAD4], camera [rc2_w 0xD004] [rc2_w 0xD006], timer [format %04X [rc2_w 0xDC4A]], score [format %04X%04X [rc2_w 0xDC46] [rc2_w 0xDC48]], lives [rc2_w 0xDC34], 805Eh [rc2_w 0xDC5E], weapon [rc2_w 0xDC5C], ammo [format %04X [rc2_w 0xDC30]], ac_diff - diff_tab [hb_rating], HUD shown $shown heads [peek 0xC63B] [peek 0xC63C] icon [peek 0xC63D] can [format %04X [rc2_w 0xC618]] jobs [peek 0xC646]/[peek 0xC63E]"
 }
 
-# level 2's first picture armed (after lv_next or lv_cont): hb_l2_snap at each split, and the main
+# level 2's first picture armed (after lv_next or lv_cont; level 3's when AG $8050 is 2 there: lv_cur's logic
+# bank BANK_L3, TAG_l3g0, the notes' "level 3's first picture" and "level 3 at tick_n", level 3's step D):
+# hb_l2_snap at each split, and the main
 # program's HUD work followed (::hb_hud 1 from hud_frame's entry to its return into mainloop or
 # hud_keep): hud.asm records a digit cell as shown before its 16 lines are written, so a split that
 # comes while hud_frame runs (a late frame: docs/level2/HANDOFF.md step 16, open issue 2) would catch
 # the record ahead of the VRAM; that split is passed over and the next one taken (the notes say how
 # many). tools/bstest/bonuscheck.py --level2 and contcheck.py check the picture (tools/msxframe.py).
-proc hb_l2_snap_arm {} {
-	set ::hb_l2bank [rc2_label $::hb_labels BANK_L2]
+proc hb_l2_snap_arm {{lv3 1}} {
+	set ::hb_lvn [expr {$lv3 && [rc2_w 0xDC50] == 2 ? 3 : 2}]
+	set ::hb_l2bank [rc2_label $::hb_labels [expr {$::hb_lvn == 3 ? "BANK_L3" : "BANK_L2"}]]
 	set ::hb_l2seq -1
 	set ::hb_hud 0
 	set ::hb_hudn 0
@@ -1068,16 +1076,16 @@ proc hb_l2_snap {} {
 	if {$::hb_hud} { incr ::hb_hudn; return }
 	set ::hb_l2seq $seq
 	hb_l2_snap_disarm
-	rc2_snap "$::hb_dir/${::hb_tag}_l2g0"
+	rc2_snap "$::hb_dir/${::hb_tag}_l${::hb_lvn}g0"
 	set skip [expr {$::hb_hudn ? "; splits passed over while the HUD was drawn: $::hb_hudn" : ""}]
-	hb_note "level 2's first picture at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], [hb_l2_state]$skip"
+	hb_note "level $::hb_lvn's first picture at [machine_info time] s: game frame [rc2_w 0xD000], tick_n [rc2_w 0xCEE0], [hb_l2_state]$skip"
 }
 
 proc hb_l2_100 {} {
 	catch {debug remove_bp $::hb_l2tbp}
 	hb_l2_snap_disarm
 	set lost "lost: mp [peek 0x1084] atr [peek 0x1082] rd [peek 0x1088] fb [peek 0x069C]"
-	hb_note "level 2 at tick_n [rc2_w 0xCEE0], game frame [rc2_w 0xD000], [machine_info time] s: [hb_l2_state]; $lost"
+	hb_note "level $::hb_lvn at tick_n [rc2_w 0xCEE0], game frame [rc2_w 0xD000], [machine_info time] s: [hb_l2_state]; $lost"
 	if {[info exists ::rgx_hb] && $::rgx_hb && [info exists ::rgx_tag] && $::rgx_tag eq $::hb_tag} {
 		rgx_note "level 2 at tick_n [rc2_w 0xCEE0] at [machine_info time] s, g_frame [rc2_w 0xD000], lives [peek 0xDC34], ac_diff - diff_tab [hb_rating]; $lost"
 	}

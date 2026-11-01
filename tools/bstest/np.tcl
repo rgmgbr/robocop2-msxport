@@ -158,6 +158,8 @@ proc np_solved_setup {dir tag rom labels {keys 0}} {
 
 proc np_title_setup {dir tag rom labels {exact 0}} {
 	file mkdir $dir
+	set ::hb_l3rec 0
+	set ::nt_l3go 0
 	hz6_prod_setup $dir $tag $rom $labels
 	set ::nt_rom $rom
 	set ::nt_labels $labels
@@ -182,7 +184,9 @@ proc np_t_l2 {} {
 	set gt [rc2_label $::nt_labels game_tick]
 	set b [rc2_label $::nt_labels BANK_L2]
 	if {[catch {set b3 [rc2_label $::nt_labels BANK_L3]}]} { set b3 $b }
-	set ::nt_endbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && (\[peek 0xF1A0\] == $b || \[peek 0xF1A0\] == $b3) && \[peek 0xDBD1\] == 0" np_t_end]
+	# (::nt_l3go: level 3 played to that game frame first, np_l3flow_setup; 0 in the other jobs)
+	set g3 [expr {[info exists ::nt_l3go] ? $::nt_l3go : 0}]
+	set ::nt_endbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && (\[peek 0xF1A0\] == $b || (\[peek 0xF1A0\] == $b3 && \[rc2_w 0xD000\] >= $g3)) && \[peek 0xDBD1\] == 0" np_t_end]
 	set ::hb_tag "${::nt_tag}2"
 	hb_init_range $::nt_labels
 	set ::hb_tjob 1
@@ -195,6 +199,25 @@ proc np_t_l2 {} {
 	#  snapshots, stepcheck.py still --visit 2 and shots.py; the range's pass 1500)
 	hz7_arm "$::hb_dir/st_${::hb_tag}" $::nt_labels {100 400}
 	set ::nt_rgarm 1
+	# (after hb_init_range, which clears it: level 3's game frame 100 goes on, np_l3flow_setup)
+	if {$g3 > 0} { set ::hb_l2next np_t_l3 }
+}
+
+# (hb_step's level 3 at its game frame 100 in np_l3flow_setup's job: the level's end comes from the
+#  breakpoint above, the flow goes on to the ending and the title)
+proc np_t_l3 {} {
+	hb_note "level 3 played to its game frame $::nt_l3go: its end asked as F5 would ask it"
+}
+
+# np_l3flow_setup DIR TAG ROM LABELS: np_title_setup's flow (EXACT 1) with level 3 recorded (level 3's step
+# D, docs/LEVEL3.md 4 check 7): after the level-3 briefing hb_step's TAG2_l3g0 (its first picture) and
+# "level 3 at tick_n" at its game frame 100, where its end is asked (np_t_end), then the end count, the
+# game completed, the name entry (RETURN) and the table, and the title recorded as np_title_setup's.
+# Check with bonuscheck.py DIR TAG2 --result time --range time --brief l3 --level3.
+proc np_l3flow_setup {dir tag rom labels} {
+	np_title_setup $dir $tag $rom $labels 1
+	set ::hb_l3rec 1
+	set ::nt_l3go 100
 }
 
 # (the range's snapshot armed once hb_step records the range: its state 6 removes every breakpoint)

@@ -299,4 +299,42 @@ proc fxl_jobs {dir R {only ""}} {
 	return $out
 }
 
+# fxl_l3_jobs DIR R ?ONLY?: level 3's sound logs (docs/LEVEL3.md 4 check 6, its step D) on the builds of
+# "hz.sh l3builds R" (R/l3, R/l3c) and "hz.sh l3fxbuilds R" (R/l3x: + NO_SCC_INT=1, R/l3n and R/l3cn: +
+# NO_SCC=1), C-BIOS_MSX2, into DIR:
+#   d_<drive>_<k>  tools/l3drives.py's kill (1861 rows: Cain's fight, his death, the end count) and park
+#                  (1201: the trucks, the turrets' rockets, the car park) on chips k (scc, ext, psg), boss
+#                  (1401: Cain on the roof and the floors, fired at) on scc: DIR/d_<drive>_<k>.txt
+#   cont3_<k>      cont3's drive (401 rows) on R/l3c (scc) and R/l3cn (psg): the game over, the offer taken
+#                  by SPACE (hz.tcl hz_l2_cont_arm), level 3 again
+#   brief3_<k>     R/l3 (scc), R/l3n (psg) from the power-on: the level-3 briefing (txt_l3_brief) to 1 s
+#                  after it
+# Check each with "fxcheck.py check LOG ROM LABELS [--bench build/emu/l3_<drive>_ram.jsonl] --expect k".
+proc fxl_l3_jobs {dir R {only ""}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set m C-BIOS_MSX2
+	set jobs {}
+	foreach {k b exts ds} {scc l3 {} {kill 1861 park 1201 boss 1401} ext l3x scc {kill 1861 park 1201} \
+			psg l3n {} {kill 1861 park 1201}} {
+		foreach {d n} $ds {
+			lappend jobs [fxl_drive_job d_${d}_$k $m "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" "$dir/d_${d}_$k.txt" $n "$e/l3_$d.drive" $exts]
+		}
+	}
+	foreach {k b} {scc l3c psg l3cn} {
+		# (the offer taken by SPACE from its tick 60, as hz.tcl hz_l3_jobs' cont3: hz_l2_cont_arm's records
+		#  in DIR too; then level 3 again to the drive's row 401, so that --bench takes the whole reference)
+		set l "$R/$b/rc2_$b.labels"
+		set d [list fxl_drive_setup "$R/$b/rc2_$b.rom" $l "$dir/cont3_$k.txt" 401 "$e/l3_cont3.drive" {}]
+		lappend jobs [list cont3_$k $m [list hz_l2_cont_setup $d $l $dir cont3_$k 1] {$::rc2_trace_done && [fxl_end]} 1800]
+	}
+	foreach {k b} {scc l3 psg l3n} {
+		lappend jobs [fxl_text_job brief3_$k $m "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" "$dir/brief3_$k.txt" txt_l3_brief]
+	}
+	if {$only eq ""} { return $jobs }
+	set out {}
+	foreach j $jobs { if {[lsearch -exact $only [lindex $j 0]] >= 0} { lappend out $j } }
+	return $out
+}
+
 set ::fxl_loaded "fxlog.tcl loaded"
