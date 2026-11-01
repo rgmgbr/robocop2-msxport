@@ -109,6 +109,7 @@ gt_vat: ld hl,vat_tile
 ; idle points: the V9938's mirror of that column on its other page, else the next column made ready
 ; (vat_prep). The vats never keep iw_more: their work waits for wait_frame's loop or for the engines'
 ; own work, so that feed_vdp's calls in the game's logic stay as cheap as in the other levels.
+        if VAT_ANIM
 vat_win:
         ld hl,vat_run
         ld a,(vat_fr + VF_RDY)      ; (none ready: nothing to draw, no bank switched; always so in
@@ -127,6 +128,12 @@ vat_l2: ld a,(act_a000)             ; (BANK_L2 at A000h around the call)
 vw_ret: pop bc                      ; (vw_ret: the harness's mark; the routine's flags kept)
         ld a,b
         jp bank_a000
+        else
+vat_win:                            ; (VAT_ANIM=0: no vat column is ever made ready, vats.asm is not
+vat_idle:                           ;  assembled: Z, A = 0, as vat_go returns with vat_on 0)
+        xor a
+        ret
+        endif
 
         if VAT_TICK
 ; (VAT_TICK builds: the vats' variant, docs/LEVEL2.md default 18; rc2.asm after each game tick) The

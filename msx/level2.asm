@@ -330,4 +330,6 @@ lt1_n:  push hl
         include "level2obj.asm"     ; (the types only level 2 has)
         include "vats_l2.inc"       ; vat_shown's start (tools/mkrom.py: tools/mapcells.py vat_tables)
         ds (VAT_COLS_l2 - (vat_disp - vat_shown)) * 0x4000  ; (an error when vat_shown has not the vats' room)
+        if VAT_ANIM                 ; (the vats' display: VAT_ANIM=1 builds only, docs/LEVEL3.md default 9)
         include "vats.asm"          ; (the vats on the screen: get_tile's vat rule, the columns)
+        endif

@@ -314,8 +314,9 @@ def routine(path: str, label: str, end: str) -> list[str]:
 
 class VatAnimTests(unittest.TestCase):
     """VAT_ANIM (the rest of the game's step 1, the user's choice of 2026-10-31): the product shows level
-    2's vats at the map's own look (VAT_ANIM=0), VAT_ANIM=1 the display as built for test7; the vats' code
-    (vats.asm, field.asm's vat section) stays in every build, the logic (level2.asm lt1) in both."""
+    2's vats at the map's own look (VAT_ANIM=0), VAT_ANIM=1 the display as built for test7; the vats' display
+    (vats.asm, field.asm's vat section past vat_init, tiles.asm's hooks) only in VAT_ANIM=1 builds (docs/LEVEL3.md
+    default 9: the room for level 3's play field), the logic (level2.asm lt1) in both."""
 
     def test_the_defaults_and_the_refusals(self):
         self.assertEqual((mkrom.OPTIONS["VAT_ANIM"][0], mkrom.OPTIONS["VAT_TICK"][0]), (0, 0))
@@ -332,8 +333,15 @@ class VatAnimTests(unittest.TestCase):
         src = (ROOT / "msx" / "tiles.asm").read_text()
         self.assertEqual(len([l for l in src.splitlines() if "gt_vat" in l.split(";")[0]]),
                          len([l for l in tiles if "gt_vat" in l]))
-        self.assertEqual(if_blocks("field.asm", "VAT_ANIM"), ["ld a,1", "ld (vat_on),a"])  # vat_init
-        for f in ("rc2.asm", "sprites.asm", "scroll9938.asm", "scroll9958.asm", "vats.asm", "level2.asm"):
+        field = [l for l in if_blocks("field.asm", "VAT_ANIM") if l]
+        self.assertEqual(field[:3], ["ld a,1", "ld (vat_on),a", "vf_recp:"])               # vat_init, the section
+        k = field.index("else")
+        self.assertIn("vat_dst:", field[:k])
+        self.assertEqual(field[k + 1:], ["vat_inbox:", "xor a", "ret", "vat_bbinit:", "ret"])   # VAT_ANIM=0's stubs
+        self.assertIn("ld hl,vat_run", tiles[tiles.index("vat_win:"):])
+        self.assertEqual([l for l in tiles[tiles.index("else"):] if l], ["else", "vat_win:", "vat_idle:", "xor a", "ret"])
+        self.assertEqual(if_blocks("level2.asm", "VAT_ANIM"), ['include "vats.asm"'])
+        for f in ("rc2.asm", "sprites.asm", "scroll9938.asm", "scroll9958.asm", "vats.asm"):
             self.assertNotIn("VAT_ANIM", (ROOT / "msx" / f).read_text(), f)
 
     def test_the_play_field_follows_vat_on(self):

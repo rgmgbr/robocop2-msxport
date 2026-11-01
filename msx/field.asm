@@ -3529,7 +3529,9 @@ an_w:   or b
 ; whether a column meets the play-field BOBs or their work (vat_meet, for vats.asm). All of it only in
 ; VAT_ANIM=1 builds (vat_on 1 in level 2): the product (VAT_ANIM=0) shows the vats at the map's own
 ; look, its static images, and the play field treats their cells as any other (the user's choice of
-; 2026-10-31). The code stays in every build (the harness's marks, the tests).
+; 2026-10-31). The section past vat_init is assembled in VAT_ANIM=1 builds only, as vats.asm
+; (docs/LEVEL3.md default 9: its room in BANK_FIELD went to level 3's play field); the product keeps
+; the equates, vat_init (vat_on 0, vat_disp cleared for the pictures' models) and stubs.
 
 VAT_REC:    equ L2_VATS + 0x40          ; per vat: first column, columns, first row, rows (its record's
                                         ;   + 2), first index in vat_shown (tools/mapcells.py vat_tables)
@@ -3606,6 +3608,7 @@ vin_c:  ld (hl),a
         xor a
         jp fill
 
+        if VAT_ANIM
 ; A = a vat's record index (0-7) -> HL = its record (lv_tab at 8000h).
 vf_recp:
         add a,a
@@ -4266,6 +4269,15 @@ vds_38: ld a,(ix+VF_CC)
         ld a,(s38_vis_page)
         ld (ix+VF_PG),a
         ret
+        else
+; (VAT_ANIM=0: the vats drawn as the map's static images, the user's choice of 2026-10-31; the
+; vats' display, vats.asm and the rest of this section, is not assembled: docs/LEVEL3.md default 9)
+vat_inbox:                          ; Z: no piece holds a drawn vat cell
+        xor a
+        ret
+vat_bbinit:                         ; (no vat column on any page)
+        ret
+        endif
 
         if EXTJOY
 ; (isr.asm through field_call, test builds) A list goes on screen: the play-field BOBs its page

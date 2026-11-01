@@ -57,6 +57,28 @@ proc vl_go {} {
 	catch {puts $::vl_f "G [rc2_w 0xD000] [rc2_w 0xCEE0] [format %.6f [machine_info time]]"}
 	set a0 [rc2_label $lab act_a000]
 	set b $::vl_bank
+	set ::vl_mc {}
+	set ::vl_mq 0
+	set ::vl_mm -1
+	set ::vl_ps -1
+	set ::vl_r -1
+	set ::vl_p -1
+	set ::vl_wait 0
+	set ::vl_sum {0 0 0 0}
+	set ::vl_msum {0 0}
+	set ::vl_psum {0 0}
+	set ::vl_t0 [machine_info time]
+	if {[catch {rc2_label $lab vat_run}]} {
+		# (a VAT_ANIM=0 build: the vats' display is not assembled, docs/LEVEL3.md default 9; nothing
+		# draws a column, so the log holds the clock and the guard alone, as the product's did)
+		set ::vl_bps [list [debug set_bp [rc2_label $lab tick_start] {} vl_tick]]
+		set ::vl_pb {}
+		set ::vl_ticks 0
+		set ::vl_on 1
+		array unset ::vl_k
+		foreach k {vr_try vr_drop vr_nt vr_lt vp_scan} { set ::vl_k($k) 0 }
+		return
+	}
 	set ::vl_bps [list \
 		[debug set_bp [rc2_label $lab ve_go1] "\[peek $a0\] == $b" vl_c0] \
 		[debug set_bp [rc2_label $lab ve_go2] "\[peek $a0\] == $b" vl_c1] \
