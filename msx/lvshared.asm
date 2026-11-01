@@ -832,3 +832,345 @@ t31:    ld l,(ix+OS_X)
         ld (bob_d4),hl
         call bob_part               ; legs
         jp gunman
+
+; ----- the sprite budget's per-give and per-run code (msx/sprites.asm budget) -----
+
+; Kept here, not in the fixed area, since 2026-11-01 (the fixed area had 29 bytes left in its fullest
+; option set): the code that runs once a give or a budget run, or seldom: the total phase (ft_total),
+; the give-way's entry (ft_give), what a give does (ft_dropb, ft_out), the candidates' lists made once
+; a run (ft_lists), the BOBs' order of importance (bu_order, made again when an identity changed) and
+; the cut (bg_cut). The walks over the candidates (ft_drop_t, ft_leave_t, ft_cand, ft_anyb, ft_covers,
+; ft_live, ft_map) stay in the fixed area: the turbo R runs that from its internal RAM, and from here,
+; the cartridge, the whole give-way took the R800 2 to 4 % more time where Cain is shot. The budget is
+; this code's only caller: sprites_tick runs it with the level's logic bank at A000h (bu_lvl); it reads
+; and writes RAM only and calls the fixed area's routines; the interrupts put act_a000's bank back.
+; VAT_ANIM=1 builds (level 2's bank holds the vats' display: 28 bytes left) have it in level 1's bank
+; only: tools/mkrom.py's copies for the other levels end before this section's first line
+; (lvshared_copy, tail), and bu_lvl maps level 1's bank instead. Keep it the last section.
+
+; The total phase: while the objects (but the spark) pass BUD_MAX sprites, something gives way
+; as on a line (ft_line FFh: anywhere).
+ft_total:
+        ld a,0xFF
+        ld (ft_line),a
+ftt_lp: ld a,(bu_tot)
+        cp BUD_MAX + 1
+        ret c
+        call ft_give
+        jr nc,ftt_lp
+        ret
+
+; Something gives way on line ft_line (FFh: in the total), the first that can of: an OR layer of
+; the explosions (and the spark), one of them left out, an OR layer of the shots, enemy bullets,
+; pickups and small parts, one of them left out; in the total only, as the last resort, an OR
+; layer of a character (dropped for good: its look changes at most once; their compositions fit
+; beside RoboCop on any line, so a line never needs it). The OR layer dropped is the cheapest of
+; the tier there (its band's gain: what its colours are worth). C when nothing can.
+ft_give:
+        ld a,2
+        call ft_drop_t
+        ret nc
+        ld a,2
+        call ft_leave_t
+        ret nc
+        ld a,1
+        call ft_drop_t
+        ret nc
+        ld a,1
+        call ft_leave_t
+        ret nc
+        ld a,(ft_line)
+        inc a
+        scf
+        ret nz                      ; (a line: the VDP hides its last sprites, never RoboCop's)
+        jp ft_drop_t                ; (A = 0: the characters)
+
+; IX = object, ft_bbit = one of its bands: that band's OR layer goes (its B sprites leave its
+; lines, O_GONE and the total, not for the spark); a character's stays held. NC.
+ft_dropb:
+        ld a,(ft_tier)              ; (one OR layer fewer in the tier)
+        add a,ft_orn & 0xFF
+        ld l,a
+        ld h,ft_orn / 256
+        dec (hl)
+        call ft_map
+        ld l,(ix+O_BANDT)
+        ld h,(ix+O_BANDT+1)
+        ld a,(ft_bbit)
+        ld c,a
+        ld b,1
+fdb_f:  ld a,b
+        cp c
+        jr z,fdb_g
+        inc hl
+        inc hl
+        inc hl
+        inc hl
+        sla b
+        jr fdb_f
+fdb_g:  ld a,c
+        or (ix+O_DROP)
+        ld (ix+O_DROP),a
+        ld e,(hl)                   ; dy
+        inc hl
+        inc hl
+        ld a,(hl)                   ; B sprites
+        ld c,a
+        add a,(ix+O_GONE)
+        ld (ix+O_GONE),a
+        call ft_spark
+        jr z,fdb_l                  ; (the spark: in no total)
+        ld a,(bu_tot)
+        sub c
+        ld (bu_tot),a
+fdb_l:  ld a,1
+        ld (ln_neg),a
+        ld a,c
+        call ln_add
+        ld a,(ix+O_TIER)
+        or a
+        ret nz                      ; (NC)
+        ld a,(ft_bbit)
+        or (ix+O_HOLD)
+        ld (ix+O_HOLD),a
+        or a                        ; (NC)
+        ret
+
+; IX = object: left out of the tick: its sprites leave its lines and the total. NC.
+ft_out: ld (ix+O_OUT),1
+        ld c,1
+        call ln_obj
+        call ft_spark
+        jr z,fo_x
+        ld a,(bu_tot)
+        sub (ix+O_NSPR)
+        add a,(ix+O_GONE)
+        ld (bu_tot),a
+fo_x:   or a                        ; (NC)
+        ret
+
+; The give-way's candidates, once a budget run (at its first give: ft_lok): per tier 0-2 the
+; live objects of that tier (RoboCop's tier 3 never gives way) in object order (ft_tl, for
+; ft_drop_t) and in the order of importance (ft_tb, bu_ord's order, for ft_leave_t), FFh after
+; the last. The tiers are the run's (bg_tier); an object left out later in the run stays in
+; them (the walks test ft_live again). Walking every object for each give cost 4-7 % of the CPU
+; in the busy scenes.
+ft_lists:
+        ld a,1
+        ld (ft_lok),a
+        xor a
+        ld hl,ft_orn                ; (no droppable OR layer counted yet)
+        ld (hl),a
+        inc l
+        ld (hl),a
+        inc l
+        ld (hl),a
+        ld hl,ft_tl
+        call ftg_wp
+        ld ix,obj_tab + OBJ_SIZE
+        ld c,1
+ftg_lp: call ftg_one
+        call ft_orc                 ; (and the OR layers it could drop)
+        ld de,OBJ_SIZE
+        add ix,de
+        inc c
+        ld a,c
+        cp MAX_OBJ
+        jr c,ftg_lp
+        call ftg_end
+        ld hl,ft_tb
+        call ftg_wp
+        ld hl,bu_ord
+ftg_blp: ld a,(hl)
+        cp 0xFF
+        jp z,ftg_end
+        inc hl
+        push hl
+        ld c,a
+        call obj_ix
+        call ftg_one
+        pop hl
+        jr ftg_blp
+
+; HL = ft_tl or ft_tb: each tier's list empty (ft_wp: their next places).
+ftg_wp: ld de,ft_wp
+        ld a,l
+        ld (de),a
+        add a,17
+        inc de
+        ld (de),a
+        add a,17
+        inc de
+        ld (de),a
+        ret
+
+; IX = object C: into its tier's list when it is live and of tier 0-2. Keeps BC, IX.
+ftg_one:
+        call ft_live
+        ret c
+        ld a,(ix+O_TIER)
+        cp 3
+        ret nc
+        add a,ft_wp & 0xFF
+        ld e,a
+        ld d,ft_wp / 256
+        ld a,(de)
+        ld l,a
+        ld h,ft_tl / 256            ; (ft_tl and ft_tb: one 256-byte page)
+        ld (hl),c
+        inc a
+        ld (de),a
+        ret
+
+; IX = object (ft_lists): when it is live and of tier 0-2, its bands whose OR layer it could drop
+; (with B sprites, O_BMASK, not dropped yet, O_DROP) count in its tier's ft_orn, which ft_dropb
+; counts down: never fewer than the tier has left, since an object left out later keeps its count.
+; Keeps BC, IX.
+ft_orc: call ft_live
+        ret c
+        ld a,(ix+O_TIER)
+        cp 3
+        ret nc
+        add a,ft_orn & 0xFF
+        ld l,a
+        ld h,ft_orn / 256
+        ld a,(ix+O_DROP)
+        cpl
+        and (ix+O_BMASK)
+        ret z
+foc_lp: inc (hl)                    ; (one a bit)
+        ld e,a
+        dec a
+        and e
+        jr nz,foc_lp
+        ret
+
+; Each list of the kind ftg_wp started: FFh after its last.
+ftg_end:
+        ld de,ft_wp
+        ld b,3
+ftg_elp: ld a,(de)
+        ld l,a
+        ld h,ft_tl / 256
+        ld (hl),0xFF
+        inc de
+        djnz ftg_elp
+        ret
+
+; The BOB objects in their order of importance, for the budget and the plan (bu_ord, FFh after
+; the last): lifts and the vehicle (RoboCop stands on them), enemies, their bullets, pickups,
+; RoboCop's shots and effects, explosions (bob.asm categories; within one, object order).
+bu_order:
+        xor a
+        ld (bo_dirty),a
+        ld hl,bo_pos                ; per rank: its count, then where its objects go
+        ld b,BO_RANKS
+        xor a
+boz:    ld (hl),a
+        inc hl
+        djnz boz
+        ld hl,obj_key + 4 + 3       ; (object 1's category + 1)
+        ld b,SPARK_OBJ - 1
+boc:    ld a,(hl)                   ; its rank
+        add a,bo_rank & 0xFF
+        ld e,a
+        adc a,bo_rank / 256
+        sub e
+        ld d,a
+        ld a,(de)
+        cp BO_RANKS
+        jr nc,boc_n                 ; (no identity)
+        add a,bo_pos & 0xFF
+        ld e,a
+        ld d,bo_pos / 256
+        ex de,hl
+        inc (hl)
+        ex de,hl
+boc_n:  inc l
+        inc l
+        inc l
+        inc l
+        djnz boc
+        ld hl,bo_pos                ; counts -> the first place of each rank
+        ld b,BO_RANKS
+        ld c,0
+bop:    ld a,(hl)
+        ld (hl),c
+        add a,c
+        ld c,a
+        inc hl
+        djnz bop
+        ld a,c                      ; (the end)
+        add a,bu_ord & 0xFF
+        ld l,a
+        ld h,bu_ord / 256
+        ld (hl),0xFF
+        ld hl,obj_key + 4 + 3
+        ld c,1                      ; object
+bow:    ld a,(hl)
+        add a,bo_rank & 0xFF
+        ld e,a
+        adc a,bo_rank / 256
+        sub e
+        ld d,a
+        ld a,(de)
+        cp BO_RANKS
+        jr nc,bow_n
+        add a,bo_pos & 0xFF
+        ld e,a
+        ld d,bo_pos / 256
+        ld a,(de)                   ; its place
+        inc a
+        ld (de),a
+        dec a
+        add a,bu_ord & 0xFF
+        ld e,a
+        ld d,bu_ord / 256
+        ld a,c
+        ld (de),a
+bow_n:  inc l
+        inc l
+        inc l
+        inc l
+        inc c
+        ld a,c
+        cp SPARK_OBJ
+        jr c,bow
+        ret
+
+; Even with every OR layer dropped the objects pass BUD_MAX sprites: after RoboCop (counted
+; with rc_hold), the BOBs in their order of importance (bu_ord): those that do not fit then
+; are left out this tick (O_OUT); bu_cut = 1.
+bg_cut: ld a,1
+        ld (bu_cut),a
+        ld a,(rc_hold)
+        ld c,a                      ; one-layer sprites of the objects kept (RoboCop always,
+        ld hl,bu_ord                ; whole; the spark is never left out here: entries 0-1),
+cut_lp: ld a,(hl)                   ; the BOBs in their order of importance
+        cp 0xFF
+        ret z
+        push hl
+        call obj_ix
+        call cut_obj
+        pop hl
+        inc hl
+        jr cut_lp
+
+; IX = object, C = the one-layer sprites kept so far (bg_cut): kept when it fits, else left out.
+; Keeps B.
+cut_obj:
+        bit 7,(ix+O_FLAGS)
+        ret z
+        ld a,c
+        add a,(ix+O_NA)
+        cp BUD_MAX + 1
+        jr nc,cut_out
+        ld c,a
+        ret
+cut_out:
+        ld (ix+O_OUT),1
+        ld a,(bu_tot)
+        sub (ix+O_NSPR)
+        add a,(ix+O_GONE)
+        ld (bu_tot),a
+        ret

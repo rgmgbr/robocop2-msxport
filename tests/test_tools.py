@@ -149,6 +149,27 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertEqual(mkrom.lvshared_check(src, labels), [])
         self.assertEqual(len(mkrom.lvshared_check(src, labels.replace("t3_l2:\tequ $a0f0", "t3_l2:\tequ $a0f2"))), 1)
 
+    def test_lvshared_copy_without_its_last_section(self):
+        # VAT_ANIM=1 builds: the other levels' copies end before the sprite budget's per-give and per-run
+        # code, which level 1's bank alone holds then (msx/sprites.asm bu_lvl maps it)
+        src = ("t3:     call walker2\n"
+               "        jr t3\n"
+               "\n" + mkrom.LVS_TAIL + " (msx/sprites.asm budget) -----\n"
+               "ft_give:\n"
+               "        jr ft_give\n")
+        whole = mkrom.lvshared_copy(src, "l2", set())
+        cut = mkrom.lvshared_copy(src, "l2", set(), tail=False)
+        self.assertIn("ft_give_l2:", whole)
+        self.assertIn("t3_l2:     call walker2", cut)
+        self.assertNotIn("ft_give", cut)
+        self.assertTrue(whole.startswith(cut.rstrip("\n") + "\n\n" + mkrom.LVS_TAIL))     # (the rest as it was)
+        with self.assertRaises(ValueError):
+            mkrom.lvshared_copy("t3:     ret\n", "l2", set(), tail=False)
+        # the repository's msx/lvshared.asm: the section is there once, and it is the last one
+        lvs = (ROOT / "msx" / "lvshared.asm").read_text()
+        self.assertEqual(lvs.count("\n" + mkrom.LVS_TAIL), 1)
+        self.assertNotIn("\n; -----", lvs.split("\n" + mkrom.LVS_TAIL, 1)[1])
+
     def test_map_cells_as_the_writers_address_them(self):
         # $EF8E: column (x >> 4) - 8 as a byte, row y >> 4, 0 above or below the map's rows
         self.assertEqual(mapcells.map_cell(0x2B0, 0x60, 51), (6, 35))

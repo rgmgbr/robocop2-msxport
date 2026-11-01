@@ -305,6 +305,10 @@ pg_new:     equ 0xE511              ;   1: an identity changed since the list wa
 ft_tl:      equ 0xE520              ; 3 x 17: budget, the give-way's live objects of tiers 0-2 in
                                     ;   object order (ft_drop_t), FFh after the last (ft_lists)
 ft_tb:      equ 0xE560              ; 3 x 17:   the same in the order of importance (bu_ord: ft_leave_t)
+ft_orn:     equ 0xEDFC              ; 3: per tier 0-2 the OR layers its live objects could drop at
+                                    ;   ft_lists (O_BMASK and not O_DROP), less those dropped since
+                                    ;   (ft_dropb): 0, ft_drop_t finds none (EDFCh-EDFEh: in the
+                                    ;   audit's free EDF0h-EDFFh, docs/PERF2_PLAN.md 5.2)
 ft_wp:      equ 0xE5A0              ; 3: ft_lists: each list's next place (low bytes)
 ft_lok:     equ 0xE5A3              ; 1 once ft_lists ran in this budget run
 fl_mark:    equ 0xE5A4              ; fl_n at the end of the last plan: the slots released up to it
@@ -974,6 +978,9 @@ tc_ent0:    equ 0xF179              ; 4 x 6: turret entries 0-3 (type 40's panel
 tc_ent4:    equ 0xEDF0              ; 2 x 6: entries 4-5 (type 42's)
 bm_gen:     equ 0xECFB              ; BM_N x 2: per beam record mw_gen after its off looks' writes
 BM_N:       equ 7                   ; level 3's beam records it holds (tools/mapcells.py checks)
+sb_end:     equ 0xED0C              ; sprites_frame: 1 + the highest object wanted after the plan
+                                    ;   (fl_last): rows_sync and sat_build stop there (ED0Ch: in the
+                                    ;   ECFBh-ED0Fh fc_lines leaves, docs/PERF2_PLAN.md 5.2)
 ; The level's descriptor (tools/mkrom.py gen/levels.inc: lv_desc, LV_SIZE bytes a level, in FRONT),
 ; copied here at each level's start and at power-on before vdp_setup (cold.asm lv_copy): what the
 ; engine reads instead of build-time equates (docs/LEVEL2.md 3.1). F1A0h-F1C2h.
@@ -1076,17 +1083,18 @@ fc_tab:     equ 0xECF0              ; 32: level 3's frame cache (docs/LEVEL3.md 
 fc_res:     equ 0xECF0              ; 8 (FC_MAX): per place the cache frame it holds (FFh: none),
 fc_ovl:     equ 0xECF8              ;   the places a copy's place overlaps (fc_get),
 fc_bpl:     equ 0xECF9              ;   its bytes a line,
-fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED08h: bm_gen; ED09h-ED0Fh free)
+fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED08h: bm_gen; ED0Ch: sb_end;
+                                    ;   ED09h-ED0Bh and ED0Dh-ED0Fh free)
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
 ; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
-; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFCh-EDFFh, E0FEh-E0FFh,
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFFh, E0FEh-E0FFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; ECF0h-ED0Fh:
 ; fc_tab since level 3's step A, its ECFBh-ED08h bm_gen; F170h-F190h and EDF0h-EDFBh the map-write
-; caches since 2026-11-01; F1A0h-F1C2h:
+; caches and EDFCh-EDFEh ft_orn since 2026-11-01; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
 ; vat_phase, F012h-F0E6h the vats' display since its step 5, F0E7h-F0FBh since its step 14);
 ; EA60h-EC41h: bob_list,

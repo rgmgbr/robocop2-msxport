@@ -317,6 +317,34 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
      as the last resort (RoboCop, an enemy, a lift and the vehicle together), a character drops
      an OR layer and keeps it dropped until it is hidden or changes owner (`O_HOLD`): its look
      changes at most once.
+
+  The line phase's bookkeeping (2026-11-01, the same decisions): `ln_fill` clears three lines a
+  turn; RoboCop's first version (the one he wants) is stored on the empty lines, not compared
+  (`ln_ver` with D = 1: no two bands of a composition of his share a line, which
+  `tests/test_sprite_pool.py` checks on all 144); a give takes sprites away only from the lines
+  `ft_lines` still reads (`ln_add`: from `ft_line` down, it never goes back up; none in the total
+  phase, which reads no line); and `ft_drop_t` gives up at once when its tier has no OR layer left
+  to drop (`ft_orn`: per tier the droppable layers of its live objects, counted by `ft_lists` and
+  counted down by `ft_dropb`; an object left out later keeps its count, so it never falls short).
+- **Where the budget's code lives** (2026-11-01): what runs once a give or a budget run, or seldom,
+  is the last section of `lvshared.asm`, at the same address in every level bank, not in the fixed
+  area, which had 29 bytes left in its fullest option set (`DIAG=1 PZ_TEST=1`; 351 since, with
+  spr-1's and spr-4's code): the total phase (`ft_total`), the give-way's entry (`ft_give`), a drop
+  and a leave (`ft_dropb`, `ft_out`), the candidates' lists (`ft_lists`, `ft_orc`), the BOBs' order
+  of importance (`bu_order`, made again when an identity changed) and the cut (`bg_cut`): 496
+  bytes. The walks over the candidates stay in the fixed area (`ft_drop_t`, `ft_leave_t`,
+  `ft_cand`, `ft_anyb`, `ft_covers`, `ft_live`, `ft_map`): a turbo R runs the fixed area from its
+  internal RAM, and with the whole give-way in the cartridge (measured on the FS-A1GT, the drive
+  builds without `pub_cur`) the R800 took 2 to 4 % more time where Cain is shot: ground floor
+  19.35 -> 18.55 ticks/s, boss route 13.96 -> 13.70; with the walks in the fixed area 19.09 and
+  13.98, within what a mere shift of the fixed area's code moves there (19.21-19.23 and
+  13.95-14.06 for HEAD shifted by 1 and 3 bytes); the Z80 machines alike either way. The budget is that code's only caller:
+  `sprites_tick` runs it through `bu_lvl`, which maps the level's logic bank (`lvl_bank`) at A000h
+  and then puts back the bank that was there (the sprite pools, at times), about 150 T-states a
+  run; the logic maps that bank every tick, so a frame's set of banks stays the same. The code
+  reads and writes RAM only and calls the fixed area's routines. `VAT_ANIM=1` builds, whose level
+  2 bank has 28 bytes left, hold it in level 1's bank only (`tools/mkrom.py` `lvshared_copy`'s
+  `tail`: the other levels' copies end before the section) and `bu_lvl` maps that bank instead.
 - **BOBs to objects** (`bob.asm` `bob_flush`): a BOB keeps the object its identity (category,
   owner, part) had in the tick shown before; its frame comes from a 512-slot hash of (A2, D4)
   (`BOBHASH`, each level's own in its tables bank: slots of A2, D4, the frame id, the silhouette's
@@ -340,7 +368,15 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   set by `obj_set` and cleared by `obj_hide`: any other object shows and prepares nothing and
   keeps `pl_st` and `pl_gs` 0, so the look would do nothing for it; 2.1 of the 16 objects are
   live in normal play, and the skip gave +1.9 % pictures a second, 2026-10-23),
-  colour rows, SAT; publish; then the ticks due. `feed_vdp` gives the scroll engine its next
+  colour rows, SAT; publish; then the ticks due. The other walks over the objects stop after the
+  highest object wanted (`fl_last`, the top bit of `pl_fl`; 2026-11-01): `cam_follow`, `obj_ecs`,
+  the budget's pass and its BOB lines (`ln_fill`), and after the plan `rows_sync` and `sat_build`
+  (`sb_end`, set by `sprites_frame`). An object past it shows nothing (`O_FLAGS` bit 7 and its
+  `pl_fl` bit come and go together, and the plan drops the versions of an object not wanted), its
+  `O_OUT` is read only behind bit 7, and `bob_flush` gives a new identity the lowest free object:
+  1 + the highest wanted is 3.4 a budget run on level 2's tour, 4.4 on Cain's kill drive, 8.5 on
+  his route firing. Test builds (`EXTJOY`) keep `sat_build`'s whole walk for the `pub_cur` records,
+  so the bounded one runs only in the product (checked from the title with `rc2_satcheck`). `feed_vdp` gives the scroll engine its next
   VDP command at many points (the tick's stages, each object the plan works on, the budget, the
   BOB lists): its pages are built only from these points. It looks at the engines only while
   one may have work (`iw_more`: set once a frame by `wait_frame` and by the engine's update,
