@@ -918,7 +918,7 @@ plan and, in 3.9-3.11, what was built; `docs/level3/HANDOFF.md`: every step's ac
   | `lv_sidx`, `lv_spark` | +24 (2), +26 | the level's BOB index in the global sprite pool (`SPR_BOB_INDEX_Ln`); its hit spark's first frame − 1 | `sprites.asm` `os_new`, `player.asm` |
   | `lv_tcn` | +28 (2) | the tile cache's slots, negated: −256 / −224 | `tc_load`, `tiles_init` |
   | `lv_fld` | +30 (2) | the level's play-field tables in `BANK_FIELD` (`fld_l1`, `fld_l2`, `fld_l3`: `FIELD_LATE`, `FIELD_DYN0/1`, `field_tab`, `field_look`; level 3's also its white mark and its frame cache's bank) | `fb_init` (copies 11 bytes to `fb_flate` ... `fb_fcb`, 064Fh-0659h, and empties the frame cache) |
-| `lv_fid0` | +32 | the first play-field frame id in BOBHASH: D0h / D0h, level 3 98h (since level 3's step A) | `bob.asm` `bob_flush`, `bf_frame` |
+  | `lv_fid0` | +32 | the first play-field frame id in BOBHASH: D0h / D0h, level 3 98h (since level 3's step A) | `bob.asm` `bob_flush`, `bf_frame` |
 
   Level 3 (`lv_desc3`): `BANK_L3`; its tiles, map (50 rows), attributes and tables; its own atlas (two
   banks); the explosions' slot on page 2 line 232 (`L3_DYN_Y`); RoboCop at (1184, 784), the camera's
