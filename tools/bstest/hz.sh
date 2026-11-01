@@ -45,7 +45,8 @@
 #                            cont_fx, cont_tr through the continue since level 2's step 19). With
 #                            DIR/lost.txt (hz_l2's), each job's lost counters too: mp, atr, rd
 #                            and fb 0 (the pools' use printed). With analysis/amiga_ram_l3.tsv:
-#                            level 3's jobs (hz_l3: tour3, tour3_fx, tour3_tr, beam; DIR/l3_<job>.txt
+#                            level 3's jobs (hz_l3: tour3, park, boss, kill, each also _fx and _tr,
+#                            beam; DIR/l3_<job>.txt
 #                            against build/emu/l3_<ref>_ram.jsonl or REFS', tools/bstest/l3stub.py)
 #
 # The whole level-1 regression, three steps:
@@ -96,7 +97,9 @@ compare)
       vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701
       flow_l2_end:flow:l2_flow_l2_end:259 cont_fx:l2c:l2_cont:301 cont_tr:l2c:l2_cont:301"
     [ "$P" = l3 ] && JOBS="tour3:l3:l3_tour3:1401 tour3_fx:l3:l3_tour3:1401 tour3_tr:l3:l3_tour3:1401
-      beam:l3:l3_beam:501"
+      beam:l3:l3_beam:501 park:l3:l3_park:1201 park_fx:l3:l3_park:1201 park_tr:l3:l3_park:1201
+      boss:l3:l3_boss:1401 boss_fx:l3:l3_boss:1401 boss_tr:l3:l3_boss:1401 kill:l3:l3_kill:1861
+      kill_fx:l3:l3_kill:1861 kill_tr:l3:l3_kill:1861"
     want_jobs="$*"
     bad=0; seen=0
     cd "$ROOT" || exit 2

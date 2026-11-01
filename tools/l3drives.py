@@ -13,12 +13,24 @@ from a plain reference from the first frame a stubbed routine runs; tools/bstest
 references again with those routines stubbed on the bench the way the port stubs them, so that
 everything the port has compares whole (docs/HARNESS.md 5.26).
 
-The drives (built at step A; the plan's park, boss and kill need Cain's and the car park's logic, step B):
-  tour3   the building: the street from the start, the beams of floors 25 and 20 walked through (energy
-          and lives poked every 25 frames), the three lifts ridden up and down, the roof's edge; by
-          teleports between the stretches
+The drives (tour3, beam and cont3 built at step A; park, boss and kill at step B, docs/level3/HANDOFF.md
+step 6; energy and lives poked every 25 frames in all but beam and cont3, no god mode):
+  tour3   the building: the street from the start, the beams of floors 25 and 20 walked through, the three
+          lifts ridden up and down, the roof's edge; by teleports between the stretches
   beam    standing in the beam at (416, 336) (floor y 400) from frame 30: its 0Ch a frame for 32 frames
           of 64, until the death (no poke), then the restart at the start
+  park    the street from x 1000 leftwards firing (the trucks, type 33, and type 21 shot: their deaths'
+          debris), floor 35 under the turrets from x 600 (type 41's and 40's rockets, both shot at),
+          then the car park's ground floor from x 1700 right and back firing (its markers, crates,
+          waiting bombs and missiles, act_20's pieces)
+  boss    the roof's left end (type 47: camera mode 1, type 48: Cain's bursts), the roof from x 900
+          rightwards firing: Cain (type 22) comes, runs ahead, falls into the car park; floor 20 to its
+          end (act_20's piece opens: both fall), floor 30 leftwards in mode 2 (the bombs and missiles
+          from his mailbox, shot at) to its end (the second piece opens), floor 40 rightwards (mode 1)
+          until Cain falls onto the ground floor (the third piece)
+  kill    boss's route without fire, then RoboCop drops to the ground floor (mode 2: Cain stands left of
+          him, low: hurt) and fires left until Cain dies (CAIN DESTROYED., the end count, the level's
+          end at about frame 1860)
   cont3   the game over with a continue (carry 0:0:1:good): the beam's death with no life left, fire
           held at the death's end; the offer taken, level 3 again (the drive only: no reference yet)
 
@@ -69,9 +81,31 @@ TOUR3_JOY = ("40:150:l,"                   # the street from the start (x 1184) 
              "1085:120:r,1225:120:l")      # the roof (y 112) to the right, off its edge, and back
 TOUR3_TELE = "210:392:400,340:392:560,380:860:320,540:319:484,720:1215:404,900:1215:564,1080:1180:112"
 
+
+
+def walk_fire(keys: str, first: int, end: int) -> str:
+    """Two-frame joystick entries from 'first' to 'end' with 'keys' (a direction or none), fire added on
+    every other entry (a shot every 4 frames)."""
+    return ",".join(f"{f}:2:{keys + 'f' if (f // 2) % 2 == 0 else keys}" for f in range(first, end, 2)
+                    if keys or (f // 2) % 2 == 0)
+
+
+# park: the street (the trucks), floor 35 under the turrets 41 (576) and 40 (832), the car park's ground
+PARK_JOY = ",".join((walk_fire("l", 40, 240), walk_fire("r", 260, 300), walk_fire("", 300, 600),
+                     walk_fire("r", 610, 900), walk_fire("l", 900, 1100)))
+PARK_TELE = "30:1000:784,250:600:560,600:1700:784"
+# boss and kill: the roof's left end (300, 112) for type 47's mode 1, the roof from (900, 112); right on the
+# roof and floor 20 to its end (frames 50-659), left on floor 30 (660-989), right on floor 40 (1060-1379)
+BOSS_TELE = "30:300:112,45:900:112"
+BOSS_JOY = ",".join((walk_fire("r", 50, 660), walk_fire("l", 660, 990), walk_fire("r", 1060, 1380)))
+KILL_JOY = "50:610:r,660:330:l,1060:320:r,1480:14:r,1530:2:l," + walk_fire("", 1560, 2600)
+
 DRIVES = {
     "tour3": dict(joy=TOUR3_JOY, tele=TOUR3_TELE, poke=energy_lives(1400)),
     "beam": dict(tele="30:420:400"),
+    "park": dict(joy=PARK_JOY, tele=PARK_TELE, poke=energy_lives(1200)),
+    "boss": dict(joy=BOSS_JOY, tele=BOSS_TELE, poke=energy_lives(1400)),
+    "kill": dict(joy=KILL_JOY, tele=BOSS_TELE, poke=energy_lives(2600)),
     "cont3": dict(tele="30:420:400", joy="200:20:f"),
 }
 
@@ -81,6 +115,10 @@ REFS = {
     "tour3": ("tour3", CARRY, 1400, 1401, "27fc3e0241c53f5a", "the street, the beams of floors 25, 35 and 20, the "
               "three lifts, the roof"),
     "beam": ("beam", CARRY, 500, 501, "9c293cd6431fb211", "a beam's death at 100 and the restart"),
+    "park": ("park", CARRY, 1200, 1201, "6614e02d98a2f6b5", "the trucks and type 21 shot, the turrets 41 and 40, the car park's "
+             "ground floor"),
+    "boss": ("boss", CARRY, 1400, 1401, "6454a63800dea384", "Cain's chase from the roof down to the ground floor, shot at high up"),
+    "kill": ("kill", CARRY, 2600, 1861, "83ff8fd40281d2af", "Cain followed down and killed: the level's end"),
 }
 # (cont3's drive is made, its reference not yet: the bench faults after its game over, PC $FDB8 at bench
 # frame 735 (A1 = 800000h), the continue's text or the high-score entry on level 3's RAM image; the

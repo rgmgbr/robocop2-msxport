@@ -329,21 +329,26 @@ proc hz_l2 {dir R {tr ""} {only ""}} {
 
 # ----- level 3's drives (docs/LEVEL3.md 3.8 and 4; docs/HARNESS.md 5.26)
 
-# hz_l3 DIR R ?tr? ?ONLY?: the bench's level-3 references (tools/l3drives.py; while types are stubs in
-# the port, tools/bstest/l3stub.py's) played on the LV_TEST=3 build of "hz.sh l3builds R" (R/l3/rc2_l3.rom:
-# EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry) through rc2_drive_rom, as hz_l2's jobs (no
-# tick runs before level 3 in that build: tick_n is the drive's index), with the lost counters at every
-# tick (hz_l2_drive, appended to DIR/lost.txt): DIR/l3_<job>.txt, n rows each. tour3 on C-BIOS_MSX2 and
-# the FS-A1FX, beam on C-BIOS_MSX2; with "tr", tour3 on the FS-A1GT (the R800) too. ONLY: a list of job
-# names. Compare with "hz.sh compare --fields analysis/amiga_ram_l3.tsv DIR R [--refs STUBBED]".
+# hz_l3 DIR R ?tr? ?ONLY?: the bench's level-3 references (tools/l3drives.py; tools/bstest/l3stub.py's
+# while a routine is stubbed in the port) played on the LV_TEST=3 build of "hz.sh l3builds R"
+# (R/l3/rc2_l3.rom: EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry) through rc2_drive_rom, as
+# hz_l2's jobs (no tick runs before level 3 in that build: tick_n is the drive's index), with the lost
+# counters at every tick (hz_l2_drive, appended to DIR/lost.txt): DIR/l3_<job>.txt, n rows each. tour3,
+# park, boss and kill on C-BIOS_MSX2 and the FS-A1FX (_fx), beam on C-BIOS_MSX2; with "tr", those four on
+# the FS-A1GT (the R800, _tr) too. ONLY: a list of job names. Compare with "hz.sh compare --fields
+# analysis/amiga_ram_l3.tsv DIR R [--refs STUBBED]".
 proc hz_l3_jobs {dir R {tr ""} {only ""}} {
 	file mkdir $dir
 	set e "$::hz_root/build/emu"
 	set lost [file join $dir lost.txt]
 	set spec [list tour3 l3 l3_tour3 1401 C-BIOS_MSX2  tour3_fx l3 l3_tour3 1401 Panasonic_FS-A1FX \
-		beam l3 l3_beam 501 C-BIOS_MSX2]
+		beam l3 l3_beam 501 C-BIOS_MSX2  park l3 l3_park 1201 C-BIOS_MSX2 \
+		park_fx l3 l3_park 1201 Panasonic_FS-A1FX  boss l3 l3_boss 1401 C-BIOS_MSX2 \
+		boss_fx l3 l3_boss 1401 Panasonic_FS-A1FX  kill l3 l3_kill 1861 C-BIOS_MSX2 \
+		kill_fx l3 l3_kill 1861 Panasonic_FS-A1FX]
 	if {$tr eq "tr"} {
-		lappend spec tour3_tr l3 l3_tour3 1401 Panasonic_FS-A1GT
+		lappend spec tour3_tr l3 l3_tour3 1401 Panasonic_FS-A1GT  park_tr l3 l3_park 1201 Panasonic_FS-A1GT \
+			boss_tr l3 l3_boss 1401 Panasonic_FS-A1GT  kill_tr l3 l3_kill 1861 Panasonic_FS-A1GT
 	}
 	set jobs {}
 	foreach {name b drive n m} $spec {
