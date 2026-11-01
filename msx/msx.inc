@@ -305,6 +305,10 @@ pg_new:     equ 0xE511              ;   1: an identity changed since the list wa
 ft_tl:      equ 0xE520              ; 3 x 17: budget, the give-way's live objects of tiers 0-2 in
                                     ;   object order (ft_drop_t), FFh after the last (ft_lists)
 ft_tb:      equ 0xE560              ; 3 x 17:   the same in the order of importance (bu_ord: ft_leave_t)
+ft_orn:     equ 0xEDFC              ; 3: per tier 0-2 the OR layers its live objects could drop at
+                                    ;   ft_lists (O_BMASK and not O_DROP), less those dropped since
+                                    ;   (ft_dropb): 0, ft_drop_t finds none (EDFCh-EDFEh: in the
+                                    ;   audit's free EDF0h-EDFFh, docs/PERF2_PLAN.md 5.2)
 ft_wp:      equ 0xE5A0              ; 3: ft_lists: each list's next place (low bytes)
 ft_lok:     equ 0xE5A3              ; 1 once ft_lists ran in this budget run
 fl_mark:    equ 0xE5A4              ; fl_n at the end of the last plan: the slots released up to it

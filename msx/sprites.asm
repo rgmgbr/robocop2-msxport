@@ -970,9 +970,14 @@ cut_out:
 ; not left out, band by band (A sprites, and B sprites unless its band dropped them).
 ln_fill:
         ld hl,ln_cnt
-        ld b,VIEW_LINES
+        ld b,VIEW_LINES / 3         ; (three lines a turn)
+        ds (VIEW_LINES - VIEW_LINES / 3 * 3) * 0x4000 ; (an error unless VIEW_LINES is a multiple of 3)
         xor a
 lf_z:   ld (hl),a
+        inc l
+        ld (hl),a
+        inc l
+        ld (hl),a
         inc l
         djnz lf_z
         call ln_rc
@@ -1001,7 +1006,7 @@ ln_rc:  ld ix,obj_tab
         ld l,(ix+O_COMP)
         ld h,(ix+O_COMP+1)
         ld a,(ix+O_BANK)
-        ld e,0
+        ld de,0x0100                ; (D 1: the first, on empty lines: its counts are stored)
         call ln_ver                 ; the one he wants
         ld iy,disp
         call ln_rcv                 ; the one shown
@@ -1012,13 +1017,15 @@ ln_rcv: ld a,(iy+V_ON)
         push iy                     ; its place: the hotspot of its record against the one the
         call sb_rcdy                ; game asked for (sat_build does the same: sb_rchot)
         pop iy
+        ld d,0                      ; (D 0: the most of the versions on each line)
         ld e,a
         ld l,(iy+V_COMP)
         ld h,(iy+V_COMP+1)
         ld a,(iy+V_BANK)
 
 ; A = bank, HL = a composition of RoboCop's, E = its y against O_Y (signed): every line its bands
-; cover gets at least their sprites.
+; cover gets at least their sprites; D = 1: exactly their sprites (the first version, on an empty
+; ln_cnt: no two bands of a composition of his share a line, tests/test_sprite_pool.py).
 ln_ver: push de
         add a,SPR_BASE_BANK
         call bank_8000
@@ -1057,12 +1064,20 @@ lv_lp:  push bc
         call ln_span
         jr z,lv_n
         ld h,ln_cnt / 256
+        pop de                      ; (D: 1 for the first version)
+        push de
+        dec d
+        jr z,lv_s
 lv_l:   ld a,(hl)
         cp c
         jr nc,lv_k
         ld (hl),c
 lv_k:   inc l
         djnz lv_l
+        jr lv_n
+lv_s:   ld (hl),c                   ; (the most of 0 and C)
+        inc l
+        djnz lv_s
 lv_n:   pop de
         pop hl
         inc hl
@@ -1100,18 +1115,38 @@ lo_d:   inc hl
         djnz lo_lp
         ret
 
-; IX = object, E = a band's dy, A = sprites: they go to (ln_neg 0) or leave the band's lines.
+; IX = object, E = a band's dy, A = sprites: they go to (ln_neg 0) or leave the band's lines. Taken
+; away (the give-way) they leave only the lines from ft_line down: ln_cnt's one reader, ft_lines,
+; goes from the top and never back up, and the total phase (ft_line FFh) reads none of it.
 ln_add: ld c,a
         ld a,(ln_neg)
         or a
         jr z,la_p
+        ld a,(ft_line)
+        inc a
+        ret z                       ; (the total phase)
         xor a
         sub c
         ld c,a
+        call ln_first
+        call ln_span
+        ret z
+        ld a,(ft_line)
+        sub l
+        jr c,la_go                  ; (the band starts below ft_line: all its lines)
+        cp b
+        ret nc                      ; (it ends above ft_line: none)
+        ld e,a
+        ld a,b
+        sub e
+        ld b,a                      ; (its lines from ft_line on)
+        ld a,(ft_line)
+        ld l,a
+        jr la_go
 la_p:   call ln_first
         call ln_span
         ret z
-        ld h,ln_cnt / 256
+la_go:  ld h,ln_cnt / 256
 la_lp:  ld a,(hl)
         add a,c
         ld (hl),a

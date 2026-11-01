@@ -905,6 +905,14 @@ ft_drop_t:
         ld a,(ft_lok)
         or a
         call z,ft_lists
+        ld a,(ft_tier)              ; no OR layer left to drop in the tier (busy scenes: most
+        add a,ft_orn & 0xFF         ; effects have one layer, dropped first): the walk would
+        ld l,a                      ; find none
+        ld h,ft_orn / 256
+        ld a,(hl)
+        or a
+        scf
+        ret z
         ld a,0xFF
         ld (ft_best),a
         ld hl,0
@@ -933,6 +941,11 @@ fdt_x:  ld hl,(ft_bix)
 ; IX = object, ft_bbit = one of its bands: that band's OR layer goes (its B sprites leave its
 ; lines, O_GONE and the total, not for the spark); a character's stays held. NC.
 ft_dropb:
+        ld a,(ft_tier)              ; (one OR layer fewer in the tier)
+        add a,ft_orn & 0xFF
+        ld l,a
+        ld h,ft_orn / 256
+        dec (hl)
         call ft_map
         ld l,(ix+O_BANDT)
         ld h,(ix+O_BANDT+1)
@@ -1160,11 +1173,19 @@ ft_tlist:
 ft_lists:
         ld a,1
         ld (ft_lok),a
+        xor a
+        ld hl,ft_orn                ; (no droppable OR layer counted yet)
+        ld (hl),a
+        inc l
+        ld (hl),a
+        inc l
+        ld (hl),a
         ld hl,ft_tl
         call ftg_wp
         ld ix,obj_tab + OBJ_SIZE
         ld c,1
 ftg_lp: call ftg_one
+        call ft_orc                 ; (and the OR layers it could drop)
         ld de,OBJ_SIZE
         add ix,de
         inc c
@@ -1214,6 +1235,29 @@ ftg_one:
         ld (hl),c
         inc a
         ld (de),a
+        ret
+
+; IX = object (ft_lists): when it is live and of tier 0-2, its bands whose OR layer it could drop
+; (with B sprites, O_BMASK, not dropped yet, O_DROP) count in its tier's ft_orn, which ft_dropb
+; counts down: never fewer than the tier has left, since an object left out later keeps its count.
+; Keeps BC, IX.
+ft_orc: call ft_live
+        ret c
+        ld a,(ix+O_TIER)
+        cp 3
+        ret nc
+        add a,ft_orn & 0xFF
+        ld l,a
+        ld h,ft_orn / 256
+        ld a,(ix+O_DROP)
+        cpl
+        and (ix+O_BMASK)
+        ret z
+foc_lp: inc (hl)                    ; (one a bit)
+        ld e,a
+        dec a
+        and e
+        jr nz,foc_lp
         ret
 
 ; Each list of the kind ftg_wp started: FFh after its last.

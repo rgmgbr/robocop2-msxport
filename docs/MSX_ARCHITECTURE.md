@@ -317,6 +317,15 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
      as the last resort (RoboCop, an enemy, a lift and the vehicle together), a character drops
      an OR layer and keeps it dropped until it is hidden or changes owner (`O_HOLD`): its look
      changes at most once.
+
+  The line phase's bookkeeping (2026-11-01, the same decisions): `ln_fill` clears three lines a
+  turn; RoboCop's first version (the one he wants) is stored on the empty lines, not compared
+  (`ln_ver` with D = 1: no two bands of a composition of his share a line, which
+  `tests/test_sprite_pool.py` checks on all 144); a give takes sprites away only from the lines
+  `ft_lines` still reads (`ln_add`: from `ft_line` down, it never goes back up; none in the total
+  phase, which reads no line); and `ft_drop_t` gives up at once when its tier has no OR layer left
+  to drop (`ft_orn`: per tier the droppable layers of its live objects, counted by `ft_lists` and
+  counted down by `ft_dropb`; an object left out later keeps its count, so it never falls short).
 - **Where the give-way lives** (2026-11-01): the total phase and the give-way (`ft_total`,
   `ft_give` ... `ftg_end`, with `ft_live` and `ft_map`: 584 bytes) are the last section of
   `lvshared.asm`, at the same address in every level bank, not in the fixed area, which had 29
