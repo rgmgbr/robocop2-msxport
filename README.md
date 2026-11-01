@@ -166,6 +166,7 @@ make rom ROMOPTS="LV_TEST=3"        # test ROM: at power-on the level-3 briefing
 make rom ROMOPTS="END_TEST=1"       # test ROM: at power-on the game completed (WELL DONE, the ending's tune, the high-score entry)
 make rom ROMOPTS="END_TEST=2 LV_CARRY=10050:0:1:1"   # test ROM: at power-on a game over, the entry, the continue offer
 make rom ROMOPTS="CHEAT=1"          # F5 ends the level (level 3: the game completed), F4 fills the energy (the original's F10/F9)
+make rom ROMOPTS="CHEAT=1 INVULN=1" # the same, and no hit or time out kills RoboCop (the play tests' builds)
 ```
 
 The game's flow is under "Playing" above. Levels 2 and 3 and the ending are in development on the
@@ -196,6 +197,7 @@ PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build o
 | `END_TEST=2` | the same with a game over instead: the game-over picture, the high-score entry, the continue offer with `LV_CARRY`'s credits (a continue restarts level 1) |
 | `LV_CARRY=S:L:C:R` | `LV_TEST`'s or `END_TEST`'s carry: score, lives, credits and the rating 0-3 (SHARP to POOR; default `10050:2:0:1`) |
 | `CHEAT=1` | F5 ends the level, F4 fills the energy (the original's F10/F9 cheat keys) |
+| `INVULN=1` | with `CHEAT=1`, for play tests: no hit or time out kills RoboCop (the energy full again at every tick, the timer stops at 0:00), and a death that still comes (level 2's vats) takes no life (refused without `CHEAT=1`) |
 | `VAT_ANIM=1` | level 2's vats redrawn as they bubble, as built for test7 (a comparison only: the product shows them as static images, the map's own look, the user's choice for the game's speed; `docs/LEVEL2.md` 3.5) |
 | `VAT_TICK=1` | with `VAT_ANIM=1`: the vats redrawn more often, for a little of the game's speed (the other comparison; refused without `VAT_ANIM=1`) |
 | `DAMAGE_X=n` | the enemies' damage to RoboCop times n, 1-3 (default 2, the user's choice; 1 = the original, for the trace tests): their bullets, touching them, level 2's drips; the missiles (enemy bullet types 1 and 2, level 2's drone, level 3's rocket and Cain's bombs and missiles) keep the original's damage in every build |

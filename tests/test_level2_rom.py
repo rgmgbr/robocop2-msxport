@@ -427,7 +427,8 @@ class CheatTests(unittest.TestCase):
     def test_mkrom_refuses_a_bad_cheat_and_cheat_with_diag(self):
         with tempfile.TemporaryDirectory() as t:
             out = str(Path(t) / "x.rom")
-            for opts in (["CHEAT=2"], ["CHEAT=1", "DIAG=1"], ["CHEAT=1", "DIAG=2"]):
+            for opts in (["CHEAT=2"], ["CHEAT=1", "DIAG=1"], ["CHEAT=1", "DIAG=2"], ["INVULN=1"],
+                         ["INVULN=2", "CHEAT=1"]):
                 self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
             self.assertFalse(Path(out).exists())
 
@@ -454,6 +455,7 @@ class CheatTests(unittest.TestCase):
         self.assertEqual(cold, ["ld a,0xFF", "ld (AG + (0x804F ^ 1)),a"])
         for f in ("rc2.asm", "player.asm", "sound.asm", "isr.asm", "tiles.asm", "sprites.asm"):
             self.assertNotIn("CHEAT", (ROOT / "msx" / f).read_text(), f)     # (the fixed area: nothing)
+            self.assertNotIn("INVULN", (ROOT / "msx" / f).read_text(), f)
         src = (ROOT / "msx" / "frame.asm").read_text()
         self.assertEqual(src.count("fe_keys"), len([l for l in frame if "fe_keys" in l]))
 

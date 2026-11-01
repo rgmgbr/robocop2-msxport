@@ -14,9 +14,15 @@ FE_NEXT:    equ 3                   ; the level done ($81B8: $8050 + 1)
 ; - Dying ($16CC): state 16 asked, the controls locked and cleared, $16BC += 4; below 60h an
 ;   explosion around RoboCop (fe_boom); from 60h the head in the lost life's slot (graphics 3-5
 ;   while $16BC - 30h < 5Fh); below 100h the fade out, and once dark a life less.
+; - (Test build, tools/mkrom.py INVULN=1 with CHEAT=1, for play tests: the energy full at every tick,
+;   no time out, and a death that still comes, in level 2's vats, takes no life and no head.)
 frame_end:
         if CHEAT
         call fe_keys                ; (test build: F5 and F4 as the original's F10 and F9)
+        endif
+        if INVULN
+        ld hl,0x102                 ; (test build, tools/mkrom.py INVULN=1: F4 held, the energy full at
+        ld (AM + 0x169A),hl         ;  every tick after the hits and en_update, so no hit kills)
         endif
         ld a,(AG + (0x804F ^ 1))
         or a
@@ -32,6 +38,9 @@ fe_c2:  ld a,(g_key)
         ld hl,0x102
         ld (AM + 0x169A),hl
 fe_time:
+        if INVULN
+        jr fe_lv                    ; (test build, INVULN=1: no death at the time out; the timer stays at 0:00)
+        endif
         ld a,(AG + (0x804C ^ 1))
         or a
         jr z,fe_lv
@@ -111,6 +120,9 @@ fe_dead:
         ret
 fe_late:
         push hl
+        if INVULN
+        jr fe_nohd                  ; (test build, INVULN=1: no life lost below, so no head taken away)
+        endif
         ld de,-0x30
         add hl,de
         ld de,0x5F
@@ -147,6 +159,9 @@ fe_nohd:
         or a
         jr nz,fe_wait
         ld hl,(AG + 0x8034)
+        if INVULN
+        inc hl                      ; (test build, INVULN=1: as many lives after a death as before it)
+        endif
         dec hl
         ld (AG + 0x8034),hl
         bit 7,h

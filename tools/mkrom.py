@@ -236,6 +236,9 @@ OPTIONS = {
     "CHEAT": (0, "1 = test build: the original's cheat mode at each new game (AG $804F FFh, msx/cold.asm ng_init) and its"
                  " keys on F5 and F4 (key codes 59h and 58h, the Amiga's F10 and F9: msx/frame.asm fe_keys): F5 ends"
                  " the level, F4 fills the energy; not with DIAG (no game)"),
+    "INVULN": (0, "1 = test build, with CHEAT=1, for play tests: RoboCop cannot die of a hit or of the time out"
+                  " (msx/frame.asm frame_end: the energy full at every tick, as F4 held; the timer stops at 0:00),"
+                  " and a death that still comes (level 2's vats) takes no life and no head"),
     "END_TEST": (0, "1 = test build: at power-on, without the title, level 1's set-up, then the game's end (front.asm"
                     " front_ending: WELL DONE, the CMP tune, the high-score entry) with LV_CARRY's score, then the"
                     " title and a new game; 2 = the game over instead (PIC9, the entry, the continue offer with"
@@ -877,6 +880,9 @@ def main(argv: list[str]) -> int:
         return 2
     if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
         print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
+        return 2
+    if opts["INVULN"] not in (0, 1) or (opts["INVULN"] and not opts["CHEAT"]):
+        print("INVULN must be 0 or 1, and needs CHEAT=1 (a play-test build)", file=sys.stderr)
         return 2
     if opts["VAT_ANIM"] not in (0, 1) or opts["VAT_TICK"] not in (0, 1) or (opts["VAT_TICK"] and not opts["VAT_ANIM"]):
         print("VAT_ANIM and VAT_TICK must be 0 or 1, and VAT_TICK=1 needs VAT_ANIM=1 (the variant of the vats'"

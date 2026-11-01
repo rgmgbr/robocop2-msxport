@@ -1211,6 +1211,12 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
 - `CHEAT=1`: AG `$804F` set at each new game (`ng_init`); `frame.asm` `fe_keys`, first in `frame_end`,
   maps F5 to key code 59h (the level's end; in level 3 the game completed) and F4 to 58h (energy) in
   `$8032`, the original's F10/F9. Refused with `DIAG`.
+- `INVULN=1` (needs `CHEAT=1`; the play-test candidates since test9): `frame.asm` `frame_end` sets the
+  energy target (`$169A`) to 102h at every tick, after the hits and `en_update` (F4 held: the shown
+  level dips 8 for a tick and never reaches 0, so no hit kills); it skips the time out (`fe_time`: the
+  timer stays at 0:00); and in a death sequence it draws no lost head (`fe_late`) and takes no life
+  (`fe_nohd`), so a death that still comes (level 2's vats) restarts the level as usual. 11 bytes in
+  LC3, none in the fixed area.
 - `VAT_ANIM=1`, `VAT_ANIM=1 VAT_TICK=1`: level 2's vats redrawn as they bubble, as built for test7
   and its variant, for comparison (the product: static, the map's look); above.
 
