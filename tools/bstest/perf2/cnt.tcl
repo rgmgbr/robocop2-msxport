@@ -24,6 +24,7 @@ if {[info commands hz_clean_cntorig] eq ""} { rename hz_clean hz_clean_cntorig }
 proc hz_clean {} { cnt_close; hz_clean_cntorig }
 
 proc cnt_setup {name dir rom labels drive n names map} {
+	file delete -- "$dir/${name}_cnt.txt" "$dir/${name}_map.txt"   ;# (an earlier run's: m3_setup's rule)
 	set r [m3_setup $name $dir $rom $labels $drive $n lean]
 	set ::cnt_file "$dir/${name}_cnt.txt"
 	set ::cnt_names $names

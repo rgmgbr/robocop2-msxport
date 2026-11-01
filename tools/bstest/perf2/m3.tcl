@@ -154,6 +154,9 @@ proc m3_zero {} {
 proc m3_setup {name dir rom labels drive n {mode lean}} {
 	if {$mode ni {lean flash cmds full}} { error "m3: mode $mode (lean, flash, cmds or full)" }
 	file mkdir $dir
+	# (the run's old records go first: a run that fails or times out leaves none behind, so the verdicts
+	#  never judge an earlier run's records as this one's)
+	foreach k {ticks pics pubs frames fcs cmds ce samp notes} { file delete -- "$dir/${name}_$k.txt" }
 	m3_addrs $rom $labels
 	set ::m3_base "$dir/$name"
 	set ::m3_mode $mode

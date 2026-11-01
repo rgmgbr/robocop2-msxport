@@ -2529,7 +2529,10 @@ each verdict's output in `W/gate_<name>.txt`, its last line `G-NAME: PASS` or `G
 Every verdict judges what BASE holds: a run, window, dump or record W lacks FAILs, as does one cut
 short (a job that timed out, a chain that stopped) and a verdict that judged nothing; a deliberate
 subset is judged with `--partial` (`PARTIAL=1` for `gate.sh`: the left-out records listed; G-LOGIC
-always whole).
+always whole). A job removes its run's old records when it starts (`m3_setup`, `cnt_setup`,
+`pf_guard_setup`; the field, lock and logic records are rewritten from their start, and a field check
+older than its window's recording is checked again), so a W reused for a later commit never passes
+on an earlier run's records.
 
 | File | Side | Inputs -> outputs | Gate |
 |---|---|---|---|

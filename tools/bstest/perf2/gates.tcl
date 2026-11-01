@@ -155,6 +155,7 @@ proc pf_guard_jobs {dir R {tags ""} {drives ""}} {
 # hz_l2_start_setup's set-up for any level and drive: the guard starts at the level's first tick_start
 # (lv_cur = BANK) and runs until the drive's last row (the machine pauses there), then ends
 proc pf_guard_setup {out rom labels trace drive rows bank} {
+	file delete -- $out                     ;# (an earlier run's record: written again only at the end)
 	set ::hz_l2g_out $out
 	set ::hz_l2g_rom $rom
 	set ::hz_l2g_lab $labels
