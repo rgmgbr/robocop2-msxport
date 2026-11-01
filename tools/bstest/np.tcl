@@ -28,10 +28,11 @@
 #       2 (hb_step's records under TAG, its game frame 100 noted); there the level is ended as a
 #       CHEAT build's F5 ends it ($16D0 = FFh, $16C4 = 40h: np_t_l2), and hb_step records the
 #       statistics' way on under TAG2: Brainstorm's and the range's second visits left to time out
-#       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); since the
-#       ending's step the game completed follows it (WELL DONE, the CMP tune to its end, the name
-#       entry, where ending.tcl ge_ret_arm presses RETURN, and the table); the title after them is the
-#       record above (still under TAG), its game noted in TAG2_rg.txt
+#       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); since level
+#       3's step A level 3 follows it, ended the same way at its first tick (np_t_end's breakpoint
+#       takes BANK_L3 too), then the game completed (since the ending's step: WELL DONE, the CMP
+#       tune to its end, the name entry, where ending.tcl ge_ret_arm presses RETURN, and the table);
+#       the title after them is the record above (still under TAG), its game noted in TAG2_rg.txt
 #   np_title0_setup DIR TAG ROM LABELS ?EXACT?
 #       the same record at the title that follows level 1's statistics, in a build without
 #       Brainstorm (the approved flow: the commit before Brainstorm)
@@ -172,13 +173,16 @@ proc np_title_setup {dir tag rom labels {exact 0}} {
 
 # (hb_step's level 2 at its game frame 100) the level's end as the cheat key ends it (frame.asm
 # frame_end: $16D0 FFh, $16C4 40h: 65 frames of 100 points, the fade, AG $8050 = 2), asked again at
-# each tick of level 2 while $16D0 is 0 (a death restarts the level with it cleared); then hb_step's
-# records under TAG2 from the statistics on, np_t_poll waiting for the title after them
+# each tick of level 2 while $16D0 is 0 (a death restarts the level with it cleared), and at level 3's
+# first tick the same (since level 3's step A: AG $8050 = 3, the game completed; a build without level 3
+# has no BANK_L3); then hb_step's records under TAG2 from the statistics on, np_t_poll waiting for the
+# title after them
 proc np_t_l2 {} {
 	set ts [rc2_label $::nt_labels tick_start]
 	set gt [rc2_label $::nt_labels game_tick]
 	set b [rc2_label $::nt_labels BANK_L2]
-	set ::nt_endbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek 0xF1A0\] == $b && \[peek 0xDBD1\] == 0" np_t_end]
+	if {[catch {set b3 [rc2_label $::nt_labels BANK_L3]}]} { set b3 $b }
+	set ::nt_endbp [debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && (\[peek 0xF1A0\] == $b || \[peek 0xF1A0\] == $b3) && \[peek 0xDBD1\] == 0" np_t_end]
 	set ::hb_tag "${::nt_tag}2"
 	hb_init_range $::nt_labels
 	set ::hb_tjob 1

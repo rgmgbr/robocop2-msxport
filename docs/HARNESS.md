@@ -2114,6 +2114,62 @@ music `titlecmp2.py --unheard`: the SCC's registers that differ are the ones nei
 `cheat.tcl` goes through the ending to the title. Builds with a script skip the ending and the entry,
 so every EXTJOY flow (level 2's traces, the continue checks) is the base's.
 
+### 5.26 Level 3's drives, its test start and the flow into it (level 3's step A)
+
+`docs/LEVEL3.md` (the plan: 3.8, 4, step A); the step's account: `docs/level3/HANDOFF.md`, "Step 4 (plan
+step A)". `W` a fresh folder outside `build/msx`, `PY` the venv's Python.
+
+**The test start.** `tools/mkrom.py LV_TEST=3` builds a ROM that starts level 3 at power-on, once, as
+`LV_TEST=2` starts level 2 (5.22): level 1's set-up, then `front.asm` `front_l2test` (alias
+`front_l3test`) writes `LV_CARRY`'s score, lives, credits and rating and AG `$8050` = `LV_TEST` - 1 (2),
+shows the level-3 briefing (`txt_l3_brief`), then `lv_next` starts level 3 (`lv_go` with A = 2). No
+level-1 tick runs before it: `tick_n` is level 3's game frame and `rc2_drive_rom` drives these builds
+unchanged. `hz.sh l3builds W/R` builds `W/R/l3/rc2_l3.rom` (`EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3`).
+
+**The drives and references** (`tools/l3drives.py`, the bench's `game --level 3`: `Level3Bench`'s direct
+start, carry `10050:2:0:good`): `tour3` (1,401 rows: the street from the start, the beams of floors 25,
+35 and 20, the lifts L0, L1 and L2 up and down, the roof, by teleports, energy and lives poked every 25
+frames) and `beam` (501 rows: a beam's death at frame 100, the restart). `python3 -I tools/l3drives.py
+make`, `refs`, `check`, `path REF` (RoboCop's place and the slots' types every N rows). `cont3`'s drive
+exists, not its reference: the bench faults after its game over (PC `$FDB8`, A1 800000h; the plan's step D).
+
+**The stubbed references** (`tools/bstest/l3stub.py OUT [--drop NAME]`, `l2stub.py`'s twin): the
+bench with the port's stubs written into the main code before `level_init` (`--pre-poke`): the 19 new
+types `moveq #-1,D0 / rts` at their handlers, the three deaths of types 21, 22 and 33 `rts`, `act_20`
+`bra.w $9C76` (the port's `ao_acts` entry 8 is `ao_look`). A step that ports a routine drops its stub
+there and in the port. Against the plain references a level-3 trace differs from row 0: `act_20` runs
+in `level_init`'s map-object pass (the map objects' collision slot 1, entry 12's), and the stubbed
+types from frame 2 (type 39's bomb, type 47's camera mode), as level 2's step 7 found for its routines.
+
+**The traces** (`hz.tcl` `hz_l3`, `hz_l2_drive`'s jobs with the lost counters): `tour3` on
+C-BIOS_MSX2, `tour3_fx` on the FS-A1FX, `beam` on C-BIOS_MSX2, with `tr` `tour3_tr` on the FS-A1GT;
+`analysis/amiga_ram_l3.tsv` (778 fields: level 2's set with level 3's code-area records, its code-area
+words DD74h-DD7Fh and its flags `$15C4`, `$16A6-$16A9`, `$16B4`, `$16D4`, `$16D9`, `$16DA`; `$D583` and
+`$E9F5` commented until step B chooses how the port keeps them):
+```
+sh tools/bstest/hz.sh l3builds W/R
+python3 -I tools/l3drives.py refs                 # build/emu/l3_*_ram.jsonl (Unicorn: about 30 s)
+python3 -I tools/bstest/l3stub.py W/stub          # the stubbed ones
+msx_local_cmd: source {<repo>/tools/bstest/load.tcl}; hz_l3 {W/O/l3} {W/R} tr
+sh tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv W/O/l3 W/R --refs W/stub   # "level 3: PASS (4 traces)"
+```
+`hz.sh compare --fields` picks level 3's jobs, traces (`l3_<job>.txt`) and lost-counter lines from the
+field file's name (`*_l3.tsv`).
+
+**The start and the stills** (`hz_l3_still_jobs W/O/st W/R ?FRAMES? ?DRIVE?`: `hz_l2_still_setup` with
+`BANK_L3`, on the three machines): `pos.txt` (RoboCop at (1184, 784), `lv_cur`'s logic bank `BANK_L3`),
+then `$PY -I tools/msxframe.py SNAP build/msx/level3 build/msx/hud OUT.png --sprites build/msx/sprites
+--level 3 --field` (msxframe takes level 2's pool frames for level 3 until step C: `POOL_LEVEL`; 160
+tile-cache slots). The first picture (game frame 0) is exact on the three machines; stills on the beams
+differ at the beams' cells only (their looks change every tick: the RAM's patches are a tick ahead of the
+picture) and, at a lift, step B's two-part look is missing.
+
+**The flow** (`cheat.tcl`, a `CHEAT=1` product build): the title, level 1, F5, the stages, the level-2
+briefing, level 2, F5, the stages' second visits, the level-3 briefing, **level 3** to its game frame 100,
+F5 (AG `$8050` = 3: `rc2.asm` `ml_ev`'s `ml_end`), the game completed (`front_ending`, the name entry by
+RETURN, the table) and the title. `np.tcl` `np_t_l2`'s breakpoint ends level 3 at its first tick the
+same way (`BANK_L3`), so the regress gate's `tx` flows reach the ending and the title as before.
+
 ## 6. The whole suite in order
 
 1. `sh tools/bstest/regress.sh builds W`; once a milestone the base: `regress.sh base B`, its

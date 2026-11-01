@@ -364,3 +364,143 @@ result above holds; `make test`: 339 tests, the 4 known failures only. The summa
 looked at and the scratch scripts in `build/archive/rest_step3_records_2026-11-01.tar.gz`; the ending's
 tune previews (`end_amiga.wav`, `end_scc.wav`, `end_fm.wav`, `end_psg.wav`, `end_sccfm.wav`,
 `end_fx_*.wav`) in `build/music/preview`; the big records deleted.
+
+## Step 4 (plan step A): level 3 in the ROM, the flow and the bench (2026-11-01)
+
+**Done.** Worktree `g/wt04`, branch `g-s04`, rebased onto `level2` `d0985a4` (steps 1 and 3 in);
+scratch `S=$SCRATCH/g/s04`. The plan: `docs/LEVEL3.md` step A; as built: its new section 3.9.
+
+### What it did
+- **The ROM** (`tools/mkrom.py`): `L3` and `L3B` in `STAGES` after `FRONT2`; level 3's tiles, map,
+  attributes and tables after the ending's sound, laid out by `place_banks` (a bank with `(b & 3Fh) =
+  3Fh` takes `BANK_L3` or `BANK_L3B`, both read at A000h only, else padding): the product is **146 of
+  256 banks** (2 MiB, the boot guard): tiles 132-139, map 140-141, attributes 142, tables 143,
+  `BANK_L3` 144, `BANK_L3B` 145. Its tables bank holds OTILE, ATR2, a BOBHASH of level 2's frames whose
+  bytes level 3's memory holds too (`l3_stub_hash`), the graded palette (`level3_grade.pal`, the same
+  bytes as level 2's) and its `view_offy`. `lv_desc3` and `lv_fid0` (`LV_SIZE` 33) in `gen/levels.inc`;
+  `gen/lvshared_l3.asm`; `mapcells.py --level 3` in every build; `LV_TEST=3`.
+- **The level's banks**: `msx/level3.asm` (`BANK_L3`: the header, `lvshared_l3`, `l3_init` with
+  `level_init`'s level-3 part, `lt2` (the beams, `level_tick_2` `$9436`), `l3_noten`, the three deaths
+  with `debris_add`, 19 stubs into `BANK_L3B`, the tables) and `msx/level3obj.asm` (`BANK_L3B`: the 19
+  types, each a stub that frees its slot), through `rc2.asm` `l3b_call`.
+- **The flow**: `ml_ev` sends AG `$8050` = 3 into step 3's ending (`ml_end`: `frontx.asm` `fr_ending`,
+  then the title), 1 and 2 through the statistics, the stages and the briefing into `lv_next`; step 3's
+  interim `fb_brief2` is removed (`front_bonus` calls `front_brief` again; `docs/ENDING.md` and
+  `docs/MSX_ARCHITECTURE.md` say so). `front_l2test` (= `front_l3test`) sets AG `$8050` = `LV_TEST` - 1.
+- **The fade's state** (`$F89D`): `fade_st` (DD1Ch), 10 from `ng_init`, 11 from `l3_init`; `pl_fade`
+  reads it (the same bytes in the fixed area).
+- **RAM** (`msx/msx.inc`): `fade_st` DD1Ch; level 3's code-area words DD74h-DD7Fh (`obj22_x`, `obj37_last`,
+  `l3_mail` (6), `obj22_step`, `obj40_flag`); `lv_fid0` F1C0h; `fc_tab` ECF0h-ED0Fh (32 B) for step C's
+  frame cache. Level 3's lists: spawn DD80h-DFA3h, objects EE00h-EEB5h, lifts E900h-E92Fh.
+- **The bench and the harness**: `tools/l3drives.py` (`tour3`, `beam`; `cont3`'s drive only),
+  `tools/bstest/l3stub.py` (the stubbed references), `analysis/amiga_ram_l3.tsv` (778 fields),
+  `analysis/amiga_tables.tsv` banks `l3` and `l3b` (`tools/amitab.py`: `at_l3b.inc` always written),
+  `tools/mapcells.py --level 3` (the beams' 80 cells, the turrets' 36 from the spawn list, the map
+  objects': 216 of 2 x 255), `hz.tcl` `hz_l3`, `hz_l3_still_jobs`, `hz.sh l3builds` and `compare
+  --fields analysis/amiga_ram_l3.tsv`, `openmsx_rc2.tcl` unchanged (`rc2_l2_arm` arms at the next
+  `lv_next`: armed in level 2 it traces level 3), `cheat.tcl` through level 3 to the ending, `np.tcl`
+  `np_t_l2` ends level 3 at its first tick (the gate's `tx` flows reach the ending as before),
+  `romdiff.py` (the `L3_` blocks), `tools/msxframe.py` (level 3: 160 slots, level 2's pool frames),
+  `variants.sh` (six `LV_TEST=3` sets), the Makefile's level-3 conversions; `docs/HARNESS.md` 5.26.
+
+### Commits
+- (this step's two commits on `g-s04`; their SHAs and the integration into `level2` at the end of this
+  section)
+
+### Checks (each with its command and result)
+- The conversions: `python3 -I tools/msxlvpal.py palette build/extracted/files/DATAL3_22.bin --pal-file
+  build/extracted/boot/main_8000.bin --base-addr 0xfff6 --pal-addr 0x10036 --base build/msx/robocop
+  --rows 50 -o build/msx/level3` (mean dE76 C 2.179, A 2.675; `level3.pal` = `level2.pal`) and
+  `python3 -I tools/msxconv.py level ... --rows 50 --joint build/msx/level3 -o build/msx/level3` (505
+  tiles); `python3 -I tools/mapcells.py build/ram/level3_full.bin analysis/amiga_tables.tsv
+  build/msx/level3.atrp 160 50 --level 3` -> 216 cells (121 even rows, 95 odd; 255 a pool), 6 attribute
+  values, 10 codes free; levels 1 and 2 unchanged (438 and 289 cells).
+- The builds: `sh tools/bstest/build.sh $S/R/prod/rc2.rom` -> 2048 KiB, 146 banks, mkrom's checks (the
+  3Fh rule, the SCC test values, the guard's tag, the late sections at their banks, lvshared's copies at
+  level 1's addresses) passed; 12 known z80asm warnings. `sh tools/bstest/variants.sh $S/var` -> 58 of
+  61 sets build, the three known fixed-area overflows (`demoact`, `demoact5`, `demohud`, as at the base);
+  the `DIAG` sets pad banks 126-127 (no tunes: level 3 from bank 120).
+- Free bytes (`python3 -I tools/bstest/l2base.py banks $S`, against `d0985a4` built by `SRC=` from a
+  detached worktree): fixed area 156 (base 174: `ml_ev` +1, `ml_end` 3, `l3b_call` 14), 21 in the lowest
+  set `DIAG=1 PZ_TEST=1` (base 39); LC1 54, LC2 4,842, `BANK_L1` 874, LC3 4,866, INPUT 11 (all as the
+  base); FRONT 1,143 (base 1,173: `lv_desc3`, `lv_fid0` x 2, `ng_init`'s 6 B, `fb_brief2` gone); FIELD
+  150, MUSIC 1,251, PUZL 4,483, FRNG 264, `BANK_L2` 28, `BANK_FRONT2` 7,041 (as the base); **`BANK_L3`
+  3,913**, **`BANK_L3B` 8,045**.
+- The data blocks: `python3 -I tools/bstest/romdiff.py --blocks $S/base/R/prod/rc2.rom
+  $S/R/prod/rc2.rom` -> 28 blocks identical at their banks, the six `L3_`/`BANK_L3*` blocks new, "romdiff:
+  PASS"; `python3 -I tools/bstest/relocheck.py ... 2 3 4 5 6 8 9 BANK_PUZL BANK_FRNG BANK_L2
+  BANK_FRONT2` -> every differing byte a relocated label word ("relocheck: PASS"; banks 0-1 and FRONT
+  hold the step's code).
+- Level 1: `sh tools/bstest/hz.sh trace $S/R/trace`, `hz_regress` (cov1 4,401 rows on C-BIOS_MSX2,
+  cov0 1,400 on the FS-A1FX and the FS-A1GT), `sh tools/bstest/hz.sh compare $S/R/trace` -> 948 fields,
+  0 differ in all three, "regression: PASS".
+- Level 2: `sh tools/bstest/hz.sh l2builds $S/R`, `hz_l2 {$S/O/l2} {$S/R} tr`, `sh tools/bstest/hz.sh
+  compare --fields analysis/amiga_ram_l2.tsv $S/O/l2 $S/R` -> the 23 traces 0 differ in 1,022 fields
+  (`flow_l2_end`, the continues on three machines included), the lost counters 0: "level 2: PASS (23
+  traces)".
+- Level 3's references: `python3 -I tools/l3drives.py make`, `refs` (`tour3` 1,401 rows sha256
+  `27fc3e0241c53f5a`, `beam` 501 rows `9c293cd6431fb211`; `check`: 2 of 2); `python3 -I
+  tools/bstest/l3stub.py $S/stub` (the stubbed ones; with or without the deaths' stubs byte-identical:
+  no such death in them).
+- Level 3's traces: `sh tools/bstest/hz.sh l3builds $S/R`, `hz_l3 {$S/O/l3} {$S/R} tr`, `sh
+  tools/bstest/hz.sh compare --fields analysis/amiga_ram_l3.tsv $S/O/l3 $S/R --refs $S/stub` -> `tour3`
+  (C-BIOS_MSX2, FS-A1FX, FS-A1GT) 1,401 rows and `beam` 501 rows, **0 differ in 778 fields**, lost
+  counters 0, the pools 58/54 of 255: "level 3: PASS (4 traces)". Against the plain reference
+  (`tracecmp.py --ram --fields analysis/amiga_ram_l3.tsv ... build/emu/l3_tour3_ram.jsonl`) every row
+  differs from row 0: `act_20` (unported) runs in `level_init`'s map-object pass before row 0 (the map
+  objects' collision slot 1: `mslot1_x` B7h/617h), the stubbed types from row 2 (type 39's slot, type
+  47's `cam_mode`): the first frame of an unported routine is row 0, as level 2's step 7 found.
+- Level 3's start: `hz_l3_still_jobs {$S/O/st} {$S/R} {0 50 230 400 600 1110}` -> on the three machines
+  RoboCop at (1184, 784), `lv_cur`'s logic bank `BANK_L3` (144), game frame 0; `$PY -I tools/msxframe.py
+  $S/O/st/M/g0000 build/msx/level3 build/msx/hud OUT.png --sprites build/msx/sprites --level 3 --field`
+  -> **the first picture 0 differ** (52,126-52,936 pixels) on C-BIOS_MSX2, the FS-A1FX and the FS-A1GT
+  (looked at: the street, the fence and the skyline, the HUD at 07:30); game frames 50 and 1,110 (the
+  roof) 0 differ with RoboCop's sprite pixels exact; 230, 400 (the beams) and 600 (lift L0) differ at
+  the beams' cells only (their looks change every tick, the RAM's patches a tick ahead of the picture:
+  step C's field check judges them). msxreal.py needs a rendered screenshot, which the headless MCP
+  cannot make: msxframe's render stands for it, as for level 2's start.
+- The flow: `hz_chain [list [ch_job {$S/O/cheat} {$S/R/cheat/rc2.rom} {$S/R/cheat/rc2.labels}
+  Gradiente_Expert20_64K]]` (`CHEAT=1 TAG=7`, a fresh Expert): the title, level 1, F5, the stages, the
+  level-2 briefing, level 2, F5, the statistics, both second visits, the level-3 briefing, **level 3**
+  (frame 100 at emulated 469.0 s), F5, **the game completed** (`front_ending` at 470.3 s), the name
+  entry (RETURN), the table, the title (593.5 s): "end: the title after level 3"; level 3's frame-100
+  snapshot rendered (msxframe, the product: 0 differ, looked at).
+- `make test` (the worktree, rebased): 339 tests, the 4 known failures only (failures=3, errors=1).
+
+### For step B (the logic) first
+- Fill `msx/level3obj.asm`: replace the shared stub (`t21` ... `t52`: `ld a,0xFF` / `ret`) by each type's
+  port; its tables go into `analysis/amiga_tables.tsv` bank `l3b` (`at_l3b.inc`, already included; the
+  turrets' looks `tur_panel`, `tur40_look`, `tur41_look` are there). While a handler runs, BANK_L3 is not
+  mapped: `lvshared_l3`'s `t_xy`, `t_face`, `t_col`, `t_word` need copies in `BANK_L3B` (as needed); the
+  fixed code and LC1 are reachable. Level 2's type-49 flight (`level2obj.asm` `t49`, `fly_dx`, `fly_dy`,
+  `fly_gfx` in bank `l2`) is not in `BANK_L3B`: type 38 needs its own copy.
+- Drop each ported type's stub from `tools/bstest/l3stub.py`'s `STUBS` (and `act_20` once `mapobj.asm`
+  has it at `ao_acts` entry 8); the deaths need no stub (ported here, untested: the kill drives check
+  them). Enable `$D583` and `$E9F5` in `analysis/amiga_ram_l3.tsv` once `obj22_step` and `obj40_flag`
+  hold the Amiga's bytes (the image's 3 and 42h: AC_VARS is 0 at power-on) or the comparison learns
+  their encoding.
+- `msx/hits.asm` `phb_en`: bullet 11h (the rocket of types 40 and 42, 40h) x 1 (default 11); the touches
+  of 38, 39 and 52 (18h) x 1 in their own code (default 12).
+- The drives the plan asks (`park`, `boss`, `kill`, `cont3`'s reference) into `tools/l3drives.py`
+  (`cont3`: the bench faults after its game over, PC `$FDB8`, A1 800000h, bench frame 735), the jobs
+  into `hz_l3_jobs` and `hz.sh`'s level-3 `JOBS`.
+- The two-part lift (`special.asm`, `$8ED2`) and `act_20` (`mapobj.asm`).
+
+### For step C (the sprites and the play field) first
+- Level 3's descriptor (`tools/mkrom.py`, the `lv_desc3` lines of `gen/levels.inc`) takes level 2's BOB
+  index (`SPR_BOB_INDEX_L2`), spark, play-field tables (`fld_l2`), ids (`FIELD_ID0_l2`, `lv_fid0`) and
+  atlas (`L3_ATLAS` = `L2_ATLAS`, no bank of its own); its BOBHASH is `l3_stub_hash`'s. Replace them with
+  the pool's level-3 values (`SPR_BOB_INDEX_L3`, `fld_l3`, the per-level `lv_fid0`), level 3's own atlas
+  block (a new entry in `place_banks`' data list: it lays out the banks), and the BOBHASH from the pool;
+  `L3_DYN_Y` (232) and `TC_SLOTS[3]` (160) are the plan's.
+- `bob.asm` reads `lv_fid0` (F1C0h, `LV_SIZE` 33: the field is in every descriptor, D0h today); the
+  frame cache's RAM `fc_tab` (ECF0h, 32 B) is reserved in `msx.inc`; `tools/msxframe.py`'s
+  `POOL_LEVEL = {3: 2}` goes once the pool has level 3.
+
+### Open issues
+- `cont3`'s reference: the bench faults after level 3's game over (above): step D (`contcheck.py
+  --level 3`).
+- The `flow_l3` reference (the bench through level 2's end into level 3) is not built: the flow is
+  checked by `cheat.tcl` (above); `amigaemu.py --flow` through `load_level2` is step D's if needed.
+- Only `tour3` and `beam` exist; the plan's `park`, `boss` and `kill` need the car park's and Cain's
+  logic (step B).

@@ -8,9 +8,9 @@
 ; its start (l3_init), the beams (lt2), the 6-byte stubs that run the level's own types in their
 ; bank (level3obj.asm, BANK_L3B, through rc2.asm l3b_call), then its tables (at_l3.inc, cells_l3.inc).
 ;
-; Built by the plan's step A: the types are level3obj.asm's stubs and the three deaths of level 3
-; ($C25C, $C360, $C3A8 with debris_add $C398) are not ported yet (their types never die while they
-; are stubs: death_none stands for them); step B ports both (docs/level3/HANDOFF.md, step 4).
+; Built by the plan's step A: the types are level3obj.asm's stubs (step B ports them); the three
+; deaths of level 3 ($C25C, $C360, $C3A8 with debris_add $C398) are ported, though no stub dies yet:
+; the table holds them, step B's traces (Cain's, the truck's and type 21's kills) check them.
 
 lv_htab_l3:
         dw obj_none, death_none     ; 0
@@ -34,8 +34,8 @@ lv_htab_l3:
         dw obj_none, death_none     ; 18
         dw obj_none, death_none     ; 19
         dw obj_none, death_none     ; 20
-        dw t21_s, death_none        ; 21: the big walker ($D2FA; its death $C3A8: step B)
-        dw t22_s, death_none        ; 22: Cain as RoboCop 2 ($D49C; its death $C25C: step B)
+        dw t21_s, death_w21         ; 21: the big walker ($D2FA; its death $C3A8)
+        dw t22_s, death_cain        ; 22: Cain as RoboCop 2 ($D49C; its death $C25C)
         dw obj_none, death_none     ; 23
         dw obj_none, death_none     ; 24
         dw obj_none, death_none     ; 25
@@ -46,7 +46,7 @@ lv_htab_l3:
         dw obj_none, death_none     ; 30
         dw obj_none, death_none     ; 31
         dw obj_none, death_none     ; 32
-        dw t33_s, death_none        ; 33: the truck ($E0A4; its death $C360: step B)
+        dw t33_s, death_truck       ; 33: the truck ($E0A4; its death $C360)
         dw t34_s, death_c35a        ; 34: the small walker ($E1D6)
         dw t35_s, death_c31e        ; 35: the gunner that rises and sinks ($E28C)
         dw t36_s, death_c35a        ; 36: the robot on its up-and-down cycle ($E356)
@@ -354,6 +354,93 @@ lt2_put:
         call map_write_lin
         ld hl,h_row
         inc (hl)
+        ret
+
+; ----- the deaths of level 3's big enemies ($C25C, $C360, $C3A8) -----
+
+; IX = the dead enemy's slot (objects.asm update_objects: D0, D1 its x, y). Its three parts thrown up
+; as enemy bullets that never hit (debris_add: their frames its own), then three explosions of type 0
+; ($F366, which keeps D0 and D1) from its place by the table's offsets. Cain's ($C25C) also ends the
+; level: $16D0 set, the end count $16C4 = 40h, "CAIN DESTROYED." ($C24B).
+death_cain:
+        ld hl,dth_cain
+        call dth_go
+        ld a,0xFF
+        ld (AM + (0x16D0 ^ 1)),a    ; (st $16D0: the level done)
+        ld hl,0x40
+        ld (AM + 0x16C4),hl         ; (the end count)
+        ld a,HUD_MSG_C24B
+        jp game_msg                 ; ($FD76: "CAIN DESTROYED.")
+death_truck:                        ; ($C360: type 33)
+        ld hl,dth_truck
+        jr dth_go
+death_w21:                          ; ($C3A8: type 21)
+        ld hl,dth_w21
+dth_go: push hl
+        ld l,(ix+OS_X)
+        ld h,(ix+OS_X+1)
+        ld (eb_x),hl                ; (D0)
+        ld l,(ix+OS_Y)
+        ld h,(ix+OS_Y+1)
+        ld (eb_y),hl                ; (D1)
+        pop hl
+        ld b,3
+dth_db: push bc
+        ld a,(hl)
+        ld (eb_type),a              ; (D6)
+        inc hl
+        ld a,(hl)
+        ld (eb_dir),a               ; (D7: 0Eh, 0, 2, 4: not aimed)
+        inc hl
+        push hl
+        call debris_add
+        pop hl
+        pop bc
+        djnz dth_db
+        ld b,3
+dth_ex: push bc
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        inc hl
+        ld c,(hl)
+        inc hl
+        ld b,(hl)
+        inc hl
+        push hl
+        ld hl,(eb_y)
+        add hl,bc
+        push hl
+        ld hl,(eb_x)
+        add hl,de                   ; HL = x + dx
+        pop de                      ; DE = y + dy
+        ld bc,0                     ; (D5: type 0)
+        call expl_add
+        pop hl
+        pop bc
+        djnz dth_ex
+        ret
+; per death: 3 x [bullet type (D6), direction (D7)], then 3 x [dx, dy] from D0, D1 (the 68000's adds
+; between its bsr $F366 calls, summed)
+dth_cain:
+        db 0x12, 0x0E, 0x13, 0x00, 0x14, 0x02
+        dw 0, 0x10, 0x18, 0x10 + 0x1A, 0x18 - 0x10, 0x10 + 0x1A + 0x20
+dth_truck:
+        db 0x0B, 0x0E, 0x0D, 0x00, 0x0C, 0x02
+        dw 0, 0x10, 0x22, 0x10, 0x44, 0x10
+dth_w21:
+        db 0x0E, 0x04, 0x0F, 0x00, 0x10, 0x02
+        dw 0, 0, 0x0C, 0x18, 0x0C + 0x18, 0x18 + 0x18
+
+; $C398: an enemy bullet of type eb_type, direction eb_dir at eb_x, eb_y (ebullet_add, $F5BC) thrown
+; up when one was added: its +E0h long 8000h (ebullet_add cleared it: only the low word's high byte).
+debris_add:
+        call ebullet_add
+        ret z
+        ld hl,(eb_slot)
+        ld de,0xE3
+        add hl,de
+        ld (hl),0x80
         ret
 
 ; ----- the level's own types (level3obj.asm, BANK_L3B at A000h around each: rc2.asm l3b_call) -----

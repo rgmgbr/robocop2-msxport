@@ -5,7 +5,7 @@
 romdiff.py --blocks A.rom B.rom [--allow NAME,...] [A_banks.inc B_banks.inc]: the same by block,
 each build's blocks at their own banks (tools/mkrom.py gen/banks.inc, by default the gen/ next
 to each ROM, as tools/bstest/build.sh leaves it): a block starts at a bank equate (BANK_*, *_BANK,
-L2_TILES, L2_MAP, L2_ATR, L2_TAB, L2_ATLAS; FIXED = banks 0-1; an equate at another's bank is an
+L2_TILES, L2_MAP, L2_ATR, L2_TAB, L2_ATLAS, their L3_ twins; FIXED = banks 0-1; an equate at another's bank is an
 alias) and runs to the next one, the last to the first bank of 0FFh bytes. Each block of either
 build is compared with the other's of the same name wherever it lies: identical, its byte count
 and range otherwise, another size, or only in one build. The code blocks (FIXED, BANK_*: msx/rc2.asm's
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 BANK = 8192
-EXTRA = ("L2_TILES", "L2_MAP", "L2_ATR", "L2_TAB", "L2_ATLAS")
+EXTRA = ("L2_TILES", "L2_MAP", "L2_ATR", "L2_TAB", "L2_ATLAS", "L3_TILES", "L3_MAP", "L3_ATR", "L3_TAB", "L3_ATLAS")
 
 
 def blocks(rom: bytes, inc: str) -> dict[str, tuple[int, int]]:

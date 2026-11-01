@@ -27,6 +27,8 @@
 #                            without a credit), R/l2c (0:0:1:1: with one), each rc2_<b>.rom; and
 #                            R/flow/rc2_flow.rom (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 without LV_TEST:
 #                            the product's way into level 2 for hz_l2's flow_l2_end, step 18)
+#   hz.sh l3builds R         level 3's trace build (hz.tcl hz_l3; docs/LEVEL3.md 3.8): R/l3/rc2_l3.rom
+#                            (EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry)
 #   hz.sh fxbuilds R         level 2's sound logs' builds (fxlog.tcl fxl_jobs; docs/LEVEL2.md 4.3),
 #                            each R/<b>/rc2.rom: l2, l2x (+ NO_SCC_INT=1), l2n (+ NO_SCC=1) EXTJOY=1
 #                            ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=2; l2c, l2cn (+ NO_SCC=1) the same with
@@ -42,7 +44,9 @@
 #                            only; without JOBs, every job whose trace is in DIR, whole (cont,
 #                            cont_fx, cont_tr through the continue since level 2's step 19). With
 #                            DIR/lost.txt (hz_l2's), each job's lost counters too: mp, atr, rd
-#                            and fb 0 (the pools' use printed)
+#                            and fb 0 (the pools' use printed). With analysis/amiga_ram_l3.tsv:
+#                            level 3's jobs (hz_l3: tour3, tour3_fx, tour3_tr, beam; DIR/l3_<job>.txt
+#                            against build/emu/l3_<ref>_ram.jsonl or REFS', tools/bstest/l3stub.py)
 #
 # The whole level-1 regression, three steps:
 #   sh tools/bstest/hz.sh trace DIR
@@ -52,7 +56,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../.." && pwd -P)"
-usage() { sed -n 2,48p "$0" >&2; exit 2; }
+usage() { sed -n 2,55p "$0" >&2; exit 2; }
 # a folder's absolute path (the printed lines run in openMSX, whose working directory is another;
 # compare runs from the repository root); "mk" creates it first
 absdir() {
@@ -83,12 +87,16 @@ compare)
       E="$(absdir "$2")" || { echo "hz.sh: no folder $2" >&2; exit 2; }
       shift 2
     fi
+    P=l2                    # (the level's prefix: its jobs, traces and references)
+    case "$(basename "$F")" in *_l3.tsv) P=l3 ;; esac
     JOBS="end:l2:l2_end:259 tour:l2:l2_tour:2654 lift:l2:l2_lift:801 trolley:l2:l2_trolley:641
       vat:l2:l2_vat:701 fuzz:l2:l2_fuzz:2501 sharp:l2s:l2_trolley_sharp:641 fair:l2f:l2_trolley_fair:641
       poor:l2p:l2_trolley_poor:641 over:l2o:l2_over:109 cont:l2c:l2_cont:301 barrel:l2:l2_barrel:901
       mine:l2:l2_mine:161 t1left:l2:l2_t1left:341 drone:l2:l2_drone:401 tour_fx:l2:l2_tour:2654
       vat_fx:l2:l2_vat:701 trolley_eu:l2:l2_trolley:641 tour_tr:l2:l2_tour:2654 vat_tr:l2:l2_vat:701
       flow_l2_end:flow:l2_flow_l2_end:259 cont_fx:l2c:l2_cont:301 cont_tr:l2c:l2_cont:301"
+    [ "$P" = l3 ] && JOBS="tour3:l3:l3_tour3:1401 tour3_fx:l3:l3_tour3:1401 tour3_tr:l3:l3_tour3:1401
+      beam:l3:l3_beam:501"
     want_jobs="$*"
     bad=0; seen=0
     cd "$ROOT" || exit 2
@@ -101,18 +109,18 @@ compare)
           case "$w" in "$n") hit=1 ;; "$n":*) hit=1; upto="${w#*:}" ;; esac
         done
         [ -n "$hit" ] || continue
-      elif [ ! -f "$D/l2_$n.txt" ]; then
+      elif [ ! -f "$D/${P}_$n.txt" ]; then
         continue
       fi
       seen=$((seen + 1))
-      [ -f "$D/l2_$n.txt" ] || { echo "$n: no trace"; bad=1; continue; }
+      [ -f "$D/${P}_$n.txt" ] || { echo "$n: no trace"; bad=1; continue; }
       L="$R/$b/rc2_$b.labels"
       [ -f "$L" ] || { echo "$n: no label file $L"; bad=1; continue; }
-      rows=$(grep -c . "$D/l2_$n.txt")
-      T="$D/l2_$n.txt"
+      rows=$(grep -c . "$D/${P}_$n.txt")
+      T="$D/${P}_$n.txt"
       if [ -n "$upto" ]; then
         [ "$rows" -ge "$upto" ] || { echo "$n: $rows rows, $upto wanted"; bad=1; continue; }
-        T="$D/.l2_$n.$upto.txt"; head -n "$upto" "$D/l2_$n.txt" > "$T"; want="$upto"; rows="$upto"
+        T="$D/.${P}_$n.$upto.txt"; head -n "$upto" "$D/${P}_$n.txt" > "$T"; want="$upto"; rows="$upto"
       fi
       [ -f "$E/${ref}_ram.jsonl" ] || { echo "$n: no reference $E/${ref}_ram.jsonl"; bad=1; continue; }
       out=$(python3 -I tools/tracecmp.py --ram --fields "$F" --labels "$L" "$E/${ref}_ram.jsonl" "$T" 2>&1 | tail -1)
@@ -121,9 +129,9 @@ compare)
       echo "$out" | grep -q ": 0 differ" || { echo "  FAIL: differences"; bad=1; }
       if [ -f "$D/lost.txt" ]; then
         # (hz_l2's lost counters: the job's last line)
-        lost=$(grep "^l2_$n (" "$D/lost.txt" | tail -1)
+        lost=$(grep "^${P}_$n (" "$D/lost.txt" | tail -1)
         if [ -z "$lost" ]; then
-          echo "  FAIL: no lost counters for l2_$n in $D/lost.txt"; bad=1
+          echo "  FAIL: no lost counters for ${P}_$n in $D/lost.txt"; bad=1
         else
           echo "  lost: ${lost#*): }"
           echo "$lost" | grep -q '): mp 0 atr 0 rd 0 fb 0 pools ' || { echo "  FAIL: lost counters"; bad=1; }
@@ -131,8 +139,9 @@ compare)
       fi
     done
     [ -f "$D/lost.txt" ] || echo "(no $D/lost.txt: the lost counters not checked)"
-    [ $seen -gt 0 ] || { echo "hz.sh: no level-2 trace to compare in $D" >&2; bad=1; }
-    [ $bad -eq 0 ] && echo "level 2: PASS ($seen traces)" || echo "level 2: FAIL"
+    LV=$(echo "$P" | cut -c2)
+    [ $seen -gt 0 ] || { echo "hz.sh: no level-$LV trace to compare in $D" >&2; bad=1; }
+    [ $bad -eq 0 ] && echo "level $LV: PASS ($seen traces)" || echo "level $LV: FAIL"
     exit $bad
   fi
   D="$(absdir "$1")" || { echo "hz.sh: no folder $1" >&2; exit 2; }
@@ -214,6 +223,13 @@ l2builds)
   sh "$H/build.sh" "$R/flow/rc2_flow.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 || bad=1
   [ $bad -eq 0 ] && echo "l2builds: PASS ($R)" || echo "l2builds: FAIL"
   exit $bad
+  ;;
+l3builds)
+  [ $# -ge 1 ] || usage
+  R="$(absdir "$1" mk)" || exit 2
+  echo "== l3 EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3"
+  sh "$H/build.sh" "$R/l3/rc2_l3.rom" EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3 && echo "l3builds: PASS ($R)" \
+    || { echo "l3builds: FAIL"; exit 1; }
   ;;
 fxbuilds)
   [ $# -ge 1 ] || usage

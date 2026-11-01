@@ -538,6 +538,43 @@ Nothing to convert. Step D logs level 3's requests per tick on the three chip se
 | `tools/bobcatalog.py`, `tools/msxsprites.py`, `tools/msxframe.py`, `tools/recframes.py`, `tools/msxchooser.py` | level 3 (3.5) |
 | `tools/bstest/fieldcheck.py`, `msxreal.py`, `mapcmp.py` | `--level 3` (the cache's frames from the record) |
 
+### 3.9 As built by step A (2026-11-01) [V]
+
+What step A built and where it departs from 3.1-3.8 (the account and the checks: `docs/level3/HANDOFF.md`,
+"Step 4 (plan step A)"):
+
+- **The ROM** (on `level2` with steps 1 and 3 in): bank 127 holds `BANK_FRONT2` (the ending's code) and
+  128-131 the CMP tune, so level 3's blocks follow from bank 132: tiles 132-139, map 140-141, attributes
+  142, tables 143, `BANK_L3` 144, `BANK_L3B` 145; **146 of 256 banks**, 2 MiB with the boot guard.
+  `tools/mkrom.py` `place_banks` lays them out: a bank with `(b & 3Fh) = 3Fh` takes `BANK_L3` or
+  `BANK_L3B` (both read at A000h only), padding only when it must (the `DIAG` builds, without their
+  tunes, pad 126-127). Default 13 thus takes no bank now; bank 191 would take an A000h-only block if
+  the image reaches it. Levels 1-2's data blocks are identical at their banks (`romdiff.py --blocks`).
+- **The descriptor**: `LV_SIZE` 33, `lv_fid0` +32 (D0h in every level for now). Level 3's (`lv_desc3`)
+  takes **level 2's BOB index, spark, play-field tables (`fld_l2`), ids and atlas** (`L3_ATLAS` =
+  `L2_ATLAS`) until step C; its BOBHASH holds level 2's frames whose bytes level 3's memory holds too
+  (`l3_stub_hash`: PERMA's bullets, explosions, pickups, sparks), so level 3's own frames draw nothing
+  yet. Its tile cache 160 slots, its dynamic slot page 2 line 232 (`L3_DYN_Y`), as 3.6.
+- **The flow**: `ml_ev` sends AG `$8050` = 3 to `ml_end` (`frontx.asm` `fr_ending`, step 3's ending,
+  then the title), 1 and 2 through `front_stats`, `front_bonus` and `lv_next`; step 3's interim
+  `fb_brief2` (the ending right after the level-3 briefing) is gone: `front_bonus` calls `front_brief`
+  again. `LV_TEST=3` (`front_l2test` = `front_l3test`: AG `$8050` = `LV_TEST` - 1).
+- **The fade's forced state** (`$F89D`) is a variable, `fade_st` (DD1Ch): `cold.asm` `ng_init` sets 10
+  at each new game, `l3_init` 11 at each level-3 start; `player.asm` `pl_fade` reads it (`ld hl,(fade_st)`:
+  no fixed byte more).
+- **RAM**: the code-area words at DD74h-DD7Fh in another order than 3.4's table (words even): `obj22_x`
+  DD74h, `obj37_last` DD76h, `l3_mail` DD78h (6), `obj22_step` DD7Eh, `obj40_flag` DD7Fh; `fc_tab`
+  ECF0h-ED0Fh (32) for step C's frame cache.
+- **`BANK_L3`**: the header, `lvshared_l3`, `l3_init`, `lt2`, `l3_noten` (behind a `jp`: the rule takes 10
+  bytes), the deaths `death_cain`, `death_truck`, `death_w21` and `debris_add` (ported from `$C25C`,
+  `$C360`, `$C3A8`, `$C398`; not run yet: no stub dies, so step B's kill drives check them), the 19
+  stubs (`tNN_s`: `ld hl,tNN` / `jp l3b_call`) and the tables: 3,913 B free. **`BANK_L3B`**: the 19 types as one stub (`ld a,FFh` / `ret`) and `at_l3b.inc`: 8,045 B free.
+  `rc2.asm` `l3b_call` (14 B): `BANK_L3B` at A000h, the routine, then `logic_map`; A and the flags
+  returned. While a `BANK_L3B` handler runs, `BANK_L3` (with `lvshared_l3`'s `t_xy`, `t_face`, `t_col`,
+  `t_word`) is not mapped.
+- **The fixed area** 18 B (`ml_ev` +1, `ml_end` 3, `l3b_call` 14): 156 B free in the product, 21 in the
+  lowest set (`DIAG=1 PZ_TEST=1`).
+
 ## 4. The checks
 
 Every step: `make test` with the four known failures only; the build logs without errors or new

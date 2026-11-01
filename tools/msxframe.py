@@ -84,7 +84,10 @@ PUB_SPR = {0xC080: 0xC700, 0xC0A0: 0xC780}     # what each list's SAT shows (MAX
 SPLIT_LIST = 0xC0C0
 VIEW, HUD_TOP = 162, 167
 TC_TILE = 0x0400                                # page-0 RAM: the tile in each cache slot (msx/msx.inc)
-TC_SLOTS = {1: 256, 2: 224}                     # the cache's slots per level (tools/mkrom.py TC_SLOTS)
+TC_SLOTS = {1: 256, 2: 224, 3: 160}             # the cache's slots per level (tools/mkrom.py TC_SLOTS)
+POOL_LEVEL = {3: 2}                             # the level whose pool frames a level shows: level 3 level 2's
+                                                # until the plan's step C converts its own (tools/mkrom.py
+                                                # l3_stub_hash, its descriptor's BOB index and atlas)
 FB_VIS = 0xF248                                 # test builds: the play-field BOBs of the list on screen
 FB_MAX = 8
 HUD_MSK = 0xC02B
@@ -409,8 +412,8 @@ def main() -> int:
     lv = int(sys.argv[sys.argv.index("--level") + 1]) if "--level" in sys.argv else 1
     pool = Path(sys.argv[sys.argv.index("--sprites") + 1]) if "--sprites" in sys.argv else None
     if pool:
-        use_pool(pool, lv)
-    looks = FieldLooks(lv, pool)
+        use_pool(pool, POOL_LEVEL.get(lv, lv))
+    looks = FieldLooks(POOL_LEVEL.get(lv, lv), pool)
     vram = (snap / "vram.bin").read_bytes()
     ram = (snap / "ram.bin").read_bytes()
     ram0 = (snap / "ram0.bin").read_bytes() if (snap / "ram0.bin").exists() else None

@@ -327,6 +327,55 @@ proc hz_l2 {dir R {tr ""} {only ""}} {
 	hz_chain [hz_l2_jobs $dir $R $tr $only]
 }
 
+# ----- level 3's drives (docs/LEVEL3.md 3.8 and 4; docs/HARNESS.md 5.26)
+
+# hz_l3 DIR R ?tr? ?ONLY?: the bench's level-3 references (tools/l3drives.py; while types are stubs in
+# the port, tools/bstest/l3stub.py's) played on the LV_TEST=3 build of "hz.sh l3builds R" (R/l3/rc2_l3.rom:
+# EXTJOY=1 ENEMY_CAP=0 DAMAGE_X=1 LV_TEST=3, the default carry) through rc2_drive_rom, as hz_l2's jobs (no
+# tick runs before level 3 in that build: tick_n is the drive's index), with the lost counters at every
+# tick (hz_l2_drive, appended to DIR/lost.txt): DIR/l3_<job>.txt, n rows each. tour3 on C-BIOS_MSX2 and
+# the FS-A1FX, beam on C-BIOS_MSX2; with "tr", tour3 on the FS-A1GT (the R800) too. ONLY: a list of job
+# names. Compare with "hz.sh compare --fields analysis/amiga_ram_l3.tsv DIR R [--refs STUBBED]".
+proc hz_l3_jobs {dir R {tr ""} {only ""}} {
+	file mkdir $dir
+	set e "$::hz_root/build/emu"
+	set lost [file join $dir lost.txt]
+	set spec [list tour3 l3 l3_tour3 1401 C-BIOS_MSX2  tour3_fx l3 l3_tour3 1401 Panasonic_FS-A1FX \
+		beam l3 l3_beam 501 C-BIOS_MSX2]
+	if {$tr eq "tr"} {
+		lappend spec tour3_tr l3 l3_tour3 1401 Panasonic_FS-A1GT
+	}
+	set jobs {}
+	foreach {name b drive n m} $spec {
+		if {$only ne "" && [lsearch -exact $only $name] < 0} continue
+		set done "\$::rc2_trace_done && \[hz_l2_lost {$lost}\]"
+		set setup [list hz_l2_drive "$R/$b/rc2_$b.rom" "$R/$b/rc2_$b.labels" "$dir/l3_$name.txt" $n "$e/$drive.drive"]
+		lappend jobs [list l3_$name $m $setup $done 1800]
+	}
+	return $jobs
+}
+
+proc hz_l3 {dir R {tr ""} {only ""}} {
+	hz_chain [hz_l3_jobs $dir $R $tr $only]
+}
+
+# hz_l3_still_jobs DIR R ?FRAMES? ?DRIVE?: level 3's start and stills (docs/LEVEL3.md 4 check 2), as
+# hz_l2_still_jobs: R/l3/rc2_l3.rom from the power-on of C-BIOS_MSX2, the FS-A1FX and the FS-A1GT on
+# DRIVE's input (default l3_tour3), rc2_snap at the HUD split of the first new list from each game frame
+# of FRAMES (default 0 and 50) with lv_cur's logic bank BANK_L3 and the display on: DIR/<m2|fx|tr>/gNNNN
+# with when.txt and pos.txt. Check each with "$PY -I tools/msxframe.py SNAP build/msx/level3 build/msx/hud
+# OUT.png --sprites build/msx/sprites --level 3 [--field] [--no-sprites]" (level 3 shows level 2's
+# frames until the plan's step C: msxframe.py POOL_LEVEL).
+proc hz_l3_still_jobs {dir R {frames {0 50}} {drive l3_tour3}} {
+	set e "$::hz_root/build/emu"
+	set jobs {}
+	foreach {t m} {m2 C-BIOS_MSX2 fx Panasonic_FS-A1FX tr Panasonic_FS-A1GT} {
+		lappend jobs [list l3st_$t $m [list hz_l2_still_setup "$dir/$t" "$R/l3/rc2_l3.rom" "$R/l3/rc2_l3.labels" \
+			"$e/$drive.drive" $frames BANK_L3] {$::hz_l2s_done} 600]
+	}
+	return $jobs
+}
+
 # hz_l2_jobs' continue jobs without a reference (level 2's step 19), on the l2c build (one credit):
 # cont_nf, the offer left alone (its whole length, then the title's new game: contcheck.py --no-fire);
 # cont2, the continue taken, then a second game over (hz_l2_cont2_drive: the lives poked to 0 and vat
