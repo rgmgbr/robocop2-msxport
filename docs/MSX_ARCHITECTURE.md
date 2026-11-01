@@ -753,8 +753,10 @@ which as sprites were striped, cut or left out.
   before). Between two uses one tick apart fewer than 65,536 changes can happen, so an equal count
   means none: the cells hold what the entry wrote, and the skipped writes would have changed nothing.
   The logic and the map stay the original's tick for tick (the logic traces against the bench, the
-  map's state against the base's every 100 ticks). `cam_cells` takes the cells with `add hl,hl` four
-  times (the same B and C for every camera value; 18 bytes and about 48 T-states a call less). RAM: 59
+  map's state against the base's at every tick's start over `l3_tour3`, `l3_park` and `l3_kill` on
+  C-BIOS_MSX2, and every 100 ticks of tour3 and park on both VDPs). `cam_cells` takes the cells with
+  `add hl,hl` four times (the same B and C for every camera value; 18 bytes and 16 T-states a call less,
+  34 with the MSX's M1 wait states). RAM: 59
   bytes (F170h-F190h, ECFBh-ED08h, EDF0h-EDFBh); the fixed area 4 bytes smaller, `LC3` +9, `FRONT` +7,
   `BANK_L3` +83, `BANK_L3B` +145. Measured alone (EXTJOY drive builds, 60 Hz, ticks a second): `l3_tour3`'s
   beams, lifts and roof (ticks 215-540, 545-1065, 1085-1400) 8.94, 10.09, 12.75 -> 9.13, 10.59, 14.06 on
@@ -768,10 +770,11 @@ which as sprites were striped, cut or left out.
   tables equal `map_write`'s lookup of the original words). `level3.asm` `lt2_putt` and `level3obj.asm`
   `tpu_w` call `tiles.asm` `map_write_t` (BC = the tile, A = the attributes), which enters `map_write`
   after its lookup and its two bank switches; their columns (18-63) never need `map_write_lin`'s wrap
-  (`tools/mapcells.py` fails the build otherwise). `rd_bit` finds a cell's bit without loops: the column
-  % 20 by three compares and, with r = row & 15 and t = 4r + column % 20, the index 16r + t (byte 2r +
-  t / 8, bit t & 7), the same byte and bit for every row and every column 0-159 (`map_write`'s; checked
-  exhaustively by the same test). The fixed area +7 bytes (`map_write_t` 6, `rd_bit` 1), `BANK_L3` +137,
+  (`tools/mapcells.py` in `make msx`, and the same test, fail otherwise). `rd_bit` finds a cell's bit
+  without loops: the column % 20 by three compares and, with r = row & 15 and t = 4r + column % 20, the
+  index 16r + t (byte 2r + t / 8, bit t & 7), the same byte and bit for every row and every column 0-159
+  (`map_write`'s; the same test checks this formula for each of them, not the assembled routine). The
+  fixed area +7 bytes (`map_write_t` 6, `rd_bit` 1), `BANK_L3` +137,
   `BANK_L3B` +224 (the word tables themselves stay in the banks unread, 80 and 144 bytes, as
   `tools/amitab.py` copies `analysis/amiga_tables.tsv`'s rows). Both together, measured as above: tour3's
   beams, lifts and roof 9.49, 10.95, 14.91 ticks a second on the MSX2 (+6 %, +9 %, +17 %), 14.03, 15.13,
