@@ -483,7 +483,13 @@ which as sprites were striped, cut or left out.
   the VDP idle first: the next idle point of the main loop or the HUD split and VBLANK interrupts
   (`ifg_rdy`: composing writes page 3 only, off the screen, so it may start at any beam
   position). The fill's and the tiles' 16x16 copies go in bursts of up to 16 (`FB_BURST`: the
-  set-up of each takes about as long as the copy before it). Until then every command waited
+  set-up of each takes about as long as the copy before it). Since performance campaign 2's field-2
+  (`docs/PERF2_PLAN.md` item 2) a tile copy's part of its cell comes from 8-bit arithmetic on the
+  piece's corner (`ftl_ax`: a piece is at most 64 x 64, so its cells' edges lie -15 .. 63 px from its
+  corner) and the command bytes no cell changes are written once a burst: the same copies in the same
+  order, with about 2,240 T-states of set-up a cell instead of 3,620 (hand counts; `fb_rpiece`'s six
+  `fb_cmp` and `fb_dscr` were about 1,360 of them);
+  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Until then every command waited
   for an idle point of the main loop (one a call, 8-10 ms apart in the busy windows, 23-33 ms
   for one in ten): an item of 5-6 commands took 65-75 ms from queue to page.
 - **Background caches**: three 64x64 blocks (page 3 x 0, 64, 128) each hold the tiles of a
@@ -595,6 +601,18 @@ which as sprites were striped, cut or left out.
   truck's body and part, type 51, the rocket, a debris part), 42 big animated frames in the frame
   cache (Cain's legs 48 x 44 x 18 and 64 x 34 x 2, his 64 x 32 x 6, type 21's legs 64 x 40 x 16), 6
   smoke frames in level 1's dynamic frames (`fb_fdyt`); the lift's two parts are late (`FIELD_LATE`).
+  - **The frames' opaque boxes** (performance campaign 2, field-1: `docs/PERF2_PLAN.md` item 1): the
+    static and the cache's frames are drawn as the box around their pixels (`tools/msxsprites.py`
+    `field_trim`, its x edges even: two pixels a byte). `field_tab` holds the box: its place in the atlas
+    (inside the frame, which the atlas keeps whole), its size, and as dx, dy its corner in the frame,
+    which `fb_wants` adds to the BOB's place (a removed frame's dx, dy add the corner of the frame it
+    shows). No engine code changed: every LMMM, BOB rectangle, item and upload covers only the part with
+    pixels. 55 of the 66 frames are cut (Cain's legs keep 64-95 % of their 48 x 44, his 64 x 32 parts
+    66-79 %: their three empty top lines made his item 65-69 lines tall, so most of his compositions had
+    a second band of thin pieces). The smoke and the lift's parts stay whole. The cache's ROM holds only
+    the boxes (a white copy has its frame's box: it is its mask), and a frame keeps the place its whole
+    size gives it. `tests/test_field_trim.py` converts the pool with and without the cut (`--no-trim`):
+    every frame, normal and white, draws the same pixels at the same places.
   - **The frame cache** (page 2 lines 160-231): seven fixed places (`L3_FC_PLACES`, not LRU: 0 the
     legs, 1 Cain's 64 x 32, 2 the legs' white copies, 3 the other white copies up to 64 x 48, 4 those
     up to 64 x 24, 5 the truck's body's white copy, 6 type 51's; 5 and 6 overlap others). The frames
@@ -602,8 +620,16 @@ which as sprites were striped, cut or left out.
     place, and a copy empties the places it overlaps. `field.asm` `fbb_fc`, `fc_find` and `fc_get`
     copy a frame that is not resident from its ROM bank when a piece is composed with it, with the VDP
     idle and no command prepared (`fb_dyn`'s rule): 13-21 ms a copy (1-1.3 KiB), the main loop
-    stopped meanwhile. The cache's ROM (`L3_FC`, 14 banks) begins with a header: per id [normal,
-    white], per cache frame [bank, address, place], per place [x, line, overlaps].
+    stopped meanwhile. Since performance campaign 2's FC-UPLOAD (`docs/PERF2_PLAN.md` item 8) a copy
+    sets R#14 once (`vram_write` for its first line: every place lies in page 2's lines 128-255, which
+    the converter's `FC_TOP` and `FC_END` give and `field.asm` checks at assembly), then per line only
+    the address (two OUTs between DI and EI, the next line's 128 bytes on) and the bytes through
+    `sprites.asm` `outi32`'s OUTIs in two halves (`fcg_jx`, `fcg_jy`: half the line's bytes, the second
+    half one more for an odd count, as field-1's boxes give): 18 T-states a byte instead of OTIR's 23,
+    and about 200 T-states a line besides instead of 450 (`vram_write` and the address from the line
+    each time). The cache's ROM (`L3_FC`, 11 banks since field-1, 14 before) begins with a
+    header: per id [normal, white], per cache frame [bank, address, place], per place [x, line,
+    overlaps].
   - **The white hit flash**: white copies in the ROM (55: every play-field frame of Cain and types 21,
     33, 35 and 51), in colour 9, palette C's nearest to the Amiga's colour 15. They are uploaded as
     any cache frame. `bob.asm` `fb_add` sets the list entry's bit 7 for a `BM_FLASH` record, and
@@ -620,7 +646,9 @@ which as sprites were striped, cut or left out.
     `docs/level3/HANDOFF.md`, step 5's open issue 1).
 - **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`; it also holds the
   scroll engines' set-up); the fixed area keeps only the hooks (`fb_redraw`, `fb_mark`,
-  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`).
+  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`). The atlas's upload (`field_upload`,
+  at power-on and at a level's start) runs in `BANK_FRONT2` (`ending.asm`, through `front2_call` from
+  `cold.asm`) since field-2, which needed its 132 bytes here.
 
 ## Game logic (`msx/player.asm` and the logic modules)
 
@@ -1063,14 +1091,14 @@ after level 2's atlas since level 3's step C (the map: `docs/ROM_BUDGET.md` 2.4)
 
 ### Level 3's modules and banks (2026-11-01)
 
-| Banks (the product at 56e8f56) | What |
+| Banks (the product at 56e8f56; since field-1 the frame cache takes 147-157 and the two code banks 158 and 159) | What |
 |---|---|
 | 124-125 `L3_MAP` | the map, 50 rows, 25 a bank |
 | 126 `L3_ATR` | the packed attributes |
 | 136-143 `L3_TILES` | the tiles as a VRAM image (`level3.vram`) |
 | 144 `L3_TAB` | at 8000h: OTILE, ATR2, the BOBHASH; at A000h: the graded palette (level 2's bytes again) and its own `view_offy` |
 | 145-146 `L3_ATLAS` | the play-field atlas, 109 lines in two banks |
-| 147-160 `L3_FC` | the frame cache's ROM: 97 frames (the 42 big frames and 55 white copies) after its header ("Play-field BOBs") |
+| 147-160 `L3_FC` | the frame cache's ROM: 97 frames (the 42 big frames and 55 white copies) after its header ("Play-field BOBs"); 11 banks since field-1 (the frames' opaque boxes) |
 | 161 `BANK_L3` (A000h) | `msx/level3.asm`: the header, `gen/lvshared_l3.asm`, `l3_init` (`level_init`'s level-3 part, `$88AC`: the lists from the bank on a fresh start, the header's values, `$15CA` set, aim 5, `$15DE` 4, state 6, `fade_st` 11, `set_weapon(0)`), `lt2` (the beams, `level_tick_2` `$9436`), `l3_noten`, the deaths `death_cain` (`$C25C`), `death_truck` (`$C360`), `death_w21` (`$C3A8`) with `debris_add` (`$C398`), the wrappers `t4_w`, `t12_w`, `d3_c31e`, `d3_c35a`, the 19 stubs `tNN_s` (`ld hl,tNN` / `jp l3b_call`), `at_l3.inc`, `cells_l3.inc`. 3,867 B free |
 | 162 `BANK_L3B` (A000h) | `msx/level3obj.asm`: types 21, 22 (Cain as RoboCop 2), 33-43, 46, 47, 48, 50, 51 and 52; `obj_push` (`$EF18`); the turrets' map writes (`tur_pnl`, `tur_put`: `$EA50`, `$EAA6`, `$EBB8`); the bank's own helpers (`l3_xy`, `l3_flash`, `l3_tail`, type 38's flight `fly_dx3`, `fly_dy3`, `fly_gfx3`, copied from level 2's `t49`); `at_l3b.inc`. 2,383 B free |
 

@@ -349,7 +349,7 @@ lvs_vram:
         ld e,4
         call tiles_upload
         ld hl,field_upload
-        jp field_call               ; (field.asm)
+        jp front2_call              ; (ending.asm)
 
 ; rc2.asm lv_cont's part in this bank (the continue, docs/LEVEL2.md 3.7, default 50): $FFD8's two
 ; lives (hud_lvl draws both heads), the level's tiles and atlas into VRAM again (PIC9's G7 overwrote
@@ -856,7 +856,7 @@ vdp_setup:
         ld e,8
         call tiles_upload
         ld hl,field_upload
-        call field_call             ; the play-field BOBs' atlas over the last tile slots
+        call front2_call            ; the play-field BOBs' atlas over the last tile slots (ending.asm)
         call hud_upload
         ; sprite tables: both SATs end at sprite 0 (Y = 216)
         ld e,1
