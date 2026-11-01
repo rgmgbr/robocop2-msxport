@@ -106,6 +106,7 @@ proc ge_table {} {
 }
 
 proc ge_setup {dir tag rom labels keys fire} {
+	set ::ge_nopause 0
 	foreach {id opts} [debug breakpoint list] { debug breakpoint remove $id }
 	foreach {id opts} [debug condition list] { debug condition remove $id }
 	carta eject
@@ -237,7 +238,8 @@ proc ge_end {why} {
 	ge_note "end: $why: [ge_state], ac_flash [format %04X [rc2_w 0xDD10]]"
 	ge_note "table: [ge_table]"
 	foreach b $::ge_bps { catch {debug remove_bp $b} }
-	set ::pause on
+	# (::ge_nopause: the records armed inside another job's flow, np.tcl np_t_l3, which goes on)
+	if {![info exists ::ge_nopause] || !$::ge_nopause} { set ::pause on }
 }
 
 proc ge_job {dir tag rom labels keys {m Gradiente_Expert20_64K} {fire 1}} {
@@ -261,6 +263,7 @@ proc ge_kill_job {dir R {m C-BIOS_MSX2} {sfx ""}} {
 }
 
 proc ge_kill_setup {dir tag rom labels drive} {
+	set ::ge_nopause 0
 	file mkdir $dir
 	hz_l2_drive $rom $labels "$dir/l3_$tag.txt" 1861 $drive
 	ge_arm $dir $tag $rom $labels {} 0

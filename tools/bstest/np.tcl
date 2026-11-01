@@ -203,17 +203,24 @@ proc np_t_l2 {} {
 	if {$g3 > 0} { set ::hb_l2next np_t_l3 }
 }
 
-# (hb_step's level 3 at its game frame 100 in np_l3flow_setup's job: the level's end comes from the
-#  breakpoint above, the flow goes on to the ending and the title)
+# (hb_step's level 3 at its game frame 100 in np_l3flow_setup's job: its end asked here, as F5 would ask
+#  it; the breakpoint above is gone by then: the stages' records remove every breakpoint; then the end
+#  count, the game completed, the name entry and the title)
 proc np_t_l3 {} {
-	hb_note "level 3 played to its game frame $::nt_l3go: its end asked as F5 would ask it"
+	hb_note "level 3 played to its game frame [rc2_w 0xD000]: its end asked as F5 would ask it"
+	np_t_end
+	# (the game completed's records under TAG2, ending.tcl's: the WELL DONE screen, the tune, the name
+	#  entry's first wait (ge_ret_arm types RETURN), the table, the end at the title; the flow goes on)
+	set ::ge_nopause 1
+	ge_arm $::hb_dir $::hb_tag $::nt_rom $::nt_labels {} 0
 }
 
 # np_l3flow_setup DIR TAG ROM LABELS: np_title_setup's flow (EXACT 1) with level 3 recorded (level 3's step
 # D, docs/LEVEL3.md 4 check 7): after the level-3 briefing hb_step's TAG2_l3g0 (its first picture) and
 # "level 3 at tick_n" at its game frame 100, where its end is asked (np_t_end), then the end count, the
-# game completed, the name entry (RETURN) and the table, and the title recorded as np_title_setup's.
-# Check with bonuscheck.py DIR TAG2 --result time --range time --brief l3 --level3.
+# game completed, the name entry (RETURN) and the table with ending.tcl's records under TAG2 (ge_arm),
+# and the title recorded as np_title_setup's. Check with bonuscheck.py DIR TAG2 --result time --range
+# time --brief l3 --level3 and endcheck.py DIR TAG2 RET --score S (S: the score at the end, its notes').
 proc np_l3flow_setup {dir tag rom labels} {
 	np_title_setup $dir $tag $rom $labels 1
 	set ::hb_l3rec 1
