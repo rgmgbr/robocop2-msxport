@@ -120,8 +120,8 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
 | Area | Content |
 |---|---|
 | pages 0–1 | play field: V9958 512×256 ring (SP2); V9938 two 256×256 pages |
-| page 2 | tile cache (256 slots of 16×16; level 2: slots 0–223, then lines 224–247 its play-field dynamic slot, 248–255 unused) |
-| page 3 lines 0–87 | play-field BOB frames (atlas, `sprites_l1_field.bin`; level 2: lines 0–111, its atlas of 108 lines, `sprites_l2_field.bin`) |
+| page 2 | tile cache (256 slots of 16×16; level 2: slots 0–223, then lines 224–247 its play-field dynamic slot, 248–255 unused; level 3: slots 0–159, lines 160–231 its frame cache, 232–255 the explosions' slot) |
+| page 3 lines 0–87 | play-field BOB frames (atlas, `sprites_l1_field.bin`; level 2: lines 0–111, its atlas of 108 lines, `sprites_l2_field.bin`; level 3: lines 0–108, `sprites_l3_field.bin`) |
 | page 3 lines 88–111 | level 1: the atlas's dynamic slot, the explosion's or the smoke's step being shown (`sprites_fdyn.bin`, strips of 24 lines) |
 | page 3 lines 112–175 | play-field BOB background caches (x 0–191, three 64×64) and scratch (x 192–255) |
 | page 3 lines 176–191 | sprite patterns `1D800h` (R#6 = 3Bh) |
@@ -132,10 +132,12 @@ S#1) and used when present. Source facts in `docs/AMIGA_ANALYSIS.md`; measuremen
 Per level (the descriptor, `msx/msx.inc` `lv_cur`, from `tools/mkrom.py`'s `gen/levels.inc`): the
 atlas's banks (`lv_fimg`: level 2's two, each with a table of its own frames, `tools/mkrom.py`
 `atlas_banks`), the dynamic slot's line and page (`lv_dyn`, `lv_dynp`), the tile cache's slots
-(`lv_tcn`: `tiles.asm` `tc_load`, `cold.asm` `tiles_init`) and the play-field frames' tables in
-`BANK_FIELD` (`lv_fld`: `field.asm` `fld_l1`, `fld_l2`, which `fb_init` copies to `fb_flate` ...
-`fb_flook`). `cold.asm` `lv_select` uploads page 2 and the atlas when VRAM holds another level's
-(`lv_vram`).
+(`lv_tcn`: `tiles.asm` `tc_load`, `cold.asm` `tiles_init`), the play-field frames' tables in
+`BANK_FIELD` (`lv_fld`: `field.asm` `fld_l1`, `fld_l2`, `fld_l3`, which `fb_init` copies to `fb_flate` ...
+`fb_fcb`, 064Fh-0659h) and the first play-field frame id (`lv_fid0`: D0h in levels 1 and 2, 98h in
+level 3). `cold.asm` `lv_select` uploads page 2 and the atlas when VRAM holds another level's
+(`lv_vram`); level 3's frame cache starts empty at every level start, restart and continue
+(`fb_init`).
 
 Brainstorm, the bonus stage after level 1, lends some of it while it runs (see "Brainstorm" under
 Front end, and `docs/BRAINSTORM.md` 3.3): pages 0–1 are its two display pages, page 0 lines 162–217
@@ -408,7 +410,8 @@ truck), the explosion ($F266, up to 80x88 in two parts) and the smoke ($F080's 4
 which as sprites were striped, cut or left out.
 
 - **Data**: `tools/msxsprites.py` gives their frames BOBHASH ids from D0h (C8h before level 2's
-  sprite pool: level 2 has 204 sprite frame ids) and packs them into an atlas (page 3 lines 0-87;
+  sprite pool: level 2 has 204 sprite frame ids; per level since level 3, `lv_fid0`: level 3's from
+  98h, after its 150 sprite ids) and packs them into an atlas (page 3 lines 0-87;
   `sprites_l1_field.inc`: place, size and the draw offset of a frame removed by the user's
   choices, the frame each one looks like). The ROM keeps the atlas frame by frame
   (`sprites_l1_field.bin`, one bank; level 2's own, `sprites_l2_field.bin`, at `L2_ATLAS`, two
@@ -543,6 +546,34 @@ which as sprites were striped, cut or left out.
   pictures/s, MSX2+ 5.96 -> 6.02; the field's share of that window was 16.6 % (MSX2) / 13.8 %
   (MSX2+) of the CPU, of which `fb_bbcell` + `fb_cellq` 2.0 % / 2.8 % and `fb_diff` 4.0 % / 3.1 %
   (`$SP/perf/harvest/field_result.json`).
+- **Level 3** (2026-11-01; `docs/LEVEL3.md` 3.10): 66 play-field frames from `lv_fid0` 98h: 18 in its
+  atlas (109 lines, two banks: the lift's two parts, Cain's 48 x 16, type 21's torso, type 35, the
+  truck's body and part, type 51, the rocket, a debris part), 42 big animated frames in the frame
+  cache (Cain's legs 48 x 44 x 18 and 64 x 34 x 2, his 64 x 32 x 6, type 21's legs 64 x 40 x 16), 6
+  smoke frames in level 1's dynamic frames (`fb_fdyt`); the lift's two parts are late (`FIELD_LATE`).
+  - **The frame cache** (page 2 lines 160-231): seven fixed places (`L3_FC_PLACES`, not LRU: 0 the
+    legs, 1 Cain's 64 x 32, 2 the legs' white copies, 3 the other white copies up to 64 x 48, 4 those
+    up to 64 x 24, 5 the truck's body's white copy, 6 type 51's; 5 and 6 overlap others). The frames
+    shown together never share a place (ENEMY_CAP 1). `fc_res` (ECF0h) keeps the cache frame of each
+    place, and a copy empties the places it overlaps. `field.asm` `fbb_fc`, `fc_find` and `fc_get`
+    copy a frame that is not resident from its ROM bank when a piece is composed with it, with the VDP
+    idle and no command prepared (`fb_dyn`'s rule): 13-21 ms a copy (1-1.3 KiB), the main loop
+    stopped meanwhile. The cache's ROM (`L3_FC`, 14 banks) begins with a header: per id [normal,
+    white], per cache frame [bank, address, place], per place [x, line, overlaps].
+  - **The white hit flash**: white copies in the ROM (55: every play-field frame of Cain and types 21,
+    33, 35 and 51), in colour 9, palette C's nearest to the Amiga's colour 15. They are uploaded as
+    any cache frame. `bob.asm` `fb_add` sets the list entry's bit 7 for a `BM_FLASH` record, and
+    `fb_wants` keeps it in level 3 only (`fb_fwm` 80h), so levels 1 and 2 keep their sprite
+    silhouettes. A play-field frame without a white copy (the lift, the rocket, the smoke, a debris
+    part) shows its normal look.
+  - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
+    frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
+    `death_w21`, and the rocket (bullet 11h, 48 x 16).
+  - `VAT_ANIM=1` builds leave level 3's play field out (`fld_l3` empty: no room in `BANK_FIELD`).
+  - Known at 56e8f56: an item of more than one 64 x 64 piece on the page shown is copied in pieces of
+    about 13 ms each, which no blank holds, so Cain and type 21 can show partly old, partly new
+    frames while they move or animate (most on the V9958, which has one page;
+    `docs/level3/HANDOFF.md`, step 5's open issue 1).
 - **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`; it also holds the
   scroll engines' set-up); the fixed area keeps only the hooks (`fb_redraw`, `fb_mark`,
   `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`).
@@ -586,13 +617,19 @@ which as sprites were striped, cut or left out.
   appeared when that enemy went, on screen out of nowhere (the user saw it; reproduced in
   openMSX: entry 10, 23 ticks late, spawned the tick the enemy left). An enemy that waited still
   appears at its place when the slot frees, on screen if its place is in view (kept, the user's
-  choice, 2026-10-22, over skipping it or waiting until its place is off screen).
+  choice, 2026-10-22, over skipping it or waiting until its place is off screen). Each level bank
+  names the types it does not count (`lv_noten`: level 2 the hostage 45; level 3's `l3_noten` Cain's
+  bombs and missiles 38, 39 and 52, the wall turrets 40-42, drawn into the map, and the triggers 43,
+  46, 47 and 48, which free their slot at once), so from Cain's spawn to his death no other enemy
+  comes: the chase is one on one, with his bombs and missiles (`docs/LEVEL3.md` 3.3).
 - **Harder hits** (`tools/mkrom.py` `DAMAGE_X`, 2 in the product): the enemies' bullets take
   their damage (`$FA63`) times `DAMAGE_X` and touching an enemy costs `DAMAGE_X` instead of 1
   (`hits.asm`; level 2's drip its 0Ah times `DAMAGE_X`, `level2obj.asm`), but the missiles keep the
   original's damage in every build: enemy bullet types 1 and 2 (40h, fired only by the enemies of
   types 3 and 27: REA, the 28 calls of `ebullet_add` `$F5BC`; `phb_en` skips the multiplication for
-  types below 3) and level 2's drone (18h, `t49_hit`). The user's choices: 3 with the missile at
+  types below 3) and level 2's drone (18h, `t49_hit`); in level 3 the rocket of types 40 and 42 (enemy
+  bullet 11h, 40h: `phb_en` takes it beside types 1 and 2) and the touches of Cain's bombs and missiles,
+  types 38, 39 and 52 (18h, in their own code in `level3obj.asm`). The user's choices: 3 with the missile at
   most twice (2026-10-22: 192 of the 258 energy points was too much), then on 2026-10-31 2 ("3 made
   the game impossible") and the missiles × 1 ("they already do a lot of damage"). Not multiplied
   either: the beams (a hazard) and the penalties for killing a suspect or a hostage. Trace builds
@@ -839,14 +876,15 @@ which as sprites were striped, cut or left out.
   quick test, the attribute reads, the view's tables, the spawn list walk, the lifts' path
   stepping, the hazards' window, the shortcuts above (2026-10-23).
 
-## Levels: the descriptor, level 2 and the flow between them (2026-10-28 to 2026-10-31)
+## Levels: the descriptor, levels 2 and 3 and the flow between them (2026-10-28 to 2026-11-01)
 
 Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As built" notes;
-`docs/level2/HANDOFF.md`: every step's account). Level 3 is not ported.
+`docs/level2/HANDOFF.md`: every step's account), and level 3, the Civic Centrum (`docs/LEVEL3.md`: the
+plan and, in 3.9-3.11, what was built; `docs/level3/HANDOFF.md`: every step's account).
 
 ### The level descriptor (`lv_cur`, `lv_desc`)
 
-- **One level start for every level** (`rc2.asm` `lv_go`, A = the level: 0 level 1, 1 level 2;
+- **One level start for every level** (`rc2.asm` `lv_go`, A = the level: 0 level 1, 1 level 2, 2 level 3;
   `level_init` `$871A`): `ld c,a` / `ld hl,lv_select` / `call front_call`, then `obj_start` (the
   level bank's `lv_init`), `ao_start` (LC2), `engines_init` (`field_call`), `hud_start` (FRONT) and
   `display_on`. A new game is `new_game`: `dsp_off`, then `ng_go`, whose `cold.asm` `ng_init` (FRONT)
@@ -861,9 +899,9 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
   tile cache, the map patches; a turbo R's R800 from here), `atr_load`, `pl_init`, `lvl_bank` =
   `lv_logic`, `lv_fresh` = FFh (the level's lists copied into RAM by `lv_init`).
 - **The descriptors** (`gen/levels.inc`, `tools/mkrom.py`, assembled into FRONT: level 1's `lv_desc`,
-  level 2's `lv_desc2` right after it, `ds` lines holding the layout; level 1's palette `lv_pal1` and
-  `view_offy` `lv_voffy1` beside them, level 2's in `L2_TAB`). `lv_cur` (F1A0h, `LV_SIZE` = 32; 34 at
-  most, `lv_vram` follows) is filled with level 1's at power-on before `vdp_setup` (`cold_init`):
+  level 2's `lv_desc2` and level 3's `lv_desc3` after it, `ds` lines holding the layout; level 1's palette
+  `lv_pal1` and `view_offy` `lv_voffy1` beside them, level 2's in `L2_TAB`, level 3's in `L3_TAB`). `lv_cur`
+  (F1A0h, `LV_SIZE` = 33 since level 3; 34 at most, `lv_vram` follows) is filled with level 1's at power-on before `vdp_setup` (`cold_init`):
 
   | Field | Offset | Level 1 / level 2 | Read by |
   |---|---|---|---|
@@ -879,32 +917,43 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
   | `lv_palp`, `lv_voffp` | +20, +22 (2 each) | the palette (graded) and `view_offy` | `lv_copy` |
   | `lv_sidx`, `lv_spark` | +24 (2), +26 | the level's BOB index in the global sprite pool (`SPR_BOB_INDEX_Ln`); its hit spark's first frame − 1 | `sprites.asm` `os_new`, `player.asm` |
   | `lv_tcn` | +28 (2) | the tile cache's slots, negated: −256 / −224 | `tc_load`, `tiles_init` |
-  | `lv_fld` | +30 (2) | the level's play-field tables in `BANK_FIELD` (`fld_l1`, `fld_l2`: `FIELD_LATE`, `FIELD_DYN0/1`, `field_tab`, `field_look`) | `fb_init` (copies them to `fb_flate` ... `fb_flook`) |
+  | `lv_fld` | +30 (2) | the level's play-field tables in `BANK_FIELD` (`fld_l1`, `fld_l2`, `fld_l3`: `FIELD_LATE`, `FIELD_DYN0/1`, `field_tab`, `field_look`; level 3's also its white mark and its frame cache's bank) | `fb_init` (copies 11 bytes to `fb_flate` ... `fb_fcb`, 064Fh-0659h, and empties the frame cache) |
+| `lv_fid0` | +32 | the first play-field frame id in BOBHASH: D0h / D0h, level 3 98h (since level 3's step A) | `bob.asm` `bob_flush`, `bf_frame` |
 
-- What stays one for both levels: `CAM_X_MAX`, `VIEW_KX`, `view_offx`, `atr_rows`, the `ATR_RAM0` /
-  `ATR_RAM1` split, the dynamic frames' banks, RoboCop's flash entries, `FIELD_ID0` (D0h), and `cp 51`
+  Level 3 (`lv_desc3`): `BANK_L3`; its tiles, map (50 rows), attributes and tables; its own atlas (two
+  banks); the explosions' slot on page 2 line 232 (`L3_DYN_Y`); RoboCop at (1184, 784), the camera's
+  lowest y 624; level 2's graded palette bytes again with its own `view_offy` (in `L3_TAB` at A000h);
+  its own BOB index and spark; `lv_tcn` −160; `fld_l3`; `lv_fid0` 98h.
+
+- What stays one for every level: `CAM_X_MAX`, `VIEW_KX`, `view_offx`, `atr_rows`, the `ATR_RAM0` /
+  `ATR_RAM1` split, the dynamic frames' banks, RoboCop's flash entries (`FIELD_ID0`, D0h until level 3,
+  is the descriptor's `lv_fid0` now), and `cp 51`
   in `map_cell`, `map_atr` and `cell_solid` (the original's `$EF8E` reads rows below 51 in every
   level: level 2's row 50 is its BOB data after the map, `docs/AMIGA_ANALYSIS.md`).
 - **The level bank's header** (`objects.asm` equates; every level bank at A000h): `lv_htab` (53 type
   handlers and deaths, 4 bytes each), `lv_init`, `lv_tick` (jumps), `lv_hz` (the hazard records),
   `lv_swn1`, `lv_swlast` (the spawn list's last entry), `lv_hzxn`, `lv_hzyn`, `lv_hzxm`, `lv_hzym`,
   `lv_hzall` (the hazards' cells and masks), `lv_noten` (code: the types `ENEMY_CAP` does not count:
-  level 1's 32, 44, 45, level 2's 45), then from `LV_HDR_END` (A0F0h) the shared code
-  (`lvshared.asm`; level 2's copy `gen/lvshared_l2.asm`, every label it defines and every level-data
-  name it uses suffixed `_l2`) at the same addresses in every bank: `tools/mkrom.py` `lvshared_check`
+  level 1's 32, 44, 45, level 2's 45, level 3's 38-43, 46-48 and 52), then from `LV_HDR_END` (A0F0h) the
+  shared code (`lvshared.asm`; level 2's copy `gen/lvshared_l2.asm` and level 3's `gen/lvshared_l3.asm`,
+  every label they define and every level-data name they use suffixed `_l2` or `_l3`) at the same addresses in every bank: `tools/mkrom.py` `lvshared_check`
   stops the build otherwise, so the fixed banks call it with no vector.
 
 ### Level 2's modules and banks
 
-| Banks (the 1 MiB product) | What |
+| Banks (the product at 56e8f56) | What |
 |---|---|
-| 108 `BANK_L2` (A000h) | `msx/level2.asm`: the header, `l2_init` (`$871A`'s level part: the lists, the vat phases and looks, the specials, the header's values, `set_weapon(0)` on a fresh start), `lt1` (the vats' logic, `$91BC`); `gen/lvshared_l2.asm`; `msx/level2obj.asm`: types 1, 2, 5, 6, 14, 16, 49, `death_c33e`, `walk_d6`, `l2_fall8`, `fly_half`, `l2_flash`; **`msx/vats.asm`**, the vats' display; `at_l2.inc`, `cells_l2.inc`, `vats_l2.inc`. 29 B free |
-| 109-116 `L2_TILES` | the tiles as a VRAM image (`level2.vram`'s pages 2-3) |
-| 117-118 `L2_MAP` | the map, 50 rows, 25 a bank |
-| 119 `L2_ATR` | the packed attributes |
-| 120 `L2_TAB` | at 8000h: OTILE, ATR2, the BOBHASH (8600h), the vats' tables (`L2_VATS` 9700h: a row's vats, the 7 records, the 48 tiles of T0/T1/T2); at A000h: the graded palette (B680h) and `view_offy` (B6A0h) |
-| 121-122 `L2_ATLAS` | the play-field atlas, 108 lines in two banks |
-| 123-126 `PUZL_TV2_BANK` | Brainstorm's visit-2 pictures (not level 2's, but placed after it) |
+| 109 `BANK_L2` (A000h) | `msx/level2.asm`: the header, `l2_init` (`$871A`'s level part: the lists, the vat phases and looks, the specials, the header's values, `set_weapon(0)` on a fresh start), `lt1` (the vats' logic, `$91BC`); `gen/lvshared_l2.asm`; `msx/level2obj.asm`: types 1, 2, 5, 6, 14, 16, 49, `death_c33e`, `walk_d6`, `l2_fall8`, `fly_half`, `l2_flash`; **`msx/vats.asm`**, the vats' display, only in `VAT_ANIM=1` builds since level 3's step C; `at_l2.inc`, `cells_l2.inc`, `vats_l2.inc`. 1,429 B free (28 with `VAT_ANIM=1`) |
+| 110-117 `L2_TILES` | the tiles as a VRAM image (`level2.vram`'s pages 2-3) |
+| 118-119 `L2_MAP` | the map, 50 rows, 25 a bank |
+| 120 `L2_ATR` | the packed attributes |
+| 121 `L2_TAB` | at 8000h: OTILE, ATR2, the BOBHASH (8600h), the vats' tables (`L2_VATS` 9700h: a row's vats, the 7 records, the 48 tiles of T0/T1/T2); at A000h: the graded palette (B680h) and `view_offy` (B6A0h) |
+| 122-123 `L2_ATLAS` | the play-field atlas, 108 lines in two banks |
+| 128-131 `PUZL_TV2_BANK` | Brainstorm's visit-2 pictures (not level 2's; `place_banks` puts them after `BANK_FRONT2`) |
+
+The 1 MiB images of 2026-10-31 had `BANK_L2` on 108 and the pictures on 123-126; level 3's pool share
+moved every block after the pool one bank on, and `tools/mkrom.py` `place_banks` lays out every block
+after level 2's atlas since level 3's step C (the map: `docs/ROM_BUDGET.md` 2.4).
 
 - In the shared banks: LC2 `act_0c` (`$9EE8`, the blinking mine: after `act_1c`, so level 1's LC2
   code keeps its addresses); LC3 `sp_trolley` (`$8F02`, the special handler 4; `sp_d7` = BCh after
@@ -917,15 +966,52 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
   Level 2's play field: types 2, 14 and 16's bodies, the trolley (frame 34, copied late as the lift),
   the hostage and the lifts (see "Play-field BOBs").
 
+### Level 3's modules and banks (2026-11-01)
+
+| Banks (the product at 56e8f56) | What |
+|---|---|
+| 124-125 `L3_MAP` | the map, 50 rows, 25 a bank |
+| 126 `L3_ATR` | the packed attributes |
+| 136-143 `L3_TILES` | the tiles as a VRAM image (`level3.vram`) |
+| 144 `L3_TAB` | at 8000h: OTILE, ATR2, the BOBHASH; at A000h: the graded palette (level 2's bytes again) and its own `view_offy` |
+| 145-146 `L3_ATLAS` | the play-field atlas, 109 lines in two banks |
+| 147-160 `L3_FC` | the frame cache's ROM: 97 frames (the 42 big frames and 55 white copies) after its header ("Play-field BOBs") |
+| 161 `BANK_L3` (A000h) | `msx/level3.asm`: the header, `gen/lvshared_l3.asm`, `l3_init` (`level_init`'s level-3 part, `$88AC`: the lists from the bank on a fresh start, the header's values, `$15CA` set, aim 5, `$15DE` 4, state 6, `fade_st` 11, `set_weapon(0)`), `lt2` (the beams, `level_tick_2` `$9436`), `l3_noten`, the deaths `death_cain` (`$C25C`), `death_truck` (`$C360`), `death_w21` (`$C3A8`) with `debris_add` (`$C398`), the wrappers `t4_w`, `t12_w`, `d3_c31e`, `d3_c35a`, the 19 stubs `tNN_s` (`ld hl,tNN` / `jp l3b_call`), `at_l3.inc`, `cells_l3.inc`. 3,867 B free |
+| 162 `BANK_L3B` (A000h) | `msx/level3obj.asm`: types 21, 22 (Cain as RoboCop 2), 33-43, 46, 47, 48, 50, 51 and 52; `obj_push` (`$EF18`); the turrets' map writes (`tur_pnl`, `tur_put`: `$EA50`, `$EAA6`, `$EBB8`); the bank's own helpers (`l3_xy`, `l3_flash`, `l3_tail`, type 38's flight `fly_dx3`, `fly_dy3`, `fly_gfx3`, copied from level 2's `t49`); `at_l3b.inc`. 2,383 B free |
+
+- **`l3b_call`** (`rc2.asm`, the fixed area, 14 B): HL = a routine of `BANK_L3B`: that bank at A000h, the
+  routine, then `logic_map` (`BANK_L3` again); A and the flags come back (the handler's D0). `lv_htab_l3`
+  points at the stubs, so every new type costs one such call. While a `BANK_L3B` handler runs,
+  `BANK_L3` (with `lvshared_l3`) is not mapped: the types call only the fixed code, LC1 and their own
+  bank.
+- **The D1 that Cain reads** (`docs/AMIGA_ANALYSIS.md`, level 3): `update_objects` calls each handler with
+  D1 as the slot before left it, and type 22 tests it (`$D53A`: sound 0Eh). `objects.asm` keeps it in
+  `uo_d1` (CE0Ch): every level-3 handler leaves its last D1 there (`l3_tail` after a last BOB: draw_bob's
+  shift ror 4 | 0FCAh, or y - camera y when out), types 4 and 12 and the deaths through `level3.asm`'s
+  wrappers; slot 0's is `read_joystick`'s FF00h/FF10h.
+- **RAM**: the code-area words in `AC_VARS`' free tail, cleared at the power-on only as the Amiga's code
+  area keeps its words: `obj22_x` DD74h (`$D798`), `obj37_last` DD76h (`$E46E`), `l3_mail` DD78h (6:
+  `$E67A-$E67F`), `obj22_step` DD7Eh (`$D583` XOR 3) and `obj40_flag` DD7Fh (`$E9F5` XOR 42h; the XORs
+  make the power-on's zero read as the image's bytes). `fade_st` (DD1Ch): the state the fade forces
+  (`$F89D`), 10 from `ng_init`, 11 from `l3_init`, read by `pl_fade`. The lists: spawn DD80h-DFA3h,
+  objects EE00h-EEB5h, lifts E900h-E92Fh; `fc_tab` ECF0h-ED0Fh (the frame cache's `fc_res`).
+- In the shared banks: LC2 `act_20` (`$9F74`, `ao_acts` entry 8: the three floor pieces Cain's chase
+  opens), LC3 `spl_two` (the lifts' two parts while AG `$8050` = 2, `$8ED2`), LC1 `hits.asm`'s rocket rule
+  ("Harder hits"), FRONT `lv_desc3`, `BANK_FIELD` `fld_l3` and the frame cache.
+- `tools/mkrom.py` `place_banks` lays out every block after level 2's atlas: a bank with (b & 3Fh) =
+  3Fh takes a block read at A000h only (`BANK_FRONT2` on 127; `BANK_L3` or `BANK_L3B` would take 191),
+  padding only where it must.
+
 ### The flow (`ml_ev`, `lv_next`, `front_brief`, `hud_lvl`)
 
 - **`ml_ev`** (fixed code; `g_event` from `frame.asm` `frame_end`): `FE_RESTART` → `ml_rst`
   (`level_restart`, then `lr_on`: `display_on`, `g_tick` = 0, the main loop); `FE_OVER` → `ml_ov`
   (below); `FE_NEXT` (the level done: `$81B8` made AG `$8050` + 1) → `front_stats`, `front_bonus`
-  (Brainstorm, the range, then `front_brief`, the next level's briefing), then AG `$8050` = 1 goes on
-  into **`lv_next`** (`dsp_off`, `lv_go` with A = `$8050`: level 2), anything else into `ml_ttl`
-  (`title`, `new_game`: after level 2, level 3 not being ported; `front_bonus` showed the game
-  completed first: "The game completed and the high scores" below).
+  (Brainstorm, the range, then `front_brief`, the next level's briefing), then into **`lv_next`**
+  (`dsp_off`, `lv_go` with A = `$8050`: 1 level 2, 2 level 3). After level 3 (AG `$8050` = 3,
+  `level_load_3` `$86DE`) `ml_ev` goes to `ml_end` before any of that: `frontx.asm` `fr_ending` through
+  `front_call` (the game completed and the high-score entry: below), then `ml_ttl` (`title`,
+  `new_game`); no statistics and no stages, as the original.
 - **`front_brief`** (FRONT, at `front_bonus`' end before `jp cpu_title`): AG `$8050` 1 shows
   `txt_l2_brief` ("TOKUGAWA BREWERY", "ARREST CAIN"), 2 `txt_l3_brief` ("CIVIC CENTRUM", ...), else
   nothing, through `fe_text` (the original's particle titles typed in the 8 × 8 font at their calls:
@@ -946,7 +1032,7 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
 ### The continue (`front_over`, `front_cont`, `fo_cont`, `lv_cont`)
 
 - **`front_over`** (FRONT): `fo_cont` (C6F0h) cleared first (a continue taken earlier must not leave
-  it set), PIC9 for 30 s or fire, AG `$8032` = FFh (`high_score_entry` `$12082`'s `st.b $8032`), then
+  it set), one step of the palette flash's countdown (`fo_flash`, below), PIC9 for 30 s or fire, AG `$8032` = FFh (`high_score_entry` `$12082`'s `st.b $8032`), then
   `frontx.asm` `fo_hsc`: the high-score entry (`ending.asm` `hs_entry`, below), then `front_cont`; it
   returns `fo_cont` as the flags. After an entry `fo_hsc` enters `front_cont` at `fc_txt` (or `fc_neg`
   without a credit): the display is the game's already, the HUD stays.
@@ -956,6 +1042,12 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
   HUD split otherwise), `fe_text(txt_cont)` ("YOU HAVE A GAME CREDIT." / "PRESS FIRE TO CONTINUE.",
   304 calls, silent), `fo_cont` = 1 when the screen ended by fire or fire is held at its end, `jp
   cpu_title`. Level 1's game over never offers it: `$805E` is 0 until Brainstorm is solved.
+- **`fo_flash`** (`front.asm`, since level 3's step B): one step of `pl_fade`'s countdown of the palette
+  flash (`$F826`, `ac_flash`; at 0 the level's colours chosen again, then idle), at `front_over`'s start
+  (`$82A8`'s display set-up `$FEDA`, its `$FEFC`) and at the offer's text (`fc_txt`: `$10768`'s
+  `$1080C`): the original's two `pl_fade` calls between the death's end and the continued game, so a
+  flash running when RoboCop died comes back where the original's does (`cont3`: 4 comes back as 2).
+  Both levels; level 2's countdown is idle there.
 - **`ml_ov`** (fixed): `front_over` through `front_call`; Z → `ml_ttl`; NZ falls into **`lv_cont`**
   (17 B): `lv_cfront` (FRONT: two lives, `lv_vram` = FFh and `lvs_vram`'s uploads, since PIC9's G7
   overwrote page 2, `tc_reset`: the tile cache alone, with `cpu_game`), `level_restart`, `hud_lvl`,
@@ -975,9 +1067,12 @@ a tile costs what it costs in level 1), `vat_init` leaves `vat_on` 0 (with `vat_
 the pictures' models read every column as the map's own: `tools/mapcmp.py` `vat_look` None), and
 `vat_idle`, `vat_win`, `vat_inbox` and `vat_bbinit` do nothing: a play-field piece over a vat cell
 takes the cache as any other. The logic is unchanged in every build (`lt1`: the sinking check,
-`vat_cut_line`, the energy and death flags, sound 10h, `vat_phase` and `vat_shown`), and `vats.asm`
-and this section's code stay assembled (the harness's marks and the tests read their labels).
-**`VAT_ANIM=1`** keeps the display as built for test7, described below, as a comparison only.
+`vat_cut_line`, the energy and death flags, sound 10h, `vat_phase` and `vat_shown`). Since level 3's
+step C (its default 9) `vats.asm`, `field.asm`'s vat section after `vat_init` and `tiles.asm`'s `vat_win`
+and `vat_idle` are assembled only with `VAT_ANIM=1` (the product has stubs): that gave `BANK_FIELD` 958 B
+for level 3's frame cache, `BANK_L2` 1,401 B and the fixed area 31 B. **`VAT_ANIM=1`** keeps the
+display as built for test7, described below, as a comparison only; its builds leave level 3's play
+field out (no room in `BANK_FIELD`).
 
 The original redraws up to 108 cells of a vat every other tick; the MSX (`VAT_ANIM=1`) shows them as a
 display layer over the map (no map patch, the logic exact: `lt1` keeps each column's look in
@@ -1072,10 +1167,11 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
 ### The game completed and the high scores (`msx/ending.asm`, `BANK_FRONT2`; `docs/ENDING.md`)
 
 - **`BANK_FRONT2`** (bank 127 at A000h, the bank the 3Fh rule leaves to what is read at A000h:
-  `tools/mkrom.py` STAGES' last), mapped around its calls by `frontx.asm` `front2_call`, FRONT at
+  `tools/mkrom.py` `place_banks` keeps it there), mapped around its calls by `frontx.asm` `front2_call`, FRONT at
   8000h: `front_ending` (`level_load_3` `$86DE`: WELL DONE, then CMP tune 1 while that screen stays
-  on, 4,916 ticks or fire), `hs_entry` (`high_score_entry` `$12082`: the name entry `$1215C` with the
-  MSX keyboard's matrix, the table screen), `hs_init` (the table's defaults at the power-on), their
+  on, 4,916 ticks or fire, then `hs_entry` as the original's `$86F0`), `hs_entry` (`high_score_entry`
+  `$12082`: the name entry `$1215C` with the MSX keyboard's matrix, the table screen; after the ending
+  and after every game over), `hs_init` (the table's defaults at the power-on), their
   copies of `fe_text`'s set-up and loop (`et_open`, `et_go`, `et_keep`) and of `fs_char`'s cell
   drawing (`et_gl`, `et_cell`), and `ending.inc` (`tools/msxtext.py`). Every routine it calls puts
   the A000h window back (`act_a000`).
@@ -1085,7 +1181,8 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   3), then `ml_ttl` (the interim `fb_brief2`, which called it after the level-3 briefing, went with
   level 3's step A); `ci_hook` runs `rom_guard` (moved from `cold.asm`) and `hs_init` before
   `snd_detect`.
-- **The sound**: `end.bin` (banks 128-131: the image is 2 MiB) through `tune.asm` `tn_cmp` (after the
+- **The sound**: `end.bin` (27,110 B: CMP tune 1 unrolled to 4,916 ticks for the SCC, the OPLL and the
+  PSG, HI1's effects 3 and 4; banks 132-135 at 56e8f56, 128-131 when it came) through `tune.asm` `tn_cmp` (after the
   player, its descriptor `tune_cm.inc` after it); the name entry starts it with `tn_left` 1 (no tick of
   the tune) for HI1's effects 3 and 4 (`snd_ffx`, puzl.asm `snd_bfx`'s copy).
 - **RAM**: the table at `hs_tab0` (C5D0h) and `hs_tab1` (C2D9h), 13 bytes an entry, kept from the
@@ -1096,14 +1193,16 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
 - `LV_TEST=2` (`tools/mkrom.py`): power-on without the title, level 1's set-up, then once `rc2.asm`
   `lv_test`: `front_l2test` writes `LV_CARRY` (`S:L:C:R`, default `10050:2:0:1`: the score, lives,
   credits and rating) and AG `$8050` = 1, shows the level-2 briefing, and `lv_next` starts level 2 as
-  the product does; later games are the product's (`pz_first`). Refused with `PZ_TEST`.
+  the product does; later games are the product's (`pz_first`). Refused with `PZ_TEST`. `LV_TEST=3`
+  (since level 3's step A; `front_l2test` = `front_l3test`: AG `$8050` = `LV_TEST` - 1) starts level 3
+  the same way, after its briefing.
 - `END_TEST=1` / `2`: power-on without the title, level 1's set-up, then once `rc2.asm` `end_test`:
   `frontx.asm` `front_etest` writes `LV_CARRY`'s score, lives and credits, then `fr_ending` (the game
-  completed, as level 3's end will reach it; then the title and a new game) or `ml_ov` (a game over:
+  completed, as level 3's end reaches it; then the title and a new game) or `ml_ov` (a game over:
   PIC9, the entry, the offer; a continue restarts level 1). Refused with `PZ_TEST`, `LV_TEST`, `DIAG`.
 - `CHEAT=1`: AG `$804F` set at each new game (`ng_init`); `frame.asm` `fe_keys`, first in `frame_end`,
-  maps F5 to key code 59h (the level's end) and F4 to 58h (energy) in `$8032`, the original's F10/F9.
-  Refused with `DIAG`.
+  maps F5 to key code 59h (the level's end; in level 3 the game completed) and F4 to 58h (energy) in
+  `$8032`, the original's F10/F9. Refused with `DIAG`.
 - `VAT_ANIM=1`, `VAT_ANIM=1 VAT_TICK=1`: level 2's vats redrawn as they bubble, as built for test7
   and its variant, for comparison (the product: static, the map's look); above.
 
@@ -1130,8 +1229,9 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   credit is left (level 2 on), else title; the level's end → the level's statistics → Brainstorm
   (its intro, the stage, its result: below) → the shooting range (its intro, the stage, its result
   or OUT OF TIME.: below) → the next level's briefing → level 2; after level 2 the same with both
-  stages' second visits → the level-3 briefing → the game completed (WELL DONE, the CMP tune, the
-  high-score entry and the table: below; until level 3 is in the ROM) → title. A game over: PIC9 →
+  stages' second visits → the level-3 briefing → level 3 → (no statistics, no stages) the game
+  completed (WELL DONE, the CMP tune, the high-score entry and the table: "The game completed and the
+  high scores" above) → title. A game over: PIC9 →
   the high-score entry when the score enters the table → the continue offer or the title. Test builds
   with a script skip the title, the ending and the entry.
 - **The level's statistics** (`front_stats`, `show_level_stats` `$85D8`: script `$1132F` through
@@ -1155,11 +1255,16 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   (`FRM_BANK`, 99–103): 104 banks in all (2026-10-28). Level 2's step 12 grew the sprite pool by 4
   banks in place (every later block 4 banks on), level 2's blocks followed the range's and
   Brainstorm's visit-2 pictures went last: **127 of the 128 banks** on 2026-10-31 (the map:
-  "Levels" below, `docs/ROM_BUDGET.md` 2.3).
+  "Levels" below, `docs/ROM_BUDGET.md` 2.3). The ending's sound (2026-11-01) made the image **2 MiB**,
+  and with level 3 it holds **163 of 256 banks** at 56e8f56 (`docs/ROM_BUDGET.md` 2.4: the bank map and
+  the free bytes).
   The 8000h window must never map a bank with (b & 3Fh) = 3Fh (63, 127, 191, 255): on most
   Konami SCC cartridges they select the SCC's registers at `9800h`. `tools/mkrom.py` refuses
-  every such bank from bank 2 on except those read only at `A000h`: today the pictures, one of
-  which takes bank 63. The check fails closed, so a block added later is checked too.
+  every such bank from bank 2 on except those read only at `A000h`: the pictures (one takes bank
+  63), `BANK_FRONT2` (bank 127) and level 3's `BANK_L3` and `BANK_L3B`; `place_banks` gives such a bank
+  to one of them or pads it (191 is padding at 56e8f56, 255 carries the guard's tag). The check fails
+  closed, so a block added later is checked too. A 2 MiB image's SCC test values (banks 36, 63, 90,
+  137 and 191 at 1800h, `docs/LEVEL2.md` 3.12) are checked by every build too.
   `BANK_INPUT` holds the test builds' joystick script and the PSG player with its streams,
   `BANK_MUSIC` the SCC / OPLL player, the speech's tables and, after them, Brainstorm's player
   (`tune.asm`).
@@ -1172,11 +1277,13 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
     code that runs with the SCC mapped sits before them.
 - **2 MiB** (2026-10-26, decision 6): the complete game goes up to 256 banks.
   - `tools/mkrom.py` pads the image to a power of two and writes `ROM_BANKS` into `banks.inc`.
-    The release stays 1 MiB while the game fits.
+    The 0.1.x releases (level 1) are 1 MiB; since the ending's sound (2026-11-01) every product is a
+    2 MiB image.
   - Over 1 MiB, the last bank carries a tag at `1FF0h` (`RC2BANK` and the bank's number).
-  - `cold.asm` `rom_guard` reads the tag at `A000h`. `rc2.asm` init calls it right after the MSX2
-    check, so an MSX1 or a machine with 64 KiB of VRAM shows the MSX2 message instead. It runs
-    with the interrupts off, before any bank but `BANK_FRONT` is mapped.
+  - `rom_guard` reads the tag at `A000h` (in `frontx.asm` since the ending: in `cold.asm` it moved
+    FRONT's later code). `cold_init` calls it through `ci_hook` right after the MSX2 check (then the
+    high scores' table and `snd_detect`), so an MSX1 or a machine with 64 KiB of VRAM shows the MSX2
+    message instead. It runs with the interrupts off, before any bank but `BANK_FRONT` is mapped.
   - A device that holds less wraps, masks or ignores the higher bank numbers, so the tag is
     missing. The game then shows "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM. If
     yours is one, reset the MSX." in SCREEN 0 and stops.
