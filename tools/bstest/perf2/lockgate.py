@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""lockgate.py BASE NEW: G-LOCK, the LOCKSTEP=24 display records of two builds (performance campaign 2's kit,
-docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4): every record both folders hold (gates.tcl pf_lock_jobs:
-DIR/<run>_<tag>.txt with its .over) compared by tools/dispcmp.py's rules (per list, the SAT, each shown
-entry's colour row and pattern, what the list records as shown; it stops where the displayed cameras
-differ).
+"""lockgate.py BASE NEW [--partial]: G-LOCK, the LOCKSTEP=24 display records of two builds (performance
+campaign 2's kit, docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4): every record BASE holds (gates.tcl
+pf_lock_jobs: DIR/<run>_<tag>.txt with its .over) compared with NEW's by tools/dispcmp.py's rules (per list,
+the SAT, each shown entry's colour row and pattern, what the list records as shown; it stops where the
+displayed cameras differ). A record NEW lacks FAILs (--partial: listed, not judged).
 
 Under LOCKSTEP=24 a frame of two ticks starts every 24 VBLANKs whatever the CPU time; a frame that takes
 longer starts late (its .over file: "late N at GAME_FRAMES") and the record is exact only before it. The
@@ -56,17 +56,28 @@ def compare(pa, pb):
 
 
 def main(argv):
+    partial = '--partial' in argv
+    argv = [a for a in argv if a != '--partial']
     if len(argv) != 2:
         print(__doc__)
         return 2
     base, new = argv
     bad = 0
     names = sorted(f for f in os.listdir(new) if f.endswith('.txt') and f != 'disp_drive.txt')
+    for fn in sorted(f for f in os.listdir(base) if f.endswith('.txt') and f != 'disp_drive.txt'):
+        if fn not in names:
+            if partial:
+                print(f"{fn}: no new record (not judged, --partial)")
+            else:
+                print(f"{fn}: FAIL: no new record (--partial judges a subset)")
+                bad += 1
+    judged = 0
     for fn in names:
         pb = os.path.join(base, fn)
         if not os.path.exists(pb):
             print(f"{fn}: no baseline")
             continue
+        judged += 1
         r = compare(pb, os.path.join(new, fn))
         fail = r['differ'] > 0 or r['lists_b'] < r['lists_a']
         bad += fail
@@ -78,8 +89,11 @@ def main(argv):
         if r['stop'] is not None:
             s += f"; stopped at game frame {r['stop']} (the displayed cameras differ)"
         print(s + ('  FAIL' if fail else ''))
-    print(f"G-LOCK: {'PASS' if names and not bad else 'FAIL'}")
-    return 0 if names and not bad else 1
+    if not judged:
+        print("no record judged")
+    ok = judged and not bad
+    print(f"G-LOCK: {'PASS' if ok else 'FAIL'}")
+    return 0 if ok else 1
 
 
 if __name__ == '__main__':

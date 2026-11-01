@@ -24,14 +24,17 @@
 #                              "gate: PASS" when all pass
 # BASE: W0's HEAD records (the campaign's base folder); NEW: the run folder of pf_gate_jobs. Each verdict's
 # last line reads "G-NAME: PASS" or "G-NAME: FAIL ...". Exit 0 only when the verdicts asked for pass.
+# A run, window or record BASE holds that NEW lacks FAILs its verdict (as does one cut short).
 # Environment: REPO, the checkout whose build/ (the drives' references, the conversions), analysis/ and
 # tools/bstest/hz.sh, fieldcheck.py the verdicts use (default this repository; a git worktree has no
-# build/: give the main checkout).
+# build/: give the main checkout); PARTIAL=1: the verdicts but G-LOGIC judge only what NEW holds (each
+# verdict's --partial: a deliberate subset, the records left out listed).
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../../.." && pwd -P)"
-usage() { sed -n 2,29p "$0" >&2; exit 2; }
+usage() { sed -n 2,31p "$0" >&2; exit 2; }
 REPO="${REPO:-$ROOT}"
+PA=""; [ "${PARTIAL:-}" = 1 ] && PA="--partial"
 cmd="${1:-}"; shift || true
 abs() { (cd "$1" 2>/dev/null && pwd -P) || { echo "gate.sh: no folder $1" >&2; exit 2; }; }
 case "$cmd" in
@@ -60,17 +63,17 @@ builds)
   echo "gate builds: $([ $bad -eq 0 ] && echo OK || echo "$bad FAILED") ($R)"
   [ $bad -eq 0 ]
   ;;
-speed) [ $# -eq 2 ] || usage; python3 -I "$H/win.py" --gate "$1/speed" "$2/speed" ;;
-hold) [ $# -eq 2 ] || usage; python3 -I "$H/holds.py" --gate "$1/speed" "$2/speed" ;;
+speed) [ $# -eq 2 ] || usage; python3 -I "$H/win.py" --gate "$1/speed" "$2/speed" $PA ;;
+hold) [ $# -eq 2 ] || usage; python3 -I "$H/holds.py" --gate "$1/speed" "$2/speed" $PA ;;
 field)
   [ $# -ge 2 ] || usage
   J="${3:-4}"
   python3 -I "$H/fieldsum.py" run "$2/field" --root "$REPO" --jobs "$J" > "$2/field/fieldsum_run.txt" 2>&1
-  python3 -I "$H/fieldsum.py" gate "$1/field" "$2/field"
+  python3 -I "$H/fieldsum.py" gate "$1/field" "$2/field" $PA
   ;;
-guard) [ $# -eq 2 ] || usage; python3 -I "$H/guardsum.py" gate "$1/guard" "$2/guard" ;;
-lock) [ $# -eq 2 ] || usage; python3 -I "$H/lockgate.py" "$1/lock" "$2/lock" ;;
-map) [ $# -ge 2 ] || usage; B="$1"; N="$2"; shift 2; python3 -I "$H/mapdiff.py" --gate "$B/map" "$N/map" "$@" ;;
+guard) [ $# -eq 2 ] || usage; python3 -I "$H/guardsum.py" gate "$1/guard" "$2/guard" $PA ;;
+lock) [ $# -eq 2 ] || usage; python3 -I "$H/lockgate.py" "$1/lock" "$2/lock" $PA ;;
+map) [ $# -ge 2 ] || usage; B="$1"; N="$2"; shift 2; python3 -I "$H/mapdiff.py" --gate "$B/map" "$N/map" "$@" $PA ;;
 logic)
   [ $# -eq 2 ] || usage
   W="$(abs "$1")"; R="$(abs "$2")"

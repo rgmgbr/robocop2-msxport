@@ -10,9 +10,11 @@ scatter between 3 and 7), so the gate counts whole drives.
   holds.py PREFIX [FROM TO]        a run (m3.tcl's records: PREFIX_ticks.txt, PREFIX_pics.txt): the whole
                                    drive (its first tick to its last), or the tick window FROM-TO
   holds.py --table DIR [--json OUT] every run in DIR (DRIVE_TAG, m3.tcl's names) over its whole drive
-  holds.py --gate BASE NEW         every run both folders hold: FAIL when NEW's FB_HOLD pictures per minute
-                                   exceed BASE's (HEAD's records). Exit 0 only when nothing FAILs.
-Options: --hold N (default 8, msx/isr.asm FB_HOLD).
+  holds.py --gate BASE NEW         every judged run of BASE (HEAD's records): FAIL when NEW's FB_HOLD pictures
+                                   per minute exceed BASE's, when NEW's run does not span BASE's ticks (a run
+                                   that ended early), or when NEW lacks the run (--partial: listed, not
+                                   judged); a gate that judged no run FAILs. Exit 0 only when nothing FAILs.
+Options: --hold N (default 8, msx/isr.asm FB_HOLD); --partial.
 """
 import json
 import os
@@ -80,6 +82,8 @@ def main(argv):
         i = argv.index('--hold')
         hold = int(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
+    partial = '--partial' in argv
+    argv = [a for a in argv if a != '--partial']
     if len(argv) >= 2 and argv[0] == '--table':
         res = table(argv[1], hold)
         for name, r in res.items():
@@ -90,7 +94,7 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == '--gate':
         base, new = table(argv[1], hold), table(argv[2], hold)
-        bad = 0
+        bad = judged = 0
         for name in sorted(new):
             if name.rsplit('_', 1)[0] not in GATE_DRIVES:
                 continue
@@ -98,10 +102,24 @@ def main(argv):
                 print(f"{name:16s} (no baseline run)")
                 continue
             b, r = base[name], new[name]
-            ok = r['per_min'] <= b['per_min']
-            bad += not ok
+            judged += 1
+            why = ''
+            if (r['from'], r['to']) != (b['from'], b['to']):
+                why = f"  FAIL: ticks {r['from']}-{r['to']}, the baseline's {b['from']}-{b['to']}"
+            elif r['per_min'] > b['per_min']:
+                why = '  FAIL'
+            bad += bool(why)
             print(f"{name:16s} FB_HOLD a minute {b['per_min']:6.2f} -> {r['per_min']:6.2f} ({b['fb_hold']} -> {r['fb_hold']} "
-                  f"pictures, {b['seconds']:.0f} -> {r['seconds']:.0f} s){'' if ok else '  FAIL'}")
+                  f"pictures, {b['seconds']:.0f} -> {r['seconds']:.0f} s){why}")
+        for name in sorted(n for n in set(base) - set(new) if n.rsplit('_', 1)[0] in GATE_DRIVES):
+            if partial:
+                print(f"{name:16s} (no new run: not judged, --partial)")
+            else:
+                print(f"{name:16s} FAIL: no new run (--partial judges a subset)")
+                bad += 1
+        if not judged:
+            print("no run judged")
+            bad += 1
         print(f"G-HOLD: {'PASS' if not bad else f'FAIL ({bad} runs)'}")
         return 1 if bad else 0
     if len(argv) in (1, 3) and not argv[0].startswith('-'):

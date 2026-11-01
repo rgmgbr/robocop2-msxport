@@ -13,13 +13,17 @@ docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4).
       checked at once (default 4; a 900-record window takes about a minute).
       A window already checked is not checked again unless --force.
   fieldsum.py table DIR    the summary per window: pictures, pictures with differences, the classes
-  fieldsum.py gate BASE NEW
-      every window both hold: FAIL when NEW shows a difference class that BASE's same window does not
+  fieldsum.py gate BASE NEW [--partial]
+      every window of BASE: FAIL when NEW shows a difference class that BASE's same window does not
       (docs/PERF2_PLAN.md 5.4 G-FIELD), not counting the pictures shown after FB_HOLD (their BOBs one
       picture behind the sprites: G-HOLD's class, holds.py); FAIL too when the window's pictures with
       differences (FB_HOLD's left out) grow beyond 3 x BASE's + 30 (a gross regression such as a misdrawn
       BOB in every picture, which a class BASE already shows would hide). A class whose pictures more than
       double (and grow by 3 or more) is reported as WARN (timing moves these pictures; look at them).
+      A window is judged only when fieldcheck.py checked every record it wanted (its summary line's
+      "N pictures (M checked)" with M the window's n, level.txt): a check that stopped (no summary: a
+      crash, a wrong --root), records of another length (skipped), a recording cut short (a timed-out
+      job) or a window NEW lacks (--partial: listed, not judged) FAIL, as does a gate that judged none.
 
 The classes are fieldcheck.py's "CLASS picture kind" lines (hostage-tear, smoke-tear, vat-look, vat-older,
 other: a play-area pixel no sprite covers that is neither the tile nor the BOB the shown list has there,
@@ -80,9 +84,25 @@ def parse(win):
                 summary = line
     n = len([f for f in os.listdir(win) if f.endswith('.bin')])
     held = sum(1 for v in holds.values() if v >= FB_HOLD)
+    lv = (win / 'level.txt').read_text().split() if (win / 'level.txt').exists() else []
+    wanted = int(lv[lv.index('n') + 1]) if 'n' in lv[:-1] and lv[lv.index('n') + 1].isdigit() else None
     return {'records': n, 'checked': fc.exists(), 'classes': cls, 'hold_classes': cls_hold,
             'pictures_with_differences': len(pics_bad), 'pictures_nonhold': len(pics_nonhold), 'first_record': first,
-            'records_held': held, 'summary': summary}
+            'records_held': held, 'summary': summary, 'wanted': wanted}
+
+
+def incomplete(r):
+    """why a window's check does not cover the window (None when it does): fieldcheck's summary line
+    "N pictures (M checked)" must be there with M = the records the window wanted (level.txt's n)"""
+    if not r['checked']:
+        return 'not checked'
+    m = re.match(r'(\d+) pictures \((\d+) checked\)', r.get('summary') or '')
+    if not m:
+        return 'the check did not finish (no summary line)'
+    want = r.get('wanted') or r['records']
+    if int(m.group(2)) != want:
+        return f"{m.group(2)} of {want} records checked"
+    return None
 
 
 def check_one(win, root, py, check):
@@ -117,10 +137,12 @@ def run(d, root, py, check, force, only, jobs=4):
 
 
 def load(d):
+    """the windows' summaries, parsed from the window folders (fieldsum.json only when they are gone)"""
+    wins = windows(d)
+    if wins:
+        return {w.name: parse(w) for w in wins}
     p = Path(d) / 'fieldsum.json'
-    if p.exists():
-        return json.loads(p.read_text())
-    return {w.name: parse(w) for w in windows(d)}
+    return json.loads(p.read_text()) if p.exists() else {}
 
 
 def fmt(name, r):
@@ -169,19 +191,24 @@ def main(argv):
         for k, r in load(argv[1]).items():
             print(fmt(k, r))
         return 0
-    if len(argv) == 3 and argv[0] == 'gate':
+    if len(argv) in (3, 4) and argv[0] == 'gate' and argv[3:] in ([], ['--partial']):
+        partial = argv[3:] == ['--partial']
         base, new = load(argv[1]), load(argv[2])
-        bad = 0
+        bad = judged = 0
         for k in sorted(new):
             r = new[k]
             if k not in base:
                 print(f"{k:16s} (no baseline window)")
                 continue
             b = base[k]
-            if not r['checked'] or not b['checked']:
-                print(f"{k:16s} FAIL: not checked ({'new' if not r['checked'] else 'base'})")
+            ir, ib = incomplete(r), incomplete(b)
+            if not ir and not ib and (r.get('wanted') or r['records']) != (b.get('wanted') or b['records']):
+                ir = f"{r.get('wanted') or r['records']} records, the baseline's {b.get('wanted') or b['records']}"
+            if ir or ib:
+                print(f"{k:16s} FAIL: {'new' if ir else 'base'}: {ir or ib}")
                 bad += 1
                 continue
+            judged += 1
             newc = sorted(set(r['classes']) - set(b['classes']))
             nb, nn = b.get('pictures_nonhold', 0), r.get('pictures_nonhold', 0)
             gross = nn > 3 * nb + 30
@@ -198,7 +225,14 @@ def main(argv):
                 line += f"  WARN ({', '.join(warn)} more often)"
             print(line)
         for k in sorted(set(base) - set(new)):
-            print(f"{k:16s} (no new window)")
+            if partial:
+                print(f"{k:16s} (no new window: not judged, --partial)")
+            else:
+                print(f"{k:16s} FAIL: no new window (--partial judges a subset)")
+                bad += 1
+        if not judged:
+            print("no window judged")
+            bad += 1
         print(f"G-FIELD: {'PASS' if not bad else f'FAIL ({bad} windows)'}")
         return 1 if bad else 0
     print(__doc__)

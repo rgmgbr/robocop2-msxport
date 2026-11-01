@@ -7,6 +7,9 @@
   win.py (a window 2 % slower), holds.py (one more FB_HOLD picture), mapdiff.py (one map byte),
   guardsum.py (one more tear), fieldsum.py (a new difference class; a gross rise of a class the base
   shows), lockgate.py (one SAT byte; the lists after a late frame not judged).
+- Records missing or cut short fail every verdict (an empty run folder must not pass): a run, window,
+  dump or record the base holds and the new folder lacks (--partial: not judged), a run that ended
+  early, a map dump with fewer ticks, a field check that stopped or checked fewer records.
 """
 import json
 import py_compile
@@ -63,10 +66,10 @@ class KitVerdictTests(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     # m3.tcl's records: ticks "tick_n time ...", pics "time tick fb_hold game_frame vblank"
-    def speed_run(self, d, name, slow=1.0, extra_hold=False):
+    def speed_run(self, d, name, slow=1.0, extra_hold=False, ticks=1900):
         t = 10.0
         with open(d / f"{name}_ticks.txt", "w") as ft, open(d / f"{name}_pics.txt", "w") as fp:
-            for k in range(1900):
+            for k in range(ticks):
                 ft.write(f"{k} {t:.6f} 0 0 0 0 0.0 0 0 0 0 0\n")
                 fp.write(f"{t + 0.01:.6f} {k} {8 if (k % 400 == 0 or (extra_hold and k == 777)) else 0} {k} {k}\n")
                 t += 0.1 * slow
@@ -81,6 +84,27 @@ class KitVerdictTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("FAIL", r.stdout)
         self.assertEqual(run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed").returncode, 1)
+
+    def test_win_and_holds_missing_runs(self):
+        for d in (self.base, self.new):
+            self.speed_run(d / "speed", "kill_m2")
+        self.speed_run(self.base / "speed", "boss_m2")
+        # the new folder lacks boss_m2: both fail; --partial judges kill_m2 alone
+        for script in ("win.py", "holds.py"):
+            r = run(KIT / script, "--gate", self.base / "speed", self.new / "speed")
+            self.assertEqual(r.returncode, 1, script + r.stdout)
+            self.assertIn("no new run", r.stdout)
+            self.assertEqual(run(KIT / script, "--gate", self.base / "speed", self.new / "speed", "--partial").returncode, 0)
+        # an empty new folder judges nothing: fails, --partial too
+        empty = self.tmp / "empty"
+        empty.mkdir()
+        for script in ("win.py", "holds.py"):
+            self.assertEqual(run(KIT / script, "--gate", self.base / "speed", empty, "--partial").returncode, 1, script)
+        # a run that ended early (its last tick 1500 of 1899): holds.py fails on the span
+        self.speed_run(self.new / "speed", "boss_m2", ticks=1501)
+        r = run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ticks 0-1500", r.stdout)
 
     def test_mapdiff(self):
         a = "00" * 0x6F0
@@ -97,6 +121,14 @@ class KitVerdictTests(unittest.TestCase):
         self.assertEqual(run(KIT / "mapdiff.py", "--gate", self.base / "map", self.new / "map").returncode, 1)
         self.assertEqual(run(KIT / "mapdiff.py", "--gate", self.base / "map", self.new / "map",
                              "--ignore", "0910-0910").returncode, 0)
+        # a dump cut short (tick 100 missing) fails, --partial too; a dump the new folder lacks fails
+        (self.new / "map" / "tour3_m2_map.txt").write_text(f"0 {a} {b} {c}\n")
+        for extra in ((), ("--partial",)):
+            self.assertEqual(run(KIT / "mapdiff.py", "--gate", self.base / "map", self.new / "map", *extra).returncode, 1)
+        (self.new / "map" / "tour3_m2_map.txt").write_text(f"0 {a} {b} {c}\n100 {a} {b} {c}\n")
+        (self.base / "map" / "park_m2_map.txt").write_text(f"0 {a} {b} {c}\n")
+        self.assertEqual(run(KIT / "mapdiff.py", "--gate", self.base / "map", self.new / "map").returncode, 1)
+        self.assertEqual(run(KIT / "mapdiff.py", "--gate", self.base / "map", self.new / "map", "--partial").returncode, 0)
 
     def test_guardsum(self):
         rec = "rows: 1861\nguard: reg 0, pal 0, cmd 749, cpu 0, vbl 2, tear {t}\npatcheck: 81437 entries, 0 bad\n" \
@@ -106,17 +138,39 @@ class KitVerdictTests(unittest.TestCase):
         self.assertEqual(run(KIT / "guardsum.py", "gate", self.base / "guard", self.new / "guard").returncode, 0)
         (self.new / "guard" / "kill_m2.txt").write_text(rec.format(t=125))
         self.assertEqual(run(KIT / "guardsum.py", "gate", self.base / "guard", self.new / "guard").returncode, 1)
+        # a record the new folder lacks fails (--partial: not judged)
+        (self.new / "guard" / "kill_m2.txt").write_text(rec.format(t=124))
+        (self.base / "guard" / "boss_m2.txt").write_text(rec.format(t=9))
+        self.assertEqual(run(KIT / "guardsum.py", "gate", self.base / "guard", self.new / "guard").returncode, 1)
+        self.assertEqual(run(KIT / "guardsum.py", "gate", self.base / "guard", self.new / "guard", "--partial").returncode, 0)
 
-    def field_window(self, d, classes, hold_stems=()):
-        w = d / "field" / "kill300_m2"
+    def field_window(self, d, classes, hold_stems=(), name="kill300_m2", records=60, summary=None):
+        w = d / "field" / name
         w.mkdir(parents=True, exist_ok=True)
-        (w / "level.txt").write_text("level 3 from 300 n 900\n")
-        stems = [f"j001_f{k:04d}" for k in range(60)]
+        (w / "level.txt").write_text("level 3 from 300 n 60\n")
+        stems = [f"j001_f{k:04d}" for k in range(records)]
         (w / "holds.txt").write_text("".join(f"{s} {8 if s in hold_stems else 0} 300 300\n" for s in stems))
         for s in stems:
             (w / f"{s}.bin").write_bytes(b"")
         lines = [f"CLASS {s} {k} px=10" for s, k in classes]
-        (d / "field" / "kill300_m2.fc.txt").write_text("\n".join(lines + [f"60 pictures (60 checked): {len(classes)} with differences, 0 pixels"]) + "\n")
+        if summary is None:
+            summary = f"{records} pictures ({records} checked): {len(classes)} with differences, 0 pixels"
+        (d / "field" / f"{name}.fc.txt").write_text("\n".join(lines + [summary]) + "\n")
+
+    def test_fieldsum_incomplete(self):
+        self.field_window(self.base, [("j001_f0001", "other")])
+        for kw in ({"records": 40},                                             # a recording cut short
+                   {"summary": "STDERR Traceback (most recent call last):"},    # the check stopped
+                   {"summary": "60 pictures (0 checked): 0 with differences"}):  # records of another length
+            self.field_window(self.new, [], **kw)
+            r = run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field")
+            self.assertEqual(r.returncode, 1, f"{kw} {r.stdout}")
+        self.field_window(self.new, [("j001_f0001", "other")])
+        self.assertEqual(run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field").returncode, 0)
+        # a window the new folder lacks fails (--partial: not judged)
+        self.field_window(self.base, [], name="boss110_m2")
+        self.assertEqual(run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field").returncode, 1)
+        self.assertEqual(run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field", "--partial").returncode, 0)
 
     def test_fieldsum(self):
         self.field_window(self.base, [("j001_f0001", "other"), ("j001_f0002", "other")], hold_stems={"j001_f0002"})
@@ -150,6 +204,10 @@ class KitVerdictTests(unittest.TestCase):
         r = run(KIT / "lockgate.py", self.base / "lock", self.new / "lock")
         self.assertEqual(r.returncode, 0, r.stdout)            # after the base's late frame: not judged
         self.assertIn("not judged", r.stdout)
+        # a record the new folder lacks fails (--partial: not judged)
+        self.lock_record(self.base / "lock" / "boss_m2.txt")
+        self.assertEqual(run(KIT / "lockgate.py", self.base / "lock", self.new / "lock").returncode, 1)
+        self.assertEqual(run(KIT / "lockgate.py", self.base / "lock", self.new / "lock", "--partial").returncode, 0)
 
 
 if __name__ == "__main__":

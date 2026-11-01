@@ -5,10 +5,12 @@ section 12; docs/PERF2_PLAN.md 5.4).
   guardsum.py table DIR        every gates.tcl pf_guard_jobs record (DIR/<drive>_<tag>.txt): the rows
                                driven, rc2_guard's counts (reg, pal, cmd, cpu, vbl, tear), patcheck,
                                sprlines, satcheck
-  guardsum.py gate BASE NEW    every record both hold: FAIL when NEW's tears exceed BASE's (the plan's
-                               rule), when patcheck finds a bad entry BASE did not, or when the drive was
-                               not driven to its end; the other counters are listed (an increase: WARN)
-Exit 0 only when nothing FAILs. The guard (tools/openmsx_rc2.tcl rc2_guard) counts a VDP command still
+  guardsum.py gate BASE NEW [--partial]
+                               every record of BASE: FAIL when NEW's tears exceed BASE's (the plan's
+                               rule), when patcheck finds a bad entry BASE did not, when the drive was
+                               not driven to its end, or when NEW lacks the record (--partial: listed,
+                               not judged); the other counters are listed (an increase: WARN)
+Exit 0 only when nothing FAILs (a gate that judged no record FAILs). The guard (tools/openmsx_rc2.tcl rc2_guard) counts a VDP command still
 writing into lines being shown (tear), register writes during the shown lines (reg), palette writes (pal),
 commands running into the picture's start (cmd), CPU VRAM access during them (cpu), late VBLANK work (vbl).
 """
@@ -57,19 +59,22 @@ def fmt(r):
 
 
 def main(argv):
+    partial = '--partial' in argv
+    argv = [a for a in argv if a != '--partial']
     if len(argv) == 2 and argv[0] == 'table':
         for k, r in table(argv[1]).items():
             print(f"{k:10s} {fmt(r)}")
         return 0
     if len(argv) == 3 and argv[0] == 'gate':
         base, new = table(argv[1]), table(argv[2])
-        bad = 0
+        bad = judged = 0
         for k in sorted(new):
             r = new[k]
             if k not in base:
                 print(f"{k:10s} (no baseline)")
                 continue
             b = base[k]
+            judged += 1
             why, warn = [], []
             if r.get('rows') != b.get('rows'):
                 why.append(f"rows {r.get('rows')} (base {b.get('rows')})")
@@ -84,7 +89,14 @@ def main(argv):
             print(f"{k:10s} tears {b['tear']} -> {r['tear']}" + (f"  FAIL ({'; '.join(why)})" if why else '') +
                   (f"  WARN ({'; '.join(warn)})" if warn else ''))
         for k in sorted(set(base) - set(new)):
-            print(f"{k:10s} (no new record)")
+            if partial:
+                print(f"{k:10s} (no new record: not judged, --partial)")
+            else:
+                print(f"{k:10s} FAIL: no new record (--partial judges a subset)")
+                bad += 1
+        if not judged:
+            print("no record judged")
+            bad += 1
         print(f"G-GUARD: {'PASS' if not bad else f'FAIL ({bad} runs)'}")
         return 1 if bad else 0
     print(__doc__)

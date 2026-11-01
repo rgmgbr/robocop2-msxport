@@ -5,7 +5,8 @@ docs/HARNESS.md section 12). Agent v_gain's window speed of 2026-11-01, with the
   win.py T0-T1 PREFIX...         one window of each run (PREFIX = a run's path without _ticks.txt)
   win.py --table DIR [--json OUT] every run in DIR named DRIVE_TAG (m3.tcl's NAME, e.g. kill_m2) and the
                                  gate's windows of its drive (WINDOWS below)
-  win.py --gate BASE NEW         every run and window both folders hold: NEW against BASE (HEAD's records)
+  win.py --gate BASE NEW [--partial]
+                                 every run and window of BASE (HEAD's records) against NEW's
 
 Per window: emulated seconds, ticks/s (game speed: 25 is full speed), pictures/s (pictures put on screen),
 pictures/s with game progress (the list's game frame differs from the picture's before), the VBLANKs a
@@ -15,8 +16,9 @@ emulated time, ...; its pics file a line per picture: time, tick, fb_hold, game 
 The gate (docs/PERF2_PLAN.md 5.4 G-SPEED): FAIL when a window's ticks/s in NEW is below BASE's by more than
 its tolerance: 1 % for a window of 400 ticks or more, 5 % for a shorter one (the ground floor, kill
 1500-1765, is the plan's example; tour3's street, beams and roof, l2_tour 2080-2350 are as short). A
-window NEW has not reached (a run that ended early) FAILs; a run BASE lacks is listed, not judged.
-Exit 0 only when nothing FAILs.
+window NEW has not reached (a run that ended early) FAILs, and so does a run BASE holds that NEW lacks
+(--partial: listed, not judged, for a deliberate subset); a run BASE lacks is listed, not judged; a gate
+that judged no window FAILs. Exit 0 only when nothing FAILs.
 """
 import json
 import os
@@ -123,6 +125,8 @@ def table(d):
 
 
 def main(argv):
+    partial = '--partial' in argv
+    argv = [a for a in argv if a != '--partial']
     if len(argv) >= 2 and argv[0] == '--table':
         res = table(argv[1])
         for name, ws in res.items():
@@ -134,7 +138,7 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == '--gate':
         base, new = table(argv[1]), table(argv[2])
-        bad = 0
+        bad = judged = 0
         for name in sorted(new):
             if name not in base:
                 print(f"{name:16s} (no baseline run)")
@@ -144,6 +148,7 @@ def main(argv):
                 if not b or 'missing' in b:
                     print(f"{name:16s} {w}: the baseline did not reach it")
                     continue
+                judged += 1
                 if 'missing' in r:
                     print(f"{name:16s} {w}: FAIL: not reached (last tick {r['missing']})")
                     bad += 1
@@ -159,7 +164,14 @@ def main(argv):
                 print(f"{name:16s} {w:10s} ticks/s {b['ticks_s']:6.2f} -> {r['ticks_s']:6.2f} ({d:+6.2f} %, "
                       f"tolerance {tol:.0f} %){extra}{'' if ok else '  FAIL'}")
         for name in sorted(set(base) - set(new)):
-            print(f"{name:16s} (no new run)")
+            if partial:
+                print(f"{name:16s} (no new run: not judged, --partial)")
+            else:
+                print(f"{name:16s} FAIL: no new run (--partial judges a subset)")
+                bad += 1
+        if not judged:
+            print("no window judged")
+            bad += 1
         print(f"G-SPEED: {'PASS' if not bad else f'FAIL ({bad} windows)'}")
         return 1 if bad else 0
     if len(argv) >= 2 and '-' in argv[0] and not argv[0].startswith('-'):
