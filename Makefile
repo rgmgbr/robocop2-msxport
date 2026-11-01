@@ -51,6 +51,9 @@ $(BUILD)/ram/level1_full.bin:
 $(BUILD)/ram/level2_full.bin:
 	$(MAKE) ram
 
+$(BUILD)/ram/level3_full.bin:
+	$(MAKE) ram
+
 $(BUILD)/sprites/catalog.json $(BUILD)/sprites/catalog_l2.json:
 	$(MAKE) sprites
 
@@ -58,7 +61,8 @@ $(BUILD)/sprites/catalog.json $(BUILD)/sprites/catalog_l2.json:
 $(BUILD)/emu/cov_level1.json: $(BUILD)/ram/level1_full.bin
 	$(VPYTHON) -I tools/amigacov.py --scenario level1 $@
 
-msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/sprites/catalog.json \
+msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/ram/level3_full.bin \
+		$(BUILD)/sprites/catalog.json \
 		$(BUILD)/sprites/catalog_l2.json $(BUILD)/emu/cov_level1.json
 	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
 		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
@@ -75,6 +79,15 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BU
 		160 50 --level 2
 	$(PYTHON) -I tools/msxlvpal.py preview $(X)/files/DATAL2_18.bin --pal-file $(X)/boot/main_8000.bin \
 		--pal-addr 0x10036 --rows 50 --level $(BUILD)/msx/level2 -o $(BUILD)/msx/level2_amiga_vs_msx.png
+# level 3's play field (docs/LEVEL3.md 2.2, 3.8): palette C again (level 3's header points at level 2's
+# palette: level3.pal equals level2.pal), its tiles and map, the check of its map writers (the beams, the
+# turrets, the map objects) against the map patches' pools
+	$(PYTHON) -I tools/msxlvpal.py palette $(X)/files/DATAL3_22.bin --pal-file $(X)/boot/main_8000.bin \
+		--base-addr 0xfff6 --pal-addr 0x10036 --base $(BUILD)/msx/robocop --rows 50 -o $(BUILD)/msx/level3
+	$(PYTHON) -I tools/msxconv.py level $(X)/files/DATAL3_22.bin --pal-file $(X)/boot/main_8000.bin \
+		--pal-addr 0x10036 --rows 50 --joint $(BUILD)/msx/level3 -o $(BUILD)/msx/level3
+	$(PYTHON) -I tools/mapcells.py $(BUILD)/ram/level3_full.bin analysis/amiga_tables.tsv $(BUILD)/msx/level3.atrp \
+		160 50 --level 3
 # the global sprite pool of levels 1 and 2 (the ROM's sprite data: sprites.bin, sprites.inc, sprites_l1*,
 # sprites_l2*; the level-2 plan 3.6): its level-2 frames are converted against palette C (level2.pal),
 # so it runs after the level-2 palette, with the level-1 arguments above (robocop.* written again, the

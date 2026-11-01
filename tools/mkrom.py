@@ -47,7 +47,17 @@
         2's code, msx/ending.asm: STAGES, bank BANK_FRONT2, read at A000h only) and the ending's sound
         (tools/msxtune.py --end end.bin, pzm.bin's layout: CMP tune 1 and HI1's effects 3-4,
         docs/ENDING.md; msx/tune.asm reads it through the 8000h window) from bank END_BANK, after a
-        padding bank when the next is one the 8000h window must not map (below); up to
+        padding bank when the next is one the 8000h window must not map (below); then level 3's blocks
+        (docs/LEVEL3.md 3.2): its logic bank and its object types' bank (the two sections after the
+        front end's second bank, msx/level3.asm and msx/level3obj.asm: STAGES, banks BANK_L3 and
+        BANK_L3B, both read at A000h only), its tiles (build/msx/level3.vram's pages 2-3, from
+        L3_TILES), its map (L3_MAP), its packed attributes (L3_ATR) and its tables (L3_TAB: OTILE,
+        ATR2 and its BOBHASH at 8000h, its palette through the colour grade, level3_grade.pal, the
+        same bytes as level 2's, and its view_offy at L3_PALP / L3_VOFFP in the A000h window), placed
+        so that a bank the 8000h window must not map takes one of the two code banks or padding
+        (place_banks); its play-field atlas is level 2's until the plan's step C gives it its own
+        (L3_ATLAS = L2_ATLAS), and its BOBHASH holds level 2's frames whose bytes level 3's memory
+        holds too (l3_stub_hash); up to
         256 banks in all
         (2 MiB, the user's choice for the whole game, 2026-10-26: a 2 MiB MegaRAM or flash
         cartridge), the ROM padded to a power of two (ROM_BANKS in banks.inc); the banks the 8000h
@@ -56,8 +66,8 @@
         rom_guard's tag at GUARD_AT: the game stops on a device that holds less.
 Generates build/msx/gen/banks.inc, rowtab.inc (the map's rows: banks relative to the level's first
 map bank, msx/tiles.asm get_tile; the attributes' rows; view_offx), levels.inc (the levels'
-descriptors, msx/msx.inc lv_cur's fields, levels 1 and 2 in a row, with level 1's palette and
-view_offy: msx/cold.asm lv_select; level 2's are in its tables bank), field_l2.inc (level 2's
+descriptors, msx/msx.inc lv_cur's fields, levels 1, 2 and 3 in a row, with level 1's palette and
+view_offy: msx/cold.asm lv_select; level 2's and level 3's are in their tables banks), field_l2.inc (level 2's
 play-field tables for msx/field.asm, field_inc), vats_l2.inc (vat_shown's start for msx/level2.asm,
 tools/mapcells.py vat_tables), options.inc (build options, see OPTIONS; LV_CARRY's values),
 input.inc (the JOY script), music.inc (the music streams' banks and addresses from the blobs'
@@ -70,10 +80,11 @@ original's tables the logic banks include (tools/amitab.py
 with analysis/amiga_tables.tsv, from the level's RAM image build/ram/level1_full.bin) and the
 camera-cell masks of the levels' spawn lists and hazards (tools/cellmasks.py: cells_l1.inc,
 cells_l2.inc, the game logic's shortcuts), the copy of the code every level bank shares for level
-2's bank (lvshared_l2.asm: msx/lvshared.asm with its labels and the level data's names suffixed
-_l2; the copies' labels must equal level 1's, checked after the assembly), checks that every map
-cell and attribute value each level's writers can change fits the map patches and the packed
-map's codes (tools/mapcells.py, levels 1 and 2: the build fails otherwise), copies the level
+2's and level 3's banks (lvshared_l2.asm, lvshared_l3.asm: msx/lvshared.asm with its labels and the
+level data's names suffixed _l2, _l3; the copies' labels must equal level 1's, checked after the
+assembly), checks that every map cell and attribute value each level's writers can change fits the
+map patches and the packed map's codes (tools/mapcells.py, levels 1, 2 and 3: the build fails
+otherwise), copies the level
 palette and the HUD's
 (both through the colour grade: level1_grade.pal, hud_grade.pal; Brainstorm's two visits' too,
 puzl_1_grade.pal and puzl_2_grade.pal, with the stage's equates and tables, puzl.inc and
@@ -94,8 +105,9 @@ usage: mkrom.py build/msx/level1 build/msx/rc2.rom [NAME=VALUE ...] [JOY=F:C:KEY
        the joystick script of tools/amigaemu.py game --joy instead of reading the controls:
        keys u d l r f pressed for C game frames from game frame F; LV_TEST=2 LV_CARRY=0:0:1:3
        starts level 2 at power-on with score 0, no life left, a credit and the POOR table)
-(level 2's conversions, build/msx/level2.*, are read beside the level given: tools/msxlvpal.py,
-tools/msxconv.py level ... -o build/msx/level2, the Makefile's msx target)
+(level 2's and level 3's conversions, build/msx/level2.* and level3.*, are read beside the level
+given: tools/msxlvpal.py, tools/msxconv.py level ... -o build/msx/level2 (level3), the Makefile's msx
+target; LV_TEST=3 starts level 3 at power-on the same way, after its briefing)
 """
 from __future__ import annotations
 
@@ -114,19 +126,22 @@ ROOT = Path(__file__).resolve().parents[1]
 BANK = 0x2000
 LOGIC = ("LC1", "LC2", "L1", "LC3", "INPUT", "FRONT", "FIELD", "MUSIC")  # logic banks after the two code banks (msx/rc2.asm
                                     # sections): modules at 8000h (one at a time), the level at A000h
-STAGES = ("PUZL", "FRNG", "L2", "FRONT2")  # the late code banks (msx/rc2.asm's last sections, at A000h:
+STAGES = ("PUZL", "FRNG", "L2", "FRONT2", "L3", "L3B")  # the late code banks (msx/rc2.asm's last sections, at A000h:
                                     # the bonus stages while they run, PUZL: Brainstorm, msx/puzl.asm;
                                     # FRNG: the shooting range, msx/frng.asm; level 2's logic, L2,
                                     # msx/level2.asm; the front end's second bank, FRONT2: the game
                                     # completed and the high scores, msx/ending.asm, read at A000h only,
                                     # so in a bank the 3Fh rule leaves to such data, before the ending's
-                                    # sound: docs/ENDING.md), each before its own data: PUZL's after the
+                                    # sound: docs/ENDING.md; level 3's logic and its object types, L3
+                                    # and L3B, msx/level3.asm and msx/level3obj.asm, read at A000h only:
+                                    # docs/LEVEL3.md 3.2), each before its own data: PUZL's after the
                                     # sound effects, so that no bank before them moves (with PUZL after
                                     # MUSIC every data bank moved up by one, and bank 24h's 1800h then
                                     # held 24h, an SCC test value: msx/sound.asm scc_pat), FRNG's after
                                     # Brainstorm's music (docs/RANGE.md 3.12: no Brainstorm bank moves),
                                     # L2's after the range's music (docs/LEVEL2.md 3.12: no bank before
-                                    # it moves)
+                                    # it moves), L3's and L3B's after the last block (no bank moves:
+                                    # BANK_L3, read at A000h only, at bank 127)
 PICTURES = (("title", "title_credit"), ("gameover", "gameover_text"))   # the SCREEN 8 pictures next to
                                     # the level's files (name, file): TPIC with the port's credit
                                     # (tools/msxtext.py), PIC9 with GAME OVER below it
@@ -148,6 +163,9 @@ VIEW_LINES = 162                    # msx/msx.inc
 LV_VOFFN = 43                       # msx/msx.inc: a level's view_offy entries (lv_voffy)
 L2_HEADER = 0x868C                  # level 2's header in the main code (level_init $871A: $8664 + 40):
 L2_START, L2_YMAX = 16, 28          #   RoboCop's start (x, y) and the camera's lowest y at these offsets
+L3_HEADER = 0x86B4                  # level 3's header ($8664 + 2 x 40: the same fields as level 2's)
+L3_FADE = 0x88CF                    # level_init's immediate for $F89D in level 3 (move.b #$B at $88CC:
+                                    #   msx/level3.asm l3_init sets it; levels 1 and 2 take FADE_STATE)
 DATAL_OWN = (0x28000, 0x45250)      # DATAL1's own part (its tail from 45250h is MADEX, which level 2
                                     # loads there too): level 1's frames inside it are other bytes in
                                     # level 2 (docs/LEVEL2.md 3.12; its BOBHASH leaves them out)
@@ -155,11 +173,15 @@ L2_PAL_AT = 0x1680                  # level 2's tables bank: its graded palette 
                                     # view_offy (LV_VOFFN), after the BOBHASH (8600h-967Fh)
 L2_VAT_AT = 0x1700                  # level 2's tables bank: the vats' display tables (tools/mapcells.py
                                     # vat_tables: 9700h at 8000h, docs/LEVEL2.md 3.5)
-TC_SLOTS = {1: 256, 2: 224}         # the tile cache's slots per level (page 2; msx/tiles.asm tc_load,
+L3_PAL_AT = 0x1680                  # level 3's tables bank: its graded palette and view_offy, as level 2's
+L3_DYN_Y = 232                      # level 3's dynamic slot (the explosions'): page 2 lines 232-255, after
+                                    #   the tile cache (160 slots) and the frame cache (lines 160-231:
+                                    #   docs/LEVEL3.md 3.6, default 5); step C's pool may give its own
+TC_SLOTS = {1: 256, 2: 224, 3: 160}  # the tile cache's slots per level (page 2; msx/tiles.asm tc_load,
                                     # msx/cold.asm tiles_init: the descriptors' lv_tcn): level 2's
                                     # dynamic slot takes page 2's lines 224-247 (docs/LEVEL2.md 3.5,
                                     # default 35)
-DYN_PAGE = {1: 3, 2: 2}             # the VRAM page of each level's dynamic slot (its lines: DYN_Y of
+DYN_PAGE = {1: 3, 2: 2, 3: 2}       # the VRAM page of each level's dynamic slot (its lines: DYN_Y of
                                     # its POOL_lN_field.inc): level 1's after its atlas on page 3, level
                                     # 2's on page 2 after its tile slots (the descriptors' lv_dyn, lv_dynp)
 FB_CY = 112                         # msx/field.asm: page 3's lines from 112 the play field's caches
@@ -205,7 +227,8 @@ OPTIONS = {
     "PZ_LEVEL": (1, "PZ_TEST's visit of the bonus stages: 1 after level 1, 2 after level 2 (the game's level, AG $8050)"),
     "LV_TEST": (0, "2 = test build: at power-on, without the title, level 1's set-up, then level 2 with LV_CARRY's"
                    " score, lives, credits and rating (msx/rc2.asm lv_test, front.asm front_l2test), as the product"
-                   " starts it after the range (lv_next); once, later games as the product's; not with PZ_TEST"),
+                   " starts it after the range (lv_next); 3 = level 3 the same way, after its briefing (front.asm"
+                   " front_l3test); once, later games as the product's; not with PZ_TEST"),
     "RG_ADJ": (1, "0 = test build: the shooting range's register lists keep R#18 = 0 and its camera moves in"
                   " 16-pixel steps (for a VDP that ignores R#18 or applies it once a frame: msx/frng.asm,"
                   " docs/RANGE.md section 6)"),
@@ -387,6 +410,43 @@ def l2_hash(l2: dict, above: dict[int, int]) -> bytes:
     frames = [dict(f, above=above.get(f["id"], 0)) for f in level_frames({"bobs": l2["bobs"]})]
     frames += [dict(f, id=HIDDEN_ID) for f in l2.get("hidden", [])]
     return hash_table(frames + level_frames({"field": l2["field"]}))
+
+
+def l3_stub_hash(l2: dict, above: dict[int, int], img2: bytes, img3: bytes) -> bytes:
+    """Level 3's BOBHASH until the plan's step C converts its frames (docs/LEVEL3.md 3.5): level 2's
+    sprite and play-field frames (l2_hash's, the hidden ones apart) whose graphics bytes (bob_bytes from
+    their A2) level 3's memory holds too, at the same address: the same pictures, with level 2's ids,
+    which the descriptor's level-2 BOB index, play-field tables and atlas give (gen/levels.inc
+    lv_desc3). Level 3's own frames find no slot and draw nothing until then."""
+    def same(f: dict) -> bool:
+        a, n = f["addr"], bob_bytes(f)
+        return img2[a:a + n] == img3[a:a + n]
+    frames = [dict(f, above=above.get(f["id"], 0)) for f in level_frames({"bobs": l2["bobs"]}) if same(f)]
+    return hash_table(frames + [f for f in level_frames({"field": l2["field"]}) if same(f)])
+
+
+def place_banks(first: int, a000: list[str], data: list[tuple[str, int]]) -> tuple[dict[str, int], list[int], int]:
+    """Banks from 'first' on for the code banks read at A000h only (a000: names, a bank each) and the
+    data blocks (data: (name, banks)), which the 8000h window may map: a bank b with (b & 3Fh) = 3Fh
+    (the Konami SCC's registers at 9800h) takes an A000h-only bank, else padding; each data block takes
+    the first place from which none of its banks is such a bank (the blocks in their order, a later one
+    first when the next does not fit), an A000h-only bank (else padding) filling in. -> (name: its first
+    bank), the padding banks, the next free bank."""
+    at, pads, a000, data, b = {}, [], list(a000), list(data), first
+    while a000 or data:
+        fit = None if b & 0x3F == 0x3F else next(
+            (k for k, (_, n) in enumerate(data) if not any(x & 0x3F == 0x3F for x in range(b, b + n))), None)
+        if fit is not None:
+            name, n = data.pop(fit)
+            at[name] = b
+            b += n
+        elif a000:
+            at[a000.pop(0)] = b
+            b += 1
+        else:
+            pads.append(b)
+            b += 1
+    return at, pads, b
 
 
 def atlas_banks(rom: bytes) -> bytes:
@@ -800,15 +860,15 @@ def main(argv: list[str]) -> int:
         return 2
     # LV_TEST (level 2 at power-on) and PZ_TEST (the bonus stages at power-on) share the one-shot
     # (msx.inc pz_first) and the place in rc2.asm's level start: one test start at a time
-    if opts["LV_TEST"] not in (0, 2) or (opts["LV_TEST"] and opts["PZ_TEST"]):
-        print("LV_TEST must be 0 or 2, and not with PZ_TEST (one test start at a time)", file=sys.stderr)
+    if opts["LV_TEST"] not in (0, 2, 3) or (opts["LV_TEST"] and opts["PZ_TEST"]):
+        print("LV_TEST must be 0, 2 or 3, and not with PZ_TEST (one test start at a time)", file=sys.stderr)
         return 2
     if opts["END_TEST"] not in (0, 1, 2) or (opts["END_TEST"] and (opts["PZ_TEST"] or opts["LV_TEST"] or opts["DIAG"])):
         print("END_TEST must be 0, 1 or 2, and not with PZ_TEST, LV_TEST or DIAG (one test start at a time)",
               file=sys.stderr)
         return 2
     if carry is not None and not (opts["LV_TEST"] or opts["END_TEST"]):
-        print("LV_CARRY needs LV_TEST=2 or END_TEST (it is the test start's carry)", file=sys.stderr)
+        print("LV_CARRY needs LV_TEST=2 or 3, or END_TEST (it is the test start's carry)", file=sys.stderr)
         return 2
     if opts["CHEAT"] not in (0, 1) or (opts["CHEAT"] and opts["DIAG"]):
         print("CHEAT must be 0 or 1, and not with DIAG (a DIAG build plays no game)", file=sys.stderr)
@@ -947,6 +1007,49 @@ def main(argv: list[str]) -> int:
         return 1
     tab2 += b"\xff" * (L2_VAT_AT - len(tab2)) + vat_tab
     tab2 += b"\xff" * (BANK - len(tab2))
+    # level 3's play field (tools/msxlvpal.py palette C, tools/msxconv.py: build/msx/level3.*): its tiles,
+    # map, packed attributes and tables (docs/LEVEL3.md 3.2, 3.5); its palette through the colour grade
+    # (level 2's palette C again: the same bytes), colour 0 the HUD's too
+    l3 = level.parent / "level3"
+    vram3 = l3.with_suffix(".vram").read_bytes()
+    mp3 = l3.with_suffix(".map").read_bytes()
+    rows3 = len(mp3) // (COLS * 2)
+    atr_3 = l3.with_suffix(".atrp").read_bytes()
+    pal3 = grade_pal(l3.with_suffix(".pal").read_bytes())
+    (gen / "level3_grade.pal").write_bytes(pal3)
+    if pal3[:2] != hud_pal[:2]:
+        print("error: level 3's colour 0 is not the HUD's (msx/isr.asm isr_split writes colours 1-15)", file=sys.stderr)
+        return 1
+    if len(vram3) != 0x20000 or len(mp3) != rows3 * COLS * 2 or not ROWS_PER_BANK < rows3 <= rows \
+            or len(atr_3) != rows3 * 80 + 16 or len(atr_3) > BANK:
+        print(f"error: level 3's conversion: {len(vram3)} B of VRAM image, {len(mp3)} B of map ({rows3} rows, "
+              f"level 1 {rows}), {len(atr_3)} B of attributes", file=sys.stderr)
+        return 1
+    img3 = (ROOT / "build" / "ram" / "level3_full.bin").read_bytes()
+    l3_x, l3_y = struct.unpack_from(">hh", img3, L3_HEADER + L2_START)
+    l3_ymax = struct.unpack_from(">h", img3, L3_HEADER + L2_YMAX)[0]
+    if img3[L3_FADE] != 0x0B:
+        print(f"error: level_init's fade state for level 3 at {L3_FADE:X}h is {img3[L3_FADE]:02X}h, msx/level3.asm l3_init's "
+              f"0Bh", file=sys.stderr)
+        return 1
+    tc, y = TC_SLOTS[3], L3_DYN_Y           # (level 3's VRAM: level 2's atlas on page 3, its dynamic slot on page 2)
+    if not (fq[2]["FIELD_LINES"] <= FB_CY and y + fq[2]["DYN_H"] <= 256 and y >= tc // 16 * 16 and tc % 16 == 0):
+        print(f"error: level 3's atlas ({fq[2]['FIELD_LINES']} lines), dynamic slot (page 2 line {y}) and tile slots "
+              f"({tc}) overlap in VRAM", file=sys.stderr)
+        return 1
+    tab3 = l3.with_suffix(".otile").read_bytes() + l3.with_suffix(".atr2").read_bytes()
+    tab3 += b"\xff" * (0x600 - len(tab3)) + l3_stub_hash(spool[2], above[2], img2, img3)
+    if len(tab3) > L3_PAL_AT:
+        print("error: level 3's tables overlap its palette (L3_PAL_AT)", file=sys.stderr)
+        return 1
+    ky3 = -(-0x10000 * (rows3 * 16 - VIEW_LINES - l3_ymax) // l3_ymax)
+    view_y3 = [((16 * i + 8) * ky3) >> 16 for i in range(l3_ymax // 16 + 3)]
+    if len(view_y3) > LV_VOFFN:
+        print(f"error: level 3's view_offy has {len(view_y3)} entries (msx/msx.inc LV_VOFFN: {LV_VOFFN})", file=sys.stderr)
+        return 1
+    view_y3 += view_y3[-1:] * (LV_VOFFN - len(view_y3))
+    tab3 += b"\xff" * (L3_PAL_AT - len(tab3)) + pal3 + bytes(view_y3)
+    tab3 += b"\xff" * (BANK - len(tab3))
     (gen / "vats_l2.inc").write_text(
         "; generated by tools/mkrom.py (tools/mapcells.py vat_tables): per vat column (hz_l2's order) the look\n"
         "; the static map holds there: vat_shown's start (msx/level2.asm l2_init, a fresh level 2)\n"
@@ -973,11 +1076,13 @@ def main(argv: list[str]) -> int:
     lvshared = (ROOT / "msx" / "lvshared.asm").read_text()
     level_data = set(LABEL_DEF.findall((gen / "at_l1.inc").read_text() + (gen / "cells_l1.inc").read_text()))
     (gen / "lvshared_l2.asm").write_text(lvshared_copy(lvshared, "l2", level_data))
+    (gen / "lvshared_l3.asm").write_text(lvshared_copy(lvshared, "l3", level_data))
     # every map cell each level's writers can change must fit the map patches' pools and every
     # attribute value they write the packed map's codes (msx/tiles.asm map_write, atr_put); level 2's
     # vats stay out of the pools (tools/mapcells.py's own checks)
     for image, atrp, n, lv in (("level1_full.bin", level.with_suffix(".atrp"), rows, []),
-                               ("level2_full.bin", l2.with_suffix(".atrp"), rows2, ["--level", "2"])):
+                               ("level2_full.bin", l2.with_suffix(".atrp"), rows2, ["--level", "2"]),
+                               ("level3_full.bin", l3.with_suffix(".atrp"), rows3, ["--level", "3"])):
         r = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "mapcells.py"),
                             str(ROOT / "build" / "ram" / image), str(ROOT / "analysis" / "amiga_tables.tsv"),
                             str(atrp), str(COLS), str(n)] + lv, capture_output=True, text=True)
@@ -1131,15 +1236,31 @@ def main(argv: list[str]) -> int:
         end_pad.append(bank_end)
         bank_end += 1
     banks_used = bank_end + -(-len(end) // BANK)
+    # level 3's blocks (docs/LEVEL3.md 3.2), after the ending's sound: its logic (STAGES' L3) and its object
+    # types (L3B), both read at A000h only (lvl_bank, rc2.asm l3b_call), its tiles, map (25 rows a
+    # bank), packed attributes and tables, which the 8000h window maps (tiles.asm tc_load, OTILE, ...):
+    # place_banks puts an A000h-only bank on a bank the 3Fh rule leaves to such data (bank 191 if the
+    # blocks reach it), padding only when it must (DIAG builds, whose tunes are left out, put bank 127
+    # among them)
+    bank_l3 = banks_used
+    tiles3 = vram3[0x10000:0x20000]
+    map3_banks = [mp3[b * COLS * 2:(b + ROWS_PER_BANK) * COLS * 2] for b in range(0, rows3, ROWS_PER_BANK)]
+    map3_banks = [c + b"\xff" * (BANK - len(c)) for c in map3_banks]
+    l3_blocks = {"tiles": tiles3, "map": b"".join(map3_banks), "atr": atr_3 + bytes(BANK - len(atr_3)), "tab": tab3}
+    l3_at, l3_pad, banks_used = place_banks(bank_l3, ["L3", "L3B"], [(k, len(v) // BANK) for k, v in l3_blocks.items()])
+    stage_bank["L3"], stage_bank["L3B"] = l3_at["L3"], l3_at["L3B"]
+    bank_l3_tiles, bank_l3_map, bank_l3_atr, bank_l3_tab = (l3_at[k] for k in ("tiles", "map", "atr", "tab"))
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
     nbanks = rom_banks(banks_used, MAX_BANKS if opts["ROM_2M"] else 0)
     # every bank but those read only at A000h may be mapped at 8000h (a Konami SCC mapper: a bank
     # number with (b & 3Fh) = 3Fh selects the SCC's registers at 9800h instead on most cartridges;
-    # the MSX Pico+ for 3Fh only): only the pictures (front.asm, through bank_a000) may take one, and
-    # the padding before end.bin (never mapped)
-    a000_only = set(range(pic_first[0], bank_voice)) | set(end_pad) | {stage_bank["FRONT2"]}
+    # the MSX Pico+ for 3Fh only): only the pictures (front.asm, through bank_a000) may take one, the
+    # padding before end.bin and level 3's (never mapped), FRONT2 and level 3's two code banks (read at
+    # A000h only: frontx.asm front2_call, lvl_bank, rc2.asm l3b_call)
+    a000_only = set(range(pic_first[0], bank_voice)) | set(end_pad) | {stage_bank["FRONT2"]} \
+        | {stage_bank["L3"], stage_bank["L3B"]} | set(l3_pad)
     bad = [b for b in range(2, banks_used) if b & 0x3F == 0x3F and b not in a000_only]
     if bad:
         print(f"error: bank(s) {bad} could be mapped at 8000h (the SCC's registers)", file=sys.stderr)
@@ -1173,9 +1294,14 @@ def main(argv: list[str]) -> int:
         f"L2_X: equ {l2_x}\nL2_Y: equ {l2_y}\nL2_YMAX: equ {l2_ymax}\n"
         f"L2_PALP: equ 0x{0xA000 + L2_PAL_AT:04X}\nL2_VOFFP: equ 0x{0xA000 + L2_PAL_AT + 32:04X}\n"
         f"L2_VATS: equ 0x{0x8000 + L2_VAT_AT:04X}\n"
-        + "".join(f"L{n}_TCN: equ {TC_SLOTS[n]}\nL{n}_DYNP: equ {DYN_PAGE[n]}\n" for n in (1, 2)) +
+        f"L3_TILES: equ {bank_l3_tiles}\nL3_MAP: equ {bank_l3_map}\nL3_ROWS: equ {rows3}\nL3_ATR: equ {bank_l3_atr}\n"
+        f"L3_ATRN: equ {len(atr_3) - 16 - 48 * 80}\nL3_TAB: equ {bank_l3_tab}\n"
+        f"L3_ATLAS: equ {bank_l2_atlas}\n"
+        f"L3_X: equ {l3_x}\nL3_Y: equ {l3_y}\nL3_YMAX: equ {l3_ymax}\nL3_DYN_Y: equ {L3_DYN_Y}\n"
+        f"L3_PALP: equ 0x{0xA000 + L3_PAL_AT:04X}\nL3_VOFFP: equ 0x{0xA000 + L3_PAL_AT + 32:04X}\n"
+        + "".join(f"L{n}_TCN: equ {TC_SLOTS[n]}\nL{n}_DYNP: equ {DYN_PAGE[n]}\n" for n in (1, 2, 3)) +
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
-        f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\nL2_KY: equ {ky2}\n")
+        f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\nL2_KY: equ {ky2}\nL3_KY: equ {ky3}\n")
     (gen / "input.inc").write_text(input_inc(script, tele))
     vq = equates(level.parent / "voice.inc")
     (gen / "music.inc").write_text(music_inc(scc, bank_scc, equates(level.parent / "scc.inc")["SCC_WAVES"], fm, bank_fm,
@@ -1211,7 +1337,9 @@ def main(argv: list[str]) -> int:
     # level 2's are in its tables bank (L2_PALP, L2_VOFFP, which lv_copy reads at A000h); each level's
     # BOB index and hit spark in the global sprite pool (sprites.inc); its play field: its atlas (level
     # 2's in two banks), its dynamic slot's line and VRAM page, its tile cache's slots (negated: tc_load
-    # adds them) and its play-field frames' tables in BANK_FIELD (msx/field.asm fld_l1, fld_l2)
+    # adds them), its play-field frames' tables in BANK_FIELD (msx/field.asm fld_l1, fld_l2) and their
+    # first id in BOBHASH (lv_fid0); level 3's (docs/LEVEL3.md 3.1) takes level 2's BOB index, spark,
+    # atlas, play-field tables and ids until the plan's step C gives it its own
     (gen / "levels.inc").write_text(
         "; generated by tools/mkrom.py: the levels' descriptors (msx/msx.inc lv_cur; msx/cold.asm lv_select)\n"
         "lv_desc:                            ; level 1\n"
@@ -1224,6 +1352,7 @@ def main(argv: list[str]) -> int:
         "        db SPR_SPARK_L1 - 1         ; lv_spark\n"
         "        db L1_DYNP                  ; lv_dynp\n"
         "        dw -L1_TCN, fld_l1          ; lv_tcn, lv_fld\n"
+        "        db FIELD_ID0                ; lv_fid0\n"
         "        ds LV_SIZE - ($ - lv_desc)  ; (an error when the fields outgrow LV_SIZE)\n"
         "lv_desc2:                           ; level 2 (lv_desc + LV_SIZE)\n"
         "        db BANK_L2, L2_TILES, L2_MAP, L2_ROWS, L2_ATR\n"
@@ -1235,9 +1364,24 @@ def main(argv: list[str]) -> int:
         "        db SPR_SPARK_L2 - 1\n"
         "        db L2_DYNP\n"
         "        dw -L2_TCN, fld_l2\n"
+        "        db FIELD_ID0_l2\n"
         "        ds LV_SIZE - ($ - lv_desc2)\n"
         "        ds lv_desc2 - lv_desc - LV_SIZE  ; (lv_copy: a descriptor every LV_SIZE bytes)\n"
         "        ds lv_desc + LV_SIZE - lv_desc2\n"
+        "lv_desc3:                           ; level 3 (lv_desc + 2 x LV_SIZE)\n"
+        "        db BANK_L3, L3_TILES, L3_MAP, L3_ROWS, L3_ATR\n"
+        "        dw L3_ATRN\n"
+        "        db L3_TAB, L3_ATLAS, L3_DYN_Y  ; (its atlas level 2's until step C; its dynamic slot on page 2)\n"
+        "        dw L3_X, L3_Y, L3_YMAX, L3_ROWS * 16 - VIEW_LINES, L3_ROWS * 16\n"
+        "        dw L3_PALP, L3_VOFFP        ; (in L3_TAB at A000h: lv_copy)\n"
+        "        dw SPR_BOB_INDEX_L2         ; (level 2's BOB index, spark, play-field tables and ids until step C)\n"
+        "        db SPR_SPARK_L2 - 1\n"
+        "        db L3_DYNP\n"
+        "        dw -L3_TCN, fld_l2\n"
+        "        db FIELD_ID0_l2\n"
+        "        ds LV_SIZE - ($ - lv_desc3)\n"
+        "        ds lv_desc3 - lv_desc2 - LV_SIZE\n"
+        "        ds lv_desc2 + LV_SIZE - lv_desc3\n"
         "lv_pal1:\n"
         "        incbin \"level1_grade.pal\"   ; (the level's palette through the colour grade)\n"
         + db_rows("lv_voffy1", view_y))
@@ -1284,9 +1428,12 @@ def main(argv: list[str]) -> int:
            + stage_code["L2"] + tiles2 + b"".join(map2_banks) + atr_2 + bytes(BANK - len(atr_2)) + tab2
            + field_img2 + puzl_tv2 + stage_code["FRONT2"] + b"\xff" * (len(end_pad) * BANK) + end
            + b"\xff" * (-len(end) % BANK))
+    l3_by = {l3_at["L3"]: stage_code["L3"], l3_at["L3B"]: stage_code["L3B"]} | {l3_at[k]: v for k, v in l3_blocks.items()}
+    l3_by |= {b: b"\xff" * BANK for b in l3_pad}
+    rom += b"".join(l3_by[b] for b in sorted(l3_by))
     if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
            != stage_code[n] for n in STAGES):
-        print("error: a late code section (a bonus stage's, level 2's) is not at its bank", file=sys.stderr)
+        print("error: a late code section (a bonus stage's, level 2's or 3's) is not at its bank", file=sys.stderr)
         return 1
     if len(rom) != banks_used * BANK:
         print(f"error: the image holds {len(rom)} bytes, the layout {banks_used} banks", file=sys.stderr)
@@ -1329,8 +1476,11 @@ def main(argv: list[str]) -> int:
           f"{bank_l2_atlas}-{bank_puzl_tv2 - 1}; Brainstorm's visit-2 pictures in {bank_puzl_tv2}-"
           f"{bank_puzl_tv2 + len(puzl_tv2) // BANK - 1}"
           + f"; the front end's second bank in {stage_bank['FRONT2']}"
-          + (f"; the ending's sound in {bank_end}-{banks_used - 1}" + (f" (bank {', '.join(map(str, end_pad))}: padding)"
+          + (f"; the ending's sound in {bank_end}-{bank_l3 - 1}" + (f" (bank {', '.join(map(str, end_pad))}: padding)"
                                                                        if end_pad else "") if end else "")
+          + f"; level 3's code in {stage_bank['L3']}, its types in {stage_bank['L3B']}, tiles in {bank_l3_tiles}-"
+          f"{bank_l3_tiles + 7}, map in {bank_l3_map}-{bank_l3_map + len(map3_banks) - 1} ({rows3} rows), attributes in "
+          f"{bank_l3_atr}, tables in {bank_l3_tab}" + (f" (bank {', '.join(map(str, l3_pad))}: padding)" if l3_pad else "")
           + (f"; joystick script {script}" if script else ""))
     return 0
 

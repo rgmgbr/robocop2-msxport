@@ -1,6 +1,6 @@
 ; FRONT's additions for the game completed and the high scores (docs/ENDING.md), after FRONT's own
 ; code and tables, so that none of those moves: the calls that reach these replace calls of the same
-; size (front_over's front_cont, front_bonus' front_brief, cold_init's snd_detect). The routines
+; size (front_over's front_cont, cold_init's snd_detect). The routines
 ; themselves are in the front end's second bank (ending.asm, BANK_FRONT2 at A000h: front2_call).
 
 ; HL = a routine of the front end's second bank (BANK_FRONT2 at A000h around it, FRONT at 8000h; the
@@ -15,8 +15,8 @@ front2_call:
         jp bank_a000
 
 ; The game completed (level_load_3 $86DE, load-table entries 3 and 7): ending.asm front_ending (WELL
-; DONE, the CMP tune, the high-score entry), from a level's end (front_call; then the title: rc2.asm
-; ml_ttl) or from front_bonus' end (fb_brief2). The one way in: level 3's end calls it.
+; DONE, the CMP tune, the high-score entry), from level 3's end (front_call from rc2.asm ml_ev's
+; ml_end, then the title: ml_ttl) and END_TEST=1's start. The one way in.
 fr_ending:
         ld hl,front_ending
         jr front2_call
@@ -35,19 +35,6 @@ fo_hsc: ld hl,hs_entry
         bit 7,h
         jp nz,fc_neg
         jp fc_txt
-
-; front_bonus' $859E: the next level's briefing (front_brief); after level 2's stages and the
-; level-3 briefing ($8050 = 2), until level 3 is in the ROM, the game completed (fr_ending:
-; docs/ENDING.md; level 3's end will call it instead). Not in builds with a script (their drives type
-; no name; the title follows at once there) nor in PZ_TEST builds (the stages, then the title).
-fb_brief2:
-        call front_brief
-        if INPUT_SCRIPT + PZ_TEST = 0
-        ld a,(AG + 0x8050)
-        cp 2
-        jr z,fr_ending
-        endif
-        ret
 
 ; cold_init's first call after the machine's check: over 1 MiB the guard (rom_guard), the high
 ; scores' table (ending.asm hs_init: from the power-on until the power goes, as in the Amiga's code),

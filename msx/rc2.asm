@@ -158,21 +158,23 @@ ml_ev:  ld a,(g_event)
         jr z,ml_rst
         cp FE_OVER
         jr z,ml_ov
-        ld hl,front_stats           ; the level done ($81B8: $8050 + 1 already): its statistics
-        call front_call             ;  ($85D8; a turbo R: the Z80 again, front.asm), then the
-        ld hl,front_bonus           ;  bonus stages and the next level's briefing (load_level1
-        call front_call             ;  $8588-$85A4, load_level2 $8524-$8548: front.asm)
-        ld a,(AG + 0x8050)          ; (the word's low byte: the mirror keeps words little-endian)
-        dec a
-        jr nz,ml_ttl                ; (after level 2: level 3 is not ported; front_bonus showed the
-                                    ;  game completed after the level-3 briefing, frontx.asm
-                                    ;  fb_brief2; the title and a new game: docs/ENDING.md)
-; The next level (load_level1's tail $85B8-$85C4 and level_init $871A: AG $8050 its number, 1 for
-; level 2): the display and the VDP's interrupts off (as a new game), then its start (lv_go).
+        ld a,(AG + 0x8050)          ; the level done ($81B8: $8050 + 1 already; the word's low byte:
+        cp 3                        ;  the mirror keeps words little-endian): after level 3 the game
+        jr z,ml_end                 ;  completed (level_load_3 $86DE: no statistics, no stages)
+        ld hl,front_stats           ; after level 1 or 2: its statistics ($85D8; a turbo R: the Z80
+        call front_call             ;  again, front.asm), then the bonus stages and the next level's
+        ld hl,front_bonus           ;  briefing (load_level1 $8588-$85A4, load_level2 $8524-$8548:
+        call front_call             ;  front.asm)
+; The next level (load_level1's tail $85B8-$85C4, load_level2's $8556-$8568, and level_init $871A:
+; AG $8050 its number, 1 for level 2, 2 for level 3): the display and the VDP's interrupts off (as a
+; new game), then its start (lv_go).
 lv_next:
         call dsp_off
         ld a,(AG + 0x8050)
         jp lv_go
+; After level 3 (AG $8050 = 3: level_load_3 $86DE): the game completed (frontx.asm fr_ending: WELL
+; DONE, the CMP tune, the high-score entry; docs/ENDING.md), then the title and a new game.
+ml_end: ld hl,fr_ending
 ml_fe:  call front_call
 ml_ttl: call title
         jp new_game
@@ -219,10 +221,10 @@ pz_test:
         endif
 
         if LV_TEST
-; (Test build, tools/mkrom.py LV_TEST=2) Once after the power-on, instead of level 1's main loop:
-; level 2 as the product starts it after the range, with LV_CARRY's score, lives, credits and
-; rating (front.asm front_l2test: the carry, AG $8050 = 1, the screens between the range and the
-; level), then lv_next; later games as the product's (pz_first: one shot).
+; (Test build, tools/mkrom.py LV_TEST=2 or 3) Once after the power-on, instead of level 1's main
+; loop: level 2 (or 3) as the product starts it after the range, with LV_CARRY's score, lives,
+; credits and rating (front.asm front_l2test: the carry, AG $8050 = LV_TEST - 1, the screens between
+; the range and the level), then lv_next; later games as the product's (pz_first: one shot).
 lv_test:
         xor a
         ld (pz_first),a
@@ -368,6 +370,19 @@ field_call:
         pop af
         jp bank_a000
 fc_hl:  jp (hl)
+
+; HL = a routine of level 3's object types (BANK_L3B at A000h around it, then the game's logic banks
+; again, logic_map: BANK_L3 at A000h; docs/LEVEL3.md 3.2): what it returns in A and the flags (an
+; object handler's D0, objects.asm obj_call), BC, DE and HL. Called by the 6-byte stubs of level3.asm's
+; handler table.
+l3b_call:
+        ld a,BANK_L3B
+        call bank_a000
+        call fc_hl
+        push af
+        call logic_map
+        pop af
+        ret
 
 ; HL = a routine of the front end (BANK_FRONT at 8000h around it).
 front_call:
@@ -588,3 +603,20 @@ l2_end:
         include "ending.asm"
 front2_end:
         ds 0xC000 - front2_end, 0xFF
+
+; ----- the game logic of level 3 (BANK_L3 at A000h while it is played: lv_cur's lv_logic;
+; docs/LEVEL3.md 3.2) -----
+        org 0xA000
+        include "level3.asm"
+        include "at_l3.inc"
+        include "cells_l3.inc"      ; the camera-cell masks of its spawn list and hazards (tools/cellmasks.py)
+l3_end:
+        ds 0xC000 - l3_end, 0xFF
+
+; ----- level 3's object types (BANK_L3B at A000h around each handler: l3b_call, from level3.asm's
+; stubs; docs/LEVEL3.md 3.2) -----
+        org 0xA000
+        include "level3obj.asm"
+        include "at_l3b.inc"        ; their tables (tools/amitab.py, bank l3b)
+l3b_end:
+        ds 0xC000 - l3b_end, 0xFF

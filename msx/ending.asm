@@ -16,8 +16,8 @@ hs_init:
         ldir
         ret
 
-; level_load_3 $86DE (load-table entries 3 and 7: after level 3; until level 3 is in the ROM, after
-; level 2's stages and the level-3 briefing: frontx.asm fr_ending, the one way in): the text screen
+; level_load_3 $86DE (load-table entries 3 and 7: after level 3, rc2.asm ml_ev; frontx.asm
+; fr_ending, the one way in): the text screen
 ; $112C5 (WELL DONE, its particle title typed as the briefings', 341 calls, fire from tick 50:
 ; tools/msxtext.py txt_end), then $11C54's tune, CMP tune 1 as it plays it (tune.asm tn_cmp: its
 ; 4,916 ticks, the 1801h passes of its loop), or fire pressed once released (the PIC9 rule; the

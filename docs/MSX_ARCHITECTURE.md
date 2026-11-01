@@ -1079,12 +1079,12 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   copies of `fe_text`'s set-up and loop (`et_open`, `et_go`, `et_keep`) and of `fs_char`'s cell
   drawing (`et_gl`, `et_cell`), and `ending.inc` (`tools/msxtext.py`). Every routine it calls puts
   the A000h window back (`act_a000`).
-- **FRONT** gets only `frontx.asm`, after its code and tables, and three call operands of the same size
-  (`front_over` → `fo_hsc`, `front_bonus` → `fb_brief2`, `cold_init` → `ci_hook`): nothing in FRONT
-  moves, every other bank keeps its bytes. `fr_ending` is the ending's one way in (`front_call`; level
-  3's end calls it, then `ml_ttl`); `fb_brief2` calls it after the level-3 briefing until level 3 is in
-  the ROM (not in script or `PZ_TEST` builds); `ci_hook` runs `rom_guard` (moved from `cold.asm`) and
-  `hs_init` before `snd_detect`.
+- **FRONT** gets only `frontx.asm`, after its code and tables, and two call operands of the same size
+  (`front_over` → `fo_hsc`, `cold_init` → `ci_hook`): nothing in FRONT moves. `fr_ending` is the
+  ending's one way in (`front_call`): level 3's end calls it (`rc2.asm` `ml_ev`'s `ml_end`, AG `$8050` =
+  3), then `ml_ttl` (the interim `fb_brief2`, which called it after the level-3 briefing, went with
+  level 3's step A); `ci_hook` runs `rom_guard` (moved from `cold.asm`) and `hs_init` before
+  `snd_detect`.
 - **The sound**: `end.bin` (banks 128-131: the image is 2 MiB) through `tune.asm` `tn_cmp` (after the
   player, its descriptor `tune_cm.inc` after it); the name entry starts it with `tn_left` 1 (no tick of
   the tune) for HI1's effects 3 and 4 (`snd_ffx`, puzl.asm `snd_bfx`'s copy).

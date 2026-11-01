@@ -6,7 +6,8 @@
 # 2's step 7) are the LV_TEST=2 sets; the cheat* five (its step 21) the CHEAT=1 sets of the
 # candidates (docs/LEVEL2.md section 6); the last two (vat*, its step 16) the vats' variant
 # (VAT_TICK=1, with VAT_ANIM=1 since the rest of the game's step 1: the product's vats are static
-# and the variant needs the display as built): 55 in all.
+# and the variant needs the display as built): 55 in all. The l3_* six (level 3's step A,
+# docs/LEVEL3.md) are the LV_TEST=3 sets: 61 in all.
 if [ $# -lt 1 ]; then sed -n 2,6p "$0" >&2; exit 2; fi
 H="$(cd "$(dirname "$0")" && pwd -P)"
 OUT="$1"
@@ -67,3 +68,9 @@ v cheat_l2p CHEAT=1 LV_CARRY=10050:2:0:3 LV_TEST=2
 v cheat_2m CHEAT=1 ROM_2M=1 TAG=7
 v vat VAT_ANIM=1 VAT_TICK=1
 v vat_l2 CHEAT=1 LV_TEST=2 TAG=7 VAT_ANIM=1 VAT_TICK=1
+v l3_test LV_TEST=3
+v l3_trace DAMAGE_X=1 ENEMY_CAP=0 EXTJOY=1 LV_TEST=3
+v l3_lock EXTJOY=1 LOCKSTEP=24 LV_TEST=3
+v l3_cheat CHEAT=1 LV_TEST=3 TAG=7
+v l3_carry LV_CARRY=0:0:1:3 LV_TEST=3
+v l3_diag DIAG=1 LV_TEST=3

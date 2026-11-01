@@ -856,8 +856,8 @@ class ShellTests(unittest.TestCase):
         r = run(["sh", BST / "variants.sh", self.tmp / "var"], env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = r.stdout.splitlines()
-        self.assertEqual(len(lines), 55)          # (41 sets, level 2's 7 LV_TEST=2 ones, its 5 CHEAT=1 ones and
-                                                  #  its 2 VAT_ANIM=1 VAT_TICK=1 ones)
+        self.assertEqual(len(lines), 61)          # (41 sets, level 2's 7 LV_TEST=2 ones, its 5 CHEAT=1 ones,
+                                                  #  its 2 VAT_ANIM=1 VAT_TICK=1 ones and level 3's 6 LV_TEST=3 ones)
         self.assertTrue(all(line.endswith(" OK") for line in lines), r.stdout)
 
 

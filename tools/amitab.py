@@ -24,8 +24,9 @@ import struct
 import sys
 from pathlib import Path
 
-BANKS = ("fixed", "c1", "c2", "c3", "l1", "l2", "l3")   # fixed code, logic modules, level banks
-                                                 # (msx/rc2.asm includes every at_<bank>.inc)
+BANKS = ("fixed", "c1", "c2", "c3", "l1", "l2", "l3", "l3b")   # fixed code, logic modules, level banks
+                                                 # (msx/rc2.asm includes every at_<bank>.inc; l3b:
+                                                 # level 3's object types, BANK_L3B)
 
 
 def parse(spec: Path) -> list[dict]:

@@ -795,6 +795,11 @@ ac_ridest:  equ 0xDD18              ; 2: RoboCop's state on the vehicle ($8C98: 
 barrel_gap: equ 0xDD1A              ; 2: level 2's type 6, the barrels: the frames between two
                                     ;   ($D1DC; it persists across lives, levels and games as the
                                     ;   Amiga's word in the code: AC_VARS is cleared at power-on only)
+fade_st:    equ 0xDD1C              ; 2: the state the palette's fade-in forces (player.asm pl_fade:
+                                    ;   $F89D, level_init's immediate: 10, 11 in level 3; cold.asm
+                                    ;   ng_init sets 10 at each new game, level3.asm l3_init 11 at
+                                    ;   each level-3 start, a death's and a continue's too; DD1Eh-DD1Fh
+                                    ;   free)
 ; (the port) the game logic's shortcuts: their caches, worked out again every life (lvshared.asm
 ; sw_init, mapobj.asm ao_sort) in the rest of this block
 SW_MAX:     equ 40                  ; the spawn list's entries at most (level 2 has 40; tools/cellmasks.py)
@@ -819,14 +824,30 @@ sp_rest:    equ 0xDD60              ; SP_REST_N: per special object n (counted f
 SP_REST_N:  equ 12                  ;   (room for 11 records; level 1 has 7, level 2 9)
 ao_calo:    equ 0xDD70              ; 2: activate_objects' candidates stand while camera x is in
 ao_cahi:    equ 0xDD72              ; 2:   (ao_calo, ao_cahi] (mapobj.asm ao_cands)
+; level 3's state in the original's code area (docs/LEVEL3.md 3.4; the bench's CODE_BLOCKS_L3): the
+; patched immediates and the words its types keep there, which persist across lives, levels and games
+; as the Amiga's (AC_VARS is cleared at power-on only); level3obj.asm's types keep them here (the
+; plan's step B). Zero is the image's value of the words; the two patched bytes hold the image's value
+; XOR'ed or as the port chooses (step B: analysis/amiga_ram_l3.tsv compares them once it is chosen)
+obj22_x:    equ 0xDD74              ; 2: type 22, Cain: its x ($D798; written at $D4C8 and $D5DC)
+obj37_last: equ 0xDD76              ; 2: type 37: the game frame of its last run ($E46E, written at $E488)
+l3_mail:    equ 0xDD78              ; 6: the launch mailbox: direction ($E67A), x ($E67C), y ($E67E);
+                                    ;   type 22 writes it every frame ($D72C), the waiting spawn
+                                    ;   entries of types 38, 39 and 52 take it
+obj22_step: equ 0xDD7E              ; type 22: its animation mask (the moveq immediate at $D583, patched
+                                    ;   at $D50C; the image holds 3, written before it is read)
+obj40_flag: equ 0xDD7F              ; type 40: its look step's addq (its register field, $E9F5, patched at
+                                    ;   $EA00 by eori.b #4: the image's 42h, addq.w #4,D2; 46h adds to D6)
 AC_VARS_END: equ 0xDD80
 spawn_ram:  equ 0xDD80              ; DD80h-DFFFh: the level's spawn list ($B0E; 14-byte records,
                                     ; words little-endian), copied from the level bank at its start
-                                    ; (level 1: 28 entries, to DF09h; level 2: 40, to DFB1h)
+                                    ; (level 1: 28 entries, to DF09h; level 2: 40, to DFB1h; level 3:
+                                    ; 39, to DFA3h)
 vat_phase:  equ 0xDFB2              ; 46: level 2's vats: the phases ($92DA-$9307, words as the
                                     ;   mirror keeps them; set at a fresh level-2 start: docs/LEVEL2.md
                                     ;   3.4, default 22); spawn_ram's tail, inside the trace's DD00h block
-objl_ram:   equ 0xEE00              ; EE00h-F0FFh: the level's object list ($9C18; 12-byte records)
+objl_ram:   equ 0xEE00              ; EE00h-F0FFh: the level's object list ($9C18; 12-byte records;
+                                    ;   level 3's 15 to EEB5h)
 ; Level 2's vats (docs/LEVEL2.md 3.5), in objl_ram's tail after level 2's list (EE00h-F011h; level
 ; 1's reaches F0C5h, the stages use objl_ram only between levels; a fresh level-2 start sets them)
 vat_shown:  equ 0xF012              ; 103: per vat column the look its logic wrote last (the row
@@ -915,7 +936,8 @@ rg_rects:   equ 0xEEB8              ; 72: the dirty rectangles (x0, y0, x1, y1 i
 rg_el:      equ 0xEF00              ; 72: the target's elements
 rg_elp0:    equ 0xEF48              ; 72: page 0's
 rg_elp1:    equ 0xEF90              ; 72: page 1's (to EFD7h)
-SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32)
+SP_RAM:     equ 0xE900              ; E900h-E9FFh: the level's special objects' records ($8B32;
+                                    ;   level 3's three lifts to E92Fh)
 dg_msxv:    equ 0xE900              ; DIAG test builds (tools/mkrom.py, music.asm dg_main; before any level):
 dg_a8b:     equ 0xE901              ;   the BIOS's MSX version and A8h at the start (rc2.asm init),
 dg_ptr:     equ 0xE902              ;   2: the next byte of dg_log,
@@ -967,7 +989,10 @@ lv_tcn:     equ lv_cur + 28             ; 2: the tile cache's slots, negated (ti
                                         ;   tiles_init: 256 in level 1, 224 in level 2)
 lv_fld:     equ lv_cur + 30             ; 2: its play-field frames' tables in BANK_FIELD (field.asm fld_l1,
                                         ;   fld_l2: fb_init copies them to fb_flate ... fb_flook)
-LV_SIZE:    equ 32                      ; (34 at most: lv_vram follows)
+lv_fid0:    equ lv_cur + 32             ; its first play-field frame id in BOBHASH (FIELD_ID0: D0h in levels
+                                        ;   1 and 2, level 3's own once the pool holds it: docs/LEVEL3.md
+                                        ;   3.5, default 7; bob.asm reads it from the plan's step C on)
+LV_SIZE:    equ 33                      ; (34 at most: lv_vram follows; F1C1h free)
 lv_vram:    equ 0xF1C2                  ; the level whose tiles 0-255 (page 2) and play-field atlas
                                         ;   (page 3) VRAM holds: cold.asm lv_select uploads them
                                         ;   only for another level (FFh: none, an upload forced)
@@ -1030,14 +1055,18 @@ sp_list:    equ 0xF1D0              ; 16: sat_pack: the objects whose runs it pl
 ht_box:     equ 0xF100              ; 10 x 10: hit_test's boxes (F100h-F163h, within a 256-byte page)
 ph_w:       equ 0xF164              ; 2: pl_hits: an enemy's width,
 ph_h:       equ 0xF166              ; 2:   height
+fc_tab:     equ 0xECF0              ; 32: level 3's dynamic frame cache (docs/LEVEL3.md 3.5: page 2
+                                    ;   lines 160-231): its places' frames, white flags and ages, as
+                                    ;   field.asm lays them out (the plan's step C; reserved by step A)
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
 ; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
-; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), ECF0h-ED0Fh, EDF0h-EDFFh, E0FEh-E0FFh,
-; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; F1A0h-F1C2h:
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDF0h-EDFFh, E0FEh-E0FFh,
+; F1CFh, F1E2h, F271h-F27Fh (below the stack), F170h-F190h: free (2026-10-24 audit; ECF0h-ED0Fh:
+; fc_tab since level 3's step A; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
 ; vat_phase, F012h-F0E6h the vats' display since its step 5, F0E7h-F0FBh since its step 14);
 ; EA60h-EC41h: bob_list,

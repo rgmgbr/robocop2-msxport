@@ -421,7 +421,7 @@ fs_clear:
 ; load_level1 $8582 after the statistics: Brainstorm ($8382, D0 = 2 after level 1; PIC3 dropped,
 ; decision 5 of the port): its intro, the stage (msx/puzl.asm, BANK_PUZL at A000h), a continue
 ; when it is solved ($805E), its result; then the shooting range ($8590: front_range) and the next
-; level's briefing (front_brief; rc2.asm ml_ev then starts level 2 after level 1, or the title after
+; level's briefing (front_brief; rc2.asm ml_ev then starts level 2 after level 1, level 3 after
 ; level 2). From the state front_stats leaves: the play area black, the HUD below it; a turbo R
 ; on the Z80 with the display and the interrupts off (cpu_title), the HUD split measured for the
 ; R800 only (fb_prep).
@@ -452,8 +452,8 @@ fb_res: add a,a
         ld l,a
         call fe_text                ; ($8400: the result through $10762)
         call front_range            ; ($8590: moveq #1,D0 / bsr $8420; visit 2 runs the same code)
-        call fb_brief2              ; ($859E: the next level's briefing; load_level2's $8548; after
-                                    ;  level 2's stages the game completed: frontx.asm)
+        call front_brief            ; ($859E: the next level's briefing; load_level2's $8548: level 3
+                                    ;  follows the level-3 briefing, rc2.asm ml_ev)
         jp cpu_title                ; (a turbo R: the hardware pause on again, the display off)
 fb_texts:
         dw txt_bs_ok, txt_bs_fail, txt_bs_time  ; ($840A)
@@ -571,12 +571,14 @@ front_rgtest:
         endif
 
         if LV_TEST
-; (Test build, tools/mkrom.py LV_TEST=2) rc2.asm lv_test's part: LV_CARRY's score ($8046, a BCD
-; long: AG's two words), lives ($8034), credits ($805E) and rating ($8060: ac_diff) over what level
-; 1's set-up left (ng_init), and AG $8050 = 1, as level 1, Brainstorm and the range would leave
-; them; then the screens the product shows between the range and level 2, from the state level
-; 1's set-up leaves (a turbo R: back on the Z80, as after the stages): the next level's briefing
-; (front_brief), then cpu_title as at front_bonus' end. rc2.asm lv_next follows.
+; (Test build, tools/mkrom.py LV_TEST=2 or 3) rc2.asm lv_test's part: LV_CARRY's score ($8046, a
+; BCD long: AG's two words), lives ($8034), credits ($805E) and rating ($8060: ac_diff) over what
+; level 1's set-up left (ng_init), and AG $8050 = LV_TEST - 1 (1: level 2, 2: level 3), as the levels
+; before, Brainstorm and the range would leave them; then the screens the product shows between the
+; range and that level, from the state level 1's set-up leaves (a turbo R: back on the Z80, as after
+; the stages): its briefing (front_brief), then cpu_title as at front_bonus' end. rc2.asm lv_next
+; follows. (front_l3test: the same routine, the name docs/LEVEL3.md 3.1 gives it)
+front_l3test:
 front_l2test:
         ld hl,LV_SCORE_H
         ld (AG + 0x8046),hl
@@ -588,8 +590,8 @@ front_l2test:
         ld (AG + 0x805E),hl
         ld hl,diff_tab + 8 * LV_RATING
         ld (ac_diff),hl             ; (front_range's $84FC: $C716 + 8 x the rating)
-        ld hl,1
-        ld (AG + 0x8050),hl         ; (level 2: $81B8's + 1 at level 1's end)
+        ld hl,LV_TEST - 1
+        ld (AG + 0x8050),hl         ; (level 2: $81B8's + 1 at level 1's end; level 3: at level 2's)
         call cpu_title              ; (cold.asm: a turbo R, the Z80 again)
         call fb_prep
         call front_brief

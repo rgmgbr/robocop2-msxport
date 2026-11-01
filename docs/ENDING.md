@@ -64,8 +64,9 @@ HI1's effects 3 (6 ticks) and 4 (14 ticks) sound on channel 3 (the VBL ticks HI1
 **Flow.**
 - The ending: `msx/ending.asm` `front_ending`, reached only through `frontx.asm` `fr_ending`
   (`ld hl,fr_ending` / `call front_call`, then the title: `rc2.asm` `ml_ttl`), **the one way in that
-  level 3's end calls**. Until level 3 is in the ROM, `front_bonus` calls it after the level-3
-  briefing (`frontx.asm` `fb_brief2`: AG `$8050` = 2); level 3's agents take that call out.
+  level 3's end calls** (`rc2.asm` `ml_ev`'s `ml_end`, AG `$8050` = 3, since level 3's step A; the
+  interim call after the level-3 briefing, `frontx.asm` `fb_brief2`, is gone: `front_bonus` calls
+  `front_brief` again and level 3 follows the briefing).
 - The game over: `front_over` (PIC9, 30 s or fire), then `frontx.asm` `fo_hsc`: `hs_entry`, then
   `front_cont` (after an entry, its display set-up left out: the display is on and the HUD stays).
 - Builds with a script (`EXTJOY`, `JOY`) skip the ending and the entry as they skip the title (their
@@ -105,8 +106,9 @@ starts the same descriptor with its tune cut to no tick (`tn_left` 1).
   `msx/ending.asm` and `ending.inc`, 1,151 B (7,041 free). `end.bin` in banks 128-131: **the image is
   2 MiB** (132 of 256 banks) with the boot guard (`rom_guard`, now in `frontx.asm`).
 - FRONT: `msx/frontx.asm` after its code and tables (`front2_call`, `fr_ending`, `fo_hsc`,
-  `fb_brief2`, `ci_hook`, `rom_guard`); the three calls that reach them replace calls of the same
-  size (`front_over`, `front_bonus`, `cold_init`), so nothing in FRONT moves: 1,173 B free.
+  `ci_hook`, `rom_guard`); the calls that reach them replace calls of the same size (`front_over`,
+  `cold_init`; `front_bonus`' until level 3's step A), so nothing in FRONT moves: 1,173 B free (as
+  built by the ending's step).
 - MUSIC: `tn_cmp` after `tune.asm`'s code, its descriptor `tune_cm.inc` after it (Brainstorm's and the
   range's keep their bytes): 1,251 B free. The fixed area: unchanged, 181 B free.
 - Every other bank keeps its bytes (`tools/bstest/romdiff.py --blocks`: 37 blocks identical).

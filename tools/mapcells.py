@@ -22,6 +22,13 @@ data, the way the ported writers compute them, and fails when they do not fit:
         one): column (x >> 4) - 7, row the low byte of y >> 4
     the blinking mines (map objects of activator 0Ch, act_0c $9EE8, level 2): their look's cells,
         with the second word act_0c writes into the look's blinking cell ($A4A6: E680h or 9700h)
+    level 3's electric beams (level_tick_2 $9436, the hazard records): two cells wide, the top row
+        (lt2_top's longs) and rows - 1 + 1 below (lt2_left, lt2_right; off: 1900h/1880h on top,
+        1800h/1780h below), from t23_cell's cell as level 1's
+    level 3's wall turrets (types 40, 41 and 42, the spawn list's entries of those types: $E98C,
+        $EB0A, $E972): a flashing panel of 2 x 3 cells at map_cell(x & -16 - A0h, y) (type 41: - 70h;
+        $EAA6, tur_panel's 3 looks) and the turret, 2 x 3 cells one row below and 10 (41: 7) columns
+        right of the panel ($EA50, tur40_look's 5 looks; $EBB8, tur41_look's 4)
 
 The map objects' cell is map_cell's (msx/logic.asm, $EF8E: column (x >> 4) - 8 as a byte, row
 the low byte of y >> 4, 0 when y is negative or that byte is 51 or more: $EF8E's own limit in
@@ -44,6 +51,7 @@ they stay out of the pools and get their own checks instead:
 
 usage: mapcells.py build/ram/level1_full.bin analysis/amiga_tables.tsv build/msx/level1.atrp MAP_COLS MAP_ROWS
        mapcells.py build/ram/level2_full.bin analysis/amiga_tables.tsv build/msx/level2.atrp 160 50 --level 2
+       mapcells.py build/ram/level3_full.bin analysis/amiga_tables.tsv build/msx/level3.atrp 160 50 --level 3
 """
 from __future__ import annotations
 
@@ -65,7 +73,12 @@ BARRIER_WORDS = (0x0D00, 0x7980, 0xCD80, 0xCE00, 0xCE80)   # msx/mapobj.asm act_
 BEAM_OFF_WORDS = (0xE800, 0x0D00)                          # msx/level1.asm lt0_off
 MINE_WORDS = (0xE680, 0x9700)       # act_0c $9EE8: the look word $A4A6 it writes (move.w #imm at $9EE8, $9EF8)
 EF8E_ROWS = 51                      # $EF8E's row limit ($EFA4 cmpi.w #$66): a constant of every level
-HAZARDS = {"l1": "beams", "l2": "vats"}   # the hazard ticks: $933A (level 1), $91BC (level 2)
+HAZARDS = {"l1": "beams", "l2": "vats", "l3": "beams2"}   # the hazard ticks: $933A (level 1), $91BC (level 2),
+                                    # $9436 (level 3: two cells wide)
+BEAM2_OFF_WORDS = (0x1900, 0x1880, 0x1800, 0x1780)        # level_tick_2 $9510: off, the top's two, then below
+TURRETS = {40: (0xA0, 10, "tur40_look"), 41: (0x70, 7, "tur41_look"), 42: (0xA0, 10, "tur40_look")}
+                                    # level 3's turrets: the panel's x offset, the turret's column offset
+                                    # from the panel, its looks (6 words each)
 VAT_WORDS = ("vat_top", "vat_odd", "vat_even")    # level_tick_1's T0, T1, T2: 16 words each, by d
 MAP_ADDR = 0x38000                  # draw_background $BCCA: the map in every level (DATAL at $28000)
 
@@ -164,7 +177,7 @@ def writers(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[d
         a += OBJ_REC
         k += 1
     hz = f"hz_{level}"
-    if hz in tabs and HAZARDS.get(level) not in ("beams", "vats"):
+    if hz in tabs and HAZARDS.get(level) not in ("beams", "vats", "beams2"):
         raise SystemExit(f"{hz}: the level's hazard writer is not modelled here")
     if hz in tabs and HAZARDS[level] == "beams":
         top, body = words(img, tab("lt0_top"), 4), words(img, tab("lt0_body"), 32)
@@ -177,6 +190,35 @@ def writers(img: bytes, tabs: dict, level: str, cols: int, rows: int) -> tuple[d
             cells[f"beam {k}"] = {lin(row + r, col, cols) for r in range(below + 1)}
             words_of[f"beam {k}"] = top + body + list(BEAM_OFF_WORDS)
             a += HZ_REC
+            k += 1
+    if hz in tabs and HAZARDS[level] == "beams2":
+        top = words(img, tab("lt2_top"), 8)
+        body = words(img, tab("lt2_left"), 16) + words(img, tab("lt2_right"), 16)
+        a = tab(hz)
+        k = 0
+        while struct.unpack_from(">h", img, a)[0] >= 0:
+            x, y, _wx, rows1 = words(img, a, 4)
+            row, col = map_cell(x, y, EF8E_ROWS, whole=True)
+            below = rows1 + 1                                   # (dbf: the word + 1 rows)
+            cells[f"beam {k}"] = {lin(row + r, col + c, cols) for r in range(below + 1) for c in (0, 1)}
+            words_of[f"beam {k}"] = top + body + list(BEAM2_OFF_WORDS)
+            a += HZ_REC
+            k += 1
+    if level == "l3":
+        panel = words(img, tab("tur_panel"), 18)
+        a = tab(f"spawn_{level}")
+        k = 0
+        while struct.unpack_from(">h", img, a)[0] >= 0:
+            x, y = struct.unpack_from(">hh", img, a)
+            t = img[a + 4]
+            if t in TURRETS:
+                dx, dc, looks = TURRETS[t]
+                row, col = map_cell((x & 0xFFF0) - dx, y, EF8E_ROWS)
+                cs = [(row + r, col + c) for r in range(3) for c in range(2)]
+                cs += [(row + 1 + r, col + dc + c) for r in range(3) for c in range(2)]
+                cells[f"turret {k} (type {t})"] = {lin(r, c, cols) for r, c in cs}
+                words_of[f"turret {k} (type {t})"] = panel + words(img, tab(looks), tabs[looks]["count"])
+            a += 14
             k += 1
     if level == "l1":
         t32 = words(img, tab("t32_map"), 108)

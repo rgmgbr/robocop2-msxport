@@ -388,7 +388,8 @@ ks_set: ld (g_key),a
 ; ----- palette fades ($F878) -----
 
 ; While fading in ($16CE set) the level ($16CD) goes up to 1Fh, one step per frame, and the
-; state is forced to FADE_STATE (also asked for: $1696); fading out it goes down to 0. The
+; state is forced to fade_st's ($F89D: 10, level 3's 11; also asked for: $1696); fading out it
+; goes down to 0. The
 ; palette itself (each component at most ((level + 1) / 2) & 1Eh of 15, the flash of $F826):
 ; with the palette effects.
 pl_fade:
@@ -415,7 +416,7 @@ plf_go:
         ret z
         inc (hl)
         ld a,(hl)
-        ld hl,FADE_STATE
+        ld hl,(fade_st)
         ld (p_pend),hl
         ld (p_state),hl
         jp pal_fade

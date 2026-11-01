@@ -137,3 +137,39 @@ t12_my_l2       cfaa    3     w             l2      copy of t12_my
 t30_dy_l2       ca2e    8     w             l2      copy of t30_dy
 t45_gfx_l2      ede2    16    w             l2      copy of t45_gfx
 t45_dy_l2       ee02    16    w             l2      copy of t45_dy
+# Level 3 (bank l3: BANK_L3, msx/level3.asm, docs/LEVEL3.md step A; bank l3b: BANK_L3B,
+# msx/level3obj.asm, the level's object types: step B adds their tables there). The main code is the
+# same in every level's image: build/ram/level1_full.bin gives these bytes too (cells_l3.inc: 39
+# entries, 7 beams)
+l3_hdr          86b4    20    w             l3      level 3 header (level_init $871A: $8664 + 2 x 40): lists, start (1184, 784), relocation (224, 544), marker table, lowest camera 624, timer 7:30, spawn delay 3Ch, marker mask 3, palette $10036
+spawn_l3        99e2    548   x             l3      level 3 spawn list (39 x 14 bytes + the end word at $9C04): x, y, type.b, ?, ?, flags.b (bit 6 once, bit 7 at the screen edge), reload, counter, spawned.b (bit 7), ?
+objl_l3         aa3a    182   x             l3      level 3 object list (15 x 12 bytes + the end word): type, look, hits (high byte bit 7: animated), value, x, y
+sp_l3           911e    48    x             l3      level 3 special objects' records ($911E-$914D: 3 lifts, handler 0, special_lift $8DE6, drawn in two parts by $8ED2): handler offset, x, y (long), path index, path (-1 ends)
+spl_l3          9008    4     l             l3      level 3 special objects' list ($8B54 = header +8): 3 record addresses, -1 ends
+mk_tab3         c624    38    w             l3      level 3 map-marker tables (header +24: $C598, $C692): 10 x [band mask, type, y offset] and the end word, then markers_off $C662 (2 x (7, 0, 0) and the end word: type 43 points both pointers at it)
+hz_l3           95ec    29    w             l3      level 3 hazards (header +4, $915E): the 7 electric beams, x, y, window x, rows - 1 per record (level_tick_2 $9436: two cells wide, rows + 1 cells a column); -1 ends
+lt2_top         94c0    4     l             l3      level_tick_2 $9436: a beam's top row, its two cells (a long: left, right) by (random & 6) x 2
+lt2_left        94d0    16    w             l3      level_tick_2: the left cell of the rows below by ((random + x + 2n) & 1Eh)
+lt2_right       94f0    16    w             l3      level_tick_2: the right cell of the rows below, the same index
+# copies of level 1's tables for the shared handlers of types 3, 4, 12, 30 and 45 in BANK_L3 (msx/lvshared.asm's
+# copy for level 3, gen/lvshared_l3.asm, has every label suffixed _l3)
+t3_gfx_l3       cbaa    20    w             l3      copy of t3_gfx for BANK_L3
+t3_size_l3      cbd2    20    w             l3      copy of t3_size
+t4_gx_l3        d046    8     w             l3      copy of t4_gx
+t4_gy_l3        d056    8     w             l3      copy of t4_gy
+t4_tgfx_l3      d066    8     w             l3      copy of t4_tgfx
+t4_tx_l3        d076    8     w             l3      copy of t4_tx
+t4_ty_l3        d086    8     w             l3      copy of t4_ty
+t4_tsize_l3     d096    8     w             l3      copy of t4_tsize
+t12_gfx_l3      cf98    3     w             l3      copy of t12_gfx
+t12_dx_l3       cf9e    3     w             l3      copy of t12_dx
+t12_mx_l3       cfa4    3     w             l3      copy of t12_mx
+t12_my_l3       cfaa    3     w             l3      copy of t12_my
+t30_dy_l3       ca2e    8     w             l3      copy of t30_dy
+t45_gfx_l3      ede2    16    w             l3      copy of t45_gfx
+t45_dy_l3       ee02    16    w             l3      copy of t45_dy
+# level 3's object types' tables (bank l3b: BANK_L3B, msx/level3obj.asm); tools/mapcells.py reads the
+# turrets' looks for the map patches' check
+tur_panel       eae2    18    w             l3b     types 40, 41, 42: the flashing panel's 2 x 3 map words at $EF8E(x & -16 - A0h (41: - 70h), y) ($EAA6: 3 looks of 6 words, by $21(A3) and the game frame's bits 2 and 4)
+tur40_look      ea6a    30    w             l3b     types 40, 42: the turret's 2 x 3 map words one row below and 10 columns right of the panel ($EA50: 5 looks of 6 words by ((A3) & 0Ch) x 3, the last, 30h, destroyed)
+tur41_look      ebd2    24    w             l3b     type 41: the turret's 2 x 3 map words one row below and 7 columns right of the panel ($EBB8: 4 looks of 6 words, 24h destroyed)
