@@ -11,10 +11,12 @@ test_compositions_fit_their_bank_and_the_limits, test_records_bits_ids_and_sat_o
 
 **Done.** Branch `g-s01` (worktree `scratchpad/g/wt01`, from level2 2b44ca5), commits **07b2436** (the
 three changes and level 1's piece cache), **51abc24** (the V9958 ring's queues) and this section's.
-Records in `S1` = `scratchpad/g/s01` (`W` = the worktree): `G` (the gate: builds, records, verdicts),
-`X` (the extra builds), `B` (level 2's chain), `V55` (the option sets), `run1` (the first run's
-summaries, before 51abc24), `tools/` (scratch: `mkb.sh`, `chainB2.tcl`, `fpc.tcl`, `slot2.tcl`,
-`fdall.py`, `pngcat.py`, `want.py`, `whichtile.py`). One openMSX: a private MSX-AI MCP session
+Records in `S1` = `scratchpad/g/s01` (`W` = the worktree): `G` (the gate: builds, verdicts), `X` (the
+extra builds), `B` (level 2's chain), `V55` (the option sets), `run1` (the first run's summaries, before
+51abc24), `tools/` (scratch: `mkb.sh`, `chainB2.tcl`, `fpc.tcl`, `slot2.tcl`, `fdall.py`, `pngcat.py`,
+`want.py`, `whichtile.py`); the big records deleted after their verdicts, the summaries (`keep`: the
+field checks, vatcheck, the speeds, the stills, the start check, the piece counts), the logs, `run1`,
+the scratch tools and the pictures looked at archived in `build/archive/rest_step1_records_2026-11-01.tar.gz`. One openMSX: a private MSX-AI MCP session
 (`tools/bstest/mcpd.py S1/mcp`, `mx.sh`), shut down.
 
 ### What was built
