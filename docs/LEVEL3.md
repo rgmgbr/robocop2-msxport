@@ -382,8 +382,13 @@ is the original's design (Q1, Q4, Q7).
     RoboCop at screen x ≤ `AX_MAX` 160, and Cain stands 170-200 px behind him.
   - The 8-sprites-a-line budget leaves out 22-38 % of his burst bullets' pictures and 3-12 % of his
     projectiles' (RoboCop 5 + Cain's 32 × 40 part 3).
-- **The user's decision** (2026-11-01, "vamos manter a lógica"): the logic stays the original's
-  (default 17). The display options (camera mode 2 showing more of Cain) wait for the user.
+- **The user's decisions** (2026-11-01):
+  - The logic stays the original's ("vamos manter a lógica", default 17).
+  - Camera mode 2's view stays as it is ("a que for mais performaticamente economica", default
+    18). The field engine composes only what its page keeps: `fn_rect` skips an item that
+    `fb_clip` leaves empty, a V9938 page keeps 256 px and the V9958's ring 19 columns. A white
+    copy is fetched (`fc_get`) only for a BOB it composes. So a view showing more of Cain could
+    only add VDP work, in the game's slowest scene.
 - Records, drives and tools: `build/archive/cain_2026-11-01` (local).
 
 ## 3. The MSX design
@@ -882,6 +887,11 @@ step 3 owns `front*.asm`'s ending and high scores.
     2026-11-01, "vamos manter a lógica", after the play-test report of 2.11): the projectiles from
     their fixed spawn entries, the bursts from the type-48 triggers, the idle floor ends and Q1.
     Alternatives offered: attacks everywhere, or killable high up. **In** (no code change).
+18. **Camera mode 2's view as it is** (the user's decision of 2026-11-01: the one that costs least,
+    "a que for mais performaticamente economica"): RoboCop kept at screen x ≤ `AX_MAX` 160, so
+    the MSX shows about half of Cain on floor 30 and the ground floor (2.11). Alternative: the view
+    about 35 px further left in level 3's mode 2 (about 85 % of Cain, as on the Amiga), at the
+    cost of more composition and more white copies. **In** (no code change).
 
 ## 7. Risks
 
