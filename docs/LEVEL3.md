@@ -281,7 +281,8 @@ hit points at GOOD; size = the REA function body; the coverage saw all but 46):
 - **The port's rule** (`hits.asm` `phb_en`, after step 1): bullet types 1 and 2 × 1, the rest ×
   `DAMAGE_X`. Level 3 adds **bullet 11h, a rocket with the missiles' 40h** (default 11: × 1), and
   the 18h touches of 38, 39, 52 (default 12: × 1, as level 2's drone `t49_hit`). The beams: a
-  hazard, × 1.
+  hazard, × 1. **Cain's damage × 1** (default 16, 2026-11-01): his bullets 9 and 0Ah, touching him
+  and touching his bombs and missiles (38, 39, 52) take the original's 1.
 
 ### 2.7 The frames [V: bench]
 
@@ -821,6 +822,11 @@ step 3 owns `front*.asm`'s ending and high scores.
     (3.10).
 15. **The ending's hook**: until step 3's ending is in `level2`, `$8050` = 3 goes to the title.
     **Superseded**: the ending was in first; `ml_end` calls `fr_ending`, then the title (3.9).
+16. **Cain's damage × 1** (the user's order of 2026-11-01: "o dano de Cain deve ser idêntico ao
+    original do Amiga"): his shots (bullets 9 and 0Ah, damage 1; no other type fires them), touching
+    him (type 22, 1 a frame) and touching his bombs and missiles (38, 39, 52: the touch's 1 a frame;
+    their own 18h was × 1 already, default 12). Every other enemy keeps `DAMAGE_X`. **In** (`hits.asm`
+    `phb_en` and the touch).
 
 ## 7. Risks
 

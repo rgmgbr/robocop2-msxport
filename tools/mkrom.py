@@ -217,7 +217,8 @@ OPTIONS = {
     "DAMAGE_X": (2, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them, the drip): 2 = the"
                     " user's choice of 2026-10-31 for the fewer enemies (ENEMY_CAP; 3 made the game impossible), 1 = the"
                     " original, for trace tests; the missiles (enemy bullet types 1 and 2, damage 40h, and level 2's"
-                    " drone) keep the original's damage in every build, the user's choice (msx/hits.asm, level2obj.asm)"),
+                    " drone) keep the original's damage in every build, the user's choice (msx/hits.asm, level2obj.asm),"
+                    " and so does Cain (his shots, touching him or his bombs and missiles: 2026-11-01)"),
     "ROM_2M": (0, "1 = a 2 MiB image while the game still fits 1 MiB (test: the start of a 2 MiB ROM, msx/cold.asm"
                   " rom_guard)"),
     "PZ_TEST": (0, "1 = test build: at power-on, without the title, level 1's start, then Brainstorm (the bonus stage"

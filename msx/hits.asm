@@ -19,12 +19,13 @@ PK_VY:      equ AM + 0x0DA4
 ;   unless the death sequence's counter has its high byte ($16BC) set, the bullet is gone, the
 ;   energy ($169A) loses the type's damage ($FA63; times DAMAGE_X, but the missile of types 1 and
 ;   2 and level 3's rocket, type 11h, whose 40h they keep in every build: the user's choice of
-;   2026-10-31), the palette flashes
+;   2026-10-31; and Cain's shots, types 9 and 0Ah, whose 1 they keep: 2026-11-01), the palette flashes
 ;   (PAL_SHOT) and, when
 ;   the bullet was less than 50 pixels right of him, the hit spark runs 7 frames ($16A0) at
 ;   ($16A2, $16A4) = y + 3Ch - his y, 0..32h, twice (the x written first is overwritten);
 ; - the first of the 5 enemies whose box (obj_desc width, height; no -8 margins here) overlaps
-;   it: its touch byte (+23h) set, the palette flashes (PAL_ENEMYHIT), energy - 1 (DAMAGE_X);
+;   it: its touch byte (+23h) set, the palette flashes (PAL_ENEMYHIT), energy - 1 (DAMAGE_X; Cain,
+;   type 22, and his bombs and missiles, types 38, 39 and 52, the original's 1: 2026-11-01);
 ; - the pickups (slot 3 to 0) no longer rising whose box (x - 8, y - 8, 15 x 15) overlaps it:
 ;   the first one is taken: its message, its sound ($FC0B), the vehicle's vy + 6 when he rides it
 ;   ($16D8, $D7C), and its effect ($FBE0 + type) - nothing more this frame.
@@ -172,7 +173,10 @@ phb_en: ld a,(ph_dmg)
         jr c,phb_mx                 ; (the missile, types 1 and 2, damage 40h, of the enemies of
         cp 0x11                     ; types 3 and 27, and level 3's rocket, type 11h, 40h, of the
         jr z,phb_mx                 ; turrets 40 and 42: the original's, never multiplied, the
-        ld l,e                      ; user's choice of 2026-10-31; docs/LEVEL3.md default 11)
+        sub 9                       ; user's choice of 2026-10-31; docs/LEVEL3.md default 11; and
+        cp 2                        ; Cain's shots, types 9 and 0Ah, damage 1, the user's choice of
+        jr c,phb_mx                 ; 2026-11-01: default 16)
+        ld l,e
         ld h,d
         add hl,de
         if DAMAGE_X > 2
@@ -247,6 +251,18 @@ pht_lp: ld a,(ix+OS_TYPE)
         call pal_flash
         ld hl,(AM + 0x169A)
         ld de,0 - DAMAGE_X          ; (the original: 1)
+        if DAMAGE_X > 1             ; (Cain, type 22, and his bombs and missiles, types 38, 39 and
+        ld a,(ix+OS_TYPE)           ; 52: the original's 1, the user's choice of 2026-11-01;
+        cp 22                       ; docs/LEVEL3.md default 16)
+        jr z,pht_1
+        cp 52
+        jr z,pht_1
+        sub 38
+        cp 2
+        jr nc,pht_dx
+pht_1:  ld de,0 - 1
+pht_dx:
+        endif
         add hl,de
         ld (AM + 0x169A),hl
         jr php_go

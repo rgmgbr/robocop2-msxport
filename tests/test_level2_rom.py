@@ -385,8 +385,9 @@ class RingQueueTests(unittest.TestCase):
 
 class DamageTests(unittest.TestCase):
     """DAMAGE_X 2 (the user's choice of 2026-10-31) and the missiles' own damage in every build: enemy
-    bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied; the other bullets, the touch
-    and the drip times DAMAGE_X."""
+    bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied, nor Cain's damage (2026-11-01:
+    his shots 9 and 0Ah, touching him or his bombs and missiles); the other bullets, the touch and the
+    drip times DAMAGE_X."""
 
     def test_the_default(self):
         self.assertEqual(mkrom.OPTIONS["DAMAGE_X"][0], 2)
@@ -399,8 +400,9 @@ class DamageTests(unittest.TestCase):
         x = if_blocks("hits.asm", "DAMAGE_X > 1")
         self.assertEqual(x[:3], ["ld a,c", "cp 3", "jr c,phb_mx"])                         # (types 1 and 2)
         self.assertEqual(x[3:5], ["cp 0x11", "jr z,phb_mx"])        # (level 3's rocket: docs/LEVEL3.md default 11)
-        self.assertEqual(x[5:], ["ld l,e", "ld h,d", "add hl,de", "if DAMAGE_X > 2", "add hl,de", "endif",
-                                 "ex de,hl", "phb_mx:"])
+        self.assertEqual(x[5:8], ["sub 9", "cp 2", "jr c,phb_mx"])  # (Cain's shots, 9 and 0Ah: default 16)
+        self.assertEqual(x[8:16], ["ld l,e", "ld h,d", "add hl,de", "if DAMAGE_X > 2", "add hl,de", "endif",
+                                   "ex de,hl", "phb_mx:"])
         self.assertEqual(if_blocks("hits.asm", "DAMAGE_X > 2"), ["add hl,de"])
         drone = routine("level2obj.asm", "t49_hit", "t49_boom")
         self.assertEqual(drone, ["t49_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
@@ -408,6 +410,18 @@ class DamageTests(unittest.TestCase):
         touch = routine("level3obj.asm", "t38_hit", "t38_boom")     # (types 38, 39, 52: default 12)
         self.assertEqual(touch, ["t38_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
                                  "ld (AM + 0x169A),hl"])
+
+    def test_cain_keeps_the_original_touch(self):
+        # touching Cain (type 22) or his bombs and missiles (38, 39, 52) takes the original's 1 a frame
+        # (the user's choice of 2026-11-01: docs/LEVEL3.md default 16); any other enemy DAMAGE_X
+        x = if_blocks("hits.asm", "DAMAGE_X > 1")[16:]
+        self.assertEqual(x, ["ld a,(ix+OS_TYPE)", "cp 22", "jr z,pht_1", "cp 52", "jr z,pht_1", "sub 38", "cp 2",
+                             "jr nc,pht_dx", "pht_1:  ld de,0 - 1", "pht_dx:"])
+        code = [l.split(";")[0].strip() for l in (ROOT / "msx" / "hits.asm").read_text().splitlines()]
+        i = code.index("ld de,0 - DAMAGE_X")
+        self.assertEqual(code[i - 1], "ld hl,(AM + 0x169A)")
+        self.assertEqual(code[i + 1], "if DAMAGE_X > 1")
+        self.assertEqual(code[i + 13:i + 15], ["add hl,de", "ld (AM + 0x169A),hl"])
 
     def test_damage_x_where_the_rule_says(self):
         uses = []
@@ -417,6 +431,7 @@ class DamageTests(unittest.TestCase):
                     uses.append((f.name, l.split(";")[0].strip()))
         self.assertEqual(uses, [("hits.asm", "if DAMAGE_X > 1"), ("hits.asm", "if DAMAGE_X > 2"),
                                 ("hits.asm", "ld de,0 - DAMAGE_X"),                          # (the touch)
+                                ("hits.asm", "if DAMAGE_X > 1"),                             # (Cain's touch)
                                 ("level2obj.asm", "ld de,0 - 0x0A * DAMAGE_X")])             # (the drip)
 
 
