@@ -447,7 +447,13 @@ which as sprites were striped, cut or left out.
   the VDP idle first: the next idle point of the main loop or the HUD split and VBLANK interrupts
   (`ifg_rdy`: composing writes page 3 only, off the screen, so it may start at any beam
   position). The fill's and the tiles' 16x16 copies go in bursts of up to 16 (`FB_BURST`: the
-  set-up of each takes about as long as the copy before it). Until then every command waited
+  set-up of each takes about as long as the copy before it). Since performance campaign 2's field-2
+  (`docs/PERF2_PLAN.md` item 2) a tile copy's part of its cell comes from 8-bit arithmetic on the
+  piece's corner (`ftl_ax`: a piece is at most 64 x 64, so its cells' edges lie -15 .. 63 px from its
+  corner) and the command bytes no cell changes are written once a burst: the same copies in the same
+  order, with about 2,240 T-states of set-up a cell instead of 3,620 (hand counts; `fb_rpiece`'s six
+  `fb_cmp` and `fb_dscr` were about 1,360 of them);
+  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Until then every command waited
   for an idle point of the main loop (one a call, 8-10 ms apart in the busy windows, 23-33 ms
   for one in ten): an item of 5-6 commands took 65-75 ms from queue to page.
 - **Background caches**: three 64x64 blocks (page 3 x 0, 64, 128) each hold the tiles of a
@@ -597,7 +603,9 @@ which as sprites were striped, cut or left out.
     `docs/level3/HANDOFF.md`, step 5's open issue 1).
 - **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`; it also holds the
   scroll engines' set-up); the fixed area keeps only the hooks (`fb_redraw`, `fb_mark`,
-  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`).
+  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`). The atlas's upload (`field_upload`,
+  at power-on and at a level's start) runs in `BANK_FRONT2` (`ending.asm`, through `front2_call` from
+  `cold.asm`) since field-2, which needed its 132 bytes here.
 
 ## Game logic (`msx/player.asm` and the logic modules)
 

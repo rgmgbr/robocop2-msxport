@@ -2,7 +2,8 @@
 ; front2_call; docs/ENDING.md): the game completed (level_load_3 $86DE: front_ending) and the high
 ; scores (high_score_entry $12082: hs_entry; the table hs_tab0, hs_tab1 in RAM, msx.inc), with
 ; FRONT's text screens' pieces (fs_step, fs_char, fs_tick, fs_list, ff_bits) and their scripts here
-; (ending.inc, tools/msxtext.py). Every routine it calls puts the A000h window back (act_a000).
+; (ending.inc, tools/msxtext.py); and the play-field atlas's upload at power-on and at a level's start
+; (field_upload). Every routine it calls puts the A000h window back (act_a000).
 
 ; At the power-on (frontx.asm ci_hook): the high scores' table from its defaults ($11FF6 in the
 ; Amiga's code, kept until the power goes: IAN 100000 ... PAUL 7500).
@@ -556,3 +557,87 @@ etc_ln: push bc
         jp vram_done
 
         include "ending.inc"        ; the ending's and the high scores' texts (tools/msxtext.py)
+
+; The level's atlas (bank lv_fimg on: tools/msxsprites.py field_frames, tools/mkrom.py atlas_banks)
+; into VRAM, above the caches: at power-on, after the tiles (cold.asm vdp_setup), and at each
+; level's start (cold.asm lvs_vram), both through front2_call (FRONT at 8000h, this bank at A000h;
+; in field.asm's bank until performance campaign 2's field-2 needed its room: this runs once a
+; level). Frame by frame, as the ROM keeps no empty part of it: per bank its frames (bit 7: the
+; next bank holds more of them), then [atlas line, x / 2, bytes a line, lines, mirrored, the
+; pixels' offset (2) in the bank] each; a mirrored frame is another's pixels read from the right,
+; each byte's two pixels swapped. Keeps the 8000h window's bank.
+field_upload:
+        ld a,(act_8000)
+        push af
+        ld a,(lv_fimg)
+fu_bnk: push af                     ; (a bank of the atlas)
+        call bank_8000
+        ld ix,0x8001
+        ld a,(0x8000)               ; frames
+        and 0x7F
+fu_frm: push af
+        ld l,(ix+5)
+        ld h,(ix+6)
+        ld de,0x8000
+        add hl,de                   ; HL = the frame's pixels
+        ld b,(ix+3)
+        ld a,(ix+0)
+        add a,FIELD_Y0
+        ld d,a                      ; D = its first line in page 3
+fu_lin: push bc
+        push hl
+        ld a,d                      ; the line in VRAM: 18000h + line * 128 + x / 2
+        srl a
+        or 0x80
+        ld h,a
+        ld a,d
+        rrca
+        and 0x80
+        add a,(ix+1)
+        ld l,a
+        ld e,1
+        push de
+        call vram_write
+        pop de
+        pop hl
+        push hl
+        ld b,(ix+2)                 ; bytes a line
+        ld c,VDP_DATA
+        ld a,(ix+4)
+        or a
+        jr nz,fu_mir
+        otir
+        jr fu_nl
+fu_mir: ld a,l                      ; mirrored: from the line's end, the two pixels swapped
+        add a,b
+        ld l,a
+        jr nc,fu_ml
+        inc h
+fu_ml:  dec hl
+        ld a,(hl)
+        rrca
+        rrca
+        rrca
+        rrca
+        out (VDP_DATA),a
+        djnz fu_ml
+fu_nl:  pop hl
+        ld c,(ix+2)
+        ld b,0
+        add hl,bc                   ; the next line's pixels
+        inc d
+        pop bc
+        djnz fu_lin
+        ld de,7
+        add ix,de
+        pop af
+        dec a
+        jr nz,fu_frm
+        pop af
+        inc a                       ; (the next bank)
+        ld hl,0x8000
+        bit 7,(hl)                  ; (another bank of the atlas follows)
+        jr nz,fu_bnk
+        call vram_done
+        pop af
+        jp bank_8000

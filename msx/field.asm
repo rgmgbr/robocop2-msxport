@@ -35,88 +35,6 @@ fld_l3: db FIELD_LATE_l3, FIELD_DYN0_l3, FIELD_DYN1_l3
         db 0x80, L3_FC
         endif
 
-; The level's atlas (bank lv_fimg on: tools/msxsprites.py field_frames, tools/mkrom.py atlas_banks)
-; into VRAM, above the caches: at power-on, after the tiles (vdp.asm vdp_setup), and at each
-; level's start (cold.asm lv_select). Frame by frame, as the ROM keeps no empty part of it: per
-; bank its frames (bit 7: the next bank holds more of them), then [atlas line, x / 2, bytes a
-; line, lines, mirrored, the pixels' offset (2) in the bank] each; a mirrored frame is another's
-; pixels read from the right, each byte's two pixels swapped. Keeps the 8000h window's bank.
-field_upload:
-        ld a,(act_8000)
-        push af
-        ld a,(lv_fimg)
-fu_bnk: push af                     ; (a bank of the atlas)
-        call bank_8000
-        ld ix,0x8001
-        ld a,(0x8000)               ; frames
-        and 0x7F
-fu_frm: push af
-        ld l,(ix+5)
-        ld h,(ix+6)
-        ld de,0x8000
-        add hl,de                   ; HL = the frame's pixels
-        ld b,(ix+3)
-        ld a,(ix+0)
-        add a,FIELD_Y0
-        ld d,a                      ; D = its first line in page 3
-fu_lin: push bc
-        push hl
-        ld a,d                      ; the line in VRAM: 18000h + line * 128 + x / 2
-        srl a
-        or 0x80
-        ld h,a
-        ld a,d
-        rrca
-        and 0x80
-        add a,(ix+1)
-        ld l,a
-        ld e,1
-        push de
-        call vram_write
-        pop de
-        pop hl
-        push hl
-        ld b,(ix+2)                 ; bytes a line
-        ld c,VDP_DATA
-        ld a,(ix+4)
-        or a
-        jr nz,fu_mir
-        otir
-        jr fu_nl
-fu_mir: ld a,l                      ; mirrored: from the line's end, the two pixels swapped
-        add a,b
-        ld l,a
-        jr nc,fu_ml
-        inc h
-fu_ml:  dec hl
-        ld a,(hl)
-        rrca
-        rrca
-        rrca
-        rrca
-        out (VDP_DATA),a
-        djnz fu_ml
-fu_nl:  pop hl
-        ld c,(ix+2)
-        ld b,0
-        add hl,bc                   ; the next line's pixels
-        inc d
-        pop bc
-        djnz fu_lin
-        ld de,7
-        add ix,de
-        pop af
-        dec a
-        jr nz,fu_frm
-        pop af
-        inc a                       ; (the next bank)
-        ld hl,0x8000
-        bit 7,(hl)                  ; (another bank of the atlas follows)
-        jr nz,fu_bnk
-        call vram_done
-        pop af
-        jp bank_8000
-
 ; The scroll engine of the VDP found (vdp_id; FORCE_V9938) on the camera's view, the split, the
 ; sprite engine.
 engines_init:
@@ -2200,68 +2118,110 @@ frp_4:  ld hl,(fb_r)
         jp fb_cmp
 
 ; Phase FP_TILE: the next cells of the piece (FB_BURST at most) from the tile cache into the
-; scratch (HMMM: the part of each cell inside the piece); then the BOBs.
+; scratch (HMMM: the part of each cell inside the piece); then the BOBs. Each cell's part comes from
+; 8-bit arithmetic on the piece's corner (ftl_ax: a piece is at most 64 x 64, so its cells' edges lie
+; -15 .. 63 px from its corner), and the bytes of fb_cmd that no cell changes are written once a
+; call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave them, about 2,240
+; T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy (performance
+; campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
 fb_tiles:
+        xor a                       ; (SX's, DX's, NX's and NY's high bytes; DY's page)
+        ld (fb_cmd + 1),a
+        ld (fb_cmd + 5),a
+        ld (fb_cmd + 9),a
+        ld (fb_cmd + 11),a
+        ld a,3
+        ld (fb_cmd + 7),a
         ld a,FB_BURST
         ld (fb_bn),a
-ftl_lp: ld a,(fb_cc + 3)
-        ld b,a
-        ld a,(fb_ci)
-        cp b
-        jr z,ftl_go
-        jr c,ftl_go
+ftl_lp: ld hl,fb_ci
+        ld a,(fb_cc + 3)
+        cp (hl)
+        jr nc,ftl_go                ; (the row inside the piece's)
         ld a,FP_BOB
         ld (fb_ph),a
         ld a,(fb_sn)
         ld (fb_ci),a
         jp fb_bobs
-ftl_go: ld (fb_rw),a
-        ld a,(fb_ci + 1)
-        ld (fb_cl),a
+ftl_go: ld d,(hl)                   ; D = the cell's row, E = its column
+        inc hl
+        ld e,(hl)
         call fb_cnext
-        ld a,(fb_rw)                ; the cell inside the piece
-        call fb_c16
-        ld (fb_r + 2),hl
-        ld de,16
-        add hl,de
-        ld (fb_r + 6),hl
-        ld a,(fb_cl)
-        call fb_c16
-        ld (fb_r),hl
-        ld de,16
-        add hl,de
-        ld (fb_r + 4),hl
-        call fb_rpiece
+        ld a,(fb_pe)                ; its columns inside the piece: DX, NX
+        ld hl,fb_px
+        sub (hl)
+        ld c,a                      ; (the piece's width)
+        ld a,e
+        call ftl_ax
+        ld hl,fb_sbx
+        add a,(hl)
+        ld (fb_cmd + 4),a
+        ld a,c
+        ld (fb_cmd + 8),a
+        ld a,b
+        ld (fb_cl),a                ; (its first column in the tile)
+        ld a,(fb_pe + 2)            ; its lines: DY, NY
+        ld hl,fb_px + 2
+        sub (hl)
+        ld c,a                      ; (the piece's height)
+        ld a,d
+        call ftl_ax
+        add a,FB_CY
+        ld (fb_cmd + 6),a
+        ld a,c
+        ld (fb_cmd + 10),a
+        if VAT_ANIM
         ld a,(fb_cur)
         and 1
         ld (vat_pg),a               ; (level 2's vat cells: the looks of the item's page)
+        endif
+        ld a,d
+        call tile_src               ; cmdbuf: SX, SY of the tile (keeps BC, DE)
         ld a,(fb_cl)
-        ld e,a
-        ld a,(fb_rw)
-        call tile_src               ; cmdbuf: SX, SY of the tile
-        ld a,(fb_r)
-        and 15
-        ld b,a
-        ld a,(cmdbuf)
+        ld hl,cmdbuf
+        add a,(hl)
+        ld (fb_cmd),a               ; SX: from the first column used,
+        inc hl
+        inc hl
+        ld a,(hl)
         add a,b
-        ld (fb_cmd),a
-        xor a
-        ld (fb_cmd + 1),a
-        ld a,(fb_r + 2)
-        and 15
-        ld b,a
-        ld a,(cmdbuf + 2)
-        add a,b
-        ld (fb_cmd + 2),a
-        ld a,(cmdbuf + 3)
+        ld (fb_cmd + 2),a           ; SY: from the first line used
+        inc hl
+        ld a,(hl)
         ld (fb_cmd + 3),a
-        call fb_dscr
         ld a,FB_HMMM
         call fb_issue_now
         ld hl,fb_bn
         dec (hl)
         ret z
         jp ftl_lp
+
+; (fb_tiles) A = a cell's column (row), HL = the piece's first x (y), C = the piece's width
+; (height) -> A = the offset of the cell's part in the piece, B = its first pixel in the cell, C =
+; its pixels: low bytes only (the cell's edge lies -15 .. 63 px from the piece's). Keeps DE.
+ftl_ax: add a,a
+        add a,a
+        add a,a
+        add a,a
+        sub (hl)                    ; the cell's edge from the piece's
+        ld b,a
+        add a,16
+        cp c
+        jr nc,fta_c                 ; (its end past the piece's: up to that)
+        ld c,a
+fta_c:  ld a,b
+        or a
+        jp m,fta_m
+        ld a,c                      ; (inside the piece: from the cell's first pixel)
+        sub b
+        ld c,a
+        ld a,b
+        ld b,0
+        ret
+fta_m:  neg                         ; (across the piece's edge: from that)
+        ld b,a
+        xor a
+        ret
 
 ; A = command: fb_cmd's CLR, ARG and CMD set, the command ready (fb_rdy 1): fb_work starts it when
 ; the VDP is idle, else the interrupts (isr.asm ifg_rdy) or the next call do.
