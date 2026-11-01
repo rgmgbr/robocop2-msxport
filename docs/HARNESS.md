@@ -2502,3 +2502,73 @@ here so that the repository alone reruns every gate:
 - New: `hb_step`'s range part (`rgh_arm`), `rgk_job`, `hz_chain`'s MARK file, `bonuscheck.py --range`
   and `--no-game`, `rgview.py want`.
 
+
+## 12. Performance campaign 2's kit (`tools/bstest/perf2/`)
+
+The measurement and gate scripts of `docs/PERF2_PLAN.md` (5.4's gates), from the campaign's
+analysts (m_l3, m_l2, a_field, a_flash, a_scroll, a_sprites, a_logic, a_loop, v_gain), with every
+address taken from the build's own label file and ROM and every path an argument. `W` is a run
+folder, `R` a builds folder, `BASE` the HEAD records every gate compares with (made once by the
+campaign's measurement lane with these very scripts; HEAD here is `a75405c`).
+
+**The session.** A private one (2, 5.24): `python3 -I tools/bstest/mcpd.py DIR &`, then
+`MCPD_DIR=DIR sh tools/bstest/mx.sh NAME 'TCL'`; during the campaign under its semaphore (at most two
+openMSX of the campaign at once). Load the kit with `source {<repo>/tools/bstest/perf2/load.tcl}`: it
+sources `tools/bstest/load.tcl`, `l2base.tcl` and `l3field.tcl` first. From a git worktree (no
+`build/`) set `::pf_repo` to the main checkout before sourcing it: the harness and the drives come
+from there.
+
+**The builds** (`gate.sh builds R [SRC]`, from SRC: a source tree whose `build/` links to the main
+checkout's, 5.3): `R/l3/cap3.rom` (`EXTJOY=1 LV_TEST=3`, the product's options otherwise),
+`R/l2/cap2.rom` (`EXTJOY=1 LV_TEST=2`), `R/l1/ext.rom` (`EXTJOY=1`), `R/L/l1|l2|l3/lock.rom`
+(`LOCKSTEP=24`) and hz.sh's trace builds in `R/T` (`l3builds`, `l2builds`, `trace`).
+
+**A gate run**: `hz_chain [pf_gate_jobs {W} {R}] {W/gates.done}` (149 jobs; `pf_gate_jobs W R
+{speed lock}` for some), then `REPO=<main checkout> sh tools/bstest/perf2/gate.sh all BASE W R`:
+each verdict's output in `W/gate_<name>.txt`, its last line `G-NAME: PASS` or `G-NAME: FAIL ...`.
+Every verdict judges what BASE holds: a run, window, dump or record W lacks FAILs, as does one cut
+short (a job that timed out, a chain that stopped) and a verdict that judged nothing; a deliberate
+subset is judged with `--partial` (`PARTIAL=1` for `gate.sh`: the left-out records listed; G-LOGIC
+always whole). A job removes its run's old records when it starts (`m3_setup`, `cnt_setup`,
+`pf_guard_setup`; the field, lock and logic records are rewritten from their start, and a field check
+older than its window's recording is checked again), so a W reused for a later commit never passes
+on an earlier run's records.
+
+| File | Side | Inputs -> outputs | Gate |
+|---|---|---|---|
+| `load.tcl` | Tcl | sources the harness and the kit's Tcl | |
+| `m3.tcl` | Tcl | `m3_job NAME MACHINE DIR ROM LABELS DRIVE N ?MODE?`: a drive (N rows from tick 0, `rc2_drive_rom`'s inputs without its RAM dump) -> `DIR/NAME_ticks.txt` (per tick: tick_n, emulated time, counters), `_pics.txt` (per picture: time, tick, fb_hold, the list's game frame, VBLANK), `_pubs.txt`, `_frames.txt` (cadence: wf_n, ticks due, cap), `_fcs.txt` (frame-cache uploads); MODE `flash` adds to each ticks line the BOBs drawn as a colour-15 silhouette in the tick (`bd_mode` with BM_FLASH: shown, all); `cmds` adds `_cmds.txt` (every VDP command) and `_ce.txt`, `full` adds `_samp.txt` (a PC sample every 0.2 ms); `m3_job2`/`m3_job3` stack variants. Probes take no emulated time: a lean run's records equal a full one's | G-SPEED, G-HOLD |
+| `win.py` | python | `T0-T1 PREFIX...`; `--table DIR [--json OUT]`; `--gate BASE NEW` -> ticks/s, pictures/s, pictures/s with game progress, held VBLANKs per window (each drive's windows: kill 130-1400, 300-1500, 1500-1765; boss 130-1400; tour3 40-210, 215-540, 545-1065, 1085-1400; park 40-1200; l2tour 20-1590, 2080-2350; l1play 40-1450). FAIL: a window slower than BASE by more than 1 % (400 ticks or more) or 5 % (shorter); for l1play (level 1's play "must stay at 25 ticks/s and 25 pictures/s", its ticks/s at the logic's cap) also its pictures/s or progress pictures/s below BASE's by more than that; a window not reached; a run BASE holds that NEW lacks (`--partial`: not judged) | G-SPEED |
+| `holds.py` | python | `PREFIX [FROM TO]`; `--table DIR`; `--gate BASE NEW [--partial]` -> pictures shown after FB_HOLD (fb_hold 8 at `iv_take`: BOBs one picture behind the sprites) per minute over whole drives (kill, boss, tour3, l2tour judged). FAIL: more per minute than BASE; a run that does not span BASE's ticks; a run NEW lacks | G-HOLD |
+| `gates.tcl` | Tcl | `pf_speed_jobs`, `pf_field_jobs`, `pf_guard_jobs`, `pf_lock_jobs`, `pf_map_jobs`, `pf_logic_jobs`, `pf_gate_jobs W R ?GATES?` (each `DIR R ?TAGS?`; TAGS `::pf_m4` = C-BIOS_MSX2 m2, Gradiente_Expert20_64K ex, FS-A1FX fx, FS-A1GT tr; `::pf_m3`, `::pf_vdp2` = m2 fx); `pf_fd_setup` (`l2b_fd_setup`'s records plus `holds.txt`: each record's fb_hold), `pf_guard_setup` (the guard from the level's first tick to the drive's end); `pf_logic_jobs`' level-1 jobs run through `hz_l2_drive` (the same trace, plus the lost counters in `DIR/l1/lost.txt`) | all |
+| `fieldsum.py` | python (venv for fieldcheck) | `run DIR [--root REPO] [--jobs N] [--check FIELDCHECK]` -> `fieldcheck.py` on every window (`DIR/<win>_<tag>.fc.txt`, `.png`), `DIR/fieldsum.json`; `table DIR`; `gate BASE NEW [--partial]`. Windows: kill300, kill1025, kill1560, boss110, boss300, park40, tour545 (900 records each), l2_tour's 11 of 5.24, level 1's c430, c860, c1490. FAIL: a difference class BASE's window does not show, the pictures after FB_HOLD left out (G-HOLD's); or the window's other pictures with differences beyond 3 x BASE's + 30 (a gross regression a class BASE shows would hide); a window whose check did not cover its records (no summary line: fieldcheck stopped, e.g. a wrong `--root`; fewer checked than level.txt's n: skipped or cut short; a check older than the window's level.txt or holds.txt: recorded again since, which `run` checks again); a window NEW lacks; WARN: a class more than doubles | G-FIELD |
+| `guardsum.py` | python | `table DIR`; `gate BASE NEW [--partial]` -> `rc2_guard`'s counts over whole kill and boss drives (cap3), patcheck, sprlines, satcheck. FAIL: more tears, a bad patcheck entry, a drive not driven to its end, a record NEW lacks | G-GUARD |
+| `lockgate.py` | python | `BASE NEW [--partial]` -> `tools/dispcmp.py`'s comparison of every LOCKSTEP=24 record (l1cov0 3000 lists, l2tour 1300, kill 900, boss 680; m2 fx), judged up to the first late frame (`.over`) of either run. FAIL: a judged list differs, NEW has fewer lists, a record NEW lacks | G-LOCK |
+| `cnt.tcl` | Tcl | `cnt_job NAME MACHINE DIR ROM LABELS DRIVE N ?NAMES? ?MAP?` -> `DIR/NAME_cnt.txt` (per tick, cumulative calls of NAMES: `label` or `label@BANK`), `DIR/NAME_map.txt` (every 100 ticks: 0910h-0FFFh, 1082h-1F9Bh, F500h-F9FFh) | G-MAP, counters |
+| `mapdiff.py` | python | `A_map.txt B_map.txt`; `--gate BASE NEW [--ignore FROM-TO] [--partial]` (tour3, park; m2 fx). FAIL: a byte differs (1085h-108Bh never compared; `--ignore 0A33-0AFF` for item 10's row hints); a tick one dump has and the other lacks; a dump NEW lacks | G-MAP |
+| `gate.sh` | shell | `builds R [SRC]`; `speed`, `hold`, `field`, `guard`, `lock`, `map` `BASE NEW`; `logic W R` (hz.sh compare: level 3's 16 traces and level 2's 23 named, so a missing one FAILs; level 1's cov1, cov0, cov0_tr; every job's lost counters 0, level 1's from `l1/lost.txt`); `all BASE NEW R`. Environment `REPO`: the checkout with `build/`; `PARTIAL=1`: the verdicts' `--partial` | all |
+| `cen.tcl`, `vercmp.py` | Tcl, python | `cen_jobs DIR ROM LABELS DRIVE N ?TAGS?` -> the sprite budget's census per run (`R`, `E`, `C`, `F`, `O` records; labels at 8000h-BFFFh counted while the ROM's `romblocks` debuggable shows a level bank there: `msx/lvshared.asm`'s); `vercmp.py BASE NEW`: 0 differing records, the budget's T-states per run | items 12, 13, 16 |
+| `sync3.py` | python | `PREFIX FROM TO` (an m3 run in `cmds` mode) -> the V9938 build's copy end -> sync -> flip timing | item 7 |
+| `fl.tcl`, `flcmp.py` | Tcl, python | `fl_jobs DIR ROM LABELS DRIVE N TAG TAGS` -> level 3's flash probe (ticks, pictures with fb_hold, uploads, fb_wants with white entries); `flcmp.py T0-T1 LOG...` | items 3, 8, 14, 18 |
+| `pgprobe.tcl` | Tcl | `pg_jobs DIR R ?TAGS? ?WINS?` on flash-1's builds -> `DIR/<win>_<tag>/pg.txt` (each page-path use, each diff's verdict) beside the field records | item 3 |
+| `lp.tcl`, `lpan.py` | Tcl, python | `lp_job NAME MACHINE DIR ROM LABELS DRIVE N WINS ?DT?` -> the frame pipeline's events; `lpan.py EV LABELS BANKS_INC` | D2, D3 |
+| `m2.tcl` | Tcl | `m2_jobs DIR ROM LABELS DRIVE N ?TAGS? ?DT? ?LIGHT?` -> level 2's ticks, pictures, commands, samples, phase marks and the flash probe (`_flash.txt`: OS_FLASH per slot, the silhouette BOBs drawn per tick) | the level-1/2 flash |
+| `flash12.py` | python | `HEAD CONTROL [T0-T1]`: an m3 `flash` run and one of a build whose `bob.asm` draws BM_NORMAL for BM_FLASH -> the flash's whole cost (the time difference), the flash pictures, the cost per flash picture and its share of those pictures' time | the level-1/2 flash |
+| `whitechk.py`, `vertrim.py`, `eqtiles.py` | python | `whitechk.py ROM FIELD_L3_INC FC_BANK ATLAS_BANK`; `vertrim.py OLD NEW` (conversions before and after item 1); `eqtiles.py` (no arguments): checks of items 1-3 (unit tests to be) | items 1, 2, 3 |
+
+`tests/test_perf2.py` runs every verdict on made-up records (each passes on equal records and fails on a
+mutated copy) and checks the kit's files as `test_bstest.py` checks the harness's.
+
+Examples (`K` = `tools/bstest/perf2`, `B` = the baseline folder):
+```
+MCPD_DIR=D sh tools/bstest/mx.sh j "hz_chain [pf_speed_jobs {W/speed} {R}] {W/speed.done}"
+python3 -I K/win.py --gate B/speed W/speed
+python3 -I K/holds.py --gate B/speed W/speed
+MCPD_DIR=D sh tools/bstest/mx.sh j "hz_chain [pf_field_jobs {W/field} {R}] {W/field.done}"; python3 -I K/fieldsum.py run W/field --root <main checkout>; python3 -I K/fieldsum.py gate B/field W/field
+python3 -I K/lockgate.py B/lock W/lock
+python3 -I K/guardsum.py gate B/guard W/guard
+python3 -I K/mapdiff.py --gate B/map W/map
+REPO=<main checkout> sh K/gate.sh logic W R
+python3 -I K/vercmp.py B/cen/cen_l3_kill_m2.txt W/cen/cen_l3_kill_m2.txt
+python3 -I K/sync3.py W/kill_m2 300 1500
+```
