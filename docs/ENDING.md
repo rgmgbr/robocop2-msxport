@@ -69,17 +69,21 @@ HI1's effects 3 (6 ticks) and 4 (14 ticks) sound on channel 3 (the VBL ticks HI1
   `front_brief` again and level 3 follows the briefing).
 - The game over: `front_over` (PIC9, 30 s or fire), then `frontx.asm` `fo_hsc`: `hs_entry`, then
   `front_cont` (after an entry, its display set-up left out: the display is on and the HUD stays).
-- Builds with a script (`EXTJOY`, `JOY`) skip the ending and the entry as they skip the title (their
-  drives type no name: every trace flow stays the base's); `PZ_TEST` builds skip the ending.
+- Builds with a script (`EXTJOY`, `JOY`) skip the entry as they skip the title (`hs_entry` returns at
+  once: their drives type no name, every trace flow stays the base's), not the ending: level 3's end
+  there shows WELL DONE and plays the tune as the product does, then the new game (level 3's step D's
+  kill drive goes through them). A `PZ_TEST` start (the stages, then the title) never reaches it.
 
 **Screens** (the text screens' engine: `front.asm` `fs_step`, `fs_char`, `fs_tick`, the HUD below,
 `TAG`'s TEST n at row 10; `tools/msxtext.py`, its output `ending.inc`):
 - WELL DONE: `txt_end`, its particle title typed at column 11, row -3 as the briefings' are, then the
-  original's lines and wait: 341 calls, fire from tick 50.
+  original's lines and wait: 341 calls, fire from tick 50, which types the rest of the text at once
+  (`et_go`: default 10).
 - The tune: CMP tune 1 (`tune.asm` `tn_cmp`) while the WELL DONE screen stays on, until the tune's
   end (`tn_left` 0: 4,916 ticks and the end's, 98.3 s at the port's 50 ticks a second) or fire pressed
   once released; then the play area black and silence.
-- The name entry: `txt_hisc` (the original's bytes, 92 calls), the name's 9 cells at x 96 + 8i, lines
+- The name entry: `txt_hisc` (the original's bytes, 92 calls; fire from tick 50 types the rest at once,
+  default 10), the name's 9 cells at x 96 + 8i, lines
   80-87 (`hs_draw`), the mark under the second position at the start, the original's rules for Return,
   Backspace and a full name; a key at a time from the MSX keyboard (`kb_char`: the matrix, MSX2
   Technical Handbook figure 5.17B; A-Z, the main rows' and the keypad's digits stored as '['-'d',
@@ -103,8 +107,9 @@ starts the same descriptor with its tune cut to no tick (`tn_left` 1).
 
 **Code, banks, RAM.**
 - `BANK_FRONT2` (bank 127, A000h: a bank the 3Fh rule leaves to code and data read at A000h):
-  `msx/ending.asm` and `ending.inc`, 1,151 B (7,041 free). `end.bin` in banks 128-131: **the image is
-  2 MiB** (132 of 256 banks) with the boot guard (`rom_guard`, now in `frontx.asm`).
+  `msx/ending.asm` and `ending.inc`, 1,166 B (7,026 free; 1,151 and 7,041 before default 10).
+  `end.bin` in banks 128-131: **the image is 2 MiB** (132 of 256 banks) with the boot guard
+  (`rom_guard`, now in `frontx.asm`).
 - FRONT: `msx/frontx.asm` after its code and tables (`front2_call`, `fr_ending`, `fo_hsc`,
   `ci_hook`, `rom_guard`); the calls that reach them replace calls of the same size (`front_over`,
   `cold_init`; `front_bonus`' until level 3's step A), so nothing in FRONT moves: 1,173 B free (as
@@ -128,9 +133,21 @@ starts the same descriptor with its tune cut to no tick (`tn_left` 1).
    held from the WELL DONE screen would skip the tune at once.
 5. The keyboard by its matrix position, as the original reads the Amiga's raw codes by position.
 6. Effect 4 is heard out (16 ticks) before the next screen's stop.
-7. Builds with a script skip the ending and the entry (as the title).
+7. Builds with a script skip the entry (as the title: their drives type no name), not the ending:
+   WELL DONE and the tune run as in the product, then the new game.
 8. The name entry's last line keeps the original's row 9; a `TAG` build's TEST n is right below it.
 9. The OPLL's rhythm takes CMP's hat as HH and sample 7 as TCY (the stages use BD, SD and TOM only).
+10. **Fire before a kept screen's text is typed** (from tick 50; level 3's step 11, review A's finding 1):
+   the rest of the script is typed at once, its waits skipped (`ending.asm` `et_go`), and then the screen
+   goes on as before: WELL DONE stays whole for the whole tune (fire held there never skips the tune,
+   default 4: a new press ends it), and the name entry's lines are whole while the name is typed. The
+   original ends its text screen there (`$10762`/`$10768`): at the ending PICF, a whole picture, follows,
+   which the port does not show (default 2), so the port's WELL DONE would stay half typed for up to 98 s.
+   The name entry's text stays in the original as far as it was typed (RETURN, BS and SPACE, keys a
+   player types there, count as fire on both machines: `player.asm` `key_bits`, the Amiga's table at
+   `$10254`); the port types it whole too: one rule for both kept screens, a cosmetic departure (the
+   entry itself is unchanged). The table screen's script is waits alone (the table is drawn at once
+   before it): fire ends that screen at once, as before.
 
 **Test options** (`tools/mkrom.py`): `END_TEST=1` starts at power-on with the ending (after level 1's
 set-up, `LV_CARRY`'s score, lives and credits; then the title and a new game: the way level 3's end

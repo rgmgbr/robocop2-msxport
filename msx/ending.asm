@@ -18,14 +18,14 @@ hs_init:
 
 ; level_load_3 $86DE (load-table entries 3 and 7: after level 3, rc2.asm ml_ev; frontx.asm
 ; fr_ending, the one way in): the text screen
-; $112C5 (WELL DONE, its particle title typed as the briefings', 341 calls, fire from tick 50:
-; tools/msxtext.py txt_end), then $11C54's tune, CMP tune 1 as it plays it (tune.asm tn_cmp: its
-; 4,916 ticks, the 1801h passes of its loop), or fire pressed once released (the PIC9 rule; the
-; original takes fire at once, after its disk loads), with the WELL DONE screen kept on (PICF
-; dropped, decision 5: docs/ENDING.md default 2); then the play area black and the sound stopped
-; ($11D26, $FE14), and high_score_entry $12082 (hs_entry). From the state front_bonus or a level's
-; end leaves: a turbo R on the Z80 (cpu_title), the game's display (fb_prep); cpu_title at the end,
-; as front_bonus.
+; $112C5 (WELL DONE, its particle title typed as the briefings', 341 calls, fire from tick 50, which
+; types the rest at once: et_go; tools/msxtext.py txt_end), then $11C54's tune, CMP tune 1 as it
+; plays it (tune.asm tn_cmp: its 4,916 ticks, the 1801h passes of its loop), or fire pressed once
+; released (the PIC9 rule; the original takes fire at once, after its disk loads), with the WELL
+; DONE screen kept on (PICF dropped, decision 5: docs/ENDING.md default 2); then the play area black
+; and the sound stopped ($11D26, $FE14), and high_score_entry $12082 (hs_entry). From the state
+; front_bonus or a level's end leaves: a turbo R on the Z80 (cpu_title), the game's display
+; (fb_prep); cpu_title at the end, as front_bonus.
 front_ending:
         call cpu_title
         call fb_prep
@@ -454,6 +454,16 @@ etg_lp: call fs_tick
         ret nz
         call ff_bits
         jr z,etg_lp
+; Fire before the script's end: the rest of its characters typed at once, its waits skipped, so that
+; a screen kept on after it is whole (WELL DONE during the tune, the name entry's: docs/ENDING.md
+; default 10; the table screen's script is its waits alone, its screen black at once after it).
+etg_all:
+        ld hl,0
+        ld (fs_wait),hl
+        call fs_step
+        ld a,(fs_done)
+        or a
+        jr z,etg_all
         ret
 et_open:
         call snd_stop               ; ($10768: $FE14)
