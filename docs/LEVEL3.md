@@ -335,6 +335,55 @@ The coverage and the boss drives drew **202 distinct frames** (address and BLTSI
 | Q8 | The beams hurt 0Ch a frame for 32 frames on, 32 off; level 1's 10h, 16/16 | kept |
 | Q9 | Cain's debris and the truck's and type 21's parts are enemy bullets that never hit (box 9Dh) | kept |
 
+### 2.11 Where Cain attacks [V: bench and the MSX traces, 2026-11-01]
+
+A play-tester's report ("Cain randomly stops firing his missiles, and RoboCop can shoot him forever")
+is the original's design (Q1, Q4, Q7).
+
+- **His attacks are tied to places, not to Cain.**
+  - He never fires a projectile himself: he only writes the mailbox (2.5).
+  - Ten fixed spawn entries make the projectiles (22-29, 33, 34: x 1536-2336, one or two a floor).
+    An entry counts down only while it is inside the window (x − camera x in (5Dh, 1AFh], y −
+    camera y in (−28h, A8h], `$C454-$C492`); outside it is reset (`$C522`).
+  - His bursts need `$16B4`, which only the type-48 entries set: 30 and 31 on the roof, 32 on the
+    ground floor (`$EE5E`; at most one burst per 128 frames, `$D526-$D534`).
+  - The random word feeds only his heading, bullet y and flash frame (`$D716`, `$D75A`, `$D782`),
+    never a spawn, launch or burst decision.
+- **Where**: with the camera settled, RoboCop's x (while walking the stretches shift by up to about
+  30 px):
+
+  | Floor (camera mode) | Attacks | Idle (Cain stands and never attacks) |
+  |---|---|---|
+  | Roof (1) | bursts at x ≤ 1234 (entry 31) or ≤ 338 (entry 30), and 250 frames after leaving | beyond 1234; no projectiles on the roof |
+  | 20 (1) | bombs at 1585-2418 | 2419-2541 (the floor's end) |
+  | 30 (2) | missiles at 1697-2034 and 2097-2434 | 2035-2096, 2435-2640 (the landing), below 1697 (the end) |
+  | 40 (1) | 1601-1938 and 2017-2354 | below 1601, 1939-2016, 2355-2526 (the end) |
+  | Ground (2) | projectiles at 1409-1746 and 1857-2386, bursts at 1537-1874 | 2387-2640 (the landing) |
+
+- **Each floor's end is idle, and it is where the player must go**: a floor opens once RoboCop and
+  Cain are both outside x 1680-2519 (`$16A9`, `act_20`, Q7): floors 20 and 40 at RoboCop's x ≥ 2520,
+  floor 30 at x < 1680. Both then fall. A player who lingers in an idle stretch waits until the
+  7:30 time out; `INVULN=1` skips the time out, so there it can last for ever.
+- **He dies only on the ground floor** (Q1: y 56, 255, 416, 578 above; 719 there): 45 hits.
+- **The port's check**: 11 drives (60 s lingering at chosen places, wandering, `drivejoy --fuzz`)
+  give 0 differences against the bench on the trace build (`tracecmp --ram`, 780 fields a frame).
+  With the product's options (`EXTJOY=1 LV_TEST=3 CHEAT=1 INVULN=1`) every spawn, launch, burst and
+  `$16B4` reload has the bench's frame, slot and place:
+  - 11 drives on the Expert, 3 each on the HB-F1XDJ and the FS-A1GT;
+  - with the time-out flag set, as in the play-tester's state (timer 0:00).
+  - The only difference is Cain's own entry 36: `ENEMY_CAP` skips it while he lives, so it keeps
+    its count, where the Amiga resets it out of the window. It is harmless, since he spawns once a
+    life.
+  - The spawn walk's masks (`tools/cellmasks.py`) leave out no entry inside the window at 6,080,000
+    camera places.
+- **What the MSX shows differently** (display only):
+  - At 7-8 ticks a second (Expert) the gaps between attacks last about 3 times longer.
+  - In camera mode 2 the MSX shows 47-52 % of Cain's width (the Amiga 82-86 %): `pl_view` keeps
+    RoboCop at screen x ≤ `AX_MAX` 160, and Cain stands 170-200 px behind him.
+  - The 8-sprites-a-line budget leaves out 22-38 % of his burst bullets' pictures and 3-12 % of his
+    projectiles' (RoboCop 5 + Cain's 32 × 40 part 3).
+- Records, drives and tools: `build/archive/cain_2026-11-01` (local).
+
 ## 3. The MSX design
 
 ### 3.1 Level 3 in the engine [D]
