@@ -15,6 +15,11 @@ are built: **127 of the 128 banks**, still 1 MiB, the count the level-2 plan est
 (`docs/LEVEL2.md` 3.12). The next block, level 3's first, makes the image 2 MiB with its boot guard:
 the minimum device for the complete game.
 
+**Update, 2026-11-01.** The ending (WELL DONE, the CMP tune, the high scores) and level 3 are built:
+the image is **2 MiB, 163 of its 256 banks** at `level2` 56e8f56 (2.4: the bank map, the free bytes, level
+3's and the ending's real cost against sections 3.3 and 3.5-3.6; section 7: what became of the limits).
+The numbers of 2.4 are mkrom's and the label files' for builds of 56e8f56; later commits change some.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -50,6 +55,8 @@ Conventions:
 | Free on 2026-10-28 (banks 104-127 of the 1 MiB test images) | 24 | 192 |
 | Used on 2026-10-31, with level 2 and the stages' second visits (banks 0-126, 2.3) | 127 | 1,016 |
 | Free on 2026-10-31 (bank 127) | 1 | 8 |
+| Used on 2026-11-01 at 56e8f56, with the ending and level 3 (banks 0-162 of the 2 MiB image, 2.4) | 163 | 1,304 |
+| Free at 56e8f56 (banks 163-255; bank 255 carries the boot guard's tag) | 93 | 744 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -244,9 +251,95 @@ MiB**.
   for the complete game (the user's decision of 2026-10-26, `README.md`). Level 3's estimate (3.3: 17 /
   19 / 22 banks, its pool share 4 / 5 / 6) and the rest of section 3 stand: the whole game at about
   152-164 of the 256 banks. Level 3's logic needs a bank of its own (`BANK_L2` has 29 B left), and the
-  fixed area's 46 B in the lowest option set are the scarce part again.
+  fixed area's 46 B in the lowest option set are the scarce part again. (What it took: 2.4.)
 - `ROM_2M=1` pads the 127 banks to 256 with the boot guard's tag; the 2 MiB product's flow passes in
   every gate (`docs/HARNESS.md` 5.19).
+
+### 2.4 Added on 2026-11-01: the ending and level 3 (at 56e8f56)
+
+M, from `tools/mkrom.py`'s output, `gen/banks.inc` and the label files of builds of `level2` **56e8f56**
+(the product `fb06ae0faab13802`; `tools/bstest/variants.sh` and `tools/bstest/l2base.py banks`, with the
+DIAG=2 label fix of the same night: `docs/level3/HANDOFF.md`, step 9). **2 MiB, 163 of 256 banks**, the
+boot guard on. Later commits change some of these numbers.
+
+| Banks | Content |
+|---|---|
+| 0-1 | fixed code |
+| 2-9 | LC1, LC2, `BANK_L1`, LC3, INPUT, FRONT, FIELD, MUSIC |
+| 10-20 | level 1's tiles (10-17) and map (18-20, 51 rows) |
+| 21-48 | the global sprite pool, 28 banks (RoboCop, levels 1-3's BOB frames, one index per level) |
+| 49-56 | HUD data (49-50), level 1's attributes (51), HUD image (52), level 1's tables (53), its atlas (54), the dynamic frames (55-56) |
+| 57-82 | the title picture (57-63), the game-over picture (64-69), the speech (70-72; in the music 73-75), the title music for the SCC (76-79) and the OPLL (80-81), the SCC effects (82) |
+| 83-92 | Brainstorm: code (83), graphics (84-90), music (91-92) |
+| 93-108 | the range: code (93), graphics (94-101), hit data (102-103), music (104-108) |
+| 109-123 | level 2: `BANK_L2` (109), tiles (110-117), map (118-119), attributes (120), tables (121), atlas (122-123) |
+| 124-126 | level 3's map (124-125) and attributes (126) |
+| 127 | `BANK_FRONT2`: the ending's code and texts (a bank the 3Fh rule leaves to blocks read at A000h) |
+| 128-131 | Brainstorm's visit-2 pictures |
+| 132-135 | the ending's sound (`end.bin`, 27,110 B) |
+| 136-162 | level 3: tiles (136-143), tables (144), atlas (145-146), frame cache (147-160), `BANK_L3` (161), `BANK_L3B` (162) |
+| 163-255 | free (93 banks); bank 255 carries the boot guard's tag at 1FF0h; 191 is padding (the 3Fh rule) |
+
+`tools/mkrom.py` `place_banks` lays out every block after level 2's atlas (step C of level 3 moved the
+visit-2 pictures off bank 127, where the pool's growth had put them). The 3Fh rule, the SCC test values
+of a 2 MiB image and the guard's tag pass mkrom's checks in all 58 option sets that build.
+
+**Free bytes in the code banks** (M; the lowest option set is `DIAG=1 PZ_TEST=1`; the last column the
+least of the 58 option sets that build, of 61: `DEMO_ACTORS` 2 and 5 and `DEMO_HUD` overflow the fixed
+area, as before):
+
+| Bank | Product | `DIAG=1 PZ_TEST=1` | Least in any set |
+|---|---:|---:|---|
+| fixed area | **164** | **29** | 29 (that set); 38 `DIAG=1 LV_TEST=2` or `3` |
+| LC1 | 50 | 50 | 50 (153 in the `DAMAGE_X=1` trace builds) |
+| LC2 | 4,827 | 4,827 | 4,827 |
+| `BANK_L1` | 874 | 874 | 874 |
+| LC3 | 4,794 | 4,794 | 4,761 (`CHEAT=1`) |
+| INPUT | 11 | 11 | 11 |
+| FRONT | 1,119 | 721 | 673 (`DIAG=1 LV_TEST=2` or `3`) |
+| `BANK_FIELD` | 300 | 300 | 99 (`VAT_ANIM=1`, which leaves level 3's play field out); 259 in `EXTJOY` builds |
+| MUSIC | 1,251 | 1,280 | 0 by the count in the two `DIAG=2` sets (`music_end` C000h there) |
+| `BANK_PUZL` | 4,483 | 4,483 | 4,483 |
+| `BANK_FRNG` | 264 | 264 | 264 |
+| `BANK_L2` | 1,429 | 1,429 | 28 (`VAT_ANIM=1`) |
+| `BANK_FRONT2` | 7,041 | 7,041 | 7,018 (`TAG` builds) |
+| `BANK_L3` | 3,867 | 3,867 | 3,867 |
+| `BANK_L3B` | 2,383 | 2,383 | 2,383 |
+
+**Level 3's real cost** against 3.3 (and its pool share in 3.4) and `docs/LEVEL3.md` 3.2's estimate:
+
+| Block | 3.3 / 3.4, banks L/l/H | `LEVEL3.md` 3.2 [E] | As built |
+|---|---|---|---|
+| Tile sheet | 8/8/8 | 8 | 8 |
+| Map | 2/2/2 | 2 | 2 |
+| Attributes | 1/1/1 | 1 | 1 |
+| Tables | 1/1/1 | 1 | 1 |
+| Logic | 1/2/2 (8.0/10.0/13.4 KiB) | 2 | 2: 10,134 B used of `BANK_L3` and `BANK_L3B` |
+| Play field | 4/5/8 (the big frames streamed into the dynamic slot) | 7-9 (atlas 1-2, big frames 6-7) | **16**: the atlas 2 (109 lines, 18 frames), the frame cache 14 (97 frames: the 42 big frames and 55 white copies, with its header; 114,688 B) |
+| Pool growth | 4/5/6 | 1-2 | 1 (27 → 28 banks) |
+| **Level 3** | **21/24/28** | **22-25** | **31** |
+
+- **The play field took 2-3 times the estimate**: the hit flash became white copies stored in the ROM
+  (55 of the cache's 97 frames, in colour 9) instead of 3.5's conversion at the upload, and both sides
+  of every big frame are stored (`docs/LEVEL3.md` defaults 4 and 6, 3.10).
+- **The pool took one bank, not 4-6**: no sprite version of a play-field frame is kept (the flash is
+  the white copy), and 64 of level 3's 150 sprite ids reuse level 1's and level 2's records where
+  those memories hold the same bytes; 82 records are new (patterns 3,604 → 3,944).
+- **The logic** came out at the likely estimate: 10,134 B in two banks (3.3: 10.0 KiB likely).
+- **The whole game: 163 banks**, inside 2.3's 152-164 and 6 above `LEVEL3.md`'s 153-157 (the frame
+  cache); 93 banks stay free.
+
+**The ending's real cost** against 3.5-3.6:
+
+| Block | Estimate | As built |
+|---|---|---|
+| FRONT2 bank | 1/1/1 bank, 2.8/5.8/7.0 KiB (a script interpreter, the particle writer, the high scores, the scripts not yet ported) | 1 bank (127), **1,151 B used**: `msx/ending.asm` and `ending.inc`. The text screens reuse FRONT's engine (`fe_text`: the particle titles typed in the 8 x 8 font), so neither an interpreter nor the particle writer was needed |
+| Additions to FRONT | 1.4/1.9/2.7 KiB (the flow, the stages' glue, a ZX0 decoder) | the flow and the stages' glue came with level 2 and the stages (2.1-2.3); the ending added `frontx.asm` (65 B) and moved `rom_guard` (143 B) there; level 3 its descriptor and `fo_flash`: FRONT 1,381 → 1,119 B free. No ZX0 decoder (nothing is compressed) |
+| Additions to LC2, LC3, FIELD | 0.6/1.1/2.4 KiB | LC2 15 B (`act_20`), LC3 72 B (the two-part lift), FIELD 808 B (level 3's play field, after default 9 gave it 958 B) |
+| Overflow code bank | 0/1/2 banks | none: the fixed area's additions fit (41 B for level 3), the new types went into `BANK_L3B` |
+| CMP, the ending's tune | 4/4/4 banks, 25.5/25.5/28.0 KiB (SCC 12,419 + OPLL 8,511 + PSG 5,144 B) | 4 banks (132-135), `end.bin` **27,110 B**: SCC 12,797, OPLL 8,793 (with HH and TCY), PSG 5,287 B, unrolled to the 4,916 ticks the original plays (4,800 and 116 of its loop) |
+| HI1's effects 3 and 4 | in bank 77's free bytes | in `end.bin` beside the tune (`snd_ffx`) |
+| MUSIC | — | `tn_cmp` and its descriptor: 1,331 → 1,251 B free |
 
 ## 3. What the rest of the game needs
 
@@ -355,6 +448,8 @@ Decision numbers are those of the port's decision list.
   - The lift's two parts ($5397C 32 × 29, $53BC0 32 × 16) take 720-735 B.
   - The smoke frames are level 1's (banks 50-51).
   - Low: 10 % of the frames are never drawn. No coverage run exists for level 3.
+- **As built (2026-11-01)**: 31 banks with its pool share (the play field 16: a frame cache with white
+  copies instead of the streamed slot); 2.4.
 
 ### 3.4 Sprite pool growth (levels 2 and 3, one palette)
 
@@ -439,6 +534,7 @@ Decision numbers are those of the port's decision list.
   - the vat sprite cut;
   - far calls into a level whose logic takes 2 banks;
   - the music player's tune directory, loop points and 48 ticks/s.
+- **As built (2026-11-01)**: no overflow bank; `BANK_FRONT2` holds 1,151 B (2.4).
 
 ### 3.6 Sound
 
@@ -467,6 +563,7 @@ Decision numbers are those of the port's decision list.
   - Each chip's stream starting a bank, as scc.bin and fm.bin do today: 15 banks.
 - **Effects.** The new effects fit in bank 77, which has 2,787 B free. Levels 2 and 3 use MU1's
   42 effects (load_level_music $8614 loads MU1 for every level), so they need nothing new.
+- **As built (2026-11-01)**: CMP in 4 banks, `end.bin` 27,110 B with HI1's effects 3 and 4 (2.4).
 
 ### 3.7 Bonus stages: Brainstorm and the shooting range, two visits each
 
@@ -809,6 +906,26 @@ been tested on hardware.
 
 These must be solved before levels 2 and 3 run. Most cost little ROM, but they land in full
 banks.
+
+**What became of the limits level 3 was expected to break** (2026-11-01, at 56e8f56; the list below
+is the budget's of 2026-10-26):
+
+| Limit | Level 3 | What happened |
+|---|---|---|
+| Spawn-walk masks of 32 entries | 39 entries | `SW_MAX` 40 since level 2 (5-byte masks); `cells_l3.inc` holds level 3's 39 |
+| Frame ids: 200 sprite frames (`FIELD_ID0` C8h) | 202 sprite + 63 play-field frames | ids per level (`lv_fid0`, the descriptor's 33rd byte; level 3's play field from 98h): 150 sprite ids and 66 play-field ids, 216 of 254; no 16-bit ids |
+| Map patch pools of 2 × 255 cells | about 216 cells | 216 cells (`mapcells.py --level 3`); at most 66 / 60 in use in the traces (`kill` to the level's end), the lost counters 0 |
+| The field atlas's 88 lines | its static frames | 109 lines (page 3 lines 0-108, the room level 2 opened), two banks |
+| The dynamic slot's 256 × 24 | the boss's 336 px of strips | a frame cache of its own on page 2 lines 160-231 (seven fixed places; the tile cache 160 slots); the explosions' slot keeps the smoke alone (level 3 has no MADEX explosion) |
+| 17 frames needing 4-5 sprites a line | beside RoboCop's 5 | every frame 48 px wide or more is drawn into the play field; the start check's `sprlines` shows no new class |
+| The fixed area | +30 to +45 B | level 3 took 41 B (the flow, `l3b_call`, `lv_fid0`'s reads, the bullets' routing) and the vats' display code left the product (+31): 164 B free in the product, 29 in `DIAG=1 PZ_TEST=1` |
+| The logic in two banks (far calls) | about 11.6 KiB | `BANK_L3` and `BANK_L3B`: 19 six-byte stubs and `l3b_call` (14 B) |
+| CMP's loop at tick 192 (streams loop only to their start) | the ending | the tune unrolled to the 4,916 ticks the original plays: no loop point |
+| `PIC_*_LINES` 8-bit (PICF) | the ending | not needed: PICF is dropped (decision 5) |
+| `bobcatalog.py` misses PC-relative tables | level 3's frames | REA's reading of the draw code's tables completes the catalogue (`L3_HARD`): 212 frames, every frame the bench drew among them |
+| (new) a big play-field item copied in several pieces | Cain, type 21 | no blank holds the pieces: they can show partly old, partly new frames while moving (open at 56e8f56: `docs/level3/HANDOFF.md` step 5) |
+
+The rest of the section as written on 2026-10-26:
 
 **Lists and ids**
 - **Spawn-walk masks hold 32 entries.** Level 2 has 40 and level 3 has 39.
