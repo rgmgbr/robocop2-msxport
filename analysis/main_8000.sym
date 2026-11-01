@@ -176,7 +176,19 @@ f878  palette_fades        fade in ($16CE set: $16CD up to $1F, forces state 10)
 f80e  palette_flash        A0 = RoboCop's colours (COLOR17-31, $f816) for 4 more frames ($F826), then the level's
 f816  set_robocop_colours A0 = 15 colours into the copper's COLOR17-31 ($104e4)
 f8c4  palette_fade         D0 = fade level: COLOR01-31 = the level palette ($f8c6 immediate) with each component at most (D0 >> 1) & $1e
-12082 high_score_entry     score $8046 as 8 characters (+$5b), against the table's last entry; enters a name, sorts the 5 entries
+12082 high_score_entry     st.b $15EF, $8032, $15EA; score $8046 as 8 characters (+$5b) at $1207A, its low 7 against entry 6 ($12070): greater only; entry 6 = the score and 9 spaces, $12300 (HI1), $1215C (the name), the fade out, 24 bubble passes (18 bytes swapped when the upper score is lower)
+11ff6 hiscore_table        the high scores: "   TODAYS BEST " CR, 6 entries of 19 bytes from $12006 (' ', name 9, ' ', 7 digits '['+d, CR), FF 00; particle text 0 of the attract
+1207a hiscore_score        the score $8046 as 8 characters ('[' + digit), high_score_entry's
+1215c name_entry           script $115C9 through $10768 (music stopped), the name $12066 typed: $1225C a key at a time; Return ends, Backspace ($7F) takes one back, 9 at most; the mark 'g' (glyph ?) at the next position, first under the 2nd; Return: $16CD 1 (palette black), both buffers cleared, effect 4; no timeout, the keyboard only
+12218 draw_name            the 9 characters at $12066 through $118CE at column 16 + i, row 10, the front buffer as the text origin (bitplane x 128 + 8i, line 80)
+1225c name_key             one key a press ($15EF latch: a key held waits for $8032 to read FFh): raw code in $122C8 -> character $12296 into $15EA (A-Z, 0-9 main row and keypad as '['-'d', space, 7Fh Backspace, 0Dh Return $44 or $2B); effect 3 on every key found
+12296 name_key_chars       the name entry's characters by raw key code (50 bytes)
+122c8 name_key_codes       the name entry's raw key codes, FF-terminated
+12300 hi1_tune             copper $10356, HI1 loaded at $18000 (the file cache off), $10320 = $18018 (the VBL ticks it), tune 1
+11c54 ending_tune          $86DE's: PICF at $6FFA0 (copper $123EA), CMP loaded at $18000, init, stop all, tune 1; 1801h passes (raster $C0) or fire (read_joystick bit 4, at once), the tune ticked on 4 of 5 passes ($11C52): 4,916 ticks
+11c52 ending_tune_div      $11C54's divider (0 at the start): - 1 a pass; 0 no tick; below 0 4 again and a tick
+118ce text_char_at         D0 column, D1 row: offset D1 x $4C0 + D0 from the text origin $109A2, D2 the character, then $118D6
+
 acbc  spawn_effect         D3 = type, D7 = direction, D0/D1 = x/y into slot $1692 & 14 of the effect table (A3 = $15F4)
 b32c  player_hitboxes      (12, -54, 24, 54), (10, -38, 38, 38), (12, -72, 24, 72): offset in $168E
 b3ae  player_state_params  4 bytes per state: -, $15DF, $15E4 (animation backwards), hitbox offset

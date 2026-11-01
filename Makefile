@@ -101,6 +101,7 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BU
 	$(PYTHON) -I tools/msxgun.py $(BUILD)/msx
 	$(VPYTHON) -I tools/msxtune.py --out $(BUILD)/msx --cache $(BUILD)/music
 	$(VPYTHON) -I tools/msxtune.py --frm --out $(BUILD)/msx --cache $(BUILD)/music
+	$(VPYTHON) -I tools/msxtune.py --end --out $(BUILD)/msx --cache $(BUILD)/music
 	$(PYTHON) -I tools/msxpuzl.py $(X)/files/PUZL_25.bin $(BUILD)/msx/puzl --visits 1,2
 	$(PYTHON) -I tools/msxrange.py $(X)/files/FRNG_15.bin $(BUILD)/msx/range
 

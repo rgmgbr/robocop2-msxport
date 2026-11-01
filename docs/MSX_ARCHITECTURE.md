@@ -924,7 +924,8 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
   (below); `FE_NEXT` (the level done: `$81B8` made AG `$8050` + 1) → `front_stats`, `front_bonus`
   (Brainstorm, the range, then `front_brief`, the next level's briefing), then AG `$8050` = 1 goes on
   into **`lv_next`** (`dsp_off`, `lv_go` with A = `$8050`: level 2), anything else into `ml_ttl`
-  (`title`, `new_game`: after level 2, level 3 not being ported).
+  (`title`, `new_game`: after level 2, level 3 not being ported; `front_bonus` showed the game
+  completed first: "The game completed and the high scores" below).
 - **`front_brief`** (FRONT, at `front_bonus`' end before `jp cpu_title`): AG `$8050` 1 shows
   `txt_l2_brief` ("TOKUGAWA BREWERY", "ARREST CAIN"), 2 `txt_l3_brief` ("CIVIC CENTRUM", ...), else
   nothing, through `fe_text` (the original's particle titles typed in the 8 × 8 font at their calls:
@@ -945,8 +946,10 @@ Level 2, the Tokugawa brewery, as built (`docs/LEVEL2.md`: the plan with its "As
 ### The continue (`front_over`, `front_cont`, `fo_cont`, `lv_cont`)
 
 - **`front_over`** (FRONT): `fo_cont` (C6F0h) cleared first (a continue taken earlier must not leave
-  it set), PIC9 for 30 s or fire, AG `$8032` = FFh (`high_score_entry` `$12082`'s `st.b $8032`; the
-  entry itself is not ported), then `front_cont`; it returns `fo_cont` as the flags.
+  it set), PIC9 for 30 s or fire, AG `$8032` = FFh (`high_score_entry` `$12082`'s `st.b $8032`), then
+  `frontx.asm` `fo_hsc`: the high-score entry (`ending.asm` `hs_entry`, below), then `front_cont`; it
+  returns `fo_cont` as the flags. After an entry `fo_hsc` enters `front_cont` at `fc_txt` (or `fc_neg`
+  without a credit): the display is the game's already, the HUD stays.
 - **`front_cont`** (`$11FD2`): AG `$805E` − 1 as a word; below 0 its high byte cleared (`$11FEE`: the
   word reads 00FFh) and `jp cpu_title`; else `cpu_title`, `front_done` (SCREEN 5), `fb_prep`,
   `display_on` where `fb_prep` does not call it (every machine but the turbo R: after PIC9 there is no
@@ -1066,12 +1069,38 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
 `pl_view` adds it to the view's x after `pv_add`, before `pv_keep`, which still keeps RoboCop within
 `AX_MIN`..`AX_MAX`. Display only: the logic's camera is untouched.
 
+### The game completed and the high scores (`msx/ending.asm`, `BANK_FRONT2`; `docs/ENDING.md`)
+
+- **`BANK_FRONT2`** (bank 127 at A000h, the bank the 3Fh rule leaves to what is read at A000h:
+  `tools/mkrom.py` STAGES' last), mapped around its calls by `frontx.asm` `front2_call`, FRONT at
+  8000h: `front_ending` (`level_load_3` `$86DE`: WELL DONE, then CMP tune 1 while that screen stays
+  on, 4,916 ticks or fire), `hs_entry` (`high_score_entry` `$12082`: the name entry `$1215C` with the
+  MSX keyboard's matrix, the table screen), `hs_init` (the table's defaults at the power-on), their
+  copies of `fe_text`'s set-up and loop (`et_open`, `et_go`, `et_keep`) and of `fs_char`'s cell
+  drawing (`et_gl`, `et_cell`), and `ending.inc` (`tools/msxtext.py`). Every routine it calls puts
+  the A000h window back (`act_a000`).
+- **FRONT** gets only `frontx.asm`, after its code and tables, and three call operands of the same size
+  (`front_over` → `fo_hsc`, `front_bonus` → `fb_brief2`, `cold_init` → `ci_hook`): nothing in FRONT
+  moves, every other bank keeps its bytes. `fr_ending` is the ending's one way in (`front_call`; level
+  3's end calls it, then `ml_ttl`); `fb_brief2` calls it after the level-3 briefing until level 3 is in
+  the ROM (not in script or `PZ_TEST` builds); `ci_hook` runs `rom_guard` (moved from `cold.asm`) and
+  `hs_init` before `snd_detect`.
+- **The sound**: `end.bin` (banks 128-131: the image is 2 MiB) through `tune.asm` `tn_cmp` (after the
+  player, its descriptor `tune_cm.inc` after it); the name entry starts it with `tn_left` 1 (no tick of
+  the tune) for HI1's effects 3 and 4 (`snd_ffx`, puzl.asm `snd_bfx`'s copy).
+- **RAM**: the table at `hs_tab0` (C5D0h) and `hs_tab1` (C2D9h), 13 bytes an entry, kept from the
+  power-on; the entry's work in `fs_buf` (`hs_i`, `hs_lat`, `hs_sc`, `hs_ran`).
+
 ### Test options
 
 - `LV_TEST=2` (`tools/mkrom.py`): power-on without the title, level 1's set-up, then once `rc2.asm`
   `lv_test`: `front_l2test` writes `LV_CARRY` (`S:L:C:R`, default `10050:2:0:1`: the score, lives,
   credits and rating) and AG `$8050` = 1, shows the level-2 briefing, and `lv_next` starts level 2 as
   the product does; later games are the product's (`pz_first`). Refused with `PZ_TEST`.
+- `END_TEST=1` / `2`: power-on without the title, level 1's set-up, then once `rc2.asm` `end_test`:
+  `frontx.asm` `front_etest` writes `LV_CARRY`'s score, lives and credits, then `fr_ending` (the game
+  completed, as level 3's end will reach it; then the title and a new game) or `ml_ov` (a game over:
+  PIC9, the entry, the offer; a continue restarts level 1). Refused with `PZ_TEST`, `LV_TEST`, `DIAG`.
 - `CHEAT=1`: AG `$804F` set at each new game (`ng_init`); `frame.asm` `fe_keys`, first in `frame_end`,
   maps F5 to key code 59h (the level's end) and F4 to 58h (energy) in `$8032`, the original's F10/F9.
   Refused with `DIAG`.
@@ -1101,8 +1130,10 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   credit is left (level 2 on), else title; the level's end → the level's statistics → Brainstorm
   (its intro, the stage, its result: below) → the shooting range (its intro, the stage, its result
   or OUT OF TIME.: below) → the next level's briefing → level 2; after level 2 the same with both
-  stages' second visits → the level-3 briefing → title (level 3 is not ported: "Levels" below).
-  Test builds with a script skip the title.
+  stages' second visits → the level-3 briefing → the game completed (WELL DONE, the CMP tune, the
+  high-score entry and the table: below; until level 3 is in the ROM) → title. A game over: PIC9 →
+  the high-score entry when the score enters the table → the continue offer or the title. Test builds
+  with a script skip the title, the ending and the entry.
 - **The level's statistics** (`front_stats`, `show_level_stats` `$85D8`: script `$1132F` through
   `$10762`): the henchmen killed (`$16C2`), the nukes collected (`$16C0`) and the hostages
   rescued (`$16BE`) typed into the play area of page 0 (a register list of its own: page 0

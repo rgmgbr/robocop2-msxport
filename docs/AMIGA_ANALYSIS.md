@@ -1012,7 +1012,10 @@ every screen in `screens/`.
   (`$8382` D0 = 2 / 4: PIC3 / PIC5), shooting range (`$8420` D0 = 1 / 5: PIC2 / PIC6), briefing
   `$110F0` / `$110B4`, PIC4 / PIC7, MU1, MADEX + DATAL2 / DATAL3.
 - **After level 3** (`level_load_3` `$86DE`): script `$112C5`, `$11C54` (PICF and CMP tune 1,
-  see *Music*; 1801h passes or fire), `high_score_entry`, `$8090` (stack reset, title).
+  see *Music*; 1801h passes or fire), `high_score_entry`, `$8090` (stack reset, title). `$11C54`'s
+  loop runs a pass a frame (raster `$C0`), ends at once on fire (no release needed) and ticks the tune
+  on 4 of every 5 passes (`$11C52` from 0): 4,916 ticks, the tune's 4,800 and its loop's first 116
+  **[verified: REA on `level3_full.bin`; `docs/ENDING.md`]**.
 - **Pictures** (`show_picture` `$11E06`): `$FE14` (music stopped) and `$FEDA`, PIC('1'+D0)
   loaded at `$6FFA0`, shown at once with its own palette, for 251 VBLs or until fire.
 
@@ -1394,7 +1397,9 @@ and 11), as Brainstorm's are in `docs/BRAINSTORM.md`. Names: `analysis/frng_1ea0
   `$15EF`), raw codes `$122C8` → characters `$12296`: A–Z, 0–9 (main row and keypad, stored as
   `'['`–`'d'`), Space; Backspace (`$41`) deletes the last one; Return (`$44`) or `$2B` ends;
   after 9 characters others are ignored. Every key starts effect 3; Return effect 4, the
-  palette black and both buffers cleared.
+  palette black and both buffers cleared. The keyboard only (`$8032`), no joystick, no timeout;
+  after the sort nothing shows the table (the title's attract does) **[verified: REA on
+  `level3_full.bin`; `docs/ENDING.md`, which the port follows]**.
 - Continues `$805E`: 0 at a new game, + 1 per solved Brainstorm. `$11FD2`: − 1; if still ≥ 0,
   MU1 init and script `$11590`, and fire during it (or held when it ends) continues; else
   `$802E` cleared and the title. A continue restarts the level with 2 lives; on level 1,

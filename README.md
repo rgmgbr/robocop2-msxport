@@ -18,10 +18,10 @@ anything generated in `build/`.
 - A cartridge device that runs a **Konami SCC MegaROM** (the Konami5 mapper) of the game's size:
   - releases 0.1.x, with level 1 only: **1 MiB**;
   - **the complete game: 2 MiB**, the minimum device for it (the user's decision, 2026-10-26:
-    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). Level 2, in development and not released yet,
-    still fits a 1 MiB image (127 of its 128 banks); level 3 makes the image 2 MiB. A 2 MiB image
-    checks the device at power-on: on one that holds less, the game shows "ROBOCOP 2 needs a 2 MB
-    Konami SCC cartridge or MegaRAM." and stops.
+    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). Since the ending's music is in, the game in
+    development (levels 1 and 2 and the ending, not released yet) is a 2 MiB image (132 of its 256
+    banks). A 2 MiB image checks the device at power-on: on one that holds less, the game shows
+    "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM." and stops.
 
   No original cartridge is that large, so the game needs one of these: a flash or multi-ROM
   cartridge, a MegaRAM, an FPGA MSX, or an emulator.
@@ -123,16 +123,22 @@ make rom ROMOPTS="PZ_TEST=1"        # test ROM: at power-on straight into Brains
 make rom ROMOPTS="PZ_TEST=1 PZ_LEVEL=2 TAG=2"   # its second visit's boards; TEST 2 on the bonus text screens
 make rom ROMOPTS="PZ_TEST=2"        # test ROM: at power-on straight into the shooting range, then the title
 make rom ROMOPTS="LV_TEST=2"        # test ROM: at power-on the level-2 briefing and level 2 (LV_CARRY's score, lives, credits, rating)
+make rom ROMOPTS="END_TEST=1"       # test ROM: at power-on the game completed (WELL DONE, the ending's tune, the high-score entry)
+make rom ROMOPTS="END_TEST=2 LV_CARRY=10050:0:1:1"   # test ROM: at power-on a game over, the entry, the continue offer
 make rom ROMOPTS="CHEAT=1"          # F5 ends the level, F4 fills the energy (the original's F10/F9)
 ```
 
 The game's flow: the title, level 1, its statistics, Brainstorm, the shooting range, the level-2
 briefing, level 2 (the Tokugawa brewery), its statistics, both bonus stages' second visits, the
-level-3 briefing, then the title again (level 3 is not ported). Level 2 is in development on the
-branch `level2` and not released yet: it goes out only complete and tested
-([docs/LEVEL2.md](docs/LEVEL2.md): its plan, as built). A game over shows the game-over picture; when
-Brainstorm has given a credit, a continue screen follows, and fire restarts the same level with two
-lives and the score kept, the map as it was left (the first offer can come in level 2).
+level-3 briefing, then, until level 3 is in, the game completed: WELL DONE with the ending's tune
+(CMP), the high-score entry and the table, then the title again. Level 2 and the ending are in
+development on the branch `level2` and not released yet: they go out only complete and tested
+([docs/LEVEL2.md](docs/LEVEL2.md): level 2's plan, as built; [docs/ENDING.md](docs/ENDING.md): the
+ending and the high scores). A game over shows the game-over picture, then the high-score entry
+when the score enters the table (TODAYS BEST: six names and scores, kept from the power-on; the
+name typed on the MSX keyboard, BACKSPACE and RETURN as the original's, and the table after it);
+when Brainstorm has given a credit, a continue screen follows, and fire restarts the same level with
+two lives and the score kept, the map as it was left (the first offer can come in level 2).
 - Brainstorm (its intro, the chip puzzle, its result): [docs/BRAINSTORM.md](docs/BRAINSTORM.md).
   Solving it gives a credit. Its second visit, after level 2, has its own boards and Ellen's face.
 - The shooting range (its intro; a crosshair over a street of targets, 25 shots and 2:00; its
@@ -152,12 +158,14 @@ PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build o
 | `PZ_TEST=2` | the same with the shooting range alone |
 | `PZ_LEVEL=1` or `2` | `PZ_TEST`'s visit: after level 1 (default) or after level 2 (Brainstorm's second set of boards and Ellen's face, the range's darker palette) |
 | `LV_TEST=2` | power-on without the title: level 1's set-up, then the level-2 briefing and level 2 once, as the product reaches them after the range; later games as the product's |
-| `LV_CARRY=S:L:C:R` | `LV_TEST`'s carry: score, lives, credits and the rating 0-3 (SHARP to POOR; default `10050:2:0:1`) |
+| `END_TEST=1` | power-on without the title: level 1's set-up, then the game completed (WELL DONE, the ending's tune, the high-score entry and the table) with `LV_CARRY`'s score, then the title and a new game |
+| `END_TEST=2` | the same with a game over instead: the game-over picture, the high-score entry, the continue offer with `LV_CARRY`'s credits (a continue restarts level 1) |
+| `LV_CARRY=S:L:C:R` | `LV_TEST`'s or `END_TEST`'s carry: score, lives, credits and the rating 0-3 (SHARP to POOR; default `10050:2:0:1`) |
 | `CHEAT=1` | F5 ends the level, F4 fills the energy (the original's F10/F9 cheat keys) |
 | `VAT_ANIM=1` | level 2's vats redrawn as they bubble, as built for test7 (a comparison only: the product shows them as static images, the map's own look, the user's choice for the game's speed; `docs/LEVEL2.md` 3.5) |
 | `VAT_TICK=1` | with `VAT_ANIM=1`: the vats redrawn more often, for a little of the game's speed (the other comparison; refused without `VAT_ANIM=1`) |
 | `DAMAGE_X=n` | the enemies' damage to RoboCop times n, 1-3 (default 2, the user's choice; 1 = the original, for the trace tests): their bullets, touching them, level 2's drips; the missiles (enemy bullet types 1 and 2, level 2's drone) keep the original's damage in every build |
-| `TAG=n` | a test candidate (1-99): the bonus text screens (both stages') show TEST n below their text |
+| `TAG=n` | a test candidate (1-99): the text screens (the stages', the briefings, the ending's and the high scores') show TEST n below their text |
 | `RG_ADJ=0` | the range's camera in 16-pixel steps without R#18 (the VDP's horizontal adjust), for a VDP that ignores R#18 |
 | `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stages' timers stand still |
 
@@ -167,7 +175,7 @@ and a 2 MiB MegaRAM with an SCC, with an SCC+ or alone. `make matrix OMHOME=DIR`
 home that has those machines, such as the MSX-AI MCP's (a leading `~/` is expanded; default:
 `$OPENMSX_HOME`, else `~/.openMSX`).
 
-The tool waits for the title on every set-up, so a `PZ_TEST` build, which starts without the
+The tool waits for the title on every set-up, so a `PZ_TEST` (or `LV_TEST`, `END_TEST`) build, which starts without the
 title, FAILs under `make matrix`. Check such a build with the tool itself (add `--home DIR` for
 another openMSX home):
 
@@ -238,4 +246,5 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [Level 2, the Tokugawa brewery: the plan, as built](docs/LEVEL2.md), and its steps' accounts
   ([docs/level2/HANDOFF.md](docs/level2/HANDOFF.md))
 - [The rest of the game: the user's last changes, level 3 and the ending, step by step](docs/level3/HANDOFF.md)
+- [The game completed and the high scores](docs/ENDING.md)
 - [The bonus stages' acceptance harness (`tools/bstest/`)](docs/HARNESS.md)

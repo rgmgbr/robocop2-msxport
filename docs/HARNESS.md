@@ -99,7 +99,10 @@ The harness has two sides:
 | `sess_fxlog.tcl` | Tcl | the in-game effects per tick: every `fx_start`, and at every `fx_tick` the SCC's channels and the PSG's registers (level 1's scratch tool of 2026-10-22, 5.21); sourced with its `::fl_*` set, not by `load.tcl` |
 | `fxlog.tcl` | Tcl | every PSG (R0-R13), SCC (9800h-98FFh, where it went) and OPLL write with the sound engine's events: requests queued and taken, ticks, stops, text screens, the stages' tune ticks; `fxl_jobs W/fx R` (26 jobs: level 2's drives on three chip sets, the continue, the briefings, both stages' visits), `fxl_drive_job`, `fxl_text_job` (5.23) |
 | `fxcheck.py check LOG ROM LABELS [--bench REF] [--expect K]`, `visits A B`, `selftest LOG ROM LABELS` | python | the sound engine's model (`sndplay.asm`, `music.asm`'s in-game effects) replays an `fxlog.tcl` log: every segment's writes, the queue, the tick divider, the end state, the effects' starts and plays to the end, the bench's requests, the text screens' silence; the stages' tunes of two visits tick for tick; mutations a log must fail (5.23) |
-| `cheat.tcl` | Tcl | `ch_job DIR ROM LABELS`: a `CHEAT=1` build by the keyboard from the power-on, F5 ending level 1 and level 2, F4 filling the energy, snapshots and notes (5.23) |
+| `cheat.tcl` | Tcl | `ch_job DIR ROM LABELS`: a `CHEAT=1` build by the keyboard from the power-on, F5 ending level 1 and level 2, F4 filling the energy, snapshots and notes (5.23); since the ending's step through the game completed (RETURN at the name entry: `ending.tcl` `ge_ret_arm`) to the title |
+| `ending.tcl` | Tcl | the game completed and the high scores (5.25): `ge_job DIR TAG ROM LABELS KEYS ?MACHINE? ?FIRE?` (an `END_TEST` build's screens, the keys typed one a wait of the name entry, the tune's ticks, the table in RAM), `ge_ret_arm ROM LABELS` (RETURN at a flow's name entry: `np.tcl` `np_title_setup`'s jobs, `cheat.tcl`) |
+| `endcheck.py DIR TAG KEYS [--tag N] [--score S] [--over [--no-offer]] [--gen GEN]` | python | `ge_job`'s records (5.25): WELL DONE, every wait of the name entry and the table screen against `tools/msxtext.py`'s renders and models of `$1215C` and `$1211C`, R#0/R#1 and the palette at each, the tune's 4,917 ticks, the continue offer after an entry, the table in RAM |
+| `frsnd/endsim.py ROOT ROM LABELS` | python | the ending's sound (5.25): `end.bin`'s tune and HI1's effects as `msx/ending.asm` starts them, register-exact against the streams in the Z80 interpreter (four chip sets, 50 and 60 Hz, the R800) |
 | `l2stub.py OUT [--drop NAME ...] [REF ...]`, `--list` | python | level 2's bench references with the routines the port has not ported yet stubbed as the port stubs them (5.22), so that its traces compare whole |
 | `l2frame.py SNAP LEVEL HUD OUT.png [SPRITE_PAL]` | python (venv) | `tools/msxframe.py` on a level-2 snapshot, the sprites' expected pixels from the palette they were converted with (level 1's, until level 2's step 12) (5.22) |
 | `vatlog.tcl` | Tcl | level 2's vats (5.22, step 14; sourced after `load.tcl`): `vl_jobs` (the guard with tears and every vat column drawn: its parts' beam lines, R#23, the time in `vat_run` and `vat_prep`), `vl_speed_jobs` (game frames, ticks and pictures in SECS), `vl_snap_jobs` (`rc2_snap` at chosen game frames for `tools/mapcmp.py`) |
@@ -2070,6 +2073,46 @@ for d in W/vl/*; do python3 -I tools/bstest/vatcheck.py "$d"; done              
   failures only).
 - Not in the chain yet: the Pico+'s bank-select log over `tour` (4.4: at most 53 distinct banks at
   8000h and A000h, a speed target) and level 2 on C-BIOS_MSX2+ at 5.37 MHz.
+
+### 5.25 The game completed and the high scores (the ending's step)
+
+`docs/ENDING.md`; the step's account: `docs/level3/HANDOFF.md`, "Step 3". `W` a fresh folder outside
+`build/msx`, `PY` the venv's Python.
+
+**The builds**: `sh tools/bstest/build.sh W/b/NAME/rc2.rom OPTIONS` for `e1` (`END_TEST=1
+LV_CARRY=10050:2:0:1`), `e1t` (the same with `TAG=8`), `e2` (`END_TEST=2 LV_CARRY=10050:0:1:1`),
+`e2n` (`END_TEST=2 LV_CARRY=10050:0:0:1`: no credit), `e2s` (`END_TEST=2 LV_CARRY=7500:0:1:1`: a tie
+with the last entry, no entry), `cheat` (`CHEAT=1`) and the product.
+
+**The sound** (no emulator): `$PY -I tools/bstest/frsnd/endsim.py <repo> W/b/prod/rc2.rom
+W/b/prod/rc2.labels`: every tick of CMP's 4,916 and 60 after them (`tn_left` 0 at tick 4,916, no write
+after), the name entry's effects against `$1822C`'s rule, on the four chip sets at 50 and 60 Hz, and on
+the R800 without an OPLL write: "all: PASS". A one-bit change in a stream of the image fails it.
+
+**The screens** (one chain, the MCP's openMSX or a private session):
+```
+source {<repo>/tools/bstest/load.tcl}
+set J {}
+lappend J [ge_job {W/E} e1 {W/b/e1/rc2.rom} {W/b/e1/rc2.labels} {R O B O C O P 2 X BS KP9 Z RET}]
+lappend J [ge_job {W/E} e1t {W/b/e1t/rc2.rom} {W/b/e1t/rc2.labels} {RET} C-BIOS_MSX2]
+lappend J [ge_job {W/E} e2 {W/b/e2/rc2.rom} {W/b/e2/rc2.labels} {BS SPACE M S X RET} Sony_HB-F1XDJ_128K_Lite 1]
+lappend J [ge_job {W/E} e2n {W/b/e2n/rc2.rom} {W/b/e2n/rc2.labels} {A RET} Panasonic_FS-A1FX 1]
+lappend J [ge_job {W/E} e2s {W/b/e2s/rc2.rom} {W/b/e2s/rc2.labels} {} Gradiente_Expert20_64K 1]
+lappend J [ge_job {W/E} e1tr {W/b/e1/rc2.rom} {W/b/e1/rc2.labels} {A RET} Panasonic_FS-A1GT]
+lappend J [ge_job {W/E} e2tr {W/b/e2/rc2.rom} {W/b/e2/rc2.labels} {K E Y P A D KP0 KP1 RET} Panasonic_FS-A1GT 1]
+hz_chain $J {W/E/all.done}
+```
+then `endcheck.py W/E TAG "KEYS" [OPTIONS] --gen W/b/NAME/gen` for each: `e1` and `e1tr` without
+options, `e1t --tag 8`, `e2` and `e2tr --over`, `e2n --over --no-offer`, `e2s "-" --over --score
+7500`: "endcheck TAG: PASS" (the previews `W/E/TAG_*.png`: look at them).
+
+**The flows**: the product's whole flow now reaches the ending after the level-3 briefing: `np.tcl`
+`np_t_poll` arms `ge_ret_arm` once the stages' records are taken (they remove every breakpoint), so
+the tx jobs' title is recorded after the ending; `regress.sh check W B flows` judges it against the
+base's title after Brainstorm (the picture, the registers that show, the palette identical; the
+music `titlecmp2.py --unheard`: the SCC's registers that differ are the ones neither run hears).
+`cheat.tcl` goes through the ending to the title. Builds with a script skip the ending and the entry,
+so every EXTJOY flow (level 2's traces, the continue checks) is the base's.
 
 ## 6. The whole suite in order
 

@@ -28,8 +28,10 @@
 #       2 (hb_step's records under TAG, its game frame 100 noted); there the level is ended as a
 #       CHEAT build's F5 ends it ($16D0 = FFh, $16C4 = 40h: np_t_l2), and hb_step records the
 #       statistics' way on under TAG2: Brainstorm's and the range's second visits left to time out
-#       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); the title
-#       after it is the record above (still under TAG), its game noted in TAG2_rg.txt
+#       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); since the
+#       ending's step the game completed follows it (WELL DONE, the CMP tune to its end, the name
+#       entry, where ending.tcl ge_ret_arm presses RETURN, and the table); the title after them is the
+#       record above (still under TAG), its game noted in TAG2_rg.txt
 #   np_title0_setup DIR TAG ROM LABELS ?EXACT?
 #       the same record at the title that follows level 1's statistics, in a build without
 #       Brainstorm (the approved flow: the commit before Brainstorm)
@@ -234,6 +236,10 @@ proc np_t_poll {} {
 		# (the result recorded: hb_step stops here, no fire on the title)
 		set ::hb_st 99
 		set ::nt_st 1
+		# (since the ending's step the level-3 briefing is followed by the game completed and the
+		#  name entry: RETURN there, a blank name (ending.tcl), armed here after the stages' records,
+		#  which remove every breakpoint; a build without the ending has no hsn_k: nothing armed)
+		catch {ge_ret_arm $::nt_rom $::nt_labels}
 	}
 	if {$::nt_st == 1 && [peek 0xEC44] == 1} {
 		hb_note "the title after the result at [machine_info time] s, tick_n [rc2_w 0xCEE0]: hz_fresh's record from here"

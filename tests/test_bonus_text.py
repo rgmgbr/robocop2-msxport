@@ -515,7 +515,9 @@ class BriefTextTests(unittest.TestCase):
             self.assertEqual(db_data(rest.split(label + ":")[1].split("\n", 1)[1]), s, label)
             self.assertEqual(areas[label.replace("txt_", "text_")], self.want_area(s), label)
         self.assertEqual(pngs, set(areas))
-        self.assertEqual(len(areas), 4 + 2 + len(msxtext.RG_RESULTS) + 3)
+        # (+ 3: the ending's and the high scores' references, text_end, text_hisc, text_best:
+        #  tests/test_ending.py)
+        self.assertEqual(len(areas), 4 + 2 + len(msxtext.RG_RESULTS) + 3 + 3)
 
 
 @unittest.skipUnless(all(p.exists() for p in HUD_INPUTS), "game files not extracted (make extract)")

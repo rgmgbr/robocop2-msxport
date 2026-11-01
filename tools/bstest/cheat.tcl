@@ -2,7 +2,8 @@
 # keyboard (docs/HARNESS.md 5.23; load.tcl sources this file): the title, SPACE, level 1 to its game
 # frame 100, F5 (the level's end: $16D0), the statistics, Brainstorm and the range left alone, the
 # level-2 briefing, level 2 to its game frame 100, its energy poked to 40h, F4 (the energy full:
-# 102h), F5, the statistics, both stages' second visits left alone, the level-3 briefing and the
+# 102h), F5, the statistics, both stages' second visits left alone, the level-3 briefing, the game
+# completed (WELL DONE, the CMP tune, the name entry: RETURN, the table; ending.tcl) and the
 # title. Snapshots (rc2_snap at the HUD split's line interrupt: render them with tools/msxframe.py)
 # and the notes (DIR/cheat.txt) into DIR. MCP-safe: no exit, vwait, max or min; the notes written
 # once at the end. One job:
@@ -156,6 +157,13 @@ proc ch_setup {dir rom labels} {
 	lappend ::ch_bps [debug set_bp [rc2_label $labels front_stats] $cf ch_stats]
 	lappend ::ch_bps [debug set_bp [rc2_label $labels fr_title] $cf ch_title]
 	set ::ch_fm [rc2_label $labels front_mode]
+	# (since the ending's step: the game completed after the level-3 briefing, its name entry left
+	#  with RETURN: ending.tcl; noted at front_ending and at the table)
+	if {![catch {ge_ret_arm $rom $labels}]} {
+		set c2 [ge_cond $rom $labels]
+		lappend ::ch_bps [debug set_bp [rc2_label $labels front_ending] $c2 {ch_note "the game completed (front_ending): [ch_state]"}]
+		lappend ::ch_bps [debug set_bp [rc2_label $labels hs_best] $c2 {ch_note "the table after the name entry (RETURN $::ge_ret): [ch_state]"}]
+	}
 	ch_note "[file tail $rom] on [machine_info config_name]"
 	lappend ::hz_afters [after time 900 {ch_end "no title after level 2 in 900 emulated s (state $::ch_st)"}]
 }
