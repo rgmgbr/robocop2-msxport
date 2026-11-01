@@ -1475,3 +1475,10 @@ openMSX". Step 8's open issue 4 (the muzzle flash's 2 px) is left out: 2 pixels 
 3. The name entry's TEST label touches its last line in the test builds (`TAG`); the product without `TAG` is
    unaffected.
 4. Step 8's open issues 1-2 (Cain's speed, the beam's copies) and step 10's stay; they are in the notes.
+
+### Integrated
+Cherry-picked onto `level2` `21547aa` (the main tree clean) as **`11f0d6c`** (this section) and this note's. From
+the main tree then: `sh S12/tools/cands.sh S12/I`: **the four candidates byte-identical** to `S12/test8/`'s (the
+SHA-256s above; the 12 known warnings each), so every result above holds; the notes name this note's commit (the
+same code as `e90e6a3`); `make test`: 348 tests, the 4 known failures only. The records (the summaries, the notes,
+the scratch tools, the pictures looked at; no ROM): `build/archive/rest_step12_records_2026-11-01.tar.gz`.
