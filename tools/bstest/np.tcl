@@ -29,9 +29,10 @@
 #       CHEAT build's F5 ends it ($16D0 = FFh, $16C4 = 40h: np_t_l2), and hb_step records the
 #       statistics' way on under TAG2: Brainstorm's and the range's second visits left to time out
 #       (TAG2_intro, _result, _rgintro, _rgres) and the level-3 briefing (TAG2_brief); since level
-#       3's step A level 3 follows it, ended the same way at its first tick (np_t_end's breakpoint
-#       takes BANK_L3 too), then the game completed (since the ending's step: WELL DONE, the CMP
-#       tune to its end, the name entry, where ending.tcl ge_ret_arm presses RETURN, and the table);
+#       3's step A level 3 follows it, not ended: np_t_end's breakpoint (BANK_L3 too) is gone by then
+#       (hb_result_rec removes every breakpoint), so level 3 plays without input until the game over,
+#       then PIC9, the name entry when the score enters (ending.tcl ge_ret_arm presses RETURN), the
+#       offer left to time out (np_l3flow_setup below ends level 3 and reaches the game completed);
 #       the title after them is the record above (still under TAG), its game noted in TAG2_rg.txt
 #   np_title0_setup DIR TAG ROM LABELS ?EXACT?
 #       the same record at the title that follows level 1's statistics, in a build without

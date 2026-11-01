@@ -697,6 +697,21 @@ What step B built and where it departs from 3.3-3.4 (the account and the checks:
   continue's text `$10768`).
 - **Bytes** (product): `BANK_L3B` 2,383 free (5,662 used), `BANK_L3` 3,867, LC1 50, LC2 4,827, LC3
   4,794, FRONT 1,119; the fixed area unchanged.
+- **Known issues** (the D1 Cain reads, his sound 0Eh; no drive reaches any of them):
+  1. With the joystick locked (`$804D`) slot 0's D1 would be `eb_update`'s leftover; the port takes it as
+     negative (step B).
+  2. A marker spawn into the slot before Cain's on the frame he runs leaves the original's D1 at the
+     marker's y, the port's at 20h + 8 x step (`objects.asm` `uf_mk`); nothing changes while type 43
+     (markers off, the roof) has run, as in every drive (step B).
+  3. **Types 4 and 12** (review B's finding 1, recorded by step 11, not fixed): `level3.asm` `t4_w` /
+     `t12_w` -> `tw_d1` calls `l3_tail` through `rc2.asm` `l3b_call`, which loads A = `BANK_L3B` first, so
+     `l3_tail`'s `or a / jr nz,lt_out` never sees the BOB's result and always takes its "not drawn" branch
+     (D1 = y - camera y, >= 30h); with A kept it would still test the handler's return value, not the last
+     BOB's. The original's D1 there (`$D53A-$D540`; `draw_bob` `$ABDE-$AC18`) is the shift ror 4 | 0FCAh,
+     negative when (x + 1) & 15 >= 8. So with a type 4 or 12 visible in the slot before Cain's and Cain's
+     fire counter (-40h) 0, the port plays sound 0Eh where the original plays nothing. Sound only; with
+     `ENEMY_CAP` 1 types 4, 12 and Cain are all counted and never coexist (`uo_cap`, `uf_any`, `uf_end`):
+     only the `ENEMY_CAP=0` trace builds can reach it, and no drive does.
 
 ### 3.12 As built by step D (2026-11-01) [V]
 

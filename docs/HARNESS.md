@@ -2169,8 +2169,13 @@ picture) and, at a lift, step B's two-part look is missing.
 **The flow** (`cheat.tcl`, a `CHEAT=1` product build): the title, level 1, F5, the stages, the level-2
 briefing, level 2, F5, the stages' second visits, the level-3 briefing, **level 3** to its game frame 100,
 F5 (AG `$8050` = 3: `rc2.asm` `ml_ev`'s `ml_end`), the game completed (`front_ending`, the name entry by
-RETURN, the table) and the title. `np.tcl` `np_t_l2`'s breakpoint ends level 3 at its first tick the
-same way (`BANK_L3`), so the regress gate's `tx` flows reach the ending and the title as before.
+RETURN, the table) and the title. The regress gate's `tx` flows (`np.tcl` `np_title_setup`) do not end
+level 3: `np_t_l2`'s breakpoint, which takes `BANK_L3` too, is set at level 2's game frame 100 and gone
+by level 3 (the stages' result record, `hz.tcl` `hb_result_rec`, removes every breakpoint), so level 3
+plays without input until the game over; then PIC9, the name entry when the score enters the table
+(`ending.tcl` `ge_ret_arm`'s RETURN), the offer left to time out and the title, whose record and
+comparison hold either way. The flow that ends level 3 and reaches the game completed is step D's
+`np_l3flow_setup` (5.29): it asks the end itself at level 3's game frame 100 (`np_t_l3`).
 
 ### 5.27 Level 3's sprites and play field (level 3's step C)
 

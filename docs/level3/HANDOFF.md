@@ -1228,3 +1228,128 @@ the product `8f87721ef2ad3f2a` (step 8's: no code changed here), the l3 trace bu
 8's `frontx.asm` only), the lowest set `82db068352bc89a9`; free bytes the same (the fixed area 164, the lowest
 set 29, `BANK_FIELD` 49, 8 in the l3 trace build); the boss window's guard on the FS-A1FX and the FS-A1GT
 line for line the same as at `03ba0ca` (tear 15 and 22; ticks 368 and 587).
+
+## Step 11: the reviews' fixes (2026-11-01)
+
+Two reviews read the snapshot `001787b` (step 8's tree): review A the engine, the flow, the ending and the
+ROM tools; review B level 3's logic. This step fixed what they found and records them here (`S11` = the
+step's scratch folder; the reviews' reports, scripts and JSON: `build/archive/level3_reviews_2026-11-01.tar.gz`;
+this step's records and pictures: `build/archive/level3_step11_records_2026-11-01.tar.gz`).
+
+### Review A (the engine, the flow, the ending, the ROM tools)
+- **Covered, found correct**: the ending and the high scores (`hs_entry`'s 7-digit BCD compare, ties not
+  entering, the bubble's indices and stack, Return, Backspace and a full name; `kb_tab`, `hs_lat`;
+  `et_cell`, `hs_draw` with `vram_write`/`vram_done` and OTIR below 9FFFh; `front2_call` and the window on
+  every call from A000h; `fo_hsc` with and without an entry or a credit, the turbo R's path; no stale
+  state after a continue or a new game: `ng_init`, `lv_cfront`, `fb_init`); the RAM homes in `msx.inc`
+  (no overlap, the table survives the clears); level 3's frame cache (`fc_find`, `fc_get`, `fbb_fc`: banks,
+  registers, stack, VRAM page 2's places, tile cache and explosions' slot, the overlap masks, `fc_res` at
+  every engine start, bit 7 masked); `bob.asm`, `l3b_call`, `special.asm` `spl_two`, `mapobj.asm` `act_20`,
+  `scroll9958.asm` `draw_kept`, the `tiles.asm` stubs; the damage rule (`phb_en` for `DAMAGE_X` 1-3,
+  `t49_hit`'s 18h); `mkrom.py` (`place_banks` and the 3Fh rule, `a000_only`, the late ROM's checks, the
+  descriptor's order, `l3_hash`, the frame-cache blob, the SCC test values); `msxtext.py` (`hs_def`,
+  `hs_head`); z80asm (no IXL/IXH, the `if` symbols).
+- **Finding 1 (fixed)**: fire on the WELL DONE screen from tick 50 made `et_go` give up the rest of
+  `txt_end` (341 calls, about 6.8 s); `front_ending` then played the CMP tune for up to 98 s over the
+  half-typed text (possibly the title alone), the screen kept on (`docs/ENDING.md` default 2). In the
+  original the same press ends `$112C5` and `$11C54` shows PICF, a whole picture.
+- **Side note (fixed)**: `docs/ENDING.md` said that builds with a script skip the ending; they skip only the
+  entry (`front_ending` has no `INPUT_SCRIPT` test).
+
+### Review B (level 3's logic, `msx/level3.asm`, `msx/level3obj.asm` and the shared code they call)
+- **Method**: every branch the six drives (`tour3`, `beam`, `park`, `boss`, `kill`, `cont3`) never take
+  compared with the original instruction by instruction in REA/Ghidra (`level3_full.bin` with the seeds):
+  conditions and signedness, 16- and 32-bit carries, slot offsets, table bounds, the free, death and
+  spawn paths, the turrets' wreck paths: all match. Also: `l3_noten` (Z for 38-48 and 52, as `uo_cap` and
+  `uo_free` need); the rocket (bullet 11h) x 1 in `phb_en`, the 18h touches of 38/39/52 x 1 in `t38_hit`,
+  the beams' 0Ch x 1; `BANK_L3B` calls only the fixed area and LC1, `game_msg`, `bob_draw` and the
+  interrupt code restore `act_a000`; no IXL/IXH, no `if` blocks; the 21 handler and death offsets of the
+  original's descriptor table equal `lv_htab_l3`. **Verdict: no real defect reachable in the product.**
+- **Finding 1 (recorded, not fixed; `docs/LEVEL3.md` 3.11, known issue 3)**: `l3b_call` loads A =
+  `BANK_L3B` before `l3_tail`, so `l3_tail`'s `or a / jr nz,lt_out` always takes the "not drawn" branch for
+  types 4 and 12 (D1 = y - camera y, >= 30h; with A kept it would still test the handler's value, not the
+  last BOB's). The original's D1 (`$D53A-$D540`, `draw_bob` `$ABDE-$AC18`) is the shift ror 4 | 0FCAh,
+  negative when (x + 1) & 15 >= 8: with a type 4 or 12 visible in the slot before Cain's and his fire
+  counter (-40h) 0 the port plays sound 0Eh where the original plays nothing. Sound only; unreachable with
+  `ENEMY_CAP` 1 (types 4, 12 and Cain all counted: `uo_cap`, `uf_any`, `uf_end`), only the `ENEMY_CAP=0`
+  trace builds could reach it.
+- **Gap 1 (recorded)**: the 16 level-3 traces compare RAM fields only. Level 3 has **no BOB comparison
+  against the bench** (no `objcmp`/`bobcmp` as level 2's check 3), and the map writes are not compared
+  either (the turrets' panels and looks, the wrecks, the beams' cells). Review B checked them statically
+  against REA instead (every handler's A2 bases and offsets, positions and part order; `tur_pnl`,
+  `tur_put40`, `tur_put41`, `lt2_top`, `lt2_left`, `lt2_right`): **no difference found**.
+- **Gap 2 (fixed)**: `tools/amigacov.py` added its `UC_HOOK_BLOCK` after `start_direct`/`start_level`, so
+  the blocks Unicorn translated during `level_init` never reported (review B's own `cov3f.py` installs its
+  hook first).
+- **Coverage** (review B's `cov3f.py`: block and edge coverage of the six drives, the hook before the
+  start; the branches never taken, each checked against the MSX code): t22 `$D49C` 218/220 instructions,
+  never `$D506`, `$D5C0`, `$D4BE`, `$D592`, `$D604`, `$D768`, `$D786`; t33 `$E0A4` 61/61, `$E0C8`; t34
+  `$E1D6` 47/48, `$E206`, `$E260`; t37 `$E470` 133/135, `$E46A`, `$E532`, `$E598`, `$E5C8`; t39 `$E7D2`
+  48/48, `$E840`, `$E87C`, `$E892`; t52 `$E8A2` 40/48, its whole waiting path (shared with `t38_w`) and
+  `$E910`; t40/t42 `$E99A`, `$E980`, `$E988`; t41 `$EB0A` 49/60, `$EBA2-$EBB6` (the destroyed path) and
+  `$EB60`; t51 `$EE68` 34/36, `$EEAE`, `$EEBA`; `debris_add` `$C398`, `$C39C`; lt2 `$9436` 56/56, `$9450`,
+  `$945C`; the shared `$EF8E`, `$EFBC`. Type 46 is never spawned in level 3; t21, t35, t36, t38, t50, t43,
+  t47, t48, `obj_push` and the deaths are fully covered.
+
+### What this step changed
+- **`msx/ending.asm` `et_go`** (`BANK_FRONT2`, 15 B): fire before a script's end now types the rest of
+  the script at once, its waits skipped (`etg_all`: `fs_wait` cleared, `fs_step` until `fs_done`), then
+  returns as before. One routine serves the three screens: WELL DONE (`front_ending`: then the tune, fire
+  held never skipping it, `fen_lp` unchanged: default 4), the name entry's text (`hs_name`: it had the same
+  cut, "USE BACKSP" and no "RETURN TO FINISH." on the base build) and the table screen (`txt_best` is waits
+  alone, the table drawn at once before it: no cut, its screen black at once as before). `docs/ENDING.md`:
+  default 10 (new), default 7 and the flow's script note (the code's rule: the entry skipped, not the
+  ending), the screens, FRONT2's bytes.
+- **`tools/amigacov.py`**: every hook is installed before the level's start, which records nothing (a gate
+  turned on after `start_direct`/`stop_at_level_end` or `start_level`), so only the missed reports change.
+- **`docs/HARNESS.md` 5.26** (step 8's open issue 5) and `tools/bstest/np.tcl`'s header comment: the
+  regress gate's `tx` flows do not end level 3 (the stages' result record removes `np_t_l2`'s
+  breakpoint): level 3 plays without input until the game over, then PIC9, the entry (RETURN), the offer
+  and the title; `np_l3flow_setup` is the flow that ends level 3.
+- **`docs/LEVEL3.md` 3.11**: the known issues, step 6's two rare D1 cases and review B's finding 1.
+
+### Checks (`R` = `S11/R`: this step's builds; `base` = `S11/base`: the same options at `75499b1`)
+- **Builds** (`sh tools/bstest/build.sh OUT.rom OPTIONS`): the product (`R` `d8c4637cca9f904f`, base
+  `8f87721ef2ad3f2a`, step 8's) and `e1` (`END_TEST=1 LV_CARRY=10050:2:0:1`: `R` `f6db5fee52a62e3d`, base
+  `d6ee197aeba7d211`): "build OK", the 12 known z80asm warnings only, 2 MiB.
+- **romdiff** (`python3 -I tools/bstest/romdiff.py --blocks base/prod/rc2.rom R/prod/rc2.rom`): **48 blocks
+  identical**, only `BANK_FRONT2` (bank 127) differs, 439 bytes at offsets 0001h-048Dh (the 15 bytes and
+  the code and label words after them), "romdiff: PASS"; every other bank byte-identical, so levels 1-3,
+  the title, Brainstorm and the range are unchanged (their gates not run again).
+- **Free bytes** (`python3 -I tools/bstest/l2base.py banks S11/R`): **FRONT2 7,026** (7,041 before); the
+  product's fixed area 164, FRONT 1,112, FIELD 49, MUSIC 1,251, `BANK_L3` 3,867, `BANK_L3B` 2,383 (unchanged).
+- **The fix on the MSX** (one openMSX, a private MSX-AI MCP session: `tools/bstest/mcpd.py`, `mx.sh`;
+  `S11/s11.tcl`: `s11_job DIR TAG ROM LABELS KEYS MODE ?MACHINE?` over `ending.tcl` `ge_setup`'s records;
+  KEYS `RET`, the `e1` build):
+  - `A` (Expert, no press while the texts are typed): `endcheck.py S11/W A RET --score 10050 --gen
+    R/e1/gen` **PASS** (WELL DONE equal to the render, the tune 4,917 ticks in 98.5 emulated s, the name
+    entry's wait 0, the table with (blank) 10050, the table in RAM, the end at the title); its extra record
+    `A_endf` at the tune's start + 3 s.
+  - `B` (Expert) and `Bgt` (FS-A1GT): SPACE held 1.5 s from `txt_end`'s `fs_n` 80; the tune started at
+    `fs_n` 81 with `fs_ptr` past `txt_end`'s end (the rest typed at once); at the tune's start + 1.6 s 79
+    ticks counted, `tn_left` 4838 (the held fire did not skip it); the record `end` at + 3 s; SPACE at + 6 s
+    ended the tune (299 ticks) into the entry; SPACE at `txt_hisc`'s `fs_n` 60, the entry's first wait
+    with `fs_ptr` past `txt_hisc`'s end; RETURN, the table, the title. `endcheck.py S11/W B RET` (and `Bgt`):
+    **WELL DONE equal to the render, pixel for pixel**; the name entry's wait 0, the table and the table
+    in RAM equal; only "the tune: its end not noted" (fire ended it: expected).
+  - Byte for byte (play area lines 0-161, palette, HUD, VDP registers): `A_endf` = `B_end` = `Bgt_end`,
+    `A_hs0` = `B_hs0` = `Bgt_hs0`, `A_best` = `B_best`: **0 bytes differ**.
+  - The same `B` job on the base `e1` (`Bbase`): **WELL DONE 1,247 bytes differ (lines 75-114: the title
+    alone)**, the name entry 540 bytes (lines 123-146: "USE BACKSP"), the table equal: the check sees the
+    defect and its fix.
+  - Looked at: `B_end.png` (the whole text over the tune), `Bbase_end.png` (WELL DONE alone), `B_hs0.png`,
+    `Bbase_hs0.png`.
+- **`amigacov.py`** (`~/.venvs/msxports/bin/python -I tools/amigacov.py --level 3 --gframes 501 --run RUN`,
+  RUN = `build/emu/l3_beam.drive` as a run, `tele=30:420:400`; the old tool from `75499b1`): old 558 blocks,
+  6,252 bytes executed, **no block at `$9F74`**; new 644 blocks, 7,424 bytes, **`$9F74-$9F7A` executed**
+  (`act_20`'s `$9F74-$9F78`, first at game frame 150); the new blocks equal review B's `covf_beam.json`
+  (0 differ either way); code writes, other writers, BOB frames, enemy types, messages, hazards and the
+  runs' state unchanged. 100 frames without a script: 327 -> 346 blocks, the rest unchanged.
+- **`make test`** (the worktree): 348 tests, the 4 known failures only.
+
+### Open issues
+1. Review B's finding 1 (types 4/12's D1, sound only, unreachable in the product) and step 6's two D1
+   cases stay documented (`docs/LEVEL3.md` 3.11).
+2. Level 3 has no BOB or map-write comparison against the bench (review B's gap 1); the static check
+   found no difference.
+3. Step 8's open issues 1-4 and 6 are unchanged by this step.
