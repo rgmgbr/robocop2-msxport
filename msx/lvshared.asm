@@ -832,3 +832,398 @@ t31:    ld l,(ix+OS_X)
         ld (bob_d4),hl
         call bob_part               ; legs
         jp gunman
+
+; ----- the sprite budget's give-way (msx/sprites.asm budget) -----
+
+; Kept here, not in the fixed area, since 2026-11-01 (584 bytes: the fixed area had 29 bytes left
+; in its fullest option set). Its only caller is sprites.asm's budget (ft_lines' ft_give, bg_tot's
+; ft_total, ln_fill's ft_live, bg_drops' and ln_obj's ft_map), which sprites_tick runs with the
+; level's logic bank at A000h (bu_lvl): the sprite pools may be there otherwise. It reads and
+; writes RAM only, maps the compositions' banks at 8000h (ft_map) and calls the fixed area's
+; obj_ix, ln_obj, ln_add and ln_first; the interrupts put act_a000's bank back.
+; VAT_ANIM=1 builds (level 2's bank holds the vats' display: 28 bytes left) have it in level 1's
+; bank only: tools/mkrom.py's copies for the other levels end before this section's first line
+; (lvshared_copy, tail), and bu_lvl maps level 1's bank instead. Keep it the last section.
+
+; IX = object -> NC when it is shown and not left out. Keeps BC, DE.
+ft_live:
+        bit 7,(ix+O_FLAGS)
+        scf
+        ret z
+        ld a,(ix+O_OUT)
+        cp 1
+        ccf
+        ret
+
+; IX = object: its composition's bank at 8000h. Keeps BC, DE, HL.
+ft_map: ld a,(ix+O_BANK)
+        add a,SPR_BASE_BANK
+        jp bank_8000
+
+; The total phase: while the objects (but the spark) pass BUD_MAX sprites, something gives way
+; as on a line (ft_line FFh: anywhere).
+ft_total:
+        ld a,0xFF
+        ld (ft_line),a
+ftt_lp: ld a,(bu_tot)
+        cp BUD_MAX + 1
+        ret c
+        call ft_give
+        jr nc,ftt_lp
+        ret
+
+; Something gives way on line ft_line (FFh: in the total), the first that can of: an OR layer of
+; the explosions (and the spark), one of them left out, an OR layer of the shots, enemy bullets,
+; pickups and small parts, one of them left out; in the total only, as the last resort, an OR
+; layer of a character (dropped for good: its look changes at most once; their compositions fit
+; beside RoboCop on any line, so a line never needs it). The OR layer dropped is the cheapest of
+; the tier there (its band's gain: what its colours are worth). C when nothing can.
+ft_give:
+        ld a,2
+        call ft_drop_t
+        ret nc
+        ld a,2
+        call ft_leave_t
+        ret nc
+        ld a,1
+        call ft_drop_t
+        ret nc
+        ld a,1
+        call ft_leave_t
+        ret nc
+        ld a,(ft_line)
+        inc a
+        scf
+        ret nz                      ; (a line: the VDP hides its last sprites, never RoboCop's)
+        jp ft_drop_t                ; (A = 0: the characters)
+
+; A = tier: the cheapest OR layer of a band of an object of that tier on line ft_line (FFh:
+; anywhere, the spark excluded) is dropped. C when there is none. (The tier's live objects in
+; object order, ft_tl: the same candidates in the same order as a walk of all 16 objects.)
+ft_drop_t:
+        ld (ft_tier),a
+        ld a,(ft_lok)
+        or a
+        call z,ft_lists
+        ld a,0xFF
+        ld (ft_best),a
+        ld hl,0
+        ld (ft_bix),hl
+        ld a,(ft_tier)
+        ld hl,ft_tl
+        call ft_tlist
+fdt_lp: ld a,(hl)
+        cp 0xFF
+        jr z,fdt_x
+        inc l
+        push hl
+        call obj_ix
+        call ft_live
+        call nc,ft_cand
+        pop hl
+        jr fdt_lp
+fdt_x:  ld hl,(ft_bix)
+        ld a,h
+        or l
+        scf
+        ret z
+        push hl
+        pop ix
+
+; IX = object, ft_bbit = one of its bands: that band's OR layer goes (its B sprites leave its
+; lines, O_GONE and the total, not for the spark); a character's stays held. NC.
+ft_dropb:
+        call ft_map
+        ld l,(ix+O_BANDT)
+        ld h,(ix+O_BANDT+1)
+        ld a,(ft_bbit)
+        ld c,a
+        ld b,1
+fdb_f:  ld a,b
+        cp c
+        jr z,fdb_g
+        inc hl
+        inc hl
+        inc hl
+        inc hl
+        sla b
+        jr fdb_f
+fdb_g:  ld a,c
+        or (ix+O_DROP)
+        ld (ix+O_DROP),a
+        ld e,(hl)                   ; dy
+        inc hl
+        inc hl
+        ld a,(hl)                   ; B sprites
+        ld c,a
+        add a,(ix+O_GONE)
+        ld (ix+O_GONE),a
+        call ft_spark
+        jr z,fdb_l                  ; (the spark: in no total)
+        ld a,(bu_tot)
+        sub c
+        ld (bu_tot),a
+fdb_l:  ld a,1
+        ld (ln_neg),a
+        ld a,c
+        call ln_add
+        ld a,(ix+O_TIER)
+        or a
+        ret nz                      ; (NC)
+        ld a,(ft_bbit)
+        or (ix+O_HOLD)
+        ld (ix+O_HOLD),a
+        or a                        ; (NC)
+        ret
+
+; IX = object -> Z when it is the spark. Keeps BC, DE.
+ft_spark:
+        push ix
+        pop hl
+        ld a,l
+        cp (obj_tab + SPARK_OBJ * OBJ_SIZE) & 0xFF
+        ret nz
+        ld a,h
+        cp (obj_tab + SPARK_OBJ * OBJ_SIZE) / 256
+        ret
+
+; IX = a live object of tier ft_tier: its cheapest band on line ft_line (FFh: anywhere, but the
+; spark's) whose OR layer is still there, if cheaper than ft_best: ft_best, ft_bix, ft_bbit.
+ft_cand:
+        ld a,(ft_line)
+        inc a
+        jr nz,fc_go
+        call ft_spark
+        ret z
+fc_go:  call ft_map
+        ld l,(ix+O_BANDT)
+        ld h,(ix+O_BANDT+1)
+        ld b,(ix+O_NBANDS)
+        ld c,1
+fc_lp:  ld a,c
+        and (ix+O_DROP)
+        jr nz,fc_n                  ; (dropped already)
+        inc hl
+        inc hl
+        ld a,(hl)                   ; B sprites
+        dec hl
+        dec hl
+        or a
+        jr z,fc_n
+        call ft_covers
+        jr c,fc_n
+        inc hl
+        inc hl
+        inc hl
+        ld a,(hl)                   ; its gain
+        dec hl
+        dec hl
+        dec hl
+        push hl
+        ld hl,ft_best
+        cp (hl)
+        jr nc,fc_np
+        ld (hl),a
+        ld (ft_bix),ix
+        ld a,c
+        ld (ft_bbit),a
+fc_np:  pop hl
+fc_n:   inc hl
+        inc hl
+        inc hl
+        inc hl
+        sla c
+        djnz fc_lp
+        ret
+
+; IX = object, HL = one of its band entries -> NC when the band's 16 lines hold line ft_line
+; (FFh: any line). Keeps BC, HL.
+ft_covers:
+        ld a,(ft_line)
+        cp 0xFF
+        ret z                       ; (NC)
+        push hl
+        push bc
+        ld c,a
+        ld e,(hl)
+        call ln_first
+        ld e,c
+        ld d,0
+        ex de,hl
+        or a
+        sbc hl,de                   ; line - its first line
+        ld a,h
+        or a
+        scf
+        jr nz,fcv_x
+        ld a,l
+        cp 16
+        ccf
+fcv_x:  pop bc
+        pop hl
+        ret
+
+; IX = object -> NC when one of its bands holds line ft_line (FFh: always, but for the spark).
+ft_anyb:
+        ld a,(ft_line)
+        inc a
+        jr nz,fa_go
+        call ft_spark
+        scf
+        ret z
+        or a
+        ret
+fa_go:  call ft_map
+        ld l,(ix+O_BANDT)
+        ld h,(ix+O_BANDT+1)
+        ld b,(ix+O_NBANDS)
+fa_lp:  call ft_covers
+        ret nc
+        inc hl
+        inc hl
+        inc hl
+        inc hl
+        djnz fa_lp
+        scf
+        ret
+
+; A = tier: the least important live object of that tier on line ft_line (FFh: anywhere, but the
+; spark) is left out of the tick (the spark first, on a line). C when there is none. (The tier's
+; live objects in the order of importance, ft_tb, walked from the end as bu_ord was.)
+ft_leave_t:
+        ld (ft_tier),a
+        cp 2
+        jr nz,flt_o
+        ld ix,obj_tab + SPARK_OBJ * OBJ_SIZE
+        call ft_live
+        jr c,flt_o
+        call ft_anyb
+        jr nc,ft_out
+flt_o:  ld a,(ft_lok)
+        or a
+        call z,ft_lists
+        ld a,(ft_tier)
+        ld hl,ft_tb
+        call ft_tlist
+        ld c,l                      ; (its start: the lists do not cross a 256-byte boundary)
+flt_e:  ld a,(hl)
+        inc l
+        cp 0xFF
+        jr nz,flt_e
+        dec l
+flt_lp: ld a,l
+        cp c
+        scf
+        ret z                       ; (none)
+        dec l
+        ld a,(hl)
+        push hl
+        push bc
+        call obj_ix
+        call ft_live
+        call nc,ft_anyb             ; (NC: on the line)
+        pop bc
+        pop hl
+        jr c,flt_lp
+
+; IX = object: left out of the tick: its sprites leave its lines and the total. NC.
+ft_out: ld (ix+O_OUT),1
+        ld c,1
+        call ln_obj
+        call ft_spark
+        jr z,fo_x
+        ld a,(bu_tot)
+        sub (ix+O_NSPR)
+        add a,(ix+O_GONE)
+        ld (bu_tot),a
+fo_x:   or a                        ; (NC)
+        ret
+
+; A = tier, HL = ft_tl or ft_tb -> HL = that tier's list (17 bytes a tier). Keeps BC.
+ft_tlist:
+        ld e,a
+        add a,a
+        add a,a
+        add a,a
+        add a,a
+        add a,e                     ; 17 * tier
+        add a,l
+        ld l,a
+        ret
+
+; The give-way's candidates, once a budget run (at its first give: ft_lok): per tier 0-2 the
+; live objects of that tier (RoboCop's tier 3 never gives way) in object order (ft_tl, for
+; ft_drop_t) and in the order of importance (ft_tb, bu_ord's order, for ft_leave_t), FFh after
+; the last. The tiers are the run's (bg_tier); an object left out later in the run stays in
+; them (the walks test ft_live again). Walking every object for each give cost 4-7 % of the CPU
+; in the busy scenes.
+ft_lists:
+        ld a,1
+        ld (ft_lok),a
+        ld hl,ft_tl
+        call ftg_wp
+        ld ix,obj_tab + OBJ_SIZE
+        ld c,1
+ftg_lp: call ftg_one
+        ld de,OBJ_SIZE
+        add ix,de
+        inc c
+        ld a,c
+        cp MAX_OBJ
+        jr c,ftg_lp
+        call ftg_end
+        ld hl,ft_tb
+        call ftg_wp
+        ld hl,bu_ord
+ftg_blp: ld a,(hl)
+        cp 0xFF
+        jp z,ftg_end
+        inc hl
+        push hl
+        ld c,a
+        call obj_ix
+        call ftg_one
+        pop hl
+        jr ftg_blp
+
+; HL = ft_tl or ft_tb: each tier's list empty (ft_wp: their next places).
+ftg_wp: ld de,ft_wp
+        ld a,l
+        ld (de),a
+        add a,17
+        inc de
+        ld (de),a
+        add a,17
+        inc de
+        ld (de),a
+        ret
+
+; IX = object C: into its tier's list when it is live and of tier 0-2. Keeps BC, IX.
+ftg_one:
+        call ft_live
+        ret c
+        ld a,(ix+O_TIER)
+        cp 3
+        ret nc
+        add a,ft_wp & 0xFF
+        ld e,a
+        ld d,ft_wp / 256
+        ld a,(de)
+        ld l,a
+        ld h,ft_tl / 256            ; (ft_tl and ft_tb: one 256-byte page)
+        ld (hl),c
+        inc a
+        ld (de),a
+        ret
+
+; Each list of the kind ftg_wp started: FFh after its last.
+ftg_end:
+        ld de,ft_wp
+        ld b,3
+ftg_elp: ld a,(de)
+        ld l,a
+        ld h,ft_tl / 256
+        ld (hl),0xFF
+        inc de
+        djnz ftg_elp
+        ret

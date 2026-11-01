@@ -343,8 +343,13 @@ class VatAnimTests(unittest.TestCase):
         self.assertIn("ld hl,vat_run", tiles[tiles.index("vat_win:"):])
         self.assertEqual([l for l in tiles[tiles.index("else"):] if l], ["else", "vat_win:", "vat_idle:", "xor a", "ret"])
         self.assertEqual(if_blocks("level2.asm", "VAT_ANIM"), ['include "vats.asm"'])
-        for f in ("rc2.asm", "sprites.asm", "scroll9938.asm", "scroll9958.asm", "vats.asm"):
+        # (not the display: the sprite budget's give-way is then in level 1's bank only, level 2's having no
+        # room, tools/mkrom.py lvshared_copy's tail; the budget maps that bank instead of the level's)
+        self.assertEqual(if_blocks("sprites.asm", "VAT_ANIM"), ["ld a,BANK_L1", "else", "ld a,(lvl_bank)"])
+        for f in ("rc2.asm", "scroll9938.asm", "scroll9958.asm", "vats.asm"):
             self.assertNotIn("VAT_ANIM", (ROOT / "msx" / f).read_text(), f)
+        lvs = (ROOT / "msx" / "lvshared.asm").read_text().splitlines()
+        self.assertNotIn("VAT_ANIM", "\n".join(l.split(";")[0] for l in lvs))       # (its comments only)
 
     def test_the_play_field_follows_vat_on(self):
         """vat_inbox and vat_bbinit act only while the vats are drawn (vat_on): Z in every other level

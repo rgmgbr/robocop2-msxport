@@ -317,6 +317,17 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
      as the last resort (RoboCop, an enemy, a lift and the vehicle together), a character drops
      an OR layer and keeps it dropped until it is hidden or changes owner (`O_HOLD`): its look
      changes at most once.
+- **Where the give-way lives** (2026-11-01): the total phase and the give-way (`ft_total`,
+  `ft_give` ... `ftg_end`, with `ft_live` and `ft_map`: 584 bytes) are the last section of
+  `lvshared.asm`, at the same address in every level bank, not in the fixed area, which had 29
+  bytes left in its fullest option set (`DIAG=1 PZ_TEST=1`; 596 since). The budget is their only
+  caller: `sprites_tick` runs it through `bu_lvl`, which maps the level's logic bank (`lvl_bank`)
+  at A000h and then puts back the bank that was there (the sprite pools, at times), about 150
+  T-states a run; the logic maps that bank every tick, so a frame's set of banks stays the same.
+  The give-way reads and writes RAM only, maps the compositions at 8000h and calls the fixed
+  area's `obj_ix`, `ln_obj`, `ln_add` and `ln_first`. `VAT_ANIM=1` builds, whose level 2 bank
+  has 28 bytes left, hold it in level 1's bank only (`tools/mkrom.py` `lvshared_copy`'s `tail`:
+  the other levels' copies end before the section) and `bu_lvl` maps that bank instead.
 - **BOBs to objects** (`bob.asm` `bob_flush`): a BOB keeps the object its identity (category,
   owner, part) had in the tick shown before; its frame comes from a 512-slot hash of (A2, D4)
   (`BOBHASH`, each level's own in its tables bank: slots of A2, D4, the frame id, the silhouette's
