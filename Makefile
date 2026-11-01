@@ -43,6 +43,7 @@ sprites: rea-asm $(BUILD)/emu/cov_level1.json
 	$(PYTHON) -I tools/bobcatalog.py catalog
 	$(PYTHON) -I tools/bobcatalog.py sheets
 	$(PYTHON) -I tools/bobcatalog.py level2
+	$(PYTHON) -I tools/bobcatalog.py level3 --drawn $(BUILD)/emu/cov_level3.json --drawn $(BUILD)/emu/l3_frames_drawn.json
 	$(PYTHON) -I tools/player.py $(BUILD)/sprites
 
 $(BUILD)/ram/level1_full.bin:
@@ -54,8 +55,13 @@ $(BUILD)/ram/level2_full.bin:
 $(BUILD)/ram/level3_full.bin:
 	$(MAKE) ram
 
-$(BUILD)/sprites/catalog.json $(BUILD)/sprites/catalog_l2.json:
+$(BUILD)/sprites/catalog.json $(BUILD)/sprites/catalog_l2.json $(BUILD)/sprites/catalog_l3.json:
 	$(MAKE) sprites
+
+# the BOB frames the original draws in level 3 (the bench's coverage, ten minutes; the boss drives'
+# frames, l3_frames_drawn.json, come from build/archive/level3_research_2026-11-01.tar.gz: docs/LEVEL3.md 2.7)
+$(BUILD)/emu/cov_level3.json: $(BUILD)/ram/level3_full.bin
+	$(VPYTHON) -I tools/amigacov.py --level 3 --scenario level3 $@
 
 # the BOB frames the original draws in level 1 (execution bench, long: ~20 minutes)
 $(BUILD)/emu/cov_level1.json: $(BUILD)/ram/level1_full.bin
@@ -63,7 +69,7 @@ $(BUILD)/emu/cov_level1.json: $(BUILD)/ram/level1_full.bin
 
 msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BUILD)/ram/level3_full.bin \
 		$(BUILD)/sprites/catalog.json \
-		$(BUILD)/sprites/catalog_l2.json $(BUILD)/emu/cov_level1.json
+		$(BUILD)/sprites/catalog_l2.json $(BUILD)/sprites/catalog_l3.json $(BUILD)/emu/cov_level1.json
 	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
 		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
 		--ram $(BUILD)/ram/level1_full.bin --level level1 --remove msx/level1_frames.json $(BUILD)/msx/robocop
@@ -88,16 +94,18 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BU
 		--pal-addr 0x10036 --rows 50 --joint $(BUILD)/msx/level3 -o $(BUILD)/msx/level3
 	$(PYTHON) -I tools/mapcells.py $(BUILD)/ram/level3_full.bin analysis/amiga_tables.tsv $(BUILD)/msx/level3.atrp \
 		160 50 --level 3
-# the global sprite pool of levels 1 and 2 (the ROM's sprite data: sprites.bin, sprites.inc, sprites_l1*,
-# sprites_l2*; the level-2 plan 3.6): its level-2 frames are converted against palette C (level2.pal),
-# so it runs after the level-2 palette, with the level-1 arguments above (robocop.* written again, the
-# same bytes)
+# the global sprite pool of levels 1, 2 and 3 (the ROM's sprite data: sprites.bin, sprites.inc, sprites_l1*,
+# sprites_l2*, sprites_l3*; the level-2 plan 3.6, docs/LEVEL3.md 3.5): its level-2 and level-3 frames are
+# converted against palette C (level2.pal, level3.pal: the same), so it runs after the levels' palettes,
+# with the level-1 arguments above (robocop.* written again, the same bytes)
 	$(VPYTHON) -I tools/msxsprites.py $(X)/boot/main_8000.bin $(X)/files/PERMA_05.bin $(X)/files/DATAL1_10.bin \
 		--rows 51 --bobs $(BUILD)/sprites/catalog.json --drawn $(BUILD)/emu/cov_level1.json \
 		--ram $(BUILD)/ram/level1_full.bin --level level1 --remove msx/level1_frames.json \
 		--pool $(BUILD)/msx/sprites --l2-datal $(X)/files/DATAL2_18.bin --l2-rows 50 \
 		--l2-bobs $(BUILD)/sprites/catalog_l2.json --l2-ram $(BUILD)/ram/level2_full.bin \
-		--l2-pal $(BUILD)/msx/level2.pal --l2-remove msx/level2_frames.json $(BUILD)/msx/robocop
+		--l2-pal $(BUILD)/msx/level2.pal --l2-remove msx/level2_frames.json \
+		--l3-bobs $(BUILD)/sprites/catalog_l3.json --l3-ram $(BUILD)/ram/level3_full.bin \
+		--l3-pal $(BUILD)/msx/level3.pal --l3-remove msx/level3_frames.json $(BUILD)/msx/robocop
 	$(PYTHON) -I tools/msxhud.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(BUILD)/msx/hud --black 4
 	$(PYTHON) -I tools/msxhudrt.py $(X)/files/PERMA_05.bin $(X)/boot/main_8000.bin $(X)/files/PUZL_25.bin $(BUILD)/msx/hud_rt \
 		$(X)/files/FRNG_15.bin

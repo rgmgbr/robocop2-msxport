@@ -1,0 +1,10 @@
+{
+  "_about": [
+    "Level 3's animation frames the user removed (the frame chooser, tools/msxchooser.py), for",
+    "tools/msxsprites.py --pool --l3-remove. Empty: every level-3 frame is kept until the user chooses",
+    "(docs/LEVEL3.md default 14). bob: 'addr:w:h' (hex) of a frame only level 3 draws -> [the frame",
+    "shown instead, dy, dx], or null: a frame the level never draws. The frames level 3 shares with",
+    "level 1 follow msx/level1_frames.json, and RoboCop's ('rc') are chosen there only."
+  ],
+  "bob": {}
+}

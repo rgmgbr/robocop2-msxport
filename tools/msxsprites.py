@@ -1578,6 +1578,328 @@ def or_rows(lay: list, src: np.ndarray, entries: tuple, pal: np.ndarray, amiga: 
     return out
 
 
+# --pool with level 3 (docs/LEVEL3.md 3.5-3.6, its step C): its frames join the global pool after
+# level 2's; its play field: a static atlas (page 3 lines 0-111), the explosions' slot for the smoke
+# (page 2 lines 232-255, level 1's dynamic frames) and the frame cache (page 2 lines 160-231: the big
+# animated frames and the white copies of the frames that flash, loaded from the ROM when shown)
+L3_PAL_ADDR = 0x10036          # level 3's palette (header $86B4 + 36): level 2's, palette C
+L3_FIELD_W = 48                # decision 13: its frames 48 px wide or more go into the play field,
+L3_FIELD_RIDDEN = ("FUN_00008de6",)  # and the lift's two parts ($8ED2: 32 x 29, 32 x 16), which
+                               # RoboCop rides (msx/field.asm copies them late: FIELD_LATE)
+L3_FIELD_LINES = 112           # the static atlas: page 3 lines 0-111 (as level 2's)
+L3_FIELD_ROM = 2 * BANK        # its ROM: two banks at most
+L3_DYN_Y = 232                 # the explosions' slot (its smoke, level 1's frames): page 2 lines 232-255
+L3_SMOKE = (0x67940, 0x67FD0, 0x68660, 0x68CF0, 0x69380, 0x69A10)   # (48 x 56: FIELD_DYN's smoke)
+L3_CACHE = ((48, 44), (64, 34), (64, 32), (64, 40))   # the frame cache's frames: Cain's legs (48 x 44,
+                               # 64 x 34), his 64 x 32 part, type 21's legs (64 x 40), both sides stored
+                               # (docs/LEVEL3.md default 4)
+L3_FLASH = ("obj22_update", "obj21_update", "obj33_update", "obj35_update", "obj51_update")
+                               # the enemies whose play-field frames flash when hit ($AC44/$AC56): their
+                               # white copies (the flash's colour where the mask is) go into the cache's
+                               # ROM too (docs/LEVEL3.md default 6: no sprite silhouettes)
+L3_LEGS = ((48, 44), (64, 34), (64, 40))
+L3_FC_PLACES = ((0, 160, 64, 48), (64, 160, 64, 48), (128, 160, 64, 48), (192, 160, 64, 48),
+                (0, 208, 64, 24), (128, 160, 80, 48), (64, 160, 48, 49))
+                               # the cache's places on page 2 (x, y, w, h): 0 the legs, 1 Cain's 64 x 32,
+                               # 2 the legs' white copies, 3 the other white copies up to 64 x 48, 4 those
+                               # up to 64 x 24, 5 the truck's body's (80 x 48), 6 type 51's (48 x 49); a
+                               # frame loaded into a place makes the places it overlaps empty
+FC_MAX = 8                     # places at most (msx/field.asm: an overlap mask a byte)
+
+
+def fc_place(w: int, h: int, white: bool) -> int:
+    """The cache place of a frame (L3_FC_PLACES): the frames shown together never share one (an enemy's
+    parts, normal and white; ENEMY_CAP 1 keeps one enemy on screen); a frame that fits none fails."""
+    if not white:
+        k = 0 if (w, h) in L3_LEGS else 1
+    elif (w, h) in L3_LEGS:
+        k = 2
+    elif w <= 64 and h <= 24:
+        k = 4
+    elif w > 64:
+        k = 5
+    elif h > 48:
+        k = 6
+    else:
+        k = 3
+    x, y, pw, ph = L3_FC_PLACES[k]
+    assert w <= pw and h <= ph, f"a {w} x {h} frame does not fit the cache's place {k}"
+    return k
+
+
+def l3_field(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict, l1_field: dict, flash: int) -> dict:
+    """Level 3's play-field frames (frames: {proc, procs, addr, w, h}) -> their ids, tables, atlas and
+    cache: ids [static][cache][smoke][the lift's parts: FIELD_LATE on]; the static ones packed in shelves
+    by height into the atlas (field_frames' ROM form: field_upload; a frame another's exact mirror kept
+    once), the smoke in level 1's dynamic frames (its field_dyn: their dyn_tab entries), the cache's
+    frames (the L3_CACHE sizes, and a white copy of every frame an L3_FLASH enemy draws: colour 'flash'
+    where the frame has pixels) into the cache's ROM: a header of [normal, white] cache index per id
+    (FFh: none), per cache frame [bank, address (8000h window), place] and per place [x, y, the places
+    it overlaps], then the pixels (VRAM lines, none across a bank's end)."""
+    key = frame_key
+    imgs, byk = {}, {}
+    for f in frames:
+        k = key(f)
+        byk[k] = f
+        src = bob_image(ram, f["addr"], f["w"], f["h"])
+        if (src >= 0).sum() and k not in removed:
+            imgs[k] = np.where(src >= 0, near[np.clip(src, 0, 15)], 0)
+    smoke = lambda f: f["addr"] in L3_SMOKE and (f["w"], f["h"]) == (48, 56)      # noqa: E731
+    late = lambda f: any(p in L3_FIELD_RIDDEN for p in f["procs"])                 # noqa: E731
+    kind = lambda f: 3 if late(f) else 2 if smoke(f) else 1 if (f["w"], f["h"]) in L3_CACHE else 0  # noqa: E731
+    frames = sorted(frames, key=lambda f: (kind(f), f["addr"]))
+    # the static atlas (field_frames' shelves and ROM form)
+    atlas = np.zeros((L3_FIELD_LINES, FIELD_W), np.uint8)
+    place, x, y, shelf = {}, 0, 0, 0
+    table, pixels, stored = [], bytearray(), {}
+    for k in sorted((k for k in imgs if kind(byk[k]) in (0, 3)), key=lambda k: (-imgs[k].shape[0], -imgs[k].shape[1], k)):
+        h, w = imgs[k].shape
+        if x + w > FIELD_W:
+            x, y, shelf = 0, y + shelf, 0
+        assert y + h <= L3_FIELD_LINES, "level 3's static play-field frames do not fit their atlas"
+        atlas[y:y + h, x:x + w] = imgs[k]
+        place[k] = (x, y)
+        src = next((j for j in stored if imgs[j].shape == (h, w) and np.array_equal(imgs[j][:, ::-1], imgs[k])), None)
+        if src is None:
+            stored[k] = len(pixels)
+            pixels += bytes(int(imgs[k][r, c]) << 4 | int(imgs[k][r, c + 1]) for r in range(h) for c in range(0, w, 2))
+        table.append((y, x // 2, w // 2, h, int(src is not None), stored[src if src is not None else k]))
+        x += w
+        shelf = max(shelf, h)
+    lines = y + shelf
+    head = 1 + 7 * len(table)
+    rom = bytes([len(table)]) + b"".join(struct.pack("<BBBBBH", ty, tx, bpl, h, m, head + off)
+                                         for ty, tx, bpl, h, m, off in table) + bytes(pixels)
+    assert len(table) < 256 and len(rom) <= L3_FIELD_ROM, f"level 3's atlas takes {len(rom)} bytes of the ROM"
+    l1_dyn = {f["src"]: f["dyn"] for f in l1_field["frames"] if "dyn" in f}
+    out = []
+    for f in frames:
+        k = key(f)
+        if k in imgs:
+            src, ox, oy = k, 0, 0
+        elif k in removed and removed[k] and removed[k][0] in imgs:
+            src, oy, ox = removed[k]
+        else:
+            continue                                        # (no pixel: never drawn)
+        sh, sw = imgs[src].shape
+        px, py = place.get(src, (0, L3_DYN_Y if smoke(f) else 0))
+        e = {"proc": f["proc"], "procs": f["procs"], "addr": f["addr"], "w": f["w"], "h": f["h"], "fid": len(out),
+             "x": px, "y": py, "sw": sw, "sh": sh, "ox": ox, "oy": oy, "src": src, "kind": kind(f), "sil": 0xFF}
+        if smoke(f):
+            e["dyn"] = l1_dyn[src]                          # (level 1's dyn_tab: the same bytes in PERMA)
+        out.append(e)
+    fid = {e["src"]: e["fid"] for e in out if key(e) == e["src"]}
+    for e in out:
+        e["look"] = fid[e["src"]]
+    fd = [e["fid"] for e in out if "dyn" in e]
+    assert fd == list(range(fd[0], fd[-1] + 1)) if fd else True, "level 3's smoke frames' ids not in a row"
+    # the cache: its frames (a frame's normal pixels when it is a cache frame, its white copy when an
+    # L3_FLASH enemy draws it; a removed frame's are the frame shown's)
+    cache, cidx = [], {}
+    for e in out:
+        if e["src"] != key(e):
+            continue
+        img = imgs[e["src"]]
+        if e["kind"] == 1:
+            cidx[(e["fid"], 0)] = len(cache)
+            cache.append((img, fc_place(e["sw"], e["sh"], False), e["src"], 0))
+        if any(p in L3_FLASH for p in e["procs"]) and e["kind"] in (0, 1):
+            cidx[(e["fid"], 1)] = len(cache)
+            cache.append((np.where(img > 0, flash, 0).astype(np.uint8), fc_place(e["sw"], e["sh"], True), e["src"], 1))
+    for e in out:                                           # (a removed frame: the frame shown's copies)
+        for wb in (0, 1):
+            if (e["look"], wb) in cidx:
+                cidx[(e["fid"], wb)] = cidx[(e["look"], wb)]
+    n, m, p = len(out), len(cache), len(L3_FC_PLACES)
+    assert p <= FC_MAX and m < 0xFF
+    fc_ent, fc_plc = 2 * n, 2 * n + 4 * m
+    blob = bytearray(fc_plc + 3 * p)
+    for e in out:
+        blob[2 * e["fid"]] = cidx.get((e["fid"], 0), 0xFF)
+        blob[2 * e["fid"] + 1] = cidx.get((e["fid"], 1), 0xFF)
+    for j, (px, py, pw, ph) in enumerate(L3_FC_PLACES):
+        over = sum(1 << q for q, (qx, qy, qw, qh) in enumerate(L3_FC_PLACES)
+                   if q != j and qx < px + pw and px < qx + qw and qy < py + ph and py < qy + qh)
+        blob[fc_plc + 3 * j:fc_plc + 3 * j + 3] = bytes((px, py, over))
+    places = []
+    for j, (img, pl, src, wb) in enumerate(cache):
+        h, w = img.shape
+        data = bytes(int(img[r, c]) << 4 | int(img[r, c + 1]) for r in range(h) for c in range(0, w, 2))
+        if len(blob) // BANK != (len(blob) + len(data) - 1) // BANK:
+            blob += b"\xff" * (-len(blob) % BANK)
+        blob[fc_ent + 4 * j:fc_ent + 4 * j + 4] = struct.pack("<BHB", len(blob) // BANK, 0x8000 + len(blob) % BANK, pl)
+        blob += data
+        places.append({"src": src, "white": wb, "place": pl, "w": w, "h": h})
+    used = sum(np.bincount(img.ravel(), minlength=16) for img in imgs.values())
+    return {"frames": out, "atlas": atlas, "lines": lines, "rom": rom, "fc_rom": bytes(blob) + b"\xff" * (-len(blob) % BANK),
+            "fc_ent": fc_ent, "fc_plc": fc_plc, "fc": places, "used": used}
+
+
+def write_field_l3(path: Path, field: dict, id0: int) -> None:
+    """Level 3's play-field files: path_field.bin (its atlas for the ROM), path_fc.bin (its frame cache's
+    ROM), path_field_vram.bin (the atlas as VRAM holds it) and path_field.inc (its tables: field_tab,
+    field_look, its own field_dyn: the smoke's entries in level 1's dyn_tab; the cache's header offsets)."""
+    at = field["atlas"]
+    path.with_name(path.name + "_field.bin").write_bytes(field["rom"])
+    path.with_name(path.name + "_fc.bin").write_bytes(field["fc_rom"])
+    path.with_name(path.name + "_field_vram.bin").write_bytes(
+        bytes(int(at[y, x]) << 4 | int(at[y, x + 1]) for y in range(L3_FIELD_LINES) for x in range(0, FIELD_W, 2)))
+    fr = field["frames"]
+    fd = [f for f in fr if "dyn" in f]
+    late = [f["fid"] for f in fr if f["kind"] == 3]
+    path.with_name(path.name + "_field.inc").write_text(
+        "; generated by tools/msxsprites.py: level 3's play-field BOB frames (msx/field.asm; docs/LEVEL3.md 3.5)\n"
+        f"FIELD_N: equ {len(fr)}\n"
+        f"FIELD_LINES: equ {field['lines']}              ; its static atlas: page 3 lines 0..FIELD_LINES - 1\n"
+        f"FIELD_ID0: equ 0x{id0:02X}             ; their BOBHASH ids: FIELD_ID0 + index (the descriptor's lv_fid0)\n"
+        f"FIELD_LATE: equ {min(late) if late else len(fr)}              ; frames from here: the lift's two parts\n"
+        f"FIELD_DYN0: equ {fd[0]['fid'] if fd else 0}              ; frames from here to FIELD_DYN1 (excluded): the\n"
+        f"FIELD_DYN1: equ {fd[-1]['fid'] + 1 if fd else 0}              ;   explosions' slot's (the smoke; level 1's dyn_tab)\n"
+        f"DYN_Y: equ {L3_DYN_Y}                  ; the explosions' slot: page 2 lines {L3_DYN_Y}..{L3_DYN_Y + DYN_H - 1}\n"
+        f"FC_N: equ {len(field['fc'])}                   ; the frame cache's frames (page 2 lines 160-231, from FC_BANK)\n"
+        f"FC_PLACES: equ {len(L3_FC_PLACES)}\n"
+        f"FC_ENT: equ 0x{0x8000 + field['fc_ent']:04X}             ; its header (FC_BANK at 8000h): [normal, white] per\n"
+        f"FC_PLC: equ 0x{0x8000 + field['fc_plc']:04X}             ;   frame from 8000h, its frames' entries, its places\n"
+        "field_tab:                          ; per frame: x, y in the atlas, width, height (as drawn), dx, dy\n"
+        + "".join(f"        db {f['x']}, {f['y']}, {f['sw']}, {f['sh']}, {f['ox'] & 255}, {f['oy'] & 255}"
+                  f"      ; {f['proc']} {f['addr']:05X}{' (cache)' if f['kind'] == 1 else ''}\n" for f in fr)
+        + "field_look:                         ; per frame: the frame it looks like\n"
+        + "".join(f"        db {f['look']}      ; {f['addr']:05X}\n" for f in fr)
+        + "field_dyn:                          ; per frame from FIELD_DYN0: its frame in level 1's dyn_tab\n"
+        + "".join(f"        db {f['dyn']}      ; {f['addr']:05X}\n" for f in fd))
+
+
+def pool_level3(a, palc: np.ndarray, pats: "Pool", cols_pool: "Pool", l1: dict, l2: dict) -> dict:
+    """--pool with --l3-*: level 3's frames (tools/bobcatalog.py level3) into the global pool after level
+    2's: its play field (l3_field), its sprite frames level 1's records where level 1's memory holds the
+    same bytes, level 2's own (its new records) where level 2's does, else converted against palette C
+    with level 3's Amiga colours (level 2's palette); the hit spark level 1's; no silhouettes (its
+    play-field frames flash white in the play field). -> its frames and records for the pool's index."""
+    main_b = a.main.read_bytes()
+    ram1, ram2, ram3 = l1["ram"], l2["ram"], a.l3_ram.read_bytes()
+    bgpal3, _ = amiga_palettes(main_b, L3_PAL_ADDR)
+    near3 = nearest(bgpal3, palc, 1)
+    img = lambda ram, f: bob_image(ram, f["addr"], f["w"], f["h"])                 # noqa: E731
+    same = lambda ram, f: np.array_equal(img(ram, f), img(ram3, f))                # noqa: E731
+    rem3 = json.loads(a.l3_remove.read_text()) if a.l3_remove else {}
+    if rem3.get("rc"):
+        raise SystemExit("RoboCop's frames are every level's: his removals belong in level 1's file")
+    removed = {}
+    for k, v in l1["removed"].get("bob", {}).items():   # (level 1's removals of the frames both images hold)
+        ad, w, h = k.split(":")
+        if same(ram1, {"addr": int(ad, 16), "w": int(w), "h": int(h)}):
+            removed[k] = v
+    removed.update(rem3.get("bob", {}))
+    frames, byk = [], {}
+    for r in json.loads(a.l3_bobs.read_text())["refs"]:
+        if "level3" not in (r["level"] or "").split("+"):
+            continue
+        for ad in r["frames"]:
+            k = (ad, r["width"], r["height"])
+            if k not in byk:
+                byk[k] = {"proc": r["proc_name"], "procs": [], "addr": ad, "w": r["width"], "h": r["height"]}
+                frames.append(byk[k])
+            if r["proc_name"] not in byk[k]["procs"]:
+                byk[k]["procs"].append(r["proc_name"])
+    amiga_keys = [frame_key(f) for f in frames]
+    frames = [f for f in frames if removed.get(frame_key(f), 0) is not None]
+    is_field = lambda f: f["w"] >= L3_FIELD_W or any(p in L3_FIELD_RIDDEN for p in f["procs"])  # noqa: E731
+    flash = int(nearest(bgpal3[15:16], palc, 1)[0])
+    field = l3_field(ram3, near3, [f for f in frames if is_field(f)], dict(removed, **FIELD_HALF), l1["field"], flash)
+    # the sprite frames
+    l1_ids = {frame_key(b): k for k, b in enumerate(l1["bobs"]) if not b.get("spark")}
+    l2_ids = {frame_key(b): k for k, b in enumerate(l2["bobs"]) if "new" in b}
+    targets = []                                        # (frame, target, ("l1" | "l2", id) or None)
+    for f in frames:
+        if is_field(f):
+            continue
+        k, fr = frame_key(f), {"proc": f["proc"], "procs": f["procs"], "addr": f["addr"], "w": f["w"], "h": f["h"]}
+        if k in l1_ids and same(ram1, f):
+            targets.append((fr, l1["targets"][l1_ids[k]][1], ("l1", l1_ids[k])))
+        elif k in l2_ids and same(ram2, f):
+            targets.append((fr, None, ("l2", l2_ids[k])))
+        else:
+            src = img(ram3, f)
+            if (src >= 0).sum():
+                targets.append((fr, np.where(src >= 0, near3[np.clip(src, 0, 15)], 0), None))
+    new = [k for k, t in enumerate(targets) if t[2] is None]
+    group, last = {}, None                              # (an animation's frames: the same boxes keep the OR layer)
+    for k in sorted(new, key=lambda k: (targets[k][0]["proc"] != "drawn", targets[k][0]["addr"])):
+        fr = targets[k][0]
+        if fr["proc"] != "drawn":
+            group[k] = (fr["proc"], fr["w"], fr["h"])
+            continue
+        if last is None or (last["w"], last["h"]) != (fr["w"], fr["h"]) or fr["addr"] - last["addr"] > 0x1000:
+            gid = ("drawn", fr["addr"], fr["w"], fr["h"])
+        group[k] = gid
+        last = fr
+    mirrors = {new[i]: (new[m], dy, dx) for i, (m, dy, dx) in bob_mirrors([targets[k][1] for k in new]).items()}
+    bconv = Converter(palc, PAIRS_ALL, align="bottom")
+    cconv = Converter(palc, PAIRS_ALL, cap=BOB_CAP, align="bottom")
+    gains: dict = {}
+    for k in new:
+        if k in mirrors:
+            continue
+        lay = bconv.composition(targets[k][1])
+        for j, (_, boxes) in enumerate(lay):
+            for n, b in enumerate(boxes):
+                gains.setdefault((group[k], len(lay) - 1 - j, len(boxes)), [0.0] * len(boxes))[n] += b["gain"]
+    capped = {}
+    for k in new:
+        fr, tgt, _ = targets[k]
+        if k in mirrors:
+            m, dy, dx = mirrors[k]
+            capped[k] = mirror_layout(capped[m], targets[m][1].shape[1], dy, dx)
+            fr["mirror"] = [m, dy, dx]
+        else:
+            cconv.prefer = {(band, n): sorted(range(n), key=lambda i: -g[i])
+                            for (g_id, band, n), g in gains.items() if g_id == group[k]}
+            capped[k] = cconv.composition(tgt)
+            fr["prefer"] = [[band, n] + order for (band, n), order in sorted(cconv.prefer.items())]
+    keys = {frame_key(t[0]): k for k, t in enumerate(targets)}
+    bobs, new_blobs, previews = [], [], []
+    for k, (fr, tgt, ref) in enumerate(targets):
+        if ref is not None:
+            b = (l1["bobs"] if ref[0] == "l1" else l2["bobs"])[ref[1]]
+            fr.update({"id": len(bobs), "reuse" if ref[0] == "l1" else "reuse2": ref[1], "sprites": b["sprites"],
+                       "fallback": b["fallback"], "lines": b["lines"], "max_line": b["max_line"],
+                       "max_line_fallback": b["max_line_fallback"]})
+            bobs.append(fr)
+            continue
+        columns = capped[k]
+        shown = removed.get(frame_key(fr))
+        if shown:
+            assert not removed.get(shown[0]), "a removed frame shows a kept one"
+            fr["repeat"] = [keys[shown[0]], shown[1], shown[2]]
+            columns = move_layout(capped[keys[shown[0]]], shown[1], shown[2])
+        if shown and shown[1:] == [0, 0]:
+            blob, sprites, nlines = encode(columns, Pool(), Pool())
+            new_blobs.append(None)
+        else:
+            blob, sprites, nlines = encode(columns, pats, cols_pool)
+            new_blobs.append(blob)
+        fr.update({"id": len(bobs), "new": len(new_blobs) - 1, "sprites": len(sprites),
+                   "fallback": sum(1 for s in sprites if s[3]), "lines": nlines,
+                   "max_line": max_per_line(columns), "max_line_fallback": max_per_line(columns, False)})
+        bobs.append(fr)
+        previews.append(preview(columns, tgt))
+    for k1, b in enumerate(l1["bobs"]):                 # the hit spark: level 1's records
+        if b.get("spark"):
+            bobs.append(dict(b, id=len(bobs), reuse=k1))
+    nf = len(field["frames"])
+    fid0 = -(-len(bobs) // 8) * 8                       # (the first id after its sprite frames, a multiple of 8)
+    assert fid0 + nf <= 0xFE, f"level 3: {len(bobs)} sprite and {nf} play-field frames, too many for their ids"
+    white = int(nearest(bgpal3[15:16], palc, 1)[0])
+    black = next(i for i in range(1, 16) if (palc[i] == 0).all())
+    sil = (cols_pool.add(bytes([white] * 16)), cols_pool.add(bytes([black] * 16)))
+    sprite_keys = {frame_key(b) for b in bobs if not b.get("spark")}
+    field_keys = {f["src"] for f in field["frames"]} | {frame_key(f) for f in field["frames"]}
+    renderer = {k: ("sprite" if k in sprite_keys else "field" if k in field_keys else
+                    "never drawn" if removed.get(k, 0) is None else "none") for k in amiga_keys}
+    return {"bobs": bobs, "new_blobs": new_blobs, "field": field, "fid0": fid0, "previews": previews,
+            "frames": renderer, "sil": sil, "flash": flash, "palette": palc}
+
+
 def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, blobs: list, previews: list,
                 pats: "Pool", cols_pool: "Pool", stats: dict, l1: dict) -> int:
     """--pool: level 2's frames into the global pool after level 1's (whose patterns, colour rows and
@@ -1764,9 +2086,12 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
             b["field"] = f["fid"]
             f["sil"] = b["id"]
     assert len(bobs) <= POOL_FIELD_ID0 and len(l1["bobs"]) <= POOL_FIELD_ID0, "too many BOB frames for their ids"
-    # the pool: [RoboCop's index][level 1's BOB index][level 2's], the records, patterns, colours
+    # level 3 (--l3-*): its frames after level 2's (their new patterns and colour rows after level 2's)
+    l3 = pool_level3(a, palc, pats, cols_pool, l1, {"ram": ram2, "bobs": bobs}) if a.l3_bobs else None
+    bobs3, blobs3 = (l3["bobs"], l3["new_blobs"]) if l3 else ([], [])
+    # the pool: [RoboCop's index][level 1's BOB index][level 2's][level 3's], the records, patterns, colours
     n_rc, n1 = len(index), len(l1["bobs"])
-    area, where = pack_area(blobs + l1["bob_blobs"] + new_blobs, 3 * (n_rc + n1 + len(bobs)))
+    area, where = pack_area(blobs + l1["bob_blobs"] + new_blobs + blobs3, 3 * (n_rc + n1 + len(bobs) + len(bobs3)))
     for k, i in enumerate(index):
         area[3 * k:3 * k + 3] = struct.pack("<BH", where[i] // BANK, where[i] % BANK)
 
@@ -1776,14 +2101,28 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
 
     for k1 in range(n1):
         area[3 * (n_rc + k1):3 * (n_rc + k1) + 3] = struct.pack("<BH", l1_place(k1) // BANK, l1_place(k1) % BANK)
+    def l2_place(k2: int) -> int:
+        b = bobs[k2]
+        if "reuse" in b:
+            return l1_place(b["reuse"])
+        w = where[len(blobs) + n1 + b["new"]]
+        return w if w is not None else where[len(blobs) + n1 + bobs[b["repeat"][0]]["new"]]
+
     for k, b in enumerate(bobs):
+        w = l2_place(k)
+        e = 3 * (n_rc + n1 + k)
+        area[e:e + 3] = struct.pack("<BH", w // BANK, w % BANK)
+    o3 = len(blobs) + n1 + len(new_blobs)
+    for k, b in enumerate(bobs3):                       # (level 3's: level 1's, level 2's or its own records)
         if "reuse" in b:
             w = l1_place(b["reuse"])
+        elif "reuse2" in b:
+            w = l2_place(b["reuse2"])
         else:
-            w = where[len(blobs) + n1 + b["new"]]
+            w = where[o3 + b["new"]]
             if w is None:
-                w = where[len(blobs) + n1 + bobs[b["repeat"][0]]["new"]]
-        e = 3 * (n_rc + n1 + k)
+                w = where[o3 + bobs3[b["repeat"][0]]["new"]]
+        e = 3 * (n_rc + n1 + len(bobs) + k)
         area[e:e + 3] = struct.pack("<BH", w // BANK, w % BANK)
     pad = lambda b: bytes(b) + b"\xff" * (-len(b) % BANK)  # noqa: E731
     pat_blob, col_blob = b"".join(pats.items), b"".join(cols_pool.items)
@@ -1793,11 +2132,12 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
     p = a.pool
     p.parent.mkdir(parents=True, exist_ok=True)
     p.with_suffix(".bin").write_bytes(data)
-    lines = max(stats["lines"] + [f["lines"] for f in l1["bobs"] + bobs])
-    sidx1, sidx2 = 0x8000 + 3 * n_rc, 0x8000 + 3 * (n_rc + n1)
+    lines = max(stats["lines"] + [f["lines"] for f in l1["bobs"] + bobs + bobs3])
+    sidx1, sidx2, sidx3 = 0x8000 + 3 * n_rc, 0x8000 + 3 * (n_rc + n1), 0x8000 + 3 * (n_rc + n1 + len(bobs))
+    levels = [(1, l1["bobs"], l1["sil"], sidx1), (2, bobs, sil, sidx2)] + ([(3, bobs3, l3["sil"], sidx3)] if l3 else [])
     spark = lambda bl: next((f["id"] for f in bl if f.get("spark")), 0)  # noqa: E731
     p.with_suffix(".inc").write_text(
-        "; generated by tools/msxsprites.py --pool: the global sprite pool of levels 1 and 2\n"
+        "; generated by tools/msxsprites.py --pool: the global sprite pool of levels 1, 2" + (" and 3" if l3 else "") + "\n"
         f"SPR_PAT_BANK: equ {comp_banks}                 ; relative to the first sprite bank\n"
         f"SPR_COL_BANK: equ {comp_banks + pat_banks}\n"
         f"SPR_COMPS: equ {len(comps)}\nSPR_RECORDS: equ {len(level.records)}\n"
@@ -1811,7 +2151,7 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
         "; rows (white, black) and the index (bank SPR_BASE_BANK at 8000h)\n"
         + "".join(f"SPR_BOBS_L{n}: equ {len(bl)}\nSPR_SPARK_L{n}: equ {spark(bl)}\n"
                   f"SPR_SIL_FLASH_L{n}: equ {sf}\nSPR_SIL_BLACK_L{n}: equ {sb}\nSPR_BOB_INDEX_L{n}: equ 0x{si:04X}\n"
-                  for n, bl, (sf, sb), si in ((1, l1["bobs"], l1["sil"], sidx1), (2, bobs, sil, sidx2)))
+                  for n, bl, (sf, sb), si in levels)
         + "; level 1's under robocop.inc's names\n"
         "SPR_BOBS: equ SPR_BOBS_L1\nSPR_SPARK: equ SPR_SPARK_L1\nSPR_SIL_FLASH: equ SPR_SIL_FLASH_L1\n"
         "SPR_SIL_BLACK: equ SPR_SIL_BLACK_L1\nSPR_BOB_INDEX: equ SPR_BOB_INDEX_L1\n")
@@ -1819,6 +2159,8 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
     write_field(p.with_name(p.name + "_l2"), field, L2_FIELD_LINES, POOL_FIELD_ID0,
                 f"page 2 lines {L2_DYN_Y}..{L2_DYN_Y + DYN_H - 1} (level 2)", dyn=False, ridden=L2_FIELD_RIDDEN)
     p.with_name(p.name + "_l1_fdyn.bin").rename(p.with_name(p.name + "_fdyn.bin"))
+    if l3:                                              # (level 3's play field: its atlas, cache and tables)
+        write_field_l3(p.with_name(p.name + "_l3"), l3["field"], l3["fid0"])
     # RoboCop's palette flashes: level 2's entries (background and play-field BOBs under palette C)
     remap2_path = a.l2_pal.with_suffix(".remap")
     remap2 = list(remap2_path.read_bytes()) if remap2_path.exists() else \
@@ -1878,6 +2220,14 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
     p.with_name(p.name + "_l1.json").write_text(json.dumps(st1))
     if previews2:
         render_sheet(p.with_name(p.name + "_l2_bobs.png"), previews2, palc)
+    if l3:
+        st3 = {"level": 3, "field_id0": l3["fid0"], "palette": st2["palette"], "rc_index": stats["rc_index"],
+               "rc_moves": stats["rc_moves"], "rc_mirrors": stats["rc_mirrors"], "rc_start": stats["rc_start"],
+               "bobs": bobs3, "field": l3["field"]["frames"], "fc": l3["field"]["fc"], "frames": l3["frames"],
+               "flash": l3["flash"], "fc_places": [list(q) for q in L3_FC_PLACES]}
+        p.with_name(p.name + "_l3.json").write_text(json.dumps(st3, default=lambda o: o.tolist() if hasattr(o, "tolist") else int(o)))
+        if l3["previews"]:
+            render_sheet(p.with_name(p.name + "_l3_bobs.png"), l3["previews"], palc)
     # the summary
     n_new = sum(1 for b in bobs if "new" in b)
     joint_lines = [b["max_line"] for b in bobs if b["proc"] == JOINT_L2["proc"]]
@@ -1891,6 +2241,19 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
     print(f"  level 2: {len(bobs)} BOB ids ({n_new} new records, {len(bobs) - n_new - 4} level 1's, the spark's 4), "
           f"{len(field['frames'])} play-field frames (ids from 0x{POOL_FIELD_ID0:02X}), atlas {field['lines']} lines, "
           f"{len(field['rom'])} B; type 1 joint: {len(joint_lines)} frames, at most {max(joint_lines)} a line")
+    if l3:
+        f3 = l3["field"]
+        n3 = sum(1 for b in bobs3 if "new" in b)
+        k3: dict[str, int] = {}
+        for v in l3["frames"].values():
+            k3[v] = k3.get(v, 0) + 1
+        print(f"  level 3: {len(l3['frames'])} Amiga frames: " + ", ".join(f"{v} {n}" for v, n in sorted(k3.items())))
+        print(f"  level 3: {len(bobs3)} BOB ids ({n3} new records, {sum(1 for b in bobs3 if 'reuse' in b) - 4} level 1's, "
+              f"{sum(1 for b in bobs3 if 'reuse2' in b)} level 2's, the spark's 4), {len(f3['frames'])} play-field frames "
+              f"(ids from 0x{l3['fid0']:02X}: static {sum(1 for f in f3['frames'] if f['kind'] in (0, 3))}, cache "
+              f"{sum(1 for f in f3['frames'] if f['kind'] == 1)}, smoke {sum(1 for f in f3['frames'] if f['kind'] == 2)}), "
+              f"atlas {f3['lines']} lines {len(f3['rom'])} B, cache {len(f3['fc'])} frames "
+              f"({sum(1 for c in f3['fc'] if c['white'])} white, colour {l3['flash']}) {len(f3['fc_rom']) // BANK} banks")
     print(f"  level 2's flashes {'= level 1s' if flash_same else 'DIFFER: ' + str(fidx2)}; "
           f"shared frames on entries 9/11/13: {len(rep) - 3}, their largest dE {worst:+.1f} against level 1's "
           f"({p.name}_l2_or.txt)")
@@ -1922,8 +2285,16 @@ def main() -> int:
     ap.add_argument("--l2-remove", type=Path, help="--pool: level 2's frames removed (bob only)")
     ap.add_argument("--l2-reconvert", action="store_true",
                     help="--pool: the animations of the shared frames palette C spoils (RECONVERT) converted again")
+    ap.add_argument("--l3-bobs", type=Path, help="--pool: level 3's catalogue (tools/bobcatalog.py level3)")
+    ap.add_argument("--l3-ram", type=Path, help="--pool: level 3's composite RAM image")
+    ap.add_argument("--l3-pal", type=Path, help="--pool: level 3's MSX palette (tools/msxlvpal.py: level 2's palette C)")
+    ap.add_argument("--l3-remove", type=Path, help="--pool: level 3's frames removed (bob only)")
     ap.add_argument("out", type=Path)
     a = ap.parse_args()
+    if a.l3_bobs and not (a.pool and a.l3_ram and a.l3_pal):
+        ap.error("--l3-bobs needs --pool, --l3-ram and --l3-pal")
+    if a.l3_bobs and a.l3_pal.read_bytes() != a.l2_pal.read_bytes():
+        ap.error("level 3's palette must be level 2's (palette C: docs/LEVEL3.md default 1)")
     if a.pool and not (a.bobs and a.l2_datal and a.l2_bobs and a.l2_ram and a.l2_pal):
         ap.error("--pool needs --bobs, --l2-datal, --l2-bobs, --l2-ram and --l2-pal")
     removed = json.loads(a.remove.read_text()) if a.remove else {}

@@ -472,7 +472,12 @@ bf_rec: ld a,d
         jr c,bf_nx                  ; (not on the MSX's screen: no object)
         ld a,(ix+9)                 ; the hostage and the gunners that stay put (enemies'), the lifts
         and 0xF0                    ; and the vehicle (special), the explosion and the smoke are drawn
-        cp BC_ENEMY << 4            ; into the play field (field.asm): no object
+        jr nz,bf_c1                 ; into the play field (field.asm): no object; in level 3 (fb_fwm)
+        ld a,(fb_fwm)               ; also the enemy bullets that draw a play-field frame (the debris
+        or a                        ; of its deaths, its rocket: docs/LEVEL3.md 2.6, 3.5)
+        jr nz,bf_fq
+        jr bf_ob
+bf_c1:  cp BC_ENEMY << 4
         jr z,bf_fq
         cp BC_SPECIAL << 4
         jr z,bf_fq
@@ -483,7 +488,8 @@ bf_fq:  call bf_fid
         jr z,bf_ob                  ; (not one of the level's frames: hidden there)
         cp BOB_HIDDEN               ; another record of the tick draws it (level 2's type 1: its
         jr z,bf_nx                  ; torso, in the legs' joint composition): no object
-        sub FIELD_ID0
+        ld hl,lv_fid0               ; (the level's first play-field id: D0h, level 3's own)
+        sub (hl)
         jr c,bf_ob
         push de
         call fb_add
@@ -523,7 +529,7 @@ bf_catx:
         inc c
         ld a,c
         cp BOB_CATS
-        jr c,bf_cat
+        jp c,bf_cat
         ld a,(bf_nnew)              ; the new identities take the free objects, lowest first
         or a
         jr z,bf_hide
@@ -923,7 +929,8 @@ bfs_new:
 ; BOBHASH slot's byte after the id). Keeps IX.
 bf_frame:
         call bf_fid
-        cp FIELD_ID0
+        ld hl,lv_fid0
+        cp (hl)
         ret c                       ; (a sprite frame)
         cp 0xFF
         ret z                       ; (not one of the level's frames)
@@ -1030,8 +1037,13 @@ bfs_none:
         ret
 
 ; A = play-field frame (field.asm), IX = its BOB record: into the tick's field list (fb_new: frame,
-; x, y as the record has them, owner), FB_MAX at most.
+; x, y as the record has them, owner), FB_MAX at most; the frame's bit 7 set for a hit flash (BM_FLASH:
+; level 3's white copies, field.asm fb_wants; the other levels' frames as they are).
 fb_add: ld c,a
+        bit 0,(ix+9)                ; (BM_FLASH)
+        jr z,fba_f
+        set 7,c
+fba_f:
         ld a,(fb_n)
         cp FB_MAX
         ret nc

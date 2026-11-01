@@ -6,15 +6,34 @@
 
         include "sprites_l1_field.inc"  ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py --pool)
         include "field_l2.inc"      ; level 2's: FIELD_LATE_l2, field_tab_l2 ... (tools/mkrom.py)
+        if VAT_ANIM = 0
+        include "field_l3.inc"      ; level 3's: FIELD_LATE_l3, field_tab_l3, field_dyn_l3, FC_ENT_l3 ...
+        endif
 
 ; Each level's play-field frames (the descriptor's lv_fld; fb_init copies them to fb_flate ...
-; fb_flook): the first frame of its lifts, vehicle and trolleys (FIELD_LATE: the late ones,
+; fb_fcb): the first frame of its lifts, vehicle and trolleys (FIELD_LATE: the late ones,
 ; fb_late), its dynamic slot's frames (FIELD_DYN0 to FIELD_DYN1, excluded: the explosions and
-; the smoke, both levels' the same, field_dyn and dyn_tab), its field_tab and field_look.
+; the smoke, every level's the same pixels: dyn_tab, level 1's), its field_tab and field_look,
+; its field_dyn (per dynamic frame its dyn_tab entry), 80h when its hit flashes are white copies
+; (level 3: fb_add's bit 7 kept, fb_wants) and its frame cache's first bank (0: none; level 3's
+; FC_BANK, docs/LEVEL3.md 3.5: fc_find, fc_get).
 fld_l1: db FIELD_LATE, FIELD_DYN0, FIELD_DYN1
-        dw field_tab, field_look
+        dw field_tab, field_look, field_dyn
+        db 0, 0
 fld_l2: db FIELD_LATE_l2, FIELD_DYN0_l2, FIELD_DYN1_l2
-        dw field_tab_l2, field_look_l2
+        dw field_tab_l2, field_look_l2, field_dyn
+        db 0, 0
+        if VAT_ANIM
+; (VAT_ANIM=1 builds, level 2's vats' comparison only: no room for level 3's play field, docs/LEVEL3.md
+; default 9; its BOBHASH holds no play-field frame there, tools/mkrom.py: they are not drawn)
+fld_l3: db 0, 0, 0
+        dw field_tab, field_look, field_dyn
+        db 0, 0
+        else
+fld_l3: db FIELD_LATE_l3, FIELD_DYN0_l3, FIELD_DYN1_l3
+        dw field_tab_l3, field_look_l3, field_dyn_l3
+        db 0x80, L3_FC
+        endif
 
 ; The level's atlas (bank lv_fimg on: tools/msxsprites.py field_frames, tools/mkrom.py atlas_banks)
 ; into VRAM, above the caches: at power-on, after the tiles (vdp.asm vdp_setup), and at each
@@ -306,14 +325,23 @@ FB_BURST:   equ 16                      ; 16 x 16 copies in a row in one call (e
                                         ; while the one before runs, which takes about as long:
                                         ; vdp_cmd waits for it; a piece's 4 x 4 cells at most)
 FB_STEPS:   equ 3                       ; steps of the work in one fb_work call at most
+FB_FLDN:    equ fb_fcb + 1 - fb_flate   ; a level's play-field tables (lv_fld: fld_l1 ...)
+FC_MAX:     equ 8                       ; the frame cache's places at most (an overlap mask a byte)
 
 ; At a level's start (engines_init): the pages hold no BOB, no cache holds anything, the dynamic
-; slot no frame, nothing to do; the level's play-field frames' tables (lv_fld: fld_l1, fld_l2).
+; slot and the frame cache no frame, nothing to do; the level's play-field frames' tables (lv_fld:
+; fld_l1, fld_l2, fld_l3).
 fb_init:
         ld hl,(lv_fld)
         ld de,fb_flate
-        ld bc,7
+        ld bc,FB_FLDN
         ldir
+        ld hl,fc_res
+        ld b,FC_MAX
+        ld a,0xFF
+fbi_fc: ld (hl),a                   ; (no place of the frame cache holds a frame)
+        inc hl
+        djnz fbi_fc
         xor a
         ld (dyn_res),a
         ld (dyn_res + 1),a
@@ -403,11 +431,15 @@ fb_wants:
         ld (fb_wbx + 6),hl
         ld ix,fb_new
         ld iy,fb_want
-fw_lp:  ld e,(ix+0)
+fw_lp:  ld a,(ix+0)
+        and 0x7F
+        ld e,a
         ld d,0
         ld hl,(fb_flook)            ; (the level's field_look)
         add hl,de
-        ld a,(hl)
+        ld a,(fb_fwm)               ; a hit flash's white copy (fb_add's bit 7) in level 3 only: the
+        and (ix+0)                  ; other levels show their frames as they are (their silhouettes
+        or (hl)                     ; are sprites)
         ld (iy+0),a
         ld a,e
         call fb_tab
@@ -490,8 +522,10 @@ fw_bn:  pop bc
         jp nz,fw_lp
         ret
 
-; A = frame -> HL = its field_tab entry (x, y, width, height, dx, dy). Keeps BC.
-fb_tab: ld l,a
+; A = frame (bit 7, a white copy's mark, ignored) -> HL = its field_tab entry (x, y, width, height,
+; dx, dy). Keeps BC.
+fb_tab: and 0x7F
+        ld l,a
         ld h,0
         ld e,l
         ld d,h
@@ -1408,6 +1442,7 @@ fla_p:  cp c
         push hl
         pop iy
 fla_lp: ld a,(iy+0)
+        and 0x7F                    ; (a white copy's mark)
         ld hl,fb_flate              ; (the level's FIELD_LATE)
         cp (hl)
         jr c,fla_nx
@@ -2316,13 +2351,22 @@ fbb_1:  dec a
         call fb_rpiece
         jr nc,fb_bobs               ; (none of it there)
         ld a,(ix+0)
+        and 0x7F                    ; (bit 7: its white copy, level 3's hit flash)
         ld hl,fb_fdyn0              ; (the level's FIELD_DYN0, FIELD_DYN1)
         cp (hl)
         jr c,fbb_at
         inc hl
         cp (hl)
-        jr c,fbb_dy
-fbb_at: call fb_tab                 ; source: the atlas + (part - BOB's place)
+        jp c,fbb_dy
+fbb_at:
+        if VAT_ANIM = 0
+        ld c,a
+        ld a,(fb_fcb)
+        or a
+        ld a,c
+        jr nz,fbb_fc                ; (level 3: the frame cache's frames, fc_find)
+        endif
+fbb_a2: call fb_tab                 ; source: the atlas + (part - BOB's place)
         ld a,(hl)                   ; atlas x
         inc hl
         ld c,(hl)                   ; atlas y
@@ -2349,6 +2393,42 @@ fbb_pg: ld (fb_cmd + 3),a
         call fb_dscr
         ld a,FB_LMMMT
         jp fb_issue
+
+        if VAT_ANIM = 0
+; (fb_bobs, level 3) C = the frame of IX's entry: from the frame cache when it is one of its frames
+; or has a white copy there (the entry's bit 7), resident in its place (fc_get); else from the atlas.
+fbb_fc: ld a,(ix+0)
+        rlca
+        and 1
+        ld b,a                      ; B = 1: its white copy
+        call fc_find
+        cp 0xFF
+        ld a,c
+        jr z,fbb_a2                 ; (an atlas frame)
+        ld a,l
+        call fc_get                 ; D = the place's x, E = its line (page 2)
+        jr c,fbb_df                 ; (the VDP busy: this BOB again at the next call)
+        ld hl,(fb_r)                ; source: the place + (part - BOB's place)
+        ld c,(ix+1)
+        ld b,(ix+2)
+        or a
+        sbc hl,bc
+        ld a,l
+        add a,d
+        ld (fb_cmd),a               ; SX
+        xor a
+        ld (fb_cmd + 1),a
+        ld hl,(fb_r + 2)
+        ld c,(ix+3)
+        ld b,(ix+4)
+        or a
+        sbc hl,bc
+        ld a,l
+        add a,e
+        ld (fb_cmd + 2),a           ; SY
+        ld a,2
+        jp fbb_pg                   ; (page 2)
+        endif
 
 ; (fb_bobs) A dynamic frame, IX its entry, fb_r its part inside the piece: the frame resident,
 ; then the part's lines fb_ds..fb_dse strip by strip.
@@ -2469,7 +2549,7 @@ fb_dyn: push ix
         sub (hl)                    ; (the level's FIELD_DYN0)
         ld e,a
         ld d,0
-        ld hl,field_dyn
+        ld hl,(fb_fdyt)             ; (the level's field_dyn)
         add hl,de
         ld l,(hl)
         ld h,0
@@ -2590,6 +2670,170 @@ fdy_x:  pop ix
 fdy_bz: pop ix
         scf
         ret
+
+        if VAT_ANIM = 0
+; ----- level 3's frame cache (docs/LEVEL3.md 3.5-3.6; tools/msxsprites.py l3_field) -----
+; Page 2 lines 160-231 hold the frame cache's places (FC_PLC: x, line, the places each overlaps): the
+; big animated frames (Cain's legs and his 64 x 32 part, type 21's legs: their sides both stored) and
+; the white copies of the frames an enemy shows in its hit flash (fb_add's bit 7: the flash's colour
+; where the frame has pixels, no sprite silhouettes) come from the ROM (bank fb_fcb on: at 8000h per
+; play-field frame its [normal, white] cache frame, FFh none; at FC_ENT per cache frame its bank, its
+; address and its place) into their place when a piece is composed with them (fb_bobs, as the
+; dynamic slot's frames). fc_res keeps the cache frame each place holds (FFh: none; fb_init forgets
+; them at every level start, a restart's and a continue's too). A copy is made with the VDP idle and
+; no command prepared (fb_work starts a prepared command before it prepares the next one), so no
+; command reads a place while it is written; the piece is composed with it at once.
+
+; C = a play-field frame, B = 1 for its white copy -> A = L = its cache frame: its white copy's when
+; B = 1 and it has one, else its normal one; FFh when it has none (an atlas frame). Keeps BC, DE.
+fc_find:
+        ld a,(act_8000)
+        push af
+        ld a,(fb_fcb)
+        call bank_8000
+        ld l,c
+        ld h,0x80 / 2
+        add hl,hl                   ; HL = 8000h + 2 x frame: its normal copy, then its white one
+        ld a,b
+        or a
+        jr z,fcf_n                  ; (its normal copy wanted)
+        inc hl
+        ld a,(hl)                   ; its white copy, when it has one,
+        cp 0xFF
+        jr nz,fcf_r
+        dec hl
+fcf_n:  ld a,(hl)                   ; else its normal one (FFh: none)
+fcf_r:  ld l,a
+        pop af
+        call bank_8000
+        ld a,l
+        ret
+
+; A = a cache frame, C = its play-field frame -> resident in its place (fc_res), else copied there
+; from the ROM now, the places it overlaps forgotten (the VDP idle first: C when it is busy and
+; nothing was done); NC: D = the place's x, E = its line (page 2). Keeps IX.
+fc_get: ld b,a
+        ld a,(act_8000)
+        push af
+        ld a,(fb_fcb)
+        call bank_8000
+        ld l,b
+        ld h,0
+        add hl,hl
+        add hl,hl
+        ld de,FC_ENT_l3
+        add hl,de                   ; HL = its entry: bank, address, place
+        push hl
+        inc hl
+        inc hl
+        inc hl
+        ld a,(hl)                   ; A = its place
+        ld e,a
+        add a,a
+        add a,e
+        ld l,a
+        ld h,0
+        ld de,FC_PLC_l3
+        add hl,de
+        ld d,(hl)                   ; D = its x,
+        inc hl
+        ld a,(hl)                   ; its line,
+        inc hl
+        push af
+        ld a,(hl)                   ; the places it overlaps
+        ld (fc_ovl),a
+        pop af
+        ld e,a
+        pop hl                      ; (its entry)
+        push de
+        ld de,3
+        add hl,de
+        ld e,(hl)                   ; E = its place
+        ld d,0
+        ld hl,fc_res
+        add hl,de
+        ld a,(hl)
+        cp b
+        jp z,fcg_ok                 ; (resident)
+        call vdp_busy
+        jp nz,fcg_bz                ; (a command runs: later)
+        ld (hl),b                   ; (the place holds it now; the places it overlaps nothing)
+        ld a,(fc_ovl)
+        ld hl,fc_res
+        ld e,FC_MAX
+fcg_ov: rrca
+        jr nc,fcg_on
+        ld (hl),0xFF
+fcg_on: inc hl
+        dec e
+        jr nz,fcg_ov
+        ld a,c
+        call fb_tab                 ; its width (as drawn), lines
+        inc hl
+        inc hl
+        ld a,(hl)
+        srl a
+        ld (fc_bpl),a               ; (bytes a line)
+        inc hl
+        ld a,(hl)
+        ld (fc_lines),a             ; (lines)
+        ld l,b
+        ld h,0
+        add hl,hl
+        add hl,hl
+        ld de,FC_ENT_l3
+        add hl,de
+        ld a,(hl)                   ; its bank (from fb_fcb)
+        inc hl
+        ld e,(hl)
+        inc hl
+        ld d,(hl)                   ; DE = its pixels (8000h window), a VRAM line after another
+        ld hl,fb_fcb
+        add a,(hl)
+        call bank_8000
+        pop bc                      ; B = the place's x, C = its line
+        push bc
+        ex de,hl
+fcg_ln: push hl                     ; VRAM 10000h (page 2) + line * 128 + x / 2
+        ld a,c
+        srl a
+        ld h,a
+        ld a,c
+        rrca
+        and 0x80
+        ld l,a
+        ld a,b
+        srl a
+        or l
+        ld l,a
+        ld e,1
+        push bc
+        call vram_write
+        pop bc
+        pop hl
+        push bc
+        ld a,(fc_bpl)
+        ld b,a
+        ld c,VDP_DATA
+        otir
+        pop bc
+        inc c
+        ld a,(fc_lines)
+        dec a
+        ld (fc_lines),a
+        jr nz,fcg_ln
+        call vram_done
+fcg_ok: pop de                      ; D = x, E = line
+        pop af
+        call bank_8000
+        or a                        ; (NC)
+        ret
+fcg_bz: pop de
+        pop af
+        call bank_8000
+        scf
+        ret
+        endif
 
 ; Phase FP_COPY: the next part of the piece from the scratch onto its page (HMMM; the V9958's ring
 ; in parts that do not cross its x 256 or its y 256, a V9938 page in parts that do not cross y

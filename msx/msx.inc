@@ -1055,9 +1055,12 @@ sp_list:    equ 0xF1D0              ; 16: sat_pack: the objects whose runs it pl
 ht_box:     equ 0xF100              ; 10 x 10: hit_test's boxes (F100h-F163h, within a 256-byte page)
 ph_w:       equ 0xF164              ; 2: pl_hits: an enemy's width,
 ph_h:       equ 0xF166              ; 2:   height
-fc_tab:     equ 0xECF0              ; 32: level 3's dynamic frame cache (docs/LEVEL3.md 3.5: page 2
-                                    ;   lines 160-231): its places' frames, white flags and ages, as
-                                    ;   field.asm lays them out (the plan's step C; reserved by step A)
+fc_tab:     equ 0xECF0              ; 32: level 3's frame cache (docs/LEVEL3.md 3.5: page 2 lines 160-231;
+                                    ;   field.asm fc_get), ECF0h-ECFAh:
+fc_res:     equ 0xECF0              ; 8 (FC_MAX): per place the cache frame it holds (FFh: none),
+fc_ovl:     equ 0xECF8              ;   the places a copy's place overlaps (fc_get),
+fc_bpl:     equ 0xECF9              ;   its bytes a line,
+fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED0Fh free)
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
@@ -1142,7 +1145,10 @@ fb_flate:   equ 0x064F              ; the level's play-field frames (fb_init: lv
 fb_fdyn0:   equ 0x0650              ;   its lifts, the vehicle, the trolleys (FIELD_LATE), the first
 fb_fdyn1:   equ 0x0651              ;   of the dynamic slot's frames, the first after them,
 fb_ftab:    equ 0x0652              ;   2: its field_tab,
-fb_flook:   equ 0x0654              ;   2: its field_look (0656h-065Fh free)
+fb_flook:   equ 0x0654              ;   2: its field_look,
+fb_fdyt:    equ 0x0656              ;   2: its field_dyn (per dynamic frame its entry in level 1's dyn_tab),
+fb_fwm:     equ 0x0658              ;   80h when its hit flashes are white copies (level 3), else 0,
+fb_fcb:     equ 0x0659              ;   its frame cache's first bank (0: none; level 3's L3_FC) (065Ah-065Fh free)
 fb_sn:      equ 0x0660              ; the item being composed: its page's list when it started
 fb_snap:    equ 0x0661              ;   (how many, then FB_MAX entries)
 fb_own:     equ 0x0699              ; 2: the owner of a rectangle going into the queue (FFFFh: none)
