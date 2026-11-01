@@ -334,6 +334,8 @@ class VatAnimTests(unittest.TestCase):
         self.assertEqual(len([l for l in src.splitlines() if "gt_vat" in l.split(";")[0]]),
                          len([l for l in tiles if "gt_vat" in l]))
         field = [l for l in if_blocks("field.asm", "VAT_ANIM") if l]
+        self.assertEqual(field[:3], ["fld_l3: db 0, 0, 0", "dw field_tab, field_look, field_dyn", "db 0, 0"])
+        field = field[field.index("ld a,1"):]                                              # (level 3's stub: no room)
         self.assertEqual(field[:3], ["ld a,1", "ld (vat_on),a", "vf_recp:"])               # vat_init, the section
         k = field.index("else")
         self.assertIn("vat_dst:", field[:k])
