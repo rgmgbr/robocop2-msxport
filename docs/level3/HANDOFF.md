@@ -945,3 +945,12 @@ option sets' ROMs deleted.
    `field.asm` needs room first (`VAT_ANIM=1` builds keep the old staging for that reason).
 3. The stress test's runs while two big enemies change at once (the hold runs out); not reached with
    ENEMY_CAP 1.
+
+### Integrated
+Cherry-picked onto `level2` `001787b` (the main tree clean) as **`ea76d00`** (the chain, the test), **`ef5d3de`**
+(this section, `LEVEL3.md` 3.10, `MSX_ARCHITECTURE.md`) and this note's. In the main tree then: the product,
+the l3 trace build, the lowest set and `VAT_ANIM=1` built with `tools/bstest/build.sh` and `hz.sh l3builds`
+byte-identical to the worktree's (the product `fde75be5865bfb72`, l3 `7d5eb71e82a31bb5`), so every result
+above holds; `make test`: 348 tests, the 4 known failures only. The summaries (the field checks, the guard's
+lines, the copies' counts, the logs), the scratch tools (`tears.py`, `fbstate.py`, `gd.tcl`, `ab.tcl`,
+`stillcmp.sh`), the idle drive and the pictures looked at: `build/archive/rest_step7_records_2026-11-01.tar.gz`.
