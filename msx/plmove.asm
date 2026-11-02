@@ -51,7 +51,14 @@ pm_10:  ld a,(pm_d5)
 pm_14:  ld a,(pm_d5)
         cp 0x0E
         jr nz,pm_8
-        ld a,(pm_d0)                ; states 14/15: up only
+        ld a,(j_jumpb)              ; (the port: the joystick's trigger B does there what the Amiga's
+        or a                        ;  up does, as when crouching: up only aims, and RoboCop hung on a
+        jr z,pm_14u                 ;  level-2 trolley with no way down: the user's report, 2026-11-02)
+        xor a
+        ld (j_nojump),a
+        inc a
+        ld (pm_d0),a
+pm_14u: ld a,(pm_d0)                ; states 14/15: up only
         and 1
         ld (pm_d0),a
 pm_8:   ld a,(pm_d5)
