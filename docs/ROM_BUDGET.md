@@ -526,14 +526,15 @@ Measured, from `tools/bstest/variants.sh` (all 61 option sets) and `tools/bstest
 `perf2/wopt`, whose `tools/mkrom.py` defaults are the user's choices of 2026-11-02 (`docs/PERF2_PLAN.md` section 3):
 `FLASH_LOOK` 7 (flash-7) and `CAD_MAX` 3, `CAD_HOLD` 3, `CAD_ADAPT` 8 (loop-3), against `level2` 6cbf71f (batch 3a's code
 with the defaults of before, 0, 2, 2 and 0). The bank map is 2.5's: no block moves. **59 of 61 sets build**, as at
-6cbf71f: `DEMO_ACTORS` 2 and 5 fail (114 B short in the fixed area; 122 at 6cbf71f); every set that built at 3b11042
-builds. Every set moves by the same bytes: **the fixed area +8** (flash-7 frees 22: no held hit and no frame-end loop;
-`CAD_ADAPT`'s block at `cd_cap` takes 14) and **LC1 -5** (flash-7's `slot_clear`); no other bank changes. The build with
-`FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` is 6cbf71f's product byte for byte (`950151ef94e0a653`).
+6cbf71f: `DEMO_ACTORS` 2 and 5 fail (120 B short in the fixed area; 122 at 6cbf71f); every set that built at 3b11042
+builds. Every set moves by the same bytes: **the fixed area +2** (flash-7 frees 22: no held hit and no frame-end loop;
+`CAD_ADAPT`'s block at `cd_cap` takes 20: 14, and 6 for level 1's test, which keeps level 1 at 2 ticks a picture) and
+**LC1 -5** (flash-7's `slot_clear`); no other bank changes. The build with `FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0`
+is 6cbf71f's product byte for byte (`950151ef94e0a653`).
 
 | Bank | Product 6cbf71f | Product, the new defaults | Lowest set 6cbf71f | Lowest set, the new defaults | Least in any set, the new defaults |
 |---|---:|---:|---:|---:|---|
-| fixed area | 285 | **293** | 150 | **158** | 71 (`DEMO_HUD=1`; 155 `VAT_ANIM=1 VAT_TICK=1 CHEAT=1 LV_TEST=2 TAG=7`); `DEMO_ACTORS` 2 and 5 do not build |
+| fixed area | 285 | **287** | 150 | **152** | 65 (`DEMO_HUD=1`; 149 `VAT_ANIM=1 VAT_TICK=1 CHEAT=1 LV_TEST=2 TAG=7`); `DEMO_ACTORS` 2 and 5 do not build |
 | LC1 | 24 | **19** | 24 | **19** | 19 (148 in the trace builds, 153 before) |
 | LC2 | 4,467 | 4,467 | 4,467 | 4,467 | 4,467 |
 | `BANK_L1` | 378 | 378 | 378 | 378 | 378 |

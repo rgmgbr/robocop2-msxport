@@ -870,9 +870,9 @@ which as sprites were striped, cut or left out.
   25 Hz). A frame whose work took longer (busy scenes: the logic costs about 74,000 T-states a
   tick, a 60 Hz frame has 59,659) is caught up: the ticks due run in a row (`g_tick`, at most
   `CAD_MAX` = 3 for one picture, `CAD_HOLD` = 3 while the V9938 scroll keeps the camera at a page's
-  edge, and at most 2 for a picture that took fewer than `CAD_ADAPT` = 8 VBLANKs (loop-3, the
-  user's choice of 2026-11-02, `docs/PERF2_PLAN.md` D2: 3 ticks only below 7.5 pictures a second at
-  60 Hz; below, "The cadence's options"; the cap was 4 until 2026-10-21, when catching up skipped
+  edge, and at most 2 for a picture that took fewer than `CAD_ADAPT` = 8 VBLANKs and for every picture
+  of level 1 (loop-3, the user's choice of 2026-11-02, `docs/PERF2_PLAN.md` D2: 3 ticks only below 7.5
+  pictures a second at 60 Hz; below, "The cadence's options"; the cap was 4 until 2026-10-21, when catching up skipped
   animation steps, the walk's among them, then 2 for every picture until 2026-11-02, about 5 % of
   speed in busy scenes, 92 % in the worst 2 s), none while the view shown is 32 px or more behind the one wanted, or behind at
   all while RoboCop's next picture could show an opaque pixel outside the picture shown (`cam_lag`,
@@ -956,13 +956,17 @@ which as sprites were striped, cut or left out.
 - **The cadence's options** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md` D2 and D3; loop-3 is the
   product's cadence since the user's choice of 2026-11-02, `LAG_X` is not decided):
   - `CAD_ADAPT=n` (default 8 since 2026-11-02, 0 before): a frame that took fewer than n VBLANKs (`wf_n`)
-    runs at most 2 ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 14 bytes
-    of the fixed area; `tools/mkrom.py` refuses it without a cap above 2). Loop-3, the product's cadence,
+    runs at most 2 ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 20 bytes
+    of the fixed area with level 1's test; `tools/mkrom.py` refuses it without a cap above 2). Loop-3, the product's cadence,
     is `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`: 3 ticks a picture only for the pictures of 8 VBLANKs or more
     (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), where RoboCop's walk advances 1 and 2
-    drawings alternately; the faster pictures take 2 at most, as before (the user rejected 3-4 ticks a
-    picture in level 1 on 2026-10-21, when its pictures were slow, and keeps that rule: level 1 must show
-    no 3-tick picture). The cadence
+    drawings alternately; the faster pictures take 2 at most, as before. Level 1 takes 2 at most for
+    every picture (`cd_cap`'s first test, the level word's low byte at AG + 8050h: 6 bytes): the user
+    rejected 3-4 ticks a picture there on 2026-10-21 (the walk skipped steps and seemed to go backwards)
+    and kept that rule with loop-3. Without the test, level 1's coverage drives showed 3-tick pictures
+    wherever its pictures take 8 VBLANKs or more (measured 2026-11-02: `drive_cov1` 552 / 553 / 586 of its
+    2,036-2,046 pictures with ticks on C-BIOS_MSX2 / the Expert / the FS-A1FX, 1 on the FS-A1GT, most from
+    tick 2,100 on; `drive_cov0` 242 / 243 / 273 / 1; its normal play `drive_play` none). The cadence
     until 2026-11-02 is `CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` (with `FLASH_LOOK=0` the product of before,
     byte for byte). Loop-1 is `CAD_ADAPT=0` with the caps of 3: 3 whenever a picture is late (no code).
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the

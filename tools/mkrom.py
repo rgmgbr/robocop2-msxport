@@ -200,14 +200,15 @@ OPTIONS = {
     "CAD_MAX": (3, "most game ticks run for one picture: more are lost (the game slows down, as the original does when"
                    " busy); 3 with CAD_ADAPT 8 (loop-3, the user's choice of 2026-11-02, docs/PERF2_PLAN.md D2): 3 only"
                    " for a picture that took 8 VBLANKs or more, the game faster where pictures are slowest, 2 for every"
-                   " faster picture; the cadence until then, at most 2 for every picture (an animation never skips a"
-                   " step of 2 ticks): CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0"),
+                   " faster picture and for every picture of level 1; the cadence until then, at most 2 for every"
+                   " picture (an animation never skips a step of 2 ticks): CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0"),
     "CAD_HOLD": (3, "the same while the V9938 scroll keeps the camera at a page's edge (its next page not built yet)"),
     "CAD_ADAPT": (8, "N > 0 = a picture that took fewer than N VBLANKs runs at most 2 game ticks, only a slower one up"
-                     " to CAD_MAX (or CAD_HOLD): 8 with CAD_MAX=3 CAD_HOLD=3 is loop-3, the user's choice of 2026-11-02"
-                     " (docs/PERF2_PLAN.md D2: 3 ticks only below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz;"
-                     " msx/player.asm cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone"
-                     " (CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0: the cadence until 2026-11-02)"),
+                     " to CAD_MAX (or CAD_HOLD), and level 1 at most 2 for every picture (the user's rule of 2026-10-21:"
+                     " no 3-tick step of RoboCop's walk there): 8 with CAD_MAX=3 CAD_HOLD=3 is loop-3, the user's choice"
+                     " of 2026-11-02 (docs/PERF2_PLAN.md D2: 3 ticks only below 7.5 pictures a second at 60 Hz, 6.25 at"
+                     " 50 Hz; msx/player.asm cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone"
+                     " in every level (CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0: the cadence until 2026-11-02)"),
     "LAG_X": (32, "pixels the view shown may lag behind the camera in x with the V9938 engine (the MSX2: its scroll"
                   " builds a page while the camera moves on; the ticks are held beyond it), 32-64, for the user's"
                   " choice (docs/PERF2_PLAN.md D3: 64); y and the V9958's engine keep 32, and the ticks stop while"

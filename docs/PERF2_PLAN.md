@@ -592,7 +592,8 @@ D4-D6's numbers are ticks/s / progress pictures/s, on top of the full decision-i
 **The user's answers (2026-11-02, after playing test10-test15):**
 - **D1: flash-7**, the product's look since (`tools/mkrom.py` `FLASH_LOOK` default 7).
 - **D2: loop-3**, the product's cadence since (`CAD_MAX` 3, `CAD_HOLD` 3, `CAD_ADAPT` 8). The rule of 2026-10-21
-  stands: level 1 shows no picture of 3 ticks.
+  stands: level 1 shows no picture of 3 ticks (`player.asm` `cd_cap` keeps it at 2 a picture: without that test its
+  coverage drives showed 3-tick pictures where its pictures take 8 VBLANKs or more).
 - `FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` builds the look and cadence of before (the product of `level2`
   6cbf71f, byte for byte).
 - **D3: pending.** The user asked for `LAG_X=64` to be measured again on the current version (batch 3a with flash-7

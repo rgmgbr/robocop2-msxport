@@ -31,8 +31,8 @@ FLOOR:      equ 5
 ; last frame (wf_n), so that late frames (busy ticks took more than their frames) are caught up
 ; with ticks run in a row (the display skips their pictures).
 ; At most CAD_MAX ticks in a frame (tools/mkrom.py CAD_MAX; CAD_HOLD while the V9938 scroll keeps
-; the camera at a page's edge; CAD_ADAPT: 2 for a frame of fewer VBLANKs): a longer delay is lost
-; (only then the game slows down, as the original does when its frame takes 3 VBLs).
+; the camera at a page's edge; CAD_ADAPT: 2 for a frame of fewer VBLANKs, and 2 in level 1): a longer
+; delay is lost (only then the game slows down, as the original does when its frame takes 3 VBLs).
 LAG_MAX:    equ 32                  ; pixels the view shown may lag behind the camera (cadence;
                                     ; tools/mkrom.py LAG_X: in x with the V9938 engine)
 CAD_TICK:   equ 300 / TICK_HZ       ; + g_step (6 at 50 Hz, 5 at 60 Hz) per VBLANK, a tick at 10
@@ -73,10 +73,13 @@ cd_set: ld c,a
         ld d,CAD_HOLD
 cd_cap:
         if CAD_ADAPT
+        ld a,(AG + 0x8050)          ; (level 1, the level word's low byte 0: 2 ticks at most for every
+        or a                        ;  picture, the user's rule of 2026-10-21 kept with loop-3 on
+        jr z,cd_c2                  ;  2026-11-02: no 3-tick step of RoboCop's walk there)
         ld a,(wf_n)                 ; (CAD_ADAPT: a picture of fewer VBLANKs runs 2 ticks at most,
         cp CAD_ADAPT                ;  only a slower one up to CAD_MAX or CAD_HOLD)
         jr nc,cd_ca
-        ld a,d
+cd_c2:  ld a,d
         cp 3
         jr c,cd_ca
         ld d,2

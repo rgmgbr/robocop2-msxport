@@ -1,7 +1,8 @@
 """The cadence's options (performance campaign 2, docs/PERF2_PLAN.md D2 and D3): tools/mkrom.py CAD_ADAPT (D2's
 loop-3, CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8, the product's cadence since the user's choice of 2026-11-02: a picture that
-took fewer than CAD_ADAPT VBLANKs runs at most 2 game ticks, a slower one up to CAD_MAX or CAD_HOLD;
-CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0 is the cadence until then) and LAG_X (D3, not decided, default 32: how far the
+took fewer than CAD_ADAPT VBLANKs runs at most 2 game ticks, a slower one up to CAD_MAX or CAD_HOLD, and level 1 at
+most 2 for every picture, the user's rule of 2026-10-21; CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0 is the cadence until then)
+and LAG_X (D3, not decided, default 32: how far the
 V9938 engine's view may lag behind the camera in x before the ticks are held). Their values and refusals, the
 product with them and with the look and cadence until 2026-11-02 (FLASH_LOOK=0, D1's, with the cadence above),
 where their code is (msx/player.asm only), and their rules as the code makes them: the cap cadence takes for each
@@ -37,12 +38,14 @@ def equ(lines, name):
     return int(next(l for l in lines if l.startswith(name + ":")).split("equ")[1])
 
 
-def cap(wf_n, d, adapt):
-    """CAD_ADAPT's block at cd_cap, as player.asm has it: the tick cap D after it for WF_N VBLANKs."""
+def cap(wf_n, d, adapt, level=3):
+    """CAD_ADAPT's block at cd_cap, as player.asm has it: the tick cap D after it for WF_N VBLANKs in LEVEL (1-3:
+    the level word's low byte, AG + 8050h, is LEVEL - 1)."""
     pl = code("player.asm")
     assert block(pl, pl.index("cd_cap:"), "CAD_ADAPT") == \
-        ["ld a,(wf_n)", "cp CAD_ADAPT", "jr nc,cd_ca", "ld a,d", "cp 3", "jr c,cd_ca", "ld d,2", "cd_ca:"]
-    if not adapt or wf_n >= adapt:
+        ["ld a,(AG + 0x8050)", "or a", "jr z,cd_c2", "ld a,(wf_n)", "cp CAD_ADAPT", "jr nc,cd_ca",
+         "cd_c2:  ld a,d", "cp 3", "jr c,cd_ca", "ld d,2", "cd_ca:"]
+    if not adapt or (level != 1 and wf_n >= adapt):
         return d
     return 2 if d >= 3 else d
 
@@ -87,8 +90,8 @@ class CadenceOptionTests(unittest.TestCase):
     def test_the_product_and_the_look_and_cadence_until_2026_11_02(self):
         """The product (flash-7 and loop-3, the defaults) and the build with FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2
         CAD_ADAPT=0 (the look and cadence until 2026-11-02, the product of before byte for byte) both build; they
-        differ only in the fixed area (flash-7 22 bytes fewer, CAD_ADAPT's block 14 more) and LC1 (flash-7's
-        slot_clear, 5 more), and the rc-edge table's RC_K is 3 against 2."""
+        differ only in the fixed area (flash-7 22 bytes fewer, CAD_ADAPT's block 20 more: 14, and 6 for level 1's
+        test) and LC1 (flash-7's slot_clear, 5 more), and the rc-edge table's RC_K is 3 against 2."""
         ends, rck = {}, {}
         with tempfile.TemporaryDirectory() as t:
             for name, opts in (("prod", []), ("old", ["FLASH_LOOK=0", "CAD_MAX=2", "CAD_HOLD=2", "CAD_ADAPT=0"])):
@@ -106,7 +109,7 @@ class CadenceOptionTests(unittest.TestCase):
         diff = {k: int(b[k], 16) - int(a[k], 16) for k in ("code_end", "lc1_end", "lc2_end", "l1_end", "lc3_end",
                                                          "input_end", "front_end", "field_end", "music_end",
                                                          "puzl_end", "frng_end", "l2_end")}
-        self.assertEqual(diff, {"code_end": -8, "lc1_end": 5, "lc2_end": 0, "l1_end": 0, "lc3_end": 0,
+        self.assertEqual(diff, {"code_end": -2, "lc1_end": 5, "lc2_end": 0, "l1_end": 0, "lc3_end": 0,
                                 "input_end": 0, "front_end": 0, "field_end": 0, "music_end": 0, "puzl_end": 0,
                                 "frng_end": 0, "l2_end": 0})
         self.assertEqual((rck["old"], rck["prod"]), ("2", "3"))
@@ -119,8 +122,11 @@ class CadenceOptionTests(unittest.TestCase):
 
     def test_loop_3_takes_3_ticks_only_for_slow_pictures(self):
         # loop-3 (CAD_ADAPT=8, CAD_MAX=3, CAD_HOLD=3): 2 ticks at most below 8 VBLANKs; no tick while the
-        # view lags (D = 0) and the cap of 2 stay as they are
+        # view lags (D = 0) and the cap of 2 stay as they are; level 1 keeps 2 for every picture
         self.assertEqual([cap(w, 3, 8) for w in range(1, 12)], [2] * 7 + [3] * 4)
+        self.assertEqual([cap(w, 3, 8, 2) for w in range(1, 12)], [2] * 7 + [3] * 4)
+        self.assertEqual([cap(w, 3, 8, 1) for w in range(1, 12)], [2] * 11)
+        self.assertEqual([cap(w, d, 8, 1) for w in (1, 9) for d in (0, 2)], [0, 2, 0, 2])
         self.assertEqual([cap(w, 0, 8) for w in (1, 9)], [0, 0])
         self.assertEqual([cap(w, 2, 8) for w in (1, 9)], [2, 2])
         self.assertEqual([cap(w, 3, 0) for w in (1, 9)], [3, 3])       # loop-1: CAD_MAX 3 alone
