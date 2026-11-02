@@ -727,7 +727,7 @@ ao_hi:      equ 0xCED5
 ao_cnt:     equ 0xCED6              ; entries in so_x
 ao_curn:    equ 0xCED7              ; the entry being activated
 jump_pend:  equ 0xCED8              ; non-zero: the cracked wall moved RoboCop and the camera (act_10):
-                                    ;   the scroll engine draws the new view (field.asm engines_jump)
+                                    ;   the scroll engine draws the new view (ending.asm engines_jump)
 tick_n:     equ 0xCEE0              ; 2: game ticks since the power-on (the test scripts' frames)
 g_event:    equ 0xCEE2              ; what the last tick's frame_end asks for (FE_..., 0)
 lv_fresh:   equ 0xCEE3              ; non-zero: the level's lists are copied into RAM at its start
@@ -989,6 +989,12 @@ BM_N:       equ 7                   ; level 3's beam records it holds (tools/map
 sb_end:     equ 0xED0C              ; sprites_frame: 1 + the highest object wanted after the plan
                                     ;   (fl_last): rows_sync and sat_build stop there (ED0Ch: in the
                                     ;   ECFBh-ED0Fh fc_lines leaves, docs/PERF2_PLAN.md 5.2)
+; The field engine's look-only path (performance campaign 2's flash-1, field.asm fp_lkok; ED09h-ED0Bh,
+; docs/PERF2_PLAN.md 5.2; fb_init clears them):
+fb_lkf0:    equ 0xED09              ; per page (0: the V9958's ring) 1 while its pixels are its list's
+fb_lkf1:    equ 0xED0A              ;   composition but for looks (set at fb_step's idle point, cleared
+                                    ;   by fq_go, one word, for a change that is not look-only)
+fb_lkq:     equ 0xED0B              ; 1 while fb_diff queues a look-only change (fd_lkchk .. fd_copy)
 ; The level's descriptor (tools/mkrom.py gen/levels.inc: lv_desc, LV_SIZE bytes a level, in FRONT),
 ; copied here at each level's start and at power-on before vdp_setup (cold.asm lv_copy): what the
 ; engine reads instead of build-time equates (docs/LEVEL2.md 3.1). F1A0h-F1C2h.
@@ -1091,8 +1097,8 @@ fc_tab:     equ 0xECF0              ; 32: level 3's frame cache (docs/LEVEL3.md 
 fc_res:     equ 0xECF0              ; 8 (FC_MAX): per place the cache frame it holds (FFh: none),
 fc_ovl:     equ 0xECF8              ;   the places a copy's place overlaps (fc_get),
 fc_bpl:     equ 0xECF9              ;   its bytes a line,
-fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED08h: bm_gen; ED0Ch: sb_end;
-                                    ;   ED09h-ED0Bh and ED0Dh-ED0Fh free)
+fc_lines:   equ 0xECFA              ;   its lines left (ECFBh-ED08h: bm_gen; ED09h-ED0Bh: the field
+                                    ;   engine's look-only flags; ED0Ch: sb_end; ED0Dh-ED0Fh free)
 pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format) the VBLANK loads:
                                     ;   the copper's colours ($1049E, logic.asm pal_fade / pal_robo)
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
@@ -1102,7 +1108,8 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFFh, E0FEh-E0FFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; ECF0h-ED0Fh:
 ; fc_tab since level 3's step A, its ECFBh-ED08h bm_gen; F170h-F190h and EDF0h-EDFBh the map-write
-; caches and EDFCh-EDFEh ft_orn since 2026-11-01; F1A0h-F1C2h:
+; caches and EDFCh-EDFEh ft_orn since 2026-11-01, ED09h-ED0Bh fb_lkf0, fb_lkf1, fb_lkq since its
+; flash-1; F1A0h-F1C2h:
 ; lv_cur and lv_vram since level 2's step 4; CE42h vat_cut_line, DD1Ah barrel_gap, DFB2h-DFDFh
 ; vat_phase, F012h-F0E6h the vats' display since its step 5, F0E7h-F0FBh since its step 14);
 ; EA60h-EC41h: bob_list,

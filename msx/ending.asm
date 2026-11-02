@@ -2,8 +2,9 @@
 ; front2_call; docs/ENDING.md): the game completed (level_load_3 $86DE: front_ending) and the high
 ; scores (high_score_entry $12082: hs_entry; the table hs_tab0, hs_tab1 in RAM, msx.inc), with
 ; FRONT's text screens' pieces (fs_step, fs_char, fs_tick, fs_list, ff_bits) and their scripts here
-; (ending.inc, tools/msxtext.py); and the play-field atlas's upload at power-on and at a level's start
-; (field_upload). Every routine it calls puts the A000h window back (act_a000).
+; (ending.inc, tools/msxtext.py); the play-field atlas's upload at power-on and at a level's start
+; (field_upload); and the scroll engines' set-up (engines_init, engines_jump: from the main loop's
+; code through rc2.asm f2_call). Every routine it calls puts the A000h window back (act_a000).
 
 ; At the power-on (frontx.asm ci_hook): the high scores' table from its defaults ($11FF6 in the
 ; Amiga's code, kept until the power goes: IAN 100000 ... PAUL 7500).
@@ -641,3 +642,178 @@ fu_nl:  pop hl
         call vram_done
         pop af
         jp bank_8000
+
+; ----- the scroll engines' set-up (performance campaign 2's R2, docs/PERF2_PLAN.md 5.2: from
+; field.asm's bank, whose room went to the field engine; through rc2.asm f2_call: this bank at
+; A000h, 8000h as the caller left it). It runs once at a level's start (rc2.asm lv_go), at a
+; restart or a continue (level_restart) and at the cracked wall's jump (engines_jump), never in a
+; frame's work; field.asm's fb_init and vat_init through field_call. -----
+
+; The scroll engine of the VDP found (vdp_id; FORCE_V9938) on the camera's view, the split, the
+; sprite engine.
+engines_init:
+        ld hl,vat_init
+        call field_call             ; (level 2's vats: none drawn yet)
+        ld hl,fb_init
+        call field_call             ; (first: the set-up's tiles ask it, tiles.asm fb_mark)
+        ld a,(vdp_id)
+        cp 2
+        jr nz,init38
+        if FORCE_V9938
+        jr init38
+        endif
+        xor a
+        ld (fb_eng),a               ; (field.asm: the ring)
+        ld a,2
+        call split_init             ; A = 2: V9958 engine
+        call scroll_init            ; V9958 engine
+        ld hl,scroll_publish
+        ld (pub_vec),hl
+        ld hl,scroll_update
+        ld de,scroll_work
+        jr init_go
+init38: ld a,1
+        ld (fb_eng),a               ; (field.asm: two pages)
+        xor a
+        call split_init
+        call s38_init               ; V9938 engine
+        ld hl,s38_publish
+        ld (pub_vec),hl
+        ld hl,s38_update
+        ld de,s38_work
+init_go:
+        ld (update_vec),hl
+        ld (idle_vec),de
+        jp sprites_init
+
+; After the cracked wall's relocation (mapobj.asm act_10, obj_relocate $9FC4: RoboCop and the
+; camera somewhere else in the map, the palette fading in from black): the view drawn around the
+; new camera at once, as at the level's start, while the display, the HUD and the interrupts go
+; on (the scroll engines would walk there a column at a time, the ticks held meanwhile). The play
+; field goes black first (on screen from the next VBLANK: the old view is drawn over); the
+; play-field BOBs and the cells waiting to be redrawn are forgotten (the whole view comes from
+; the map); the split and the sprites go on as they are.
+engines_jump:
+        xor a
+        call pal_fade               ; ($16CD = 0: pl_fade brings it back)
+        ld a,(tick)
+        ld b,a
+ej_vbl: ld a,(tick)
+        cp b
+        jr z,ej_vbl
+        call pl_view                ; v_x, v_y (cam_x, cam_y) on the new camera
+        di                          ; (the interrupts start the play field's copies)
+        ld hl,fb_init
+        call field_call
+        ei
+        ld hl,vat_init
+        call field_call             ; (level 2's vats: the whole view drawn again)
+        ld hl,rd_bits
+        ld bc,40
+        xor a
+        call fill
+        xor a
+        ld (rd_head),a
+        ld (rd_tail),a
+        ld (rd_phase),a
+        ld (cam_held),a
+        ld a,(fb_eng)
+        or a
+        jp z,scroll_init            ; (V9958 engine)
+        jp s38_init
+
+
+; Fills the initial ring and clears the queues.
+scroll_init:
+        ld a,R25_PLAY
+        ld b,25
+        call wrreg                  ; R#25 = SP2 (512 px ring) + MSK (hides the left 8 px)
+        ld hl,0                     ; (the camera: set by the game, pl_init)
+        ld (frame),hl
+        ld (late),hl
+        ld (stall),hl
+        ld (vstall),hl
+        ld (tiles_drawn),hl
+        ld a,0xFF
+        ld (q_col),a
+        ld (q_row),a
+        call cam_cells              ; B = cx, C = cy
+        ld a,b
+        ld (prev_cx),a
+        ld a,c
+        ld (prev_cy),a
+        ; rows cy-1 .. cy+12, columns cx-1 .. cx+17
+        ld a,c
+        dec a
+        ld d,a                      ; current row
+si_row: ld a,b
+        dec a
+        ld e,a
+si_col: push bc
+        push de
+        ld a,d
+        call draw_tile
+        pop de
+        pop bc
+        inc e
+        ld a,b
+        add a,18
+        cp e
+        jr nz,si_col
+        inc d
+        ld a,c
+        add a,VIEW_ROWS-1
+        cp d
+        jr nz,si_row
+        jp scroll_publish
+
+
+; (scroll9938.asm)
+s38_init:
+        xor a
+        ld b,25
+        call wrreg                  ; no V9958 scroll (FORCE_V9938 on an MSX2+)
+        ld hl,0                     ; (the camera: set by the game, pl_init)
+        ld (frame),hl
+        ld (late),hl
+        ld (stall),hl
+        ld (vstall),hl
+        ld (tiles_drawn),hl
+        xor a
+        ld (s38_vis_page),a
+        ld (s38_flip_wait),a
+        ld a,0xFF
+        ld (s38_back_c0),a
+        ld (s38_rq),a
+        call cam_cells
+        ld a,b
+        ld (s38_vis_c0),a
+        ld a,c
+        ld (prev_cy),a
+        dec a
+        ld (s38_tmp_row),a
+s38i_row:
+        ld a,(s38_vis_c0)
+        ld e,a
+s38i_col:
+        push de
+        ld a,(s38_vis_c0)
+        ld c,a
+        ld d,0
+        ld a,(s38_tmp_row)
+        call tile_to_page
+        pop de
+        inc e
+        ld a,(s38_vis_c0)
+        add a,16
+        cp e
+        jr nz,s38i_col
+        ld a,(s38_tmp_row)
+        inc a
+        ld (s38_tmp_row),a
+        ld b,a
+        ld a,(prev_cy)
+        add a,VIEW_ROWS-1
+        cp b
+        jr nz,s38i_row
+        jp s38_publish

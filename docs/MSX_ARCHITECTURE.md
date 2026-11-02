@@ -643,6 +643,51 @@ which as sprites were striped, cut or left out.
     silhouettes. A play-field frame without a white copy (the lift, the rocket, the smoke, a debris
     part) shows its normal look. Which pictures take the white look: one per hit, or `FLASH_LOOK`'s
     (below, "Game logic": "The hit flash's look").
+  - **A look-only change** (performance campaign 2's flash-1, `docs/PERF2_PLAN.md` item 3; `field.asm`
+    `fd_lkchk`, `fp_lkok`, `fb_pgbg`): when a page's list and the list wanted differ only in bit 7 of their
+    frames (a hit flash on or off: the same BOBs at the same places, in the same order), each piece of the
+    items this queues takes its background from the page itself instead of a cache or the tiles: one HMMM
+    a part of the piece (its copy's parts: the V9958 ring's x 256 and y 256, a V9938 page's y 256) from
+    the page into the scratch (phase `FP_PAGE`), then every BOB of the list over it as always, then the
+    copy back. That is exact because each white copy covers exactly its frame's pixels (all 55, in colour
+    9: `tests/test_field_trim.py`, `tools/bstest/perf2/whitechk.py`): the BOBs drawn again over the old
+    picture give the new one pixel for pixel, whichever look each had. The engine takes it only
+    - while the page's pixels are its list's composition but for looks: `fb_lkf0` / `fb_lkf1`
+      (ED09h-ED0Ah) are set where the field engine has nothing queued, composed or to sync (`fb_step`'s
+      idle point) and cleared by any change queued that is not look-only (`fq_go`; `fb_lkq`, ED0Bh, tells
+      it while `fb_diff` queues a look-only one), so a cell, a merge with another change, a V9938 sync or
+      a redo clears both;
+    - while no cell waits to be drawn: the redraw queue empty, and no V9958 ring column or row queued or
+      V9938 row pending (`s38_rq`), whose cells the windows count before they are drawn;
+    - for a piece inside its page's window (`fb_inwin`), not a marker;
+    - on the V9938 for the page shown only (`s38_vis_page`), and not while the page beside it is synced
+      (`fb_bsync` = `s38_back_c0`, when `fb_frame` diffs that page too). The page being built is copied
+      again for another place when its target changes without a flip (the view turned back,
+      `s38_target`): its items queued before would read its old build there, 32 px off. And with the
+      page beside synced each look change queues items for both pages: the shown page's next published
+      items then waited behind the other page's item under way, and the pictures went on screen at
+      `FB_HOLD`, their BOBs a picture behind (kill's ground floor with the page beside built, `dir_x`
+      set toward the map's inside from game frame 1500, 900 records from 1560: 404 and 502 records at
+      `FB_HOLD` on C-BIOS_MSX2 and the Expert, 0 in the build before flash-1 and in three builds of it
+      with their timing moved; 0 and 0 with this rule). The page shown is never rebuilt, and no flip
+      comes while a piece taken from it is composed (a flip needs the page beside synced: its sync's
+      marker is taken between items, and the page path starts only while it is not synced).
+      No drive of the gates takes the page path with the page beside synced (1 of 893 pieces, kill and
+      boss on C-BIOS_MSX2 and the Expert).
+    - Every other piece takes its background as before. A lost look-only change (`fb_lost`) keeps the
+      rule true: the page's pixels then differ from its list in looks only. Levels 1 and 2 never take it:
+      their lists have no bit 7 (their silhouettes are sprites, `fb_fwm` 0). It costs 232 bytes of
+      `BANK_FIELD` (21 of them the V9938's rule) and 3 of RAM (the room from R2, "Code" below).
+    - Measured (2026-11-02, the EXTJOY drive builds against batch 1's, `tools/bstest/perf2/win.py`, ticks/s):
+      the ground floor (kill 1500-1765: Cain shot while he stands, 329 / 329 / 309 pieces taken from their
+      page on the MSX2 / MSX2+ / turbo R) 12.52 -> 13.41 (+7.1 %) on the MSX2, 12.52 -> 13.56 (+8.3 %) on
+      the Expert, 12.50 -> 13.39 (+7.1 %) on the MSX2+, 22.77 -> 22.96 (+0.9 %) on the turbo R, pictures
+      with progress +10.2 / +6.7 / +9.5 / +0.9 %; Cain's route firing (boss 130-1400: 105 / 16 / 2 pieces
+      from their page) +1.3 % on the MSX2, +0.4 % on the MSX2+; the drives' other windows within the
+      timing controls' spread (no look-only change there). With `FLASH_LOOK=6` the ground floor runs
+      14.58 -> 15.34 on the MSX2; with 7 (one look change there) 18.26 -> 18.22. With the V9938's rule
+      (above; the V9958 machines run as before) the ground floor runs 13.40 on the MSX2 and 13.54 on the
+      Expert, the boss route 7.37 and 7.35 (kill 332 / 332 and boss 108 / 95 pieces from their page).
   - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
     frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
     `death_w21`, and the rocket (bullet 11h, 48 x 16).
@@ -651,11 +696,16 @@ which as sprites were striped, cut or left out.
     about 13 ms each, which no blank holds, so Cain and type 21 can show partly old, partly new
     frames while they move or animate (most on the V9958, which has one page;
     `docs/level3/HANDOFF.md`, step 5's open issue 1).
-- **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`; it also holds the
-  scroll engines' set-up); the fixed area keeps only the hooks (`fb_redraw`, `fb_mark`,
-  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`). The atlas's upload (`field_upload`,
-  at power-on and at a level's start) runs in `BANK_FRONT2` (`ending.asm`, through `front2_call` from
-  `cold.asm`) since field-2, which needed its 132 bytes here.
+- **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`); the fixed area keeps only
+  the hooks (`fb_redraw`, `fb_mark`, `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`).
+  The atlas's upload (`field_upload`, at power-on and at a level's start) runs in `BANK_FRONT2`
+  (`ending.asm`, through `front2_call` from `cold.asm`) since field-2, which needed its 132 bytes here;
+  so does the scroll engines' set-up since performance campaign 2's R2 (`docs/PERF2_PLAN.md` 5.2:
+  `engines_init`, `engines_jump`, `scroll_init`, `s38_init`, 306 bytes, which flash-1 needed): the main
+  loop's code reaches it through the fixed area's `f2_call` (9 bytes before its last table: `BANK_FRONT2` at
+  A000h around it, `act_a000` put back, 8000h as it is), and it calls `fb_init` and `vat_init` through
+  `field_call`. It runs at a level's start (`lv_go`), a restart or a continue (`level_restart`) and the
+  cracked wall's jump (`engines_jump`), never in a frame's work.
 
 ## Game logic (`msx/player.asm` and the logic modules)
 
@@ -825,7 +875,7 @@ which as sprites were striped, cut or left out.
   rebuilt from the next entry), as the Amiga's loop goes on with the camera it changed. The
   scroll engines would walk to the new view a column (V9958) or a page (V9938) at a time with
   the ticks held (949 VBLANKs on an MSX2): `act_10` sets `jump_pend` and the main loop, after
-  the tick, calls `field.asm` `engines_jump`: the play field black from the next VBLANK
+  the tick, calls `ending.asm` `engines_jump` (`f2_call`): the play field black from the next VBLANK
   (`pal_fade` 0), the view computed (`pl_view`), the play-field BOBs and the waiting changed
   cells forgotten (`fb_init`, `rd_*`), the view drawn by the engine's set-up (`scroll_init` /
   `s38_init`) with the display, the HUD and the interrupts going on; about 26 VBLANKs on an
@@ -1180,7 +1230,7 @@ plan and, in 3.9-3.11, what was built; `docs/level3/HANDOFF.md`: every step's ac
 
 - **One level start for every level** (`rc2.asm` `lv_go`, A = the level: 0 level 1, 1 level 2, 2 level 3;
   `level_init` `$871A`): `ld c,a` / `ld hl,lv_select` / `call front_call`, then `obj_start` (the
-  level bank's `lv_init`), `ao_start` (LC2), `engines_init` (`field_call`), `hud_start` (FRONT) and
+  level bank's `lv_init`), `ao_start` (LC2), `engines_init` (FRONT2, `f2_call`), `hud_start` (FRONT) and
   `display_on`. A new game is `new_game`: `dsp_off`, then `ng_go`, whose `cold.asm` `ng_init` (FRONT)
   clears AG, gives two lives, sets SHARP (`ac_diff` = `diff_tab`, `$8314`) and falls into
   `lv_select` with C = 0.
