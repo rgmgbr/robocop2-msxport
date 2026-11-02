@@ -3247,7 +3247,9 @@ pcr_adr:
 
 ; ----- SAT -----
 
-; Every entry of the SAT being built (sat_nb) parked.
+; Every entry of the SAT being built (sat_nb) parked but RoboCop's run when he shows a version:
+; sb_object writes each of its entries (or sb_parkall parks them), so parking them first only cost
+; 42 T-states an entry (2026-11-02). The parked y: 216 would end the table, 215 then.
 sat_park:
         ld a,(cam_y)
         add a,PARK_LINE - 1
@@ -3255,9 +3257,25 @@ sat_park:
         jr nz,sk_y
         dec a
 sk_y:   ld (sb_parky),a
+        ld c,a
         ld hl,(sat_nb)
-        ld b,SAT_MAX
-sk_lp:  ld (hl),a                   ; (y only: x and pattern do not matter there)
+        ld a,(disp + V_ON)          ; (RoboCop's disp record: object 0)
+        or a
+        jr z,sk_n                   ; (he shows nothing: no run of his)
+        ld a,(disp + V_N)
+sk_n:   ld e,a                      ; E = his run's entries
+        ld b,RC_RUN
+        call sk_lp                  ; the entries before it (the spark's)
+        ld a,e
+        add a,RC_RUN
+        add a,a
+        add a,a
+        ld l,a                      ; past his run
+        ld a,SAT_MAX - RC_RUN
+        sub e
+        ret z
+        ld b,a
+sk_lp:  ld (hl),c                   ; (y only: x and pattern do not matter there)
         inc l
         inc l
         inc l
@@ -3596,8 +3614,18 @@ sbh_set:
         ld (sb_dy),a
         jp sbo_go
 
-; An object wholly off the play area: its entries stay parked; its pub_cur record keeps its y.
+; An object wholly off the play area: its entries parked (sat_park parks every entry but RoboCop's
+; run; a BOB's are parked once more, the same y); its pub_cur record keeps its y.
 sb_parkall:
+        ld hl,(sb_de0)              ; its first SAT entry
+        ld b,(iy+V_N)
+        ld a,(sb_parky)
+sbp_lp: ld (hl),a
+        inc l
+        inc l
+        inc l
+        inc l
+        djnz sbp_lp
         if EXTJOY
         ld hl,(sb_pub)
         ld de,6

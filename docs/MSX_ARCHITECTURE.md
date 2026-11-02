@@ -296,6 +296,13 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   the code for objects alternating between frames was still there, a second half of the pair
   and the interrupt writing their y's, though the budget never set `mux_on` since the user's
   rule of decision 11: removed, 190 bytes of the fixed area; `pk_mux` and `sat_due` stay 0.)
+  The parking (2026-11-02, the same SAT bytes; T-states with the M1 waits): `sat_park` parks
+  every entry but RoboCop's run when he shows a version, since `sb_object` writes each of its
+  entries (or `sb_parkall`, which now parks the object's run itself, parks them): 42 T-states an
+  entry, 456 a SAT with his 14 entries. The entry loop (`sbo_lp`, 148 T-states an entry) and
+  `pc_rows`' unchanged rows (100 T-states an entry) stay as they are: a register for the x base
+  saves nothing once the alternate set's EXX is paid, and skipping the pools' bank write or
+  comparing a row as one word costs as many T-states as it saves.
 - **Y = 216** ends the sprite table: when one of an object's sprites would land on it, the
   whole object moves by the smallest offset (−1, +1, −2, …), never a single part. Objects
   wholly above or below the play area have their entries parked (their 8-bit SAT y would
