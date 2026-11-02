@@ -106,6 +106,38 @@ gt_vat: ld hl,vat_tile
         ret
         endif
 
+; gt_row (field.asm fb_tiles, performance campaign 2's TILE-LOOKUP): A = row -> its tiles in the 8000h
+; window, the row's map bank mapped there (act_8000; the tile cache keeps it, tc_load): HL = column 0's
+; word (rowtab's A000h address less 2000h, as get_tile's gt_map reads it at A000h); H = 0 for a row whose
+; cells get_tile must read (its patches, MP_ROW; level 2's vats in VAT_ANIM=1 builds, gt_vat). Keeps DE.
+gt_row: ld l,a
+        ld h,MP_ROW/256
+        ld a,(hl)                   ; the row's first patch (FFh: none)
+        inc a
+        ld h,0
+        ret nz
+        if VAT_ANIM
+        ld a,(lv_logic)
+        cp BANK_L2
+        ret z
+        endif
+        ld c,l
+        ld b,h
+        add hl,hl
+        add hl,bc                   ; row * 3 (rowtab: bank, address)
+        ld bc,rowtab
+        add hl,bc
+        ld a,(lv_mapb)
+        add a,(hl)                  ; (rowtab's banks: from the level's first map bank)
+        call bank_8000
+        inc hl
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        res 5,h                     ; (A000h-BFFFh: at 8000h-9FFFh here)
+        ret
+
 ; The vats' display (level 2 in VAT_ANIM=1 builds: vats.asm; docs/LEVEL2.md 3.5): the scroll
 ; engines' hooks, Z (nothing) in the other levels and in the product (VAT_ANIM=0: vat_on 0, no column
 ; ever made ready). vat_win, with the VDP idle and a vat column ready: that column drawn at its
@@ -801,8 +833,9 @@ frd_z:  pop bc
 ; ----- the tile cache -----
 
 ; A = row, E = column -> cmdbuf SX/SY at the cell's tile in VRAM (copied there first when it is
-; not: the VDP must be idle then, so this waits for it). Preserves BC and DE. tile_srct: the same for
-; the tile in HL (field.asm vat_srcs: a vat column's tiles at a look).
+; not: the VDP must be idle then, so this waits for it). Preserves BC and DE (and the 8000h window's
+; bank, tc_load). tile_srct: the same for the tile in HL (field.asm vat_srcs: a vat column's tiles at a
+; look; fb_tiles: a cell of a row gt_row mapped).
 tile_src:
         call get_tile
 tile_srct:
@@ -830,7 +863,8 @@ tile_srct:
         ret
 
 ; BC = tile, HL = its tc_slot entry + 1 -> DE = slot + 1: the first slot from the clock hand not
-; used since the hand last passed gets the tile (copied from the ROM sheet).
+; used since the hand last passed gets the tile (copied from the ROM sheet; the 8000h window's bank put
+; back after it: field.asm fb_tiles reads a row of the map there, gt_row).
 tc_load:
         push hl
         call vdp_wait               ; (no command may be reading a slot)
@@ -871,7 +905,11 @@ tl_got: ld (tc_hand),de
 tl_free:
         pop de
         push de
-        call tc_upload
+        ld a,(act_8000)
+        push af
+        call tc_upload              ; (the sheet's bank at 8000h)
+        pop af
+        call bank_8000
         pop de
         pop hl
         inc de

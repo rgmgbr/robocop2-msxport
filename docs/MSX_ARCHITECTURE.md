@@ -538,10 +538,30 @@ which as sprites were striped, cut or left out.
   set-up of each takes about as long as the copy before it). Since performance campaign 2's field-2
   (`docs/PERF2_PLAN.md` item 2) a tile copy's part of its cell comes from 8-bit arithmetic on the
   piece's corner (`ftl_ax`: a piece is at most 64 x 64, so its cells' edges lie -15 .. 63 px from its
-  corner) and the command bytes no cell changes are written once a burst: the same copies in the same
+  corner; since field-7 a staged piece up to 128 px wide, -15 .. 127, still a signed byte) and the
+  command bytes no cell changes are written once a burst: the same copies in the same
   order, with about 2,240 T-states of set-up a cell instead of 3,620 (hand counts; `fb_rpiece`'s six
   `fb_cmp` and `fb_dscr` were about 1,360 of them);
-  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Until then every command waited
+  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Since
+  campaign 2's TILE-LOOKUP (`docs/PERF2_PLAN.md` item 11) the burst goes a row of cells at a time: the
+  row's lines in the piece (DY, NY, the tile's first line) once a row, and its tiles read in the 8000h
+  window (`tiles.asm` `gt_row`, in the fixed area: the row's map bank mapped there and rowtab's A000h
+  address less 2000h; a row with patches, `MP_ROW`, and level 2's vats in `VAT_ANIM=1` builds through
+  `get_tile` cell by cell, which walks them first) instead of `get_tile`'s two A000h bank switches a cell;
+  the tile cache puts the 8000h window's bank back after copying a tile in (`tc_load`), and `fb_tiles`
+  puts back the bank it found at the end of each call (`ftl_rs`, as `fc_get` does); CLR, ARG and CMD
+  are written once a call too (`fin_c`). The command itself still goes out through `vdp_cmd` (one poll
+  of S#2, R#17, the OTIR): writing it inline would take about 53 more bytes of `BANK_FIELD` for about
+  100 T-states a cell. Hand counts (the same rules for both): about 1,530 T-states of set-up a cell, the
+  first of a row in a call about 500 more (its lines and `gt_row`), instead of about 2,160 (field-2's
+  burst; its own count said 2,240). `tests/test_field_engine.py` reads every cell of every level's map
+  as `get_tile` reads it and as the burst does. On Cain's drives 24-30 % of the burst's cells lie in rows
+  with patches (the beams' and turrets' map writes: `get_tile`'s way), about 4-5 cells a row set-up. Measured
+  on top of field-7 (2026-11-02, as field-7's): Cain's route 9.03 -> 9.21 (+2.0 %) on the MSX2, 9.07 -> 9.12
+  (+0.6 %) on the Expert, 13.18 -> 13.55 (+2.8 %) on the MSX2+, 18.68 -> 18.82 (+0.7 %) on the turbo R; with
+  field-10, the three against batch 2: Cain's route +3.6 / +3.7 / +5.8 / +1.9 %, the kill floors (300-1500)
+  +4.0 / +3.9 / +5.6 / +2.2 %, the boss route +2.8 / +3.5 / +5.1 / +2.0 % (MSX2, Expert, MSX2+, turbo R).
+  Until then every command waited
   for an idle point of the main loop (one a call, 8-10 ms apart in the busy windows, 23-33 ms
   for one in ten): an item of 5-6 commands took 65-75 ms from queue to page.
 - **Background caches**: three 64x64 blocks (page 3 x 0, 64, 128) each hold the tiles of a
@@ -551,7 +571,15 @@ which as sprites were striped, cut or left out.
   narrower edge column from the tile cache (the hostage moves 2 px with its animation: 52 px).
   `map_write` forgets a cell whose tile changed (`fb_inval`, called only for a cell inside a cache's
   window: `tiles.asm` `fb_invf`). Items without an owner or larger than that take their background
-  tile by tile.
+  tile by tile. Since performance campaign 2's field-10 (`docs/PERF2_PLAN.md` item 19) the fill
+  (`fb_fill`) tests no cell when its cache holds all 16 cells of its window (`fb_cfind` always puts the
+  window over the piece, so every cell of the piece is held): until then it called `fb_cbit` for each
+  cell of the piece, about 350 T-states a cell held. Measured on level 2's tour (FS-A1FX, 2,654 ticks):
+  841 pieces filled, 675 of them with every cell held (7,476 of the 9,630 cells tested), 500 with the
+  whole window held; the exact test of the piece's cells did not fit `BANK_FIELD` (about 40 bytes) for
+  the 175 others. Level 1's play (`drive_play`) fills none. Level 2's tour (l2_tour 20-1590) with it, against
+  the build before it: 19.04 -> 19.41 ticks/s on the MSX2, 19.16 -> 19.19 on the Expert, 23.17 -> 23.34 on the
+  MSX2+ (one run each: within the timing's scatter).
 - **Never half a change on screen**: the copy onto the page shown starts only where the beam is
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
@@ -571,6 +599,23 @@ which as sprites were striped, cut or left out.
   until then each piece after the first was started by the main loop when it found the VDP idle,
   2-15 ms later and often while the beam drew it (level 3's Cain partly old, partly new in 8 % of
   the pictures of the boss fight on the V9958). `VAT_ANIM=1` builds keep the old staging.
+  Since performance campaign 2's field-7 (`docs/PERF2_PLAN.md` item 9) a band of two places is composed
+  as one piece up to 128 x 64 (`fb_piece`'s clamp while `fb_stg` is set): (across + 1) / 2 pieces a band,
+  so an item two places wide and one tall is a single staged piece (staged all the same: it needs the
+  places, and never takes a cache, which are lent), three or four places wide two pieces (128 px, then
+  the rest), two by two one piece a band; one place wide, the bands' pieces as before. A cell at the
+  64-px seam was copied in two parts, one a piece, and every BOB across it drawn twice (two LMMMs, about
+  1 ms of Z80 set-up each); now once. The pieces lie side by side in page 3 from x 0 (`fsl_sx`: 128 k
+  with up to two pieces, else 64 k), a band's as in the map, so `fst_chain`'s copies are the same as
+  before: the same rectangles, the same pixels. `ftl_ax`'s byte arithmetic holds up to 128 px (a cell's
+  edge -15 .. 127 px from the piece's corner); the scratch's single pieces stay 64 x 64.
+  `tests/test_field_engine.py` models the staging of every item size a window allows against the 64 x 64
+  pieces (the pieces cover the item, fit their places, and the bands' copies are the old ones).
+  Measured (2026-11-02, openMSX headless, the EXTJOY drive builds against batch 2's, one run each; every VDP
+  command recorded on the FS-A1FX): on Cain's route (kill 130-1400) tile copies 16.55 -> 15.09 and LMMMs
+  2.69 -> 1.76 a game tick (28.4 -> 25.0 and 4.6 -> 2.9 a picture), the copies onto the page the same;
+  ticks/s 8.81 -> 9.03 (+2.5 %) on the MSX2, 8.84 -> 9.07 (+2.7 %) on the Expert, 12.83 -> 13.18 (+2.7 %) on
+  the MSX2+, 18.47 -> 18.68 (+1.2 %) on the turbo R; the boss route +1.9 / +2.7 / +4.7 / +1.5 %.
   All of an owner's BOBs change in one item (items of one owner always merge). `cmd_lock` keeps
   the interrupts off the command registers while the main program writes them.
 - **With the sprites**: every item carries the picture it belongs to (`fb_tick`, counted by
@@ -1564,7 +1609,7 @@ which is the level's start look (every vat cell of the map has attributes 0 and 
 holds one look of the vat tables). `get_tile`'s `gt_rom` takes no level-2 branch (no `vat_tile`, so
 a tile costs what it costs in level 1), `vat_init` leaves `vat_on` 0 (with `vat_disp` cleared, so
 the pictures' models read every column as the map's own: `tools/mapcmp.py` `vat_look` None), and
-`vat_idle`, `vat_win`, `vat_inbox` and `vat_bbinit` do nothing: a play-field piece over a vat cell
+`vat_idle`, `vat_win` and `vat_bbinit` do nothing and `fb_piece` calls no `vat_inbox`: a play-field piece over a vat cell
 takes the cache as any other. The logic is unchanged in every build (`lt1`: the sinking check,
 `vat_cut_line`, the energy and death flags, sound 10h, `vat_phase` and `vat_shown`). Since level 3's
 step C (its default 9) `vats.asm`, `field.asm`'s vat section after `vat_init` and `tiles.asm`'s `vat_win`

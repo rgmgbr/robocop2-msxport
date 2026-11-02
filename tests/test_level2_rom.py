@@ -339,7 +339,7 @@ class VatAnimTests(unittest.TestCase):
         self.assertEqual(field[:3], ["ld a,1", "ld (vat_on),a", "vf_recp:"])               # vat_init, the section
         k = field.index("else")
         self.assertIn("vat_dst:", field[:k])
-        self.assertEqual(field[k + 1:], ["vat_inbox:", "xor a", "ret", "vat_bbinit:", "ret"])   # VAT_ANIM=0's stubs
+        self.assertEqual(field[k + 1:], ["vat_bbinit:", "ret"])   # VAT_ANIM=0's stub (fb_piece calls no vat_inbox)
         self.assertIn("ld hl,vat_run", tiles[tiles.index("vat_win:"):])
         rest = [l for l in tiles[tiles.index("else"):] if l]
         self.assertEqual(rest[:5], ["else", "vat_win:", "vat_idle:", "xor a", "ret"])

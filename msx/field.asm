@@ -1374,10 +1374,12 @@ fwi_c:  call fb_c16
         or a
         ret
 
-; The piece from fb_px: up to 64 x 64 (the scratch) of fb_cur, its cells (fb_cc) and the source of
-; its background: its page when the change is look-only (fp_lkok: flash-1), else the owner's cache
-; when the piece is the whole item and has at most 4 rows and 4 columns of cells (5: the narrower edge
-; column from the tiles, fb_slc), else the tiles.
+; The piece from fb_px: up to 64 x 64 (the scratch) of fb_cur, a staged item's up to 128 x 64 (a band
+; of two 64 x 64 places composed as one piece: performance campaign 2's field-7; VAT_ANIM=1 builds keep
+; 64 x 64), its cells (fb_cc) and the source of its background: its page when the change is look-only
+; (fp_lkok: flash-1), else the owner's cache when the piece is the whole item, not staged (the caches
+; are lent then), and has at most 4 rows and 4 columns of cells (5: the narrower edge column from the
+; tiles, fb_slc), else the tiles.
 fb_piece:
         xor a
         ld (fb_cpi),a
@@ -1388,6 +1390,13 @@ fb_piece:
         ld (fb_slc),a
         ld hl,(fb_px)
         ld de,64
+        if VAT_ANIM = 0
+        ld a,(fb_stg)               ; (staged: up to 128 px wide, ftl_ax's signed byte)
+        or a
+        jr z,fp_w
+        ld e,128
+fp_w:
+        endif
         add hl,de
         ex de,hl
         ld hl,(fb_cur + 7)
@@ -1418,10 +1427,17 @@ fp_y:   ld (fb_pe + 2),hl
         dec hl
         call fb_cell
         ld (fb_cc + 3),a
+        if VAT_ANIM
         call vat_inbox              ; (level 2's drawn vats, VAT_ANIM=1: a piece over a vat cell takes
         jp nz,fp_tiles              ;  its background from the tiles, which follow its column's look)
+        endif
         call fp_lkok                ; (a look-only change: from the page)
         jp z,fp_page
+        if VAT_ANIM = 0
+        ld a,(fb_stg)               ; (a staged piece: from the tiles, its cache's place lent; field-7's
+        or a                        ;  band piece is the whole item when the item is one band)
+        jp nz,fp_tiles
+        endif
         ld hl,(fb_cur + 1)          ; an owner's?
         ld a,h
         and l
@@ -1822,9 +1838,15 @@ fcn_c:  ld (fb_ci + 1),a
         ret
 
 ; Phase FP_FILL: the next cells of the piece the cache does not hold (FB_BURST at most), from the
-; tile cache into it (HMMM); then the background.
+; tile cache into it (HMMM); then the background. When the cache holds every cell of its 4 x 4 window it
+; holds every cell of the piece (fb_cfind put the window over it): no cell is tested (performance
+; campaign 2's field-10; level 2's tour: 500 of 841 pieces, of 675 with every cell held).
 fb_fill:
         call fb_cix
+        ld a,(ix+6)
+        and (ix+7)
+        inc a
+        jr z,ffl_done
         ld a,FB_BURST
         ld (fb_bn),a
 ffl_lp: ld a,(fb_cc + 3)
@@ -2121,35 +2143,77 @@ frp_4:  ld hl,(fb_r)
 
 ; Phase FP_TILE: the next cells of the piece (FB_BURST at most) from the tile cache into the
 ; scratch (HMMM: the part of each cell inside the piece); then the BOBs. Each cell's part comes from
-; 8-bit arithmetic on the piece's corner (ftl_ax: a piece is at most 64 x 64, so its cells' edges lie
-; -15 .. 63 px from its corner), and the bytes of fb_cmd that no cell changes are written once a
-; call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave them, about 2,240
-; T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy (performance
-; campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
+; 8-bit arithmetic on the piece's corner (ftl_ax: a piece is at most 64 x 64, a staged one 128 x 64,
+; so its cells' edges lie -15 .. 127 px from its corner), and the bytes of fb_cmd that no cell changes
+; are written once a call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave
+; them, about 2,240 T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy
+; (performance campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
+; Since its TILE-LOOKUP a row of cells at a time: the row's lines in the piece (DY, NY, the tile's first
+; line: fb_r + 2) and its map (tiles.asm gt_row: the row's bank at 8000h, the cells' tiles read there,
+; fb_r; a row with patches through get_tile, cell by cell) once a row in a call, instead of a cell's
+; lines and get_tile's two A000h bank switches a cell (the tile cache keeps the 8000h window when it
+; copies a tile in, tc_load); the 8000h window's bank put back at the end of the call (ftl_rs, as fc_get
+; does); CLR, ARG and CMD written once a call too.
 fb_tiles:
-        xor a                       ; (SX's, DX's, NX's and NY's high bytes; DY's page)
+        xor a                       ; (SX's, DX's, NX's and NY's high bytes; DY's page; CLR, ARG, CMD)
         ld (fb_cmd + 1),a
         ld (fb_cmd + 5),a
         ld (fb_cmd + 9),a
         ld (fb_cmd + 11),a
+        ld (fb_cmd + 12),a
+        ld hl,FB_HMMM * 256
+        ld (fb_cmd + 13),hl
         ld a,3
         ld (fb_cmd + 7),a
         ld a,FB_BURST
         ld (fb_bn),a
-ftl_lp: ld hl,fb_ci
+        ld a,(act_8000)             ; (put back at the end: ftl_rs)
+        push af
+ftl_rw: ld hl,fb_ci                 ; a row of the piece's cells from fb_ci's (a call may start inside it)
         ld a,(fb_cc + 3)
         cp (hl)
-        jr nc,ftl_go                ; (the row inside the piece's)
-        ld a,FP_BOB
-        ld (fb_ph),a
-        ld a,(fb_sn)
-        ld (fb_ci),a
-        jp fb_bobs
-ftl_go: ld d,(hl)                   ; D = the cell's row, E = its column
-        inc hl
+        jp c,ftl_bob                ; (past the piece's last row: the BOBs)
+        ld d,(hl)                   ; D = the row
+        ld a,(fb_pe + 2)            ; its lines inside the piece: DY, NY, the tile's first one
+        ld hl,fb_px + 2
+        sub (hl)
+        ld c,a                      ; (the piece's height)
+        ld a,d
+        call ftl_ax
+        add a,FB_CY
+        ld (fb_cmd + 6),a
+        ld a,c
+        ld (fb_cmd + 10),a
+        ld a,b
+        ld (fb_r + 2),a
+        ld a,d
+        call gt_row                 ; its tiles in the 8000h window (H 0: get_tile, cell by cell)
+        ld (fb_r),hl
+ftl_lp: ld hl,fb_ci + 1             ; a cell: E = its column
         ld e,(hl)
         call fb_cnext
-        ld a,(fb_pe)                ; its columns inside the piece: DX, NX
+        if VAT_ANIM
+        ld a,(fb_cur)
+        and 1
+        ld (vat_pg),a               ; (level 2's vat cells: the looks of the item's page)
+        endif
+        ld hl,(fb_r)                ; its tile: the row's word in the 8000h window,
+        inc h
+        dec h
+        jr z,ftl_pt
+        ld c,e
+        ld b,0
+        add hl,bc
+        add hl,bc
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        call tile_srct              ; cmdbuf: SX, SY of the tile (keeps BC, DE and the 8000h window)
+        jr ftl_x
+ftl_pt: ld a,d                      ; (or get_tile's)
+        call tile_src
+ftl_x:  ld a,(fb_pe)                ; its columns inside the piece: DX, NX
         ld hl,fb_px
         sub (hl)
         ld c,a                      ; (the piece's width)
@@ -2160,47 +2224,37 @@ ftl_go: ld d,(hl)                   ; D = the cell's row, E = its column
         ld (fb_cmd + 4),a
         ld a,c
         ld (fb_cmd + 8),a
-        ld a,b
-        ld (fb_cl),a                ; (its first column in the tile)
-        ld a,(fb_pe + 2)            ; its lines: DY, NY
-        ld hl,fb_px + 2
-        sub (hl)
-        ld c,a                      ; (the piece's height)
-        ld a,d
-        call ftl_ax
-        add a,FB_CY
-        ld (fb_cmd + 6),a
-        ld a,c
-        ld (fb_cmd + 10),a
-        if VAT_ANIM
-        ld a,(fb_cur)
-        and 1
-        ld (vat_pg),a               ; (level 2's vat cells: the looks of the item's page)
-        endif
-        ld a,d
-        call tile_src               ; cmdbuf: SX, SY of the tile (keeps BC, DE)
-        ld a,(fb_cl)
-        ld hl,cmdbuf
-        add a,(hl)
-        ld (fb_cmd),a               ; SX: from the first column used,
-        inc hl
-        inc hl
-        ld a,(hl)
+        ld hl,(cmdbuf)
+        ld a,l
         add a,b
-        ld (fb_cmd + 2),a           ; SY: from the first line used
-        inc hl
-        ld a,(hl)
-        ld (fb_cmd + 3),a
-        ld a,FB_HMMM
-        call fb_issue_now
+        ld (fb_cmd),a               ; SX: from the first column used,
+        ld hl,(cmdbuf + 2)
+        ld a,(fb_r + 2)
+        add a,l
+        ld l,a
+        ld (fb_cmd + 2),hl          ; SY: from the first line used, its page
+        call fin_c                  ; (fb_issue_now, CLR, ARG and CMD written)
         ld hl,fb_bn
         dec (hl)
+        jr z,ftl_rs
+        ld a,(fb_ci)                ; (the next cell's row: fb_cnext)
+        cp d
+        jr z,ftl_lp
+        jp ftl_rw
+ftl_bob:
+        ld hl,fbg_bob               ; (then the BOBs, once the bank is put back)
+        ex (sp),hl
+        push hl
+ftl_rs: pop af                      ; the 8000h window's bank as it was at the call
+        ld hl,act_8000
+        cp (hl)
         ret z
-        jp ftl_lp
+        jp bank_8000
 
 ; (fb_tiles) A = a cell's column (row), HL = the piece's first x (y), C = the piece's width
 ; (height) -> A = the offset of the cell's part in the piece, B = its first pixel in the cell, C =
-; its pixels: low bytes only (the cell's edge lies -15 .. 63 px from the piece's). Keeps DE.
+; its pixels: low bytes only (the cell's edge lies -15 .. 127 px from the piece's: a piece up to 128
+; px wide, field-7). Keeps DE.
 ftl_ax: add a,a
         add a,a
         add a,a
@@ -2245,7 +2299,7 @@ fb_issue_now:
         xor a
         ld (fb_cmd + 12),a
         ld (fb_cmd + 13),a
-        inc a
+fin_c:  ld a,1                      ; (fb_tiles: its CLR, ARG and CMD written once a call)
         ld (fb_shc),a
         ld hl,fb_cmd
         jp vdp_cmd
@@ -3105,12 +3159,16 @@ fcp_redo:
         ld (fb_stg),a
         ret
 
-; The item fb_cur (clipped) at its start: on the page shown, one of 2 to 4 pieces of 64 x 64 is
-; staged (fb_stg): each piece composed in a 64 x 64 of its own (the scratch, then the caches'
-; places, whose tiles are forgotten: such an item takes its background from the tiles), then all
-; copied in a row, the pieces after the first right away; until 2026-10-21 each piece was copied
-; when composed and the page showed the item half old, half new for as many pictures as the rest
-; took (a smoke next to a hostage: 7).
+; The item fb_cur (clipped) at its start: on the page shown, one of 2 to 4 places of 64 x 64 is
+; staged (fb_stg): each piece composed in a place of its own (the caches' places and the scratch,
+; whose tiles are forgotten: such an item takes its background from the tiles), then all copied in a
+; row, the pieces after the first right away; until 2026-10-21 each piece was copied when composed and
+; the page showed the item half old, half new for as many pictures as the rest took (a smoke next to
+; a hostage: 7). Since performance campaign 2's field-7 a band's pieces are composed as one piece up to
+; 128 px wide (two places side by side: one tile copy a cell and one LMMM a BOB where two 64 x 64 pieces
+; split the cells and the BOBs at their seam), (across + 1) / 2 of them a band: an item of one band
+; two places wide is one piece, staged all the same (it needs the places); one place wide, the bands'
+; pieces as before. VAT_ANIM=1 builds keep 64 x 64 pieces (piece 0 in the scratch).
 fb_stage:
         xor a
         ld (fb_stg),a
@@ -3132,6 +3190,9 @@ fb_stage:
         sbc hl,de
         call fst_n
         ld b,a                      ; down
+        if VAT_ANIM = 0
+        ld e,a
+        endif
         xor a
 fsg_m:  add a,c
         djnz fsg_m
@@ -3139,14 +3200,22 @@ fsg_m:  add a,c
         ret c                       ; (one: as always)
         cp 5
         ret nc                      ; (more than four: one at a time)
-        ld (fb_stg),a
         if VAT_ANIM = 0
-        ld a,c
+        ld a,c                      ; (field-7: a band's pieces up to two places wide, (across + 1) / 2
+        inc a                       ;  of them; the pieces: that times the bands)
+        srl a
         ld (fb_scol),a
+        ld c,a
+        ld b,e
         xor a
-        ld (fb_sbx),a               ; (piece k composed at page 3 x 64k: a band's pieces side by side,
-        ld b,3                      ;  one copy a band, fst_chain; the three caches lent, piece 3 in the
-        else                        ;  scratch)
+fsg_n:  add a,c
+        djnz fsg_n
+        ld (fb_stg),a
+        xor a
+        ld (fb_sbx),a               ; (the pieces side by side in page 3 from x 0, fsl_sx: one copy a
+        ld b,3                      ;  band, fst_chain; the three caches lent, and the scratch)
+        else
+        ld (fb_stg),a
         dec a
         ld b,a                      ; (VAT_ANIM=1: piece 0 in the scratch, the caches lent 0 .. pieces - 2)
         endif
@@ -3184,13 +3253,15 @@ fst_done:
         ld a,(fb_stg)
         cp (hl)
         jr z,fst_cp
+        if VAT_ANIM = 0
+        call fsl_sx                 ; (its x in page 3)
+        else
         ld a,(hl)
-        if VAT_ANIM
         dec a
-        endif
         rrca
         rrca                        ; (its x in page 3: * 64)
         ld (fb_sbx),a
+        endif
         jp fcp_next
 fst_cp:
         if VAT_ANIM = 0
@@ -3223,16 +3294,27 @@ fst_place:
         ld de,fb_pe
         ld bc,4
         ldir
+        if VAT_ANIM = 0
+; (fst_done) fb_sbx: the staged piece fb_spk's x in page 3, 128 k with up to two pieces (field-7: each up
+; to 128 px wide), else 64 k (a column of three or four 64 x 64 pieces). Changes C.
+fsl_sx: ld a,(fb_spk)
+        rrca
+        ld c,a
+        ld a,(fb_stg)
+        cp 3
+        ld a,c
+        jr c,fsl_x
+        rrca
+        else
         ld a,(fb_spk)
-        if VAT_ANIM
         or a
         ld a,FB_SX
         jr z,fsl_x
         ld a,(fb_spk)
         dec a
+        rrca
+        rrca
         endif
-        rrca
-        rrca
 fsl_x:  ld (fb_sbx),a
         ret
 
@@ -4668,10 +4750,8 @@ vds_38: ld a,(ix+VF_CC)
         ret
         else
 ; (VAT_ANIM=0: the vats drawn as the map's static images, the user's choice of 2026-10-31; the
-; vats' display, vats.asm and the rest of this section, is not assembled: docs/LEVEL3.md default 9)
-vat_inbox:                          ; Z: no piece holds a drawn vat cell
-        xor a
-        ret
+; vats' display, vats.asm and the rest of this section, is not assembled: docs/LEVEL3.md default 9;
+; fb_piece calls no vat_inbox then: no piece holds a drawn vat cell)
 vat_bbinit:                         ; (no vat column on any page)
         ret
         endif

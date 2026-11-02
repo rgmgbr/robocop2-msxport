@@ -1,6 +1,10 @@
 """The field engine's arithmetic of performance campaign 2 (docs/PERF2_PLAN.md): field-2's tile burst (msx/field.asm
 fb_tiles, ftl_ax: a cell's part in a piece by 8-bit arithmetic on the piece's corner) against the 16-bit clip it
-replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell; FC-UPLOAD's line loop (fc_get:
+replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell, field-7's band pieces (up to 128
+px wide) included; field-7's staging (fb_stage, fb_piece's clamp, fcp_next, fsl_sx, fst_chain's bands) against the
+64 x 64 pieces it replaced; TILE-LOOKUP's row reads (tiles.asm gt_row, fb_tiles' cells: a row's map bank at
+8000h) against get_tile's (at A000h) over every level's map; field-10's fill (fb_fill: no cell tested when the
+cache holds its whole window, which fb_cfind puts over the piece); FC-UPLOAD's line loop (fc_get:
 R#14 set once, the frame cache's places in page 2's lines 128-255, a line's bytes in two halves of sprites.asm's
 outi32 chain, an odd count's extra byte in the second). Stdlib only."""
 from __future__ import annotations
@@ -69,6 +73,18 @@ class TileBurstTests(unittest.TestCase):
                             self.fail(f"piece {p0} + {ext}, cell {cell}: {ftl_ax(p0, ext, cell)} != {clip(p0, ext, cell)}")
         self.assertEqual(n, 606720)
 
+    def test_every_cell_of_every_band_piece_as_the_clip(self):
+        """field-7: a staged band's piece up to 128 px wide (its cells' edges -15 .. 127 px from its corner,
+        ftl_ax's signed byte); x only (a piece stays 64 lines tall)."""
+        n = 0
+        for p0 in range(0, 2560, 2):
+            for ext in range(66, 129, 2):
+                for cell in range(p0 >> 4, ((p0 + ext - 1) >> 4) + 1):
+                    n += 1
+                    if ftl_ax(p0, ext, cell) != clip(p0, ext, cell):
+                        self.fail(f"piece {p0} + {ext}, cell {cell}: {ftl_ax(p0, ext, cell)} != {clip(p0, ext, cell)}")
+        self.assertEqual(n, 284160)
+
     def test_the_burst_uses_it(self):
         body = code("field.asm", "fb_tiles", "ftl_ax")
         self.assertEqual(body.count("call ftl_ax"), 2)
@@ -85,6 +101,295 @@ class TileBurstTests(unittest.TestCase):
         cold = [l.split(";")[0].strip() for l in (ROOT / "msx" / "cold.asm").read_text().splitlines()]
         calls = [cold[k + 1] for k, l in enumerate(cold) if l == "ld hl,field_upload"]
         self.assertEqual(sorted(calls), ["call front2_call", "jp front2_call"])
+
+
+def fst_n(length: int) -> int:
+    """msx/field.asm fst_n: HL = a length (1 or more) -> the 64 px pieces it takes ((HL + 63) * 4, its high byte)."""
+    return (((length + 63) * 4) >> 8) & 0xFF
+
+
+def rrca(a: int) -> int:
+    return ((a >> 1) | (a << 7)) & 0xFF
+
+
+def staging(x0: int, y0: int, x1: int, y1: int, band: bool):
+    """fb_stage, fb_piece's clamp, fcp_next and fsl_sx as the Z80 runs them, for an item on the page shown (map
+    coordinates, x even) -> None when it is not staged, else (fb_stg, fb_scol, the pieces in their order as
+    (x0, y0, x1, y1, their x in page 3)); band: field-7 (VAT_ANIM=0), else the 64 x 64 pieces before it."""
+    c, b = fst_n(x1 - x0), fst_n(y1 - y0)
+    n = c * b
+    if n < 2 or n >= 5:
+        return None
+    if band:
+        scol = (c + 1) >> 1                                 # ld a,c / inc a / srl a
+        stg = scol * b
+    else:
+        scol, stg = c, n
+    pieces, px, py = [], x0, y0
+    while True:
+        k = len(pieces)
+        if band:                                            # fsl_sx: rrca, and once more for three or four
+            sx = rrca(k) if stg < 3 else rrca(rrca(k))
+        else:
+            sx = rrca(rrca(k))
+        ex = min(px + (128 if band else 64), x1)            # fb_piece's clamp
+        ey = min(py + 64, y1)
+        pieces.append((px, py, ex, ey, sx))
+        if ex < x1:                                         # fcp_next: to the right, else the next band
+            px = ex
+        elif ey < y1:
+            px, py = x0, ey
+        else:
+            break
+    return stg, scol, pieces
+
+
+def band_copies(stg: int, scol: int, pieces):
+    """fst_chain's copies: per band, from the last band to the first, its rectangle in the map and its x in page
+    3 (its first piece's corner and place, its last piece's other corner)."""
+    out, k = [], stg
+    while True:
+        k -= scol
+        first, last = pieces[k], pieces[k + scol - 1]
+        out.append(((first[0], first[1], last[2], last[3]), first[4]))
+        if k == 0:
+            return out
+
+
+class StagedBandTests(unittest.TestCase):
+    """field-7 (docs/PERF2_PLAN.md item 9): a staged item's band of pieces composed as one piece up to 128 px
+    wide; the copies onto the page as before."""
+
+    def test_the_routines_modelled(self):
+        stage = code("field.asm", "fb_stage", "fst_n")
+        k = stage.index("ld a,c")
+        self.assertEqual(stage[k:k + 15], ["ld a,c", "inc a", "srl a", "ld (fb_scol),a", "ld c,a", "ld b,e", "xor a",
+                                           "add a,c", "djnz fsg_n", "ld (fb_stg),a", "xor a", "ld (fb_sbx),a",
+                                           "ld b,3", "else", "ld (fb_stg),a"])
+        self.assertEqual(stage[stage.index("call fst_n") + 1:][:12],
+                         ["ld c,a", "ld hl,(fb_cur + 9)", "ld de,(fb_cur + 5)", "or a", "sbc hl,de", "call fst_n",
+                          "ld b,a", "if VAT_ANIM = 0", "ld e,a", "endif", "xor a", "add a,c"])
+        self.assertEqual(code("field.asm", "fst_n", "fst_done"), ["ld de,63", "add hl,de", "add hl,hl", "add hl,hl",
+                                                                  "ld a,h", "ret"])
+        sx = code("field.asm", "fsl_sx", "fsl_x")
+        self.assertEqual(sx[:sx.index("else")], ["ld a,(fb_spk)", "rrca", "ld c,a", "ld a,(fb_stg)", "cp 3", "ld a,c",
+                                                 "jr c,fsl_x", "rrca"])
+        piece = code("field.asm", "fb_piece", "fp_lkok")
+        k = piece.index("ld de,64")
+        self.assertEqual(piece[k - 1:k + 8], ["ld hl,(fb_px)", "ld de,64", "if VAT_ANIM = 0", "ld a,(fb_stg)",
+                                              "or a", "jr z,fp_w", "ld e,128", "endif", "add hl,de"])   # (fp_w: endif)
+        done = code("field.asm", "fst_done", "fst_cp")
+        self.assertEqual(done[-11:], ["jr z,fst_cp", "if VAT_ANIM = 0", "call fsl_sx", "else", "ld a,(hl)", "dec a",
+                                      "rrca", "rrca", "ld (fb_sbx),a", "endif", "jp fcp_next"])
+        nxt = code("field.asm", "fcp_next", "fcp_redo")
+        self.assertEqual(nxt[:5], ["ld hl,(fb_pe)", "ld (fb_px),hl", "ld de,(fb_cur + 7)", "call fb_cmp", "jr c,fcn_p"])
+
+    def test_every_staged_item(self):
+        """Every item size a page's window allows (x even, 2-304 px wide, 1-208 lines tall; x0 0-15 apart from the
+        cells' grid, y0 0-15): fb_stg counts the pieces fcp_next takes; they cover the item exactly, each at most
+        128 x 64 (64 x 64 before field-7) and inside its place in page 3 (x 0-255), the places not overlapping; a
+        band's pieces lie side by side there as in the map, and its copy (fst_chain) is the old staging's: the same
+        rectangle in the map, the same pixels."""
+        items = staged = merged = 0
+        for x0 in range(0, 16, 2):
+            for y0 in range(0, 16, 5):
+                for w in range(2, 305, 2):
+                    for h in range(1, 209, 3):
+                        x1, y1 = x0 + w, y0 + h
+                        old, new = staging(x0, y0, x1, y1, False), staging(x0, y0, x1, y1, True)
+                        items += 1
+                        self.assertEqual(old is None, new is None, (w, h))
+                        if new is None:
+                            continue
+                        staged += 1
+                        for (stg, scol, pieces), wmax in ((old, 64), (new, 128)):
+                            self.assertEqual(len(pieces), stg, (w, h, wmax))
+                            self.assertTrue(1 <= stg <= 4 and stg % scol == 0, (w, h, wmax))
+                            area = 0
+                            for i, (a, b, c, d, sx) in enumerate(pieces):
+                                self.assertTrue(0 < c - a <= wmax and 0 < d - b <= 64, (w, h, wmax, i))
+                                self.assertLessEqual(sx + (c - a), 256, (w, h, wmax, i))
+                                area += (c - a) * (d - b)
+                                for e, f, g, hh, sy in pieces[:i]:
+                                    self.assertFalse(a < g and e < c and b < hh and f < d, (w, h, wmax, i))
+                                    self.assertFalse(sx < sy + (g - e) and sy < sx + (c - a), (w, h, wmax, i))
+                            self.assertEqual(area, w * h, (w, h, wmax))
+                            for j in range(0, stg, scol):           # (a band's pieces side by side in page 3)
+                                band = pieces[j:j + scol]
+                                for a, b, c, d, sx in band:
+                                    self.assertEqual(sx - band[0][4], a - band[0][0], (w, h, wmax, j))
+                        old_c, new_c = band_copies(*old), band_copies(*new)
+                        self.assertEqual([r for r, _ in old_c], [r for r, _ in new_c], (w, h))
+                        merged += old[0] - new[0]
+        self.assertEqual((items, staged), (8 * 4 * 152 * 70, 138240))
+        self.assertGreater(merged, 0)
+
+    def test_a_staged_piece_takes_no_cache(self):
+        """A one-band item two places wide is one piece, the whole item: the caches are lent (fb_stage frees all
+        three), so fb_piece sends a staged piece to the tiles before its cache test."""
+        piece = code("field.asm", "fb_piece", "fp_lkok")
+        k = piece.index("jp z,fp_page")
+        self.assertLess(k, piece.index("ld a,(fb_stg)", k))
+        self.assertLess(piece.index("jp nz,fp_tiles", k), piece.index("call fb_cfind"))
+        stage = code("field.asm", "fb_stage", "fst_n")
+        k = stage.index("ld hl,fb_cache")
+        self.assertEqual(stage[k:k + 9], ["ld hl,fb_cache", "ld de,FB_CSZ", "ld (hl),0xFF", "inc hl", "ld (hl),0xFF",
+                                          "dec hl", "add hl,de", "djnz fsg_c", "ret"])
+
+
+def mkrom_constant(name: str):
+    """A constant of tools/mkrom.py, read from its source."""
+    for node in ast.parse((ROOT / "tools/mkrom.py").read_text()).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise KeyError(name)
+
+
+def map_word(mp: bytes, row: int, col: int) -> int:
+    return mp[(row * 160 + col) * 2] | mp[(row * 160 + col) * 2 + 1] << 8
+
+
+class TileLookupTests(unittest.TestCase):
+    """TILE-LOOKUP (docs/PERF2_PLAN.md item 11): fb_tiles reads a row's tiles in the 8000h window (tiles.asm
+    gt_row: the row's map bank mapped there once a row), get_tile for a row with patches; the cells' tiles are
+    get_tile's."""
+
+    def test_gt_row_is_the_routine_modelled(self):
+        row = code("tiles.asm", "gt_row", "vat_win")
+        self.assertEqual(row[:row.index("res 5,h") + 2],
+                         ["ld l,a", "ld h,MP_ROW/256", "ld a,(hl)", "inc a", "ld h,0", "ret nz", "if VAT_ANIM",
+                          "ld a,(lv_logic)", "cp BANK_L2", "ret z", "endif", "ld c,l", "ld b,h", "add hl,hl",
+                          "add hl,bc", "ld bc,rowtab", "add hl,bc", "ld a,(lv_mapb)", "add a,(hl)", "call bank_8000",
+                          "inc hl", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a", "res 5,h", "ret"])
+        get = code("tiles.asm", "get_tile", "gt_row")        # (get_tile's read at A000h, as modelled below)
+        k = get.index("ld de,rowtab")
+        self.assertEqual(get[k - 7:k + 25],
+                         ["ld a,d", "ld l,a", "ld h,0", "ld e,a", "ld d,0", "add hl,hl", "add hl,de", "ld de,rowtab",
+                          "add hl,de", "ld a,(act_a000)", "push af", "ld a,(lv_mapb)", "add a,(hl)",
+                          "call bank_a000", "inc hl", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a", "pop af", "pop de",
+                          "push de", "push af", "ld d,0", "add hl,de", "add hl,de", "ld a,(hl)", "inc hl", "ld h,(hl)",
+                          "ld l,a", "pop af", "call bank_a000"])
+        self.assertEqual(get[:7], ["push de", "ld d,a", "ld l,a", "ld h,MP_ROW/256", "ld a,(hl)", "cp 0xFF",
+                                   "jr z,gt_rom"])           # (a row with patches walks them: gt_row leaves it)
+
+    def test_the_burst_reads_the_cells_so(self):
+        body = code("field.asm", "fb_tiles", "ftl_ax")
+        self.assertEqual(body.count("call gt_row"), 1)
+        k = body.index("call gt_row")
+        self.assertEqual(body[k - 1:k + 2], ["ld a,d", "call gt_row", "ld (fb_r),hl"])
+        k = body.index("ld hl,(fb_r)")
+        self.assertEqual(body[k:k + 17], ["ld hl,(fb_r)", "inc h", "dec h", "jr z,ftl_pt", "ld c,e", "ld b,0",
+                                          "add hl,bc", "add hl,bc", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a",
+                                          "call tile_srct", "jr ftl_x", "ld a,d", "call tile_src", "ld a,(fb_pe)"])
+        # between the row's mapping and its cells' reads only tile_srct / tile_src (get_tile: the A000h window,
+        # put back; tc_load: the 8000h window put back), ftl_ax, fb_cnext and the command (fin_c) run
+        calls = sorted({l.split()[1] for l in body if l.startswith("call ")})
+        self.assertEqual(calls, ["fb_cnext", "fin_c", "ftl_ax", "gt_row", "tile_src", "tile_srct"])
+        load = code("tiles.asm", "tc_load", "tc_upload")
+        k = load.index("call tc_upload")
+        self.assertEqual(load[k - 2:k + 3], ["ld a,(act_8000)", "push af", "call tc_upload", "pop af",
+                                             "call bank_8000"])
+        self.assertEqual(code("tiles.asm", "tile_src", "tc_load")[:2], ["call get_tile", "push de"])
+        for label, end in (("fb_cnext", "fb_fill"), ("ftl_ax", "fb_issue"), ("fb_issue_now", "fb_go")):
+            self.assertFalse([l for l in code("field.asm", label, end) if "bank_" in l], label)
+        for label, end in (("vdp_busy", "vdp_cmd_q"),):
+            self.assertFalse([l for l in code("vdp.asm", label, end) if "bank_" in l], label)
+        # the 8000h window's bank as it was at the call, put back on both ways out (ftl_rs)
+        self.assertEqual(body[body.index("ld (fb_bn),a") + 1:][:2], ["ld a,(act_8000)", "push af"])
+        self.assertEqual(body[-10:], ["jr z,ftl_lp", "jp ftl_rw", "ld hl,fbg_bob", "ex (sp),hl", "push hl", "pop af",
+                                      "ld hl,act_8000", "cp (hl)", "ret z", "jp bank_8000"])
+        self.assertEqual(body.count("jr z,ftl_rs") + body.count("jp c,ftl_bob"), 2)
+        self.assertEqual(code("field.asm", "fbg_bob", "fb_part"), ["ld a,FP_BOB", "ld (fb_ph),a", "ld a,(fb_sn)",
+                                                                   "ld (fb_ci),a", "jp fb_bobs"])
+        # CLR, ARG and CMD once a call (fin_c: fb_issue_now without them)
+        pre = body[:body.index("ld (fb_bn),a")]
+        for b in ("ld (fb_cmd + 12),a", "ld hl,FB_HMMM * 256", "ld (fb_cmd + 13),hl"):
+            self.assertIn(b, pre)
+        self.assertEqual(code("field.asm", "fb_issue_now", "fb_go")[4:],
+                         ["ld a,1", "ld (fb_shc),a", "ld hl,fb_cmd", "jp vdp_cmd"])
+
+    def test_every_cell_of_every_level_as_get_tile(self):
+        """The maps' banks and rowtab as tools/mkrom.py makes them (25 rows of 320 bytes a bank, FFh after them;
+        rowtab: the bank from lv_mapb, the row's A000h address): every cell of every level's map read as get_tile
+        reads it (the bank at A000h) and as fb_tiles reads it (gt_row: the bank at 8000h, the address less 2000h)
+        gives the map's word."""
+        maps = {n: ROOT / "build" / "msx" / f"level{n}.map" for n in (1, 2, 3)}
+        if not all(f.exists() for f in maps.values()):
+            self.skipTest("needs make msx (the levels' maps)")
+        rpb, cols, bank = (mkrom_constant(k) for k in ("ROWS_PER_BANK", "COLS", "BANK"))
+        self.assertEqual(cols, 160)
+        rows1 = len(maps[1].read_bytes()) // (cols * 2)
+        rowtab = [(r // rpb, 0xA000 + (r % rpb) * cols * 2) for r in range(rows1)]   # (mkrom.py's lines)
+        src = (ROOT / "tools" / "mkrom.py").read_text()
+        self.assertIn('rowtab.append(f"        db {r // ROWS_PER_BANK}\\n        dw 0x{0xA000 + (r % ROWS_PER_BANK) '
+                      '* COLS * 2:04X}\\n")', src)
+        n = 0
+        for lv, f in maps.items():
+            mp = f.read_bytes()
+            rows = len(mp) // (cols * 2)
+            self.assertLessEqual(rows, rows1)                       # (one rowtab: level 1's rows)
+            banks = [mp[b * cols * 2:(b + rpb) * cols * 2] for b in range(0, rows, rpb)]
+            banks = [c + b"\xff" * (bank - len(c)) for c in banks]
+            for r in range(rows):
+                b, a = rowtab[r]
+                hl8 = a & ~0x2000                                   # (res 5,h)
+                for c in range(cols):
+                    at_a000 = a + 2 * c                             # get_tile: add hl,de twice
+                    at_8000 = hl8 + 2 * c                           # fb_tiles: add hl,bc twice
+                    self.assertTrue(0xA000 <= at_a000 and at_a000 + 1 <= 0xBFFF, (lv, r, c))
+                    self.assertTrue(0x8000 <= at_8000 and at_8000 + 1 <= 0x9FFF, (lv, r, c))
+                    g = banks[b][at_a000 - 0xA000] | banks[b][at_a000 - 0xA000 + 1] << 8
+                    t = banks[b][at_8000 - 0x8000] | banks[b][at_8000 - 0x8000 + 1] << 8
+                    self.assertEqual(t, g, (lv, r, c))
+                    self.assertEqual(t, map_word(mp, r, c), (lv, r, c))
+                    n += 1
+        self.assertEqual(n, (51 + 50 + 50) * 160)
+
+
+def cfind_window(w: int, c0: int, c1: int) -> int:
+    """msx/field.asm fb_cfind's window move on one axis (fcf_got: columns, then rows the same way): the
+    window's first cell w, the piece's first and last c0, c1 -> the window's first cell after it."""
+    if c0 < w:                                          # cp (ix+2) / jr c,fcf_xm (A = c0)
+        return c0
+    if c1 <= w + 3:                                     # jr c,fcf_y / jr z,fcf_y
+        return w
+    return c1 - 3                                       # sub 3
+
+
+class FillSkipTests(unittest.TestCase):
+    """field-10 (docs/PERF2_PLAN.md item 19): fb_fill tests no cell when its cache holds all 16 cells of its
+    window: the piece (at most 4 x 4 cells: fb_piece's cache path, the 5th column from the tiles) lies inside
+    the window fb_cfind leaves, and every cell of the window has its bit (fb_cbit: row * 4 + column from the
+    origin, both mod 4)."""
+
+    def test_the_routine(self):
+        fill = code("field.asm", "fb_fill", "ffl_held")
+        self.assertEqual(fill[:6], ["call fb_cix", "ld a,(ix+6)", "and (ix+7)", "inc a", "jr z,ffl_done",
+                                    "ld a,FB_BURST"])
+        self.assertEqual(code("field.asm", "ffl_done", "fb_bg"), ["xor a", "ld (fb_ci),a", "ld a,FP_BG",
+                                                                 "ld (fb_ph),a"])
+        got = code("field.asm", "fcf_got", "fcf_mvx")
+        self.assertEqual(got[4:24], ["ld a,(fb_cc)", "cp (ix+2)", "jr c,fcf_xm", "ld a,(ix+2)", "add a,3", "ld b,a",
+                                     "ld a,(fb_cc + 2)", "cp b", "jr c,fcf_y", "jr z,fcf_y", "sub 3", "call fcf_mvx",
+                                     "ld a,(fb_cc + 1)", "cp (ix+3)", "jr c,fcf_ym", "ld a,(ix+3)", "add a,3",
+                                     "ld b,a", "ld a,(fb_cc + 3)", "cp b"])
+
+    def test_the_window_holds_the_piece(self):
+        """Every window place and piece of 1-4 cells (map columns 0-159, rows 0-50): the piece's cells lie in the
+        window fb_cfind leaves, and with all 16 bits held each of them is held, whatever the origin."""
+        n = 0
+        for w in range(0, 157):
+            for c0 in range(0, 157):
+                for k in range(4):
+                    c1 = c0 + k
+                    nw = cfind_window(w, c0, c1)
+                    self.assertTrue(nw <= c0 and c1 <= nw + 3, (w, c0, c1, nw))
+                    n += 1
+        self.assertEqual(n, 157 * 157 * 4)
+        for ox in range(4):                             # (the bits of a window's 16 cells: each once)
+            for oy in range(4):
+                bits = {((r - oy) & 3) * 4 + ((c - ox) & 3) for r in range(10, 14) for c in range(20, 24)}
+                self.assertEqual(bits, set(range(16)))
 
 
 def converter_constant(name: str):
@@ -316,8 +621,9 @@ class LookOnlyTests(unittest.TestCase):
                           "ld a,(s38_rq)", "inc a", "ret nz", "call fb_inwin", "sbc a,a", "inc a", "ret"])
         piece = code("field.asm", "fb_piece", "fp_lkok")
         k = piece.index("call fp_lkok")
-        self.assertEqual(piece[k - 2:k + 3], ["call vat_inbox", "jp nz,fp_tiles", "call fp_lkok", "jp z,fp_page",
-                                              "ld hl,(fb_cur + 1)"])
+        self.assertEqual(piece[k - 4:k + 8], ["if VAT_ANIM", "call vat_inbox", "jp nz,fp_tiles", "endif",
+                                              "call fp_lkok", "jp z,fp_page", "if VAT_ANIM = 0", "ld a,(fb_stg)",
+                                              "or a", "jp nz,fp_tiles", "endif", "ld hl,(fb_cur + 1)"])
         self.assertLess(piece.index("ld (fb_cc + 3),a"), k)          # (fb_px .. fb_pe, the cells: set)
         self.assertEqual(code("field.asm", "fp_page", "fb_pgbg"),
                          ["call fcp_sp", "xor a", "ld (fb_ci),a", "ld a,FP_PAGE", "ld (fb_ph),a", "ret"])
