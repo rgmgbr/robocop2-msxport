@@ -832,8 +832,9 @@ against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF
 2, batch 1"; the free bytes: `docs/ROM_BUDGET.md` 2.5.
 
 **Batch 2: done (2026-11-02).** Merged into `perf2/batch2` (from `level2` 27ed66d): W2L (logic-4 and logic-6,
-scroll-2 (b); merge `98ee396`) and W2F (R2 and flash-1 with its review's fix; merge `7c1a0c4`). Not merged: W2K (its
-review blocked on rc-edge; its kit judged the batch from `perf2/w2k`), W2C (scroll-1, parked for W3V) and W2S (spr-7,
+scroll-2 (b); merge `98ee396`) and W2F (R2 and flash-1 with its review's fix; merge `7c1a0c4`); `level2` took the
+branch, then W2K's kit (its review blocked on rc-edge only; its kit judged the batch; merge `58c2cc8`, tools, tests and
+docs). Not merged: W2C (scroll-1, parked for W3V) and W2S (spr-7,
 spr-2, spr-3, spr-8: merged, then dropped for G-HOLD on the V9958, the merged tip's FB_HOLD pictures kill_fx 16 -> 40 and
 boss_tr 12 -> 19). Every gate passes on the tip; the gates, the speed table (batch 1 against batch 2 per scene and
 machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign 2, batch 2"; the free bytes:
@@ -862,14 +863,14 @@ to +7.2 %; Cain's route stays as batch 1 left it.
   - Then bound the next picture with per-record opaque extents and the frame's growth. That can also remove holds the
     boxes cause today.
 - *Outcome (2026-11-02).* The kit's recalibration: `62422f3` with its review's fix `bf9a268` (`perf2/w2k`; batch 2's gates
-  were judged with it, `C/w2k/base` its baselines; not merged with the lane). rc-edge: measured, `rc_safe` unchanged. Over
+  were judged with it, `C/w2k/base` its baselines; merged into `level2` by `58c2cc8`). rc-edge: measured, `rc_safe`
+  unchanged. Over
   the drives (punches from walks right at AX_MAX, left walks in camera mode 1; C-BIOS_MSX2, the Expert) the product's
   options cut no picture of RoboCop (0 of 14,664; LAG_X=64 0 of 14,556; loop-3 0 of 14,477); loop-1 cut one punch by 3 px
   (1 of 14,369). The lane's review forced the modelled case (a punch started on the last tick of a 2-tick frame, the view
   held 30 px behind): 1 of 21 punches cut by 2 px for 7 pictures (0.12 s), at BASE too (the boxes of compositions 2, 6,
   10, 14 and 74 are only 1 px wider than his opaque pixels). The bound above, for the product's 2-tick frames as well,
-  needs its own lane (fixed-area bytes; the MSX2's speed in the building); the doc's correction is on `perf2/w2k`
-  (`0fa8d90`).
+  needs its own lane (fixed-area bytes; the MSX2's speed in the building); the doc's correction is `0fa8d90`.
 
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.

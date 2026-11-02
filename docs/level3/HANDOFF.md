@@ -1983,8 +1983,9 @@ CHEAT=1 INVULN=1`):
    so W2S could merge with them (or after W3V); or the main thread accepts the shift.
 2. **W2C (item 6) waits for W3V** (G-HOLD on the V9938, tour3's lifts on the V9938). Its own suggestion stands as an
    option: the V9958 bursts alone now, the V9938's later.
-3. **W2K is not merged.** Its kit's recalibration (62422f3, bf9a268) judged this batch from its branch; merging those two
-   commits (tools, tests, docs) brings `K` into the repository. **rc-edge**: over the drives the product's options cut no
+3. **W2K's kit** (62422f3, bf9a268) judged this batch from its branch; `level2` merged the branch after this entry
+   (`58c2cc8`: tools, tests and docs; the ROMs unchanged), so `K` is in the repository. **rc-edge**: over the drives the
+   product's options cut no
    picture of RoboCop on the V9938 (0 of 14,664; `LAG_X=64` 0 of 14,556; loop-3 0 of 14,477; loop-1 1 of 14,369, by 3 px);
    its review forced the modelled case on C-BIOS_MSX2 and the Expert (a punch started on the last tick of a 2-tick frame
    at `AX_MAX`, the view held 30 px behind): 1 of 21 punches cut by 2 px for 7 pictures (0.12 s), at BASE too. `rc_safe`
