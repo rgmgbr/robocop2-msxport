@@ -62,8 +62,10 @@ fld_l3: db FIELD_LATE_l3, FIELD_DYN0_l3, FIELD_DYN1_l3
 ; left of the blank (fb_mayq): the screen never shows half a change.
 ; V9938: the next page is built from a 16 px shifted copy of the displayed one, which brings the
 ; BOBs too, as they were when copied: once the copy is done, everywhere a BOB may have been
-; (fb_bb) and every BOB wanted is composed on that page before it may be shown (fb_sync,
-; fb_bsync).
+; (fb_bb) gets the BOBs wanted before that page may be shown (fb_sync, fb_bsync): since performance
+; campaign 2's V9938-SYNC each such rectangle is copied from the page shown with one HMMM where that
+; page holds its list's composition there (ending.asm fs_sync), and only the rest (the new column, a
+; rectangle the page shown is still changing) is composed.
 ; A look-only change (level 3's hit flash on or off: the lists equal but for bit 7 of the frames,
 ; fd_lkchk) takes each piece's background from the page itself (FP_PAGE, performance campaign 2's
 ; flash-1): a white copy has its frame's opaque pixels (its mask), so the page's pixels with every BOB
@@ -550,9 +552,21 @@ fcm_ov: rla
         ret
 
 ; fb_r into fb_bb (the rectangles the V9938's next page may hold from its copy): merged with
-; one it meets, else added; when full, merged with the last. Keeps IX.
+; one it meets, else added; when full, merged with the last. Once the build's sync has begun
+; (fb_bsq: ending.asm fs_sync) fb_bb is the sync's: until it has done every rectangle a change of
+; the page shown only marks those it has not done yet that meet it, which it composes then
+; (fs_dirty). Keeps IX.
 fb_bbadd:
-        push ix
+        ld a,(fb_bsq)
+        ld hl,s38_back_c0
+        cp (hl)
+        jr nz,fba_ad
+        ld a,(fb_sbi)               ; (every rectangle done: fb_bb no one's until the next build)
+        inc a
+        jr z,fba_ad
+        ld hl,fs_dirty
+        jp f2_call
+fba_ad: push ix
         call fba_go
         pop ix
         ret
@@ -991,7 +1005,8 @@ fb_step:
         call fb_next
         jr z,fwk_ph
         call fb_sync
-        jr z,fb_step                ; (queued: taken now)
+        jr c,fb_step                ; (queued: taken now)
+        ret nz                      ; (a copy of the sync's prepared: fb_work starts it)
         xor a
         ld (fb_busy),a
         inc a                       ; (nothing queued or composed: each page's pixels are its list's
@@ -1020,12 +1035,12 @@ fb_next:
         ld a,(fb_qn)
         or a
         jr nz,fn_take
-        ld (fb_qlk),a               ; (A = 0)
+fn_none:
+        xor a
+        ld (fb_qlk),a
         or 1
         ret
 fn_take:
-        ld a,1                      ; (until its phase is set, or the queue is empty, the VBLANK holds
-        ld (fb_qlk),a               ; the picture: isr.asm fb_pend)
         ld c,0                      ; first the page shown's items of a published picture, the oldest
         ld a,(fb_eng)               ; picture's first (fn_key; a lift's or the vehicle's changes every
         or a                        ; tick: taking them before an explosion's starved it for 9
@@ -1056,7 +1071,10 @@ fn_nx:  push bc
         jr z,fn_s3
         ld ix,(fb_bkp)
         jr fn_got
-fn_s3:  ld a,(fb_qn)
+fn_s3:  call fb_sync                ; (the V9938: the page being built's sync before the other items)
+        jp c,fn_take                ; (it queued items: the choice again)
+        jr nz,fn_none               ; (a copy of its prepared: no item now)
+        ld a,(fb_qn)
         ld b,a
         ld ix,fb_q
 fn_sel: call fb_late
@@ -1065,7 +1083,9 @@ fn_sel: call fb_late
         add ix,de
         djnz fn_sel
         ld ix,fb_q
-fn_got: push ix
+fn_got: ld a,1                      ; (until its phase is set, or the queue is empty, the VBLANK holds
+        ld (fb_qlk),a               ; the picture: isr.asm fb_pend)
+        push ix
         pop hl
         ld de,fb_cur
         ld bc,FB_QSZ
@@ -3506,9 +3526,11 @@ fsh_n:  or 1
 fsh_x:  pop hl
         ret
 
-; V9938, nothing queued: once the page being built has its copy and is not synced yet, its sync
-; (ending.asm fs_sync: BANK_FRONT2 through f2_call since performance campaign 2's R3, the bank it adds
-; to the V9938's frames only when a build's copy is done) -> Z when it queued items (taken now).
+; (fb_step, nothing queued; fn_take, before any item but the page shown's published ones) V9938: once
+; the page being built has its copy and is not synced yet, its sync's next step (ending.asm fs_sync:
+; BANK_FRONT2 through f2_call since performance campaign 2's R3, the bank it adds to the V9938's frames
+; only when a build's copy is done) -> C when it queued items (taken now), NZ (NC) when a copy of its is
+; prepared (fb_rdy: fb_work starts it), Z when there was nothing to do.
 fb_sync:
         ld a,(fb_eng)
         or a
@@ -3525,10 +3547,10 @@ fb_sync:
         jr z,fsy_no                 ; (synced: the flip may come; or no page being built)
         ld hl,fs_sync
         call f2_call
-        ld a,l
-        or a
+        ld a,l                      ; (0 queued, 1 nothing, 2 a copy)
+        cp 1
         ret
-fsy_no: or 1
+fsy_no: xor a
         ret
 
 ; (tiles.asm fb_mark38) D = row, E = column of a tile drawn on the V9938's page being built before
@@ -4399,10 +4421,10 @@ vat_mmark:
         dec l
         ret nz
         call vat_rect
-        call fb_bbadd
         ld a,0xFF
         ld (fb_bsync),a
-        ret
+        ld (fb_bsq),a               ; (the sync again, from its first rectangle: ending.asm fs_sync)
+        jp fb_bbadd
 
 ; (vats.asm through field_call: IX = vat_fr, its column's look VF_WT; lv_tab at 8000h) -> its tiles T0,
 ; T1, T2 at that look (VF_T: VAT_TIL's) and their places in the tile cache (VF_S: tiles.asm tile_srct,

@@ -568,6 +568,45 @@ which as sprites were striped, cut or left out.
   held the page shown's for ~12 pictures (a hostage shown long after turning into smoke).
   Page-copy chunks are one row slot instead of four while the field has work, so its commands
   never wait long behind them.
+  - **The sync by copies** (performance campaign 2's V9938-SYNC, `docs/PERF2_PLAN.md` item 7; `ending.asm`
+    `fs_sync`, in `BANK_FRONT2` through `f2_call`, `field.asm` `fb_sync` its gate). Until then the sync
+    waited for the field engine to have nothing queued, then composed every `fb_bb` rectangle again from
+    the tiles (an item of no owner each: on the MSX2's kill floors 4.05 composed pieces a build, the
+    build's copy end to the next build 193 ms on average). Now each rectangle (in the kept rows and the
+    page's columns, even x edges) is taken from the page shown with one HMMM, the page copy's 16-px shift
+    (SX = x - `s38_vis_c0` x 16, DX = x - `s38_back_c0` x 16, each page's line y & 255; a rectangle
+    across the pages' line 256 in two), where that page holds its list's composition; the rest is
+    composed as before. The page being built's list becomes the page shown's (`fb_want`, which
+    `fb_frame` gives the page shown at every picture) when the sync begins (`fs_begin`, `fb_bsq`), and
+    its steps run among the items: one a call of `fn_take` (after the page shown's published items,
+    which the pictures wait for) or of `fb_step` (nothing queued), as soon as the build's copy is done.
+    A step takes the next rectangle not done (`fb_sbi`, a bit each):
+    - its part in the new column, which the page shown does not hold, is composed when a BOB of the
+      list meets it (each entry's rectangle, `field.asm` `fb_rect`; else the build's tiles are all there);
+    - the rest is copied (`fs_copy`: `fb_cmd` prepared, `fb_rdy` 1, started by `fb_work` or the
+      interrupts: it writes the page not shown, at any time);
+    - but composed when a change of the page shown met it since the sync began (`fb_bbadd` -> `fs_dirty`,
+      `fb_sdm`: the page shown may hold the change by then, while the page being built keeps the list the
+      sync began with);
+    - and left for later while an item of the page shown waiting in the queue meets it (`fs_qmeet`: a
+      change queued before the sync began brings that page to the list there; its cells waiting for the
+      BOBs among them).
+    Every rectangle done, the marker (`fs_mark`: `fb_bsync` once `fn_take` takes it, then the flip may
+    come). The tiles the scroll engine draws on that page from the sync's start meet its list
+    (`tiles.asm` `fb_mark38` tests `fb_bsq`: a cell item of that page; until then such a tile went into
+    `fb_bb`, which the sync had already taken). A new target without a flip (the view turned back,
+    `fb_bbinit`) drops the page being built's work for the target before: a copy of the sync prepared and
+    not started (it would write this page at that target's place), its items queued, and the item being
+    composed goes into `fb_bb` (its copy may come after the build's). `VAT_ANIM=1` builds compose every
+    rectangle, as before. RAM: `fb_bsq` 074Bh, `fb_sbi` E0FEh, `fb_sdm` E0FFh.
+    - Measured (the `EXTJOY` drive builds, C-BIOS_MSX2, `l3_kill`, against the code before): the sync
+      by copies 0.98 copies (2,728 bytes) and 1.03 composed pieces a build; copy end to the next build
+      193 -> 118 ms on average (median 142 -> 68: `C/w3v/tools/sync4.py`); over the whole drive 319
+      syncs, 214 copies, 111 new-column parts composed, 1 rectangle composed after a change, 57 steps
+      that waited for the page shown. Ticks a second: Cain's route (kill 130-1400) 8.81 -> 9.83 on the
+      MSX2 and 8.84 -> 9.85 on the Expert, the kill floors (300-1500) 9.23 -> 10.32 and 9.26 -> 10.29,
+      the ground floor (1500-1765, nothing scrolls) unchanged. The V9958 machines run the code before
+      (`fb_sync`'s gate: `fb_eng` 0).
 - **Checked** (headless, `fieldcheck.py` in the scratchpad: every play-area pixel no sprite
   covers against the tiles and the BOB list of the list on screen, `fb_vis` in test builds; cells
   the game rewrote in the last 30 frames are the scroll engine's and not checked; a hostage may

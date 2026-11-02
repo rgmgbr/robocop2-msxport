@@ -864,6 +864,7 @@ fbi_fc: ld (hl),a                   ; (no place of the frame cache holds a frame
         ld (fb_sbx),a
         ld a,0xFF
         ld (fb_bsync),a
+        ld (fb_bsq),a
         ld (fb_vlast),a
         ld hl,fb_cache
         ld de,FB_CSZ - 1
@@ -880,19 +881,44 @@ fi_c:   ld (hl),a                   ; (owner FFFFh: free)
 ; not show; the rest the copy brings as it is, the BOBs with it, in their place (they were composed
 ; again in full until 2026-10-21: one build's items held the page shown's for ~12 pictures). Called
 ; when the target is set, before the build draws anything (field.asm fb_bbcell adds its cells from
-; then on).
+; then on). Since performance campaign 2's V9938-SYNC, for a target that changed without a flip (the
+; view turned back) the page being built's work for the target before is dropped: a copy of its sync
+; prepared and not started (it would write this page at that target's place, after this build's tiles
+; maybe), its items queued (their list and place are that target's); the item being composed, of
+; either page, goes into fb_bb (its copy may come after this build's copy).
 fb_bbinit:
         if VAT_ANIM
         ld hl,vat_bbinit
         call field_call             ; (level 2's vats: the looks its copy brings)
         endif
+        ld a,0xFF
+        ld (fb_bsq),a               ; (its sync not begun: fs_sync)
+        di
+        ld a,(fb_ph)
+        or a
+        jr nz,fbi_k
+        ld a,(fb_rdy)               ; (fb_ph 0, fb_rdy 1: only the sync's copy, fs_copy)
+        dec a
+        jr nz,fbi_k
+        ld (fb_rdy),a
+fbi_k:  ei
+        push ix
+        ld a,1
+        ld (fb_qlk),a               ; (meanwhile the VBLANK holds the picture: isr.asm fb_pend)
+        ld a,(s38_vis_page)
+        xor 1
+        ld c,a
+        ld hl,fqp_lp                ; (field.asm fq_purge, the page in C)
+        call field_call
         xor a
+        ld (fb_qlk),a
+        pop ix
         ld (fb_bbn),a
         ld a,(fb_ph)
         or a
         jr z,fbi_q0
-        ld hl,fb_cur
-        call fbi_one
+        ld hl,fb_cur + 3
+        call fbi_add
 fbi_q0: ld a,(fb_qn)
         or a
         ret z
@@ -908,7 +934,7 @@ fbi_ql: push bc
         djnz fbi_ql
         ret
 
-; HL = an item: its rectangle into fb_bb when it is the displayed page's.
+; HL = an item: its rectangle into fb_bb when it is the displayed page's (fbi_add: HL = a rectangle).
 fbi_one:
         ld a,(s38_vis_page)
         cp (hl)
@@ -916,63 +942,512 @@ fbi_one:
         inc hl
         inc hl
         inc hl
+fbi_add:
         ld de,fb_r
         ld bc,8
         ldir
         ld hl,fb_bbadd
         jp field_call
 
-; (field.asm fb_sync through f2_call: the V9938, nothing queued, the build's copy done, the page being
-; built not synced) Where it may show something else than the BOBs wanted (fb_bb: the displayed page's
-; changes since the build began, the cells drawn on it meeting a BOB: fb_bbcell) is composed on it,
-; then a marker lets it be shown (fb_bsync) -> L 0 when queued, 1 when not.
+; (field.asm fb_sync through f2_call, from fb_step and fn_take: the V9938, the build's copy done, the page
+; being built not synced; no item being composed, none of the page shown's published ones waiting) The
+; page being built's sync, a step a call (performance campaign 2's V9938-SYNC, docs/PERF2_PLAN.md item 7).
+; It begins with the page's list: the page shown's (fb_want: fb_frame gives the page shown fb_want at
+; every picture; fs_begin). Then each rectangle of fb_bb (where the copy may have brought something else
+; than the BOBs wanted, the build's tiles that meet them among it), in the kept rows and the page's
+; columns (fs_rect): its part in the new column, which the page shown does not hold, composed (an item:
+; the tiles, then the BOBs) when a BOB of the list may meet it (its box: else the tiles are all there);
+; the rest copied from the page shown with one HMMM (fs_copy: the page copy's 16-px shift) where that page
+; holds its list's composition: composed when a change of the page shown met it since the sync began
+; (fs_dirty, fb_sdm: the page shown may hold the change by now); left for later while an item of the page
+; shown waiting in the queue meets it (fs_qmeet: its cells waiting for the BOBs among them; queued before
+; the change marks, it brings that page to the list there). Then the marker (fs_mark: fb_bsync once taken,
+; the flip may come). VAT_ANIM=1 builds compose every rectangle, as before (their vats' columns are not
+; checked here). -> L 0 when it queued items (taken now), 1 when it did nothing (a rectangle waits for the
+; page shown, or no room for its items in the queue: an item is taken first), 2 when a copy of its is
+; prepared (fb_rdy 1: fb_work starts it, or the interrupts, ifg_rdy).
 fs_sync:
-        ld l,1
+        ld l,2
+        ld a,(fb_rdy)
+        or a
+        ret nz                      ; (its copy, not started yet)
+        dec l
         ld a,(s38_back_c0)
         cp 0xFF
-        ret z
-        ld a,(s38_vis_page)
-        xor 1
-        ld (fb_dpg),a
-        ld hl,0xFFFF                ; (no owner)
-        ld (fb_own),hl
-        ld a,(fb_bbn)               ; where the copy may have brought something else
+        ret z                       ; (no page being built)
+        ld hl,fb_bsq
+        cp (hl)
+        call nz,fs_begin            ; (the build's sync begins)
+        ld l,1
+        ld a,(fb_sbi)
+        inc a
+        ret z                       ; (FFh: the marker queued, taken in its turn)
+        ld a,(fb_qn)                ; (room for a rectangle's two items)
+        cp FB_QMAX - 1
+        ret nc
+        xor a
+        ld (fb_cmd + 9),a           ; (none waiting for the page shown yet)
+        ld a,(fb_bbn)
         or a
-        jr z,fs_m
-        ld b,a
-        ld hl,fb_bb
-fs_bl:  push bc
+        jr z,fs_mark
+        ld b,a                      ; B = rectangles, C = rectangle k's bit, IX = rectangle k
+        ld c,1
+        ld ix,fb_bb
+fyn_lp: ld a,(fb_sbi)
+        and c
+        jr nz,fyn_nx                ; (done)
+        push bc
+        if VAT_ANIM
+        push ix
+        pop hl
         ld de,fb_r
         ld bc,8
         ldir
-        push hl
-        ld a,(fb_dpg)
-        ld c,a
-        ld hl,fb_queuec
-        call field_call
-        pop hl
+        call fs_comp                ; (composed whole: done)
         pop bc
-        djnz fs_bl
-fs_m:   ld a,(fb_dpg)               ; its list: fb_want, its box
+        call syn_done
+        ld l,0
+        ret
+        else
+        call fs_rect                ; -> L 0 queued, 1 nothing of it (done), 2 a copy, 3 it waits
+        pop bc
+        ld a,l
+        cp 3
+        jr z,fyn_w
+        dec a
+        ret nz                      ; (L 0, 2: the caller takes the items or starts the copy)
+        endif
+fyn_nx: ld de,8
+        add ix,de
+        sla c
+        djnz fyn_lp
+        ld a,(fb_cmd + 9)
+        or a
+        ld l,1
+        ret nz                      ; (a rectangle waits for the page shown's work: later)
+        jr fs_mark
+fyn_w:  ld (fb_cmd + 9),a
+        jr fyn_nx
+
+; C = rectangle k's bit: it is done (fb_sbi).
+syn_done:
+        ld a,(fb_sbi)
+        or c
+        ld (fb_sbi),a
+        ret
+
+; The build's sync begins (A = its target): the page being built's list and box are fb_want's (the page
+; shown's), no rectangle of fb_bb done, none met by a change yet.
+fs_begin:
+        ld (fb_bsq),a
+        xor a
+        ld (fb_sbi),a
+        ld (fb_sdm),a
+        ld a,(s38_vis_page)
+        xor 1
+        push af
         call fs_dnp
         ex de,hl
         ld hl,fb_wn
         call fs_lsz
         ldir
-        ld a,(fb_dpg)
-        call fs_bxs
-        ld l,0
-        ld a,(fb_qn)                ; the marker (its build target), last
+        pop af
+        jp fs_bxs
+
+; Every rectangle done: the marker (its build target), after the sync's items; fn_take sets fb_bsync
+; when it takes it (L 0), or later when the queue has no room (L 1).
+fs_mark:
+        ld a,(fb_qn)
         cp FB_QMAX
-        ret nc                      ; (no room for the marker: the next call adds it)
+        ret nc
+        ld a,0xFF
+        ld (fb_sbi),a
+        ld hl,0xFFFF
+        ld (fb_own),hl
         ld a,(s38_back_c0)
         ld (fb_r),a
-        ld a,(fb_dpg)
+        ld a,(s38_vis_page)
+        xor 1
         or 0x80
         ld c,a
         ld hl,fq_new
         call field_call
         ld l,0
+        ret
+
+; fb_r composed on the page being built: an item of no owner (its background from the tiles, then the
+; BOBs of its list). Keeps IX.
+fs_comp:
+        ld hl,0xFFFF
+        ld (fb_own),hl
+        ld a,(s38_vis_page)
+        xor 1
+        ld c,a
+        ld hl,fb_queuec
+        jp field_call
+
+; IX = a rectangle of fb_bb not done, C = its bit: its part in the kept rows and the page being built's
+; columns, even x edges (fb_r; kept in fb_cmd's first bytes meanwhile, nothing of the field engine's
+; prepared: fs_sync's fb_rdy 0): the part in the new column composed when the list's box meets it, the
+; rectangle then the rest alone (so that it is not composed again); the rest copied (fs_copy) or composed,
+; or left for later -> L 0 when it queued, 1 when nothing of it is in the page (done), 2 when a copy is
+; prepared, 3 when it waits for the page shown's work there.
+fs_rect:
+        push bc
+        push ix
+        pop hl
+        ld de,fb_r
+        ld bc,8
+        ldir
+        ld a,(prev_cy)              ; the kept rows: [(prev_cy - 1) * 16, (prev_cy + 13) * 16)
+        call fs_c16
+        push hl
+        ld de,16 * VIEW_ROWS - 16
+        add hl,de
+        ex de,hl
+        pop hl
+        ld bc,-16
+        add hl,bc
+        call fs_cly
+        jp nc,fyr_no
+        ld a,(s38_back_c0)          ; the page's columns: [back_c0 * 16, back_c0 * 16 + 256)
+        call fs_c16
+        ld d,h
+        ld e,l
+        inc d
+        call fs_clx
+        jp nc,fyr_no
+        ld a,(fb_r)                 ; even x edges (two pixels a byte)
+        and 0xFE
+        ld (fb_r),a
+        ld hl,(fb_r + 4)
+        inc hl
+        res 0,l
+        ld (fb_r + 4),hl
+        ld hl,fb_r
+        ld de,fb_cmd
+        ld bc,8
+        ldir
+        xor a
+        ld (fb_cmd + 8),a           ; (nothing queued yet)
+        call fs_newc                ; the new column: [bx + 240, bx + 256) built for the right, else
+        call fs_clx                 ; [bx, bx + 16)
+        jr nc,fyr_ov
+        call fs_lbox                ; (no BOB of the list there: its tiles, drawn by the build, are all)
+        jr nc,fyr_ov
+        call fs_comp
+        ld a,1
+        ld (fb_cmd + 8),a
+fyr_ov: ld hl,fb_cmd
+        ld de,fb_r
+        ld bc,8
+        ldir
+        call fs_ovx                 ; the rest: [bx, bx + 240) built for the right, else [bx + 16, bx + 256)
+        call fs_clx
+        jr nc,fyr_dn
+        ld hl,(fb_r)                ; (the rectangle: the rest's columns alone from now on, its new column's
+        ld (ix+0),l                 ;  part done)
+        ld (ix+1),h
+        ld hl,(fb_r + 4)
+        ld (ix+4),l
+        ld (ix+5),h
+        pop bc
+        push bc
+        ld a,(fb_sdm)
+        and c
+        jr nz,fyr_cp                ; (a change of the page shown met it since the sync began)
+        call fs_qmeet
+        jr c,fyr_w                  ; (the page shown's queued work there: later)
+        pop bc
+        jp fs_copy
+fyr_cp: call fs_comp
+        ld a,1
+        ld (fb_cmd + 8),a
+fyr_dn: pop bc
+        call syn_done
+fyr_rt: ld l,0
+        ld a,(fb_cmd + 8)
+        or a
+        ret nz
+        inc l
+        ret
+fyr_w:  pop bc
+        ld a,(fb_cmd + 8)
+        or a
+        ld l,0
+        ret nz                      ; (its new column's part queued: taken first)
+        ld l,3
+        ret
+fyr_no: pop bc
+        call syn_done
+        ld l,1
+        ret
+
+; -> HL, DE = the columns both pages hold, as map x: [bx, bx + 240) on a page built for the right, else
+; [bx + 16, bx + 256) (bx = back_c0 * 16).
+fs_ovx: ld a,(s38_back_c0)
+        call fs_c16
+        ld a,(s38_back_dir)
+        or a
+        jr z,fyo_r
+        ld de,16
+        add hl,de
+fyo_r:  ld d,h
+        ld e,l
+        push hl
+        ld hl,240
+        add hl,de
+        ex de,hl
+        pop hl
+        ret
+
+; -> C when a BOB of the page being built's list meets fb_r (each entry's rectangle: field.asm fb_rect
+; through field_call; fb_tr holds fb_r meanwhile). Keeps IX.
+fs_lbox:
+        ld a,(s38_vis_page)
+        xor 1
+        call fs_dnp
+        ld a,(hl)
+        or a
+        ret z                       ; (none: NC)
+        push ix
+        inc hl
+        push hl
+        pop ix                      ; IX = its first entry, B = its entries
+        ld b,a
+        ld hl,fb_r
+        ld de,fb_tr
+        ld c,8
+        push bc
+        ld b,0
+        ldir
+        pop bc
+fyb_lp: ld hl,fb_rect
+        call field_call             ; (fb_r = the entry's rectangle; keeps BC, IX)
+        push ix
+        ld ix,fb_tr
+        call fs_meet
+        pop ix
+        jr c,fyb_x                  ; (it meets)
+        ld de,FB_ENT
+        add ix,de
+        djnz fyb_lp
+        or a
+fyb_x:  push af
+        ld hl,fb_tr                 ; (fb_r again)
+        ld de,fb_r
+        ld bc,8
+        ldir
+        pop af
+        pop ix
+        ret
+
+; -> HL = the new column's first map x, DE = past it (the page being built's: back_c0 + 15 built for the
+; right, back_c0 built for the left).
+fs_newc:
+        ld a,(s38_back_c0)
+        ld e,a
+        ld a,(s38_back_dir)
+        or a
+        ld a,e
+        jr nz,fyw_l
+        add a,15
+fyw_l:  call fs_c16
+        ld d,h
+        ld e,l
+        push hl
+        ld hl,16
+        add hl,de
+        ex de,hl
+        pop hl
+        ret
+
+; fb_r (in the columns both pages hold, the kept rows, even x edges) of rectangle IX (C: its bit) copied
+; from the page shown onto the page being built with one HMMM (fb_cmd, fb_rdy 1; it writes the page not
+; shown: any time): SX = x - vis_c0 * 16, DX = x - back_c0 * 16, each page's line y & 255; the rectangle
+; done. One across the pages' line 256 is copied in two calls: this one's part ends there, and the rest
+; stays the rectangle's (IX), not done -> L 2.
+fs_copy:
+        ld hl,(fb_r + 2)            ; the line 256 after y0
+        ld l,0
+        inc h
+        ld de,(fb_r + 6)
+        or a
+        sbc hl,de
+        jr nc,fyc_d                 ; (y1 at or before it: one part)
+        add hl,de
+        ld (ix+2),l                 ; the rest: [that line, y1) in the same columns
+        ld (ix+3),h
+        ld (fb_r + 6),hl
+        jr fyc_1
+fyc_d:  call syn_done
+fyc_1:  ld a,(s38_vis_c0)           ; SX, SY: the page shown
+        call fs_c16
+        ex de,hl
+        ld hl,(fb_r)
+        or a
+        sbc hl,de
+        ld (fb_cmd),hl
+        ld a,(fb_r + 2)
+        ld (fb_cmd + 2),a
+        ld (fb_cmd + 6),a
+        ld a,(s38_vis_page)
+        ld (fb_cmd + 3),a
+        xor 1
+        ld (fb_cmd + 7),a           ; DX, DY: the page being built
+        ld a,(s38_back_c0)
+        call fs_c16
+        ex de,hl
+        ld hl,(fb_r)
+        or a
+        sbc hl,de
+        ld (fb_cmd + 4),hl
+        ld hl,(fb_r + 4)            ; NX, NY
+        ld de,(fb_r)
+        or a
+        sbc hl,de
+        ld (fb_cmd + 8),hl
+        ld hl,(fb_r + 6)
+        ld de,(fb_r + 2)
+        or a
+        sbc hl,de
+        ld (fb_cmd + 10),hl
+        xor a
+        ld (fb_cmd + 12),a
+        ld (fb_cmd + 13),a
+        ld a,FB_HMMM
+        ld (fb_cmd + 14),a
+        ld a,1
+        ld (fb_rdy),a
+        ld l,2
+        ret
+
+; -> C when an item of the page shown waiting in the queue meets fb_r (its pixels there are not its list's
+; composition yet). Keeps IX.
+fs_qmeet:
+        push ix
+        ld a,(fb_qn)
+        or a
+        jr z,fyq_x
+        ld b,a
+        ld ix,fb_q + 3
+fyq_lp: ld a,(s38_vis_page)
+        cp (ix-3)
+        jr nz,fyq_n
+        call fs_meet
+        jr c,fyq_x
+fyq_n:  ld de,FB_QSZ
+        add ix,de
+        djnz fyq_lp
+        or a
+fyq_x:  pop ix
+        ret
+
+; (field.asm fb_bbadd through f2_call) A change of the page shown (fb_r) while the build's sync is under
+; way: the rectangles of fb_bb it has not done yet that meet it are composed, not copied (fb_sdm): by the
+; time the sync gets to one, the page shown may hold the change there, while the page being built keeps
+; the list the sync began with. Keeps IX.
+fs_dirty:
+        ld a,(fb_sbi)
+        inc a
+        ret z                       ; (FFh: every one done, the marker queued)
+        ld a,(fb_bbn)
+        or a
+        ret z
+        push ix
+        ld b,a
+        ld c,1
+        ld ix,fb_bb
+fyd_lp: ld a,(fb_sbi)
+        and c
+        jr nz,fyd_n                 ; (done)
+        call fs_meet
+        jr nc,fyd_n
+        ld a,(fb_sdm)
+        or c
+        ld (fb_sdm),a
+fyd_n:  ld de,8
+        add ix,de
+        sla c
+        djnz fyd_lp
+        pop ix
+        ret
+
+; fb_r's x clipped to [HL, DE) (fs_clx), or its y (fs_cly) -> C when something is left. (Map coordinates:
+; their differences never near 32768, as field.asm fb_meet's.) Keeps IX.
+fs_clx: push ix
+        ld ix,fb_r
+        jr fyl_go
+fs_cly: push ix
+        ld ix,fb_r + 2
+fyl_go: push de
+        ld e,(ix+0)                 ; the first: the larger
+        ld d,(ix+1)
+        push hl
+        or a
+        sbc hl,de
+        pop hl
+        jp m,fyl_lo
+        ld (ix+0),l
+        ld (ix+1),h
+fyl_lo: pop de
+        ld l,(ix+4)                 ; past the last: the smaller
+        ld h,(ix+5)
+        or a
+        sbc hl,de
+        jp m,fyl_hi
+        ld (ix+4),e
+        ld (ix+5),d
+fyl_hi: ld l,(ix+0)                 ; something left: first < past the last
+        ld h,(ix+1)
+        ld e,(ix+4)
+        ld d,(ix+5)
+        or a
+        sbc hl,de
+        ld a,h
+        rla
+        pop ix
+        ret
+
+; (field.asm fb_meet's copy) IX = a rectangle (x0, y0, x1, y1) -> C when it meets fb_r (or touches it).
+; Keeps BC, IX.
+fs_meet:
+        ld hl,(fb_r + 4)
+        ld e,(ix+0)
+        ld d,(ix+1)
+        or a
+        sbc hl,de
+        jp m,fym_no
+        ld l,(ix+4)
+        ld h,(ix+5)
+        ld de,(fb_r)
+        or a
+        sbc hl,de
+        jp m,fym_no
+        ld hl,(fb_r + 6)
+        ld e,(ix+2)
+        ld d,(ix+3)
+        or a
+        sbc hl,de
+        jp m,fym_no
+        ld l,(ix+6)
+        ld h,(ix+7)
+        ld de,(fb_r + 2)
+        or a
+        sbc hl,de
+        jp m,fym_no
+        scf
+        ret
+fym_no: or a
+        ret
+
+; (field.asm fb_c16's copy) A = a cell -> HL = A * 16. Keeps BC, DE.
+fs_c16: ld l,a
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl
         ret
 
 ; (field.asm fb_dnp's copy) A = page (0/1) -> HL = its list (count, then the entries). Keeps BC, DE.

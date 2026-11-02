@@ -1105,8 +1105,9 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
 ; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
-; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFFh, E0FEh-E0FFh,
-; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; ECF0h-ED0Fh:
+; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFFh,
+; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; E0FEh-E0FFh and 074Bh: the
+; V9938's sync, fb_sbi, fb_sdm, fb_bsq, since performance campaign 2's V9938-SYNC; ECF0h-ED0Fh:
 ; fc_tab since level 3's step A, its ECFBh-ED08h bm_gen; F170h-F190h and EDF0h-EDFBh the map-write
 ; caches and EDFCh-EDFEh ft_orn since 2026-11-01, ED09h-ED0Bh fb_lkf0, fb_lkf1, fb_lkq since its
 ; flash-1; F1A0h-F1C2h:
@@ -1207,7 +1208,9 @@ fb_dn0:     equ 0x06D9              ; what VRAM page 0 (the V9958's ring) shows:
 fb_dr0:     equ 0x06DA              ;   unknown), the same entries
 fb_dn1:     equ 0x0712              ; page 1 (the V9938's other page)
 fb_dr1:     equ 0x0713
-fb_vlast:   equ 0x074C              ; V9938: the displayed page last seen (074Bh free)
+fb_bsq:     equ 0x074B              ; V9938: the build target whose sync has begun (FFh: none; ending.asm
+                                    ;   fs_sync: its list set, tiles.asm fb_mark38's tiles meet it)
+fb_vlast:   equ 0x074C              ; V9938: the displayed page last seen
 fb_cc:      equ 0x074D              ; 4: the piece's cells: first column, first row, last column,
                                     ;   last row
 fb_xs:      equ 0x0751              ; 2: where its parts split: x,
@@ -1230,6 +1233,10 @@ FB_CSZ:     equ 9                   ;   at ((r - oy) & 3, (c - ox) & 3)), cells 
 fb_bbn:     equ 0xE0A3              ; V9938: what the page being built may hold from the displayed
 fb_bb:      equ 0xE0A4              ;   one (its copy): FB_BBMAX x [x0, y0, x1, y1] (2 bytes each)
 FB_BBMAX:   equ 5
+fb_sbi:     equ 0xE0FE              ; V9938: the sync's next rectangle of fb_bb (ending.asm fs_sync; FFh: all
+                                    ;   done, the marker queued),
+fb_sdm:     equ 0xE0FF              ;   bit k: rectangle k met a change of the page shown since the sync
+                                    ;   began (composed, not copied: fs_dirty)
 fb_cmd:     equ 0xE0CC              ; the VDP command being prepared (R#32-R#46)
 fb_cur:     equ 0xE0DB              ; the item being composed (fb_q's layout),
 fb_px:      equ 0xE0E7              ;   the piece's corner (2 + 2),

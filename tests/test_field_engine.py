@@ -235,7 +235,7 @@ class RelocationR3Tests(unittest.TestCase):
                 for label in self.MOVED:
                     self.assertIsNone(re.fullmatch(rf"(call|jp|jr)( \w+,)? ?{label}", l), (path, l))
         field = code("field.asm", "fb_sync", "fsy_no")
-        self.assertEqual(field[-5:], ["ld hl,fs_sync", "call f2_call", "ld a,l", "or a", "ret"])
+        self.assertEqual(field[-5:], ["ld hl,fs_sync", "call f2_call", "ld a,l", "cp 1", "ret"])
 
     def test_front2_reaches_the_field_through_field_call(self):
         field_labels = set(re.findall(r"^(\w+):", (ROOT / "msx" / "field.asm").read_text(), re.M))
@@ -271,6 +271,143 @@ class RelocationR3Tests(unittest.TestCase):
         self.assertEqual(init[:2], ["ld hl,fb_fldcp", "call field_call"])
         self.assertEqual(code("field.asm", "fb_fldcp", "fb_frame"),
                          ["ld hl,(lv_fld)", "ld de,fb_flate", "ld bc,FB_FLDN", "ldir", "ret"])
+
+
+
+def sync_parts(r, vis_c0, back_dir, prev_cy):
+    """The model of ending.asm fs_rect and fs_copy (V9938-SYNC): rectangle r = (x0, y0, x1, y1) of fb_bb ->
+    (the new column's part or None, [the copies' parts], the rest's part or None) for the page built for the
+    right (back_dir 0: back_c0 = vis_c0 + 1) or the left (1: vis_c0 - 1), the kept rows [prev_cy - 1,
+    prev_cy + 13)."""
+    back_c0 = vis_c0 + (1 if back_dir == 0 else -1)
+    bx = back_c0 * 16
+    x0, y0, x1, y1 = r
+    y0, y1 = max(y0, (prev_cy - 1) * 16), min(y1, (prev_cy + 13) * 16)
+    x0, x1 = max(x0, bx), min(x1, bx + 256)
+    if not (y0 < y1 and x0 < x1):
+        return None, [], None
+    x0, x1 = x0 & ~1, (x1 + 1) & ~1
+    nx = bx + (240 if back_dir == 0 else 0)
+    ov = (bx, bx + 240) if back_dir == 0 else (bx + 16, bx + 256)
+    new = (max(x0, nx), y0, min(x1, nx + 16), y1)
+    rest = (max(x0, ov[0]), y0, min(x1, ov[1]), y1)
+    new = new if new[0] < new[2] else None
+    rest = rest if rest[0] < rest[2] else None
+    copies = []
+    if rest:
+        a, b = rest[1], rest[3]
+        while a < b:                                    # (fs_copy: a part a call, each ending at a line 256)
+            e = min(b, (a & ~255) + 256)
+            copies.append(dict(sx=rest[0] - vis_c0 * 16, dx=rest[0] - bx, sy=a & 255, ny=e - a,
+                               nx=rest[2] - rest[0], x=rest[0], y=a))
+            a = e
+    return new, copies, rest
+
+
+class V9938SyncTests(unittest.TestCase):
+    """V9938-SYNC (docs/PERF2_PLAN.md item 7): the page being built takes its BOB rectangles from the page shown
+    with one HMMM each where that page holds its list's composition (ending.asm fs_sync, fs_rect, fs_copy), the
+    new column's part composed; its steps among the field engine's items (field.asm fb_sync from fb_step and
+    fn_take, after the page shown's published items), its list from the start (fb_bsq: tiles.asm fb_mark38's
+    tiles on that page meet it), a change of the page shown meanwhile marks what it has not copied (fs_dirty)."""
+
+    def test_the_hooks(self):
+        self.assertEqual(code("field.asm", "fb_next", "fn_take"),
+                         ["ld a,(fb_qn)", "or a", "jr nz,fn_take", "xor a", "ld (fb_qlk),a", "or 1", "ret"])
+        take = code("field.asm", "fn_take", "fn_key")
+        self.assertEqual(take[0], "ld c,0")                 # (fb_qlk from fn_got on: the sync's step without it)
+        k = take.index("call fb_sync")
+        self.assertEqual(take[k:k + 3], ["call fb_sync", "jp c,fn_take", "jr nz,fn_none"])
+        self.assertLess(take.index("jr z,fn_s3"), k)         # (after the page shown's published items)
+        g = code("field.asm", "fn_got", "fn_rect")
+        self.assertEqual(g[:2], ["ld a,1", "ld (fb_qlk),a"])
+        step = code("field.asm", "fb_step", "fwk_ph")
+        self.assertEqual(step[step.index("call fb_sync"):][:3], ["call fb_sync", "jr c,fb_step", "ret nz"])
+        bba = code("field.asm", "fb_bbadd", "fba_go")
+        self.assertEqual(bba[:7], ["ld a,(fb_bsq)", "ld hl,s38_back_c0", "cp (hl)", "jr nz,fba_ad", "ld a,(fb_sbi)",
+                                   "inc a", "jr z,fba_ad"])     # (its sync under way: fs_dirty only)
+        self.assertEqual(bba[7:9], ["ld hl,fs_dirty", "jp f2_call"])
+        mark = code("tiles.asm", "fb_mark38", "fm38_go")
+        self.assertIn("ld hl,fb_bsq", mark)
+        self.assertNotIn("ld hl,fb_bsync", mark)
+        vm = code("field.asm", "vat_mmark", "vat_srcs")
+        self.assertEqual(vm[-4:], ["ld a,0xFF", "ld (fb_bsync),a", "ld (fb_bsq),a", "jp fb_bbadd"])
+        self.assertIn("ld (fb_bsq),a", code("ending.asm", "fb_init", "fb_bbinit"))
+        bb = code("ending.asm", "fb_bbinit", "fbi_one")
+        self.assertLess(bb.index("ld (fb_bsq),a"), bb.index("call fbi_add"))
+        self.assertIn("ld hl,fqp_lp", bb)                   # (the page being built's items dropped)
+
+    def test_the_ram(self):
+        inc = (ROOT / "msx" / "msx.inc").read_text()
+        addr = {n: int(v, 0) for n, v in re.findall(r"^(\w+):\s+equ (0x[0-9A-Fa-f]+)", inc, re.M)}
+        mine = {"fb_bsq": 0x074B, "fb_sbi": 0xE0FE, "fb_sdm": 0xE0FF}
+        for n, a in mine.items():
+            self.assertEqual(addr[n], a, n)
+            self.assertEqual([m for m, b in addr.items() if b == a and m != n], [], n)
+
+    def test_the_steps(self):
+        sy = code("ending.asm", "fs_sync", "syn_done")
+        self.assertEqual(sy[:4], ["ld l,2", "ld a,(fb_rdy)", "or a", "ret nz"])   # (its copy prepared first)
+        self.assertLess(sy.index("call nz,fs_begin"), sy.index("cp FB_QMAX - 1"))  # (room for a rectangle's items)
+        self.assertIn("jr z,fs_mark", sy)
+        self.assertIn("call fs_rect", sy)
+        self.assertIn("call syn_done", code("ending.asm", "fs_rect", "fs_ovx"))   # (a rectangle done)
+        self.assertIn("cp FB_QMAX", code("ending.asm", "fs_mark", "fs_comp"))
+        lb = code("ending.asm", "fs_lbox", "fs_newc")
+        self.assertEqual(lb[lb.index("ld hl,fb_rect"):][:2], ["ld hl,fb_rect", "call field_call"])
+        cp = code("ending.asm", "fs_copy", "fs_qmeet")
+        for l in ("ld a,FB_HMMM", "ld (fb_cmd + 14),a", "ld (fb_cmd + 12),a", "ld (fb_cmd + 13),a", "ld (fb_rdy),a",
+                  "ld a,(s38_vis_c0)", "ld a,(s38_back_c0)", "ld (fb_cmd + 3),a", "ld (fb_cmd + 7),a",
+                  "call syn_done", "ld (ix+2),l"):
+            self.assertIn(l, cp)
+        r = code("ending.asm", "fs_rect", "fs_ovx")
+        self.assertLess(r.index("call fs_qmeet"), r.index("jp fs_copy"))
+        self.assertLess(r.index("ld a,(fb_sdm)"), r.index("jp fs_copy"))
+        self.assertLess(r.index("call fs_lbox"), r.index("call fs_qmeet"))
+
+    def test_the_parts(self):
+        import random
+        rng = random.Random(11)
+        n = copies = 0
+        for _ in range(20000):
+            vis_c0 = rng.randrange(1, 150)
+            d = rng.randrange(2)
+            cy = rng.randrange(0, 40)
+            x0 = vis_c0 * 16 + rng.randrange(-80, 300)
+            y0 = (cy - 1) * 16 + rng.randrange(-60, 250)
+            r = (max(0, x0), max(0, y0), max(0, x0) + rng.randrange(1, 140), max(0, y0) + rng.randrange(1, 140))
+            new, cps, rest = sync_parts(r, vis_c0, d, cy)
+            back_c0 = vis_c0 + (1 if d == 0 else -1)
+            # the clipped rectangle (fs_rect): the new column's part and the rest, side by side, nothing else
+            parts = [p for p in (new, rest) if p]
+            if not parts:
+                continue
+            n += 1
+            self.assertEqual(sum(p[2] - p[0] for p in parts), max(p[2] for p in parts) - min(p[0] for p in parts))
+            for p in parts:
+                self.assertEqual(p[0] % 2, 0)
+                self.assertEqual(p[2] % 2, 0)
+                self.assertTrue(back_c0 * 16 <= p[0] < p[2] <= back_c0 * 16 + 256)
+            if new:                                     # (the page shown does not hold it)
+                self.assertLessEqual(new[2] - new[0], 16)
+                self.assertTrue(new[2] <= vis_c0 * 16 or new[0] >= vis_c0 * 16 + 256)
+            if rest:                                    # (the page shown holds it)
+                self.assertTrue(vis_c0 * 16 <= rest[0] and rest[2] <= vis_c0 * 16 + 256)
+            # the copies (fs_copy): the rest, line for line; one page's x on both; within a 256-line page
+            area = 0
+            for c in cps:
+                copies += 1
+                self.assertTrue(0 <= c["sx"] and c["sx"] + c["nx"] <= 256)
+                self.assertTrue(0 <= c["dx"] and c["dx"] + c["nx"] <= 256)
+                self.assertEqual(c["sx"] + vis_c0 * 16, c["dx"] + back_c0 * 16)      # (the same map x)
+                self.assertTrue(0 < c["ny"] and c["sy"] + c["ny"] <= 256)
+                self.assertEqual(c["sy"], c["y"] & 255)
+                area += c["nx"] * c["ny"]
+            if rest:
+                self.assertEqual(area, (rest[2] - rest[0]) * (rest[3] - rest[1]))
+                self.assertLessEqual(len(cps), 2)       # (14 kept rows: 224 lines cross a line 256 once)
+        self.assertGreater(n, 10000)
+        self.assertGreater(copies, 10000)
 
 
 FB_ENT = 7
@@ -350,7 +487,7 @@ class LookOnlyTests(unittest.TestCase):
                          ["ld c,a", "ld a,(fb_lkq)", "or a", "jr nz,fq_lk", "ld h,a", "ld l,a", "ld (fb_lkf0),hl",
                           "ld a,(fb_tick)"])
         step = code("field.asm", "fb_step", "fwk_ph")
-        self.assertEqual(step[-7:], ["jr z,fb_step", "xor a", "ld (fb_busy),a", "inc a", "ld (fb_lkf0),a",
+        self.assertEqual(step[-8:], ["jr c,fb_step", "ret nz", "xor a", "ld (fb_busy),a", "inc a", "ld (fb_lkf0),a",
                                      "ld (fb_lkf1),a", "ret"])        # (nothing queued, composed or to sync)
         init = code("ending.asm", "fb_init", "fb_bbinit")          # (BANK_FRONT2 since R3)
         z = init.index("xor a")
