@@ -2,7 +2,8 @@
 fb_tiles, ftl_ax: a cell's part in a piece by 8-bit arithmetic on the piece's corner) against the 16-bit clip it
 replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell, field-7's band pieces (up to 128
 px wide) included; field-7's staging (fb_stage, fb_piece's clamp, fcp_next, fsl_sx, fst_chain's bands) against the
-64 x 64 pieces it replaced; FC-UPLOAD's line loop (fc_get:
+64 x 64 pieces it replaced; TILE-LOOKUP's row reads (tiles.asm gt_row, fb_tiles' cells: a row's map bank at
+8000h) against get_tile's (at A000h) over every level's map; FC-UPLOAD's line loop (fc_get:
 R#14 set once, the frame cache's places in page 2's lines 128-255, a line's bytes in two halves of sprites.asm's
 outi32 chain, an odd count's extra byte in the second). Stdlib only."""
 from __future__ import annotations
@@ -233,6 +234,115 @@ class StagedBandTests(unittest.TestCase):
         k = stage.index("ld hl,fb_cache")
         self.assertEqual(stage[k:k + 9], ["ld hl,fb_cache", "ld de,FB_CSZ", "ld (hl),0xFF", "inc hl", "ld (hl),0xFF",
                                           "dec hl", "add hl,de", "djnz fsg_c", "ret"])
+
+
+def mkrom_constant(name: str):
+    """A constant of tools/mkrom.py, read from its source."""
+    for node in ast.parse((ROOT / "tools/mkrom.py").read_text()).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise KeyError(name)
+
+
+def map_word(mp: bytes, row: int, col: int) -> int:
+    return mp[(row * 160 + col) * 2] | mp[(row * 160 + col) * 2 + 1] << 8
+
+
+class TileLookupTests(unittest.TestCase):
+    """TILE-LOOKUP (docs/PERF2_PLAN.md item 11): fb_tiles reads a row's tiles in the 8000h window (tiles.asm
+    gt_row: the row's map bank mapped there once a row), get_tile for a row with patches; the cells' tiles are
+    get_tile's."""
+
+    def test_gt_row_is_the_routine_modelled(self):
+        row = code("tiles.asm", "gt_row", "vat_win")
+        self.assertEqual(row[:row.index("res 5,h") + 2],
+                         ["ld l,a", "ld h,MP_ROW/256", "ld a,(hl)", "inc a", "ld h,0", "ret nz", "if VAT_ANIM",
+                          "ld a,(lv_logic)", "cp BANK_L2", "ret z", "endif", "ld c,l", "ld b,h", "add hl,hl",
+                          "add hl,bc", "ld bc,rowtab", "add hl,bc", "ld a,(lv_mapb)", "add a,(hl)", "call bank_8000",
+                          "inc hl", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a", "res 5,h", "ret"])
+        get = code("tiles.asm", "get_tile", "gt_row")        # (get_tile's read at A000h, as modelled below)
+        k = get.index("ld de,rowtab")
+        self.assertEqual(get[k - 7:k + 25],
+                         ["ld a,d", "ld l,a", "ld h,0", "ld e,a", "ld d,0", "add hl,hl", "add hl,de", "ld de,rowtab",
+                          "add hl,de", "ld a,(act_a000)", "push af", "ld a,(lv_mapb)", "add a,(hl)",
+                          "call bank_a000", "inc hl", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a", "pop af", "pop de",
+                          "push de", "push af", "ld d,0", "add hl,de", "add hl,de", "ld a,(hl)", "inc hl", "ld h,(hl)",
+                          "ld l,a", "pop af", "call bank_a000"])
+        self.assertEqual(get[:7], ["push de", "ld d,a", "ld l,a", "ld h,MP_ROW/256", "ld a,(hl)", "cp 0xFF",
+                                   "jr z,gt_rom"])           # (a row with patches walks them: gt_row leaves it)
+
+    def test_the_burst_reads_the_cells_so(self):
+        body = code("field.asm", "fb_tiles", "ftl_ax")
+        self.assertEqual(body.count("call gt_row"), 1)
+        k = body.index("call gt_row")
+        self.assertEqual(body[k - 1:k + 2], ["ld a,d", "call gt_row", "ld (fb_r),hl"])
+        k = body.index("ld hl,(fb_r)")
+        self.assertEqual(body[k:k + 17], ["ld hl,(fb_r)", "inc h", "dec h", "jr z,ftl_pt", "ld c,e", "ld b,0",
+                                          "add hl,bc", "add hl,bc", "ld a,(hl)", "inc hl", "ld h,(hl)", "ld l,a",
+                                          "call tile_srct", "jr ftl_x", "ld a,d", "call tile_src", "ld a,(fb_pe)"])
+        # between the row's mapping and its cells' reads only tile_srct / tile_src (get_tile: the A000h window,
+        # put back; tc_load: the 8000h window put back), ftl_ax, fb_cnext and the command (fin_c) run
+        calls = sorted({l.split()[1] for l in body if l.startswith("call ")})
+        self.assertEqual(calls, ["fb_cnext", "fin_c", "ftl_ax", "gt_row", "tile_src", "tile_srct"])
+        load = code("tiles.asm", "tc_load", "tc_upload")
+        k = load.index("call tc_upload")
+        self.assertEqual(load[k - 2:k + 3], ["ld a,(act_8000)", "push af", "call tc_upload", "pop af",
+                                             "call bank_8000"])
+        self.assertEqual(code("tiles.asm", "tile_src", "tc_load")[:2], ["call get_tile", "push de"])
+        for label, end in (("fb_cnext", "fb_fill"), ("ftl_ax", "fb_issue"), ("fb_issue_now", "fb_go")):
+            self.assertFalse([l for l in code("field.asm", label, end) if "bank_" in l], label)
+        for label, end in (("vdp_busy", "vdp_cmd_q"),):
+            self.assertFalse([l for l in code("vdp.asm", label, end) if "bank_" in l], label)
+        # the 8000h window's bank as it was at the call, put back on both ways out (ftl_rs)
+        self.assertEqual(body[body.index("ld (fb_bn),a") + 1:][:2], ["ld a,(act_8000)", "push af"])
+        self.assertEqual(body[-10:], ["jr z,ftl_lp", "jp ftl_rw", "ld hl,fbg_bob", "ex (sp),hl", "push hl", "pop af",
+                                      "ld hl,act_8000", "cp (hl)", "ret z", "jp bank_8000"])
+        self.assertEqual(body.count("jr z,ftl_rs") + body.count("jp c,ftl_bob"), 2)
+        self.assertEqual(code("field.asm", "fbg_bob", "fb_part"), ["ld a,FP_BOB", "ld (fb_ph),a", "ld a,(fb_sn)",
+                                                                   "ld (fb_ci),a", "jp fb_bobs"])
+        # CLR, ARG and CMD once a call (fin_c: fb_issue_now without them)
+        pre = body[:body.index("ld (fb_bn),a")]
+        for b in ("ld (fb_cmd + 12),a", "ld hl,FB_HMMM * 256", "ld (fb_cmd + 13),hl"):
+            self.assertIn(b, pre)
+        self.assertEqual(code("field.asm", "fb_issue_now", "fb_go")[4:],
+                         ["ld a,1", "ld (fb_shc),a", "ld hl,fb_cmd", "jp vdp_cmd"])
+
+    def test_every_cell_of_every_level_as_get_tile(self):
+        """The maps' banks and rowtab as tools/mkrom.py makes them (25 rows of 320 bytes a bank, FFh after them;
+        rowtab: the bank from lv_mapb, the row's A000h address): every cell of every level's map read as get_tile
+        reads it (the bank at A000h) and as fb_tiles reads it (gt_row: the bank at 8000h, the address less 2000h)
+        gives the map's word."""
+        maps = {n: ROOT / "build" / "msx" / f"level{n}.map" for n in (1, 2, 3)}
+        if not all(f.exists() for f in maps.values()):
+            self.skipTest("needs make msx (the levels' maps)")
+        rpb, cols, bank = (mkrom_constant(k) for k in ("ROWS_PER_BANK", "COLS", "BANK"))
+        self.assertEqual(cols, 160)
+        rows1 = len(maps[1].read_bytes()) // (cols * 2)
+        rowtab = [(r // rpb, 0xA000 + (r % rpb) * cols * 2) for r in range(rows1)]   # (mkrom.py's lines)
+        src = (ROOT / "tools" / "mkrom.py").read_text()
+        self.assertIn('rowtab.append(f"        db {r // ROWS_PER_BANK}\\n        dw 0x{0xA000 + (r % ROWS_PER_BANK) '
+                      '* COLS * 2:04X}\\n")', src)
+        n = 0
+        for lv, f in maps.items():
+            mp = f.read_bytes()
+            rows = len(mp) // (cols * 2)
+            self.assertLessEqual(rows, rows1)                       # (one rowtab: level 1's rows)
+            banks = [mp[b * cols * 2:(b + rpb) * cols * 2] for b in range(0, rows, rpb)]
+            banks = [c + b"\xff" * (bank - len(c)) for c in banks]
+            for r in range(rows):
+                b, a = rowtab[r]
+                hl8 = a & ~0x2000                                   # (res 5,h)
+                for c in range(cols):
+                    at_a000 = a + 2 * c                             # get_tile: add hl,de twice
+                    at_8000 = hl8 + 2 * c                           # fb_tiles: add hl,bc twice
+                    self.assertTrue(0xA000 <= at_a000 and at_a000 + 1 <= 0xBFFF, (lv, r, c))
+                    self.assertTrue(0x8000 <= at_8000 and at_8000 + 1 <= 0x9FFF, (lv, r, c))
+                    g = banks[b][at_a000 - 0xA000] | banks[b][at_a000 - 0xA000 + 1] << 8
+                    t = banks[b][at_8000 - 0x8000] | banks[b][at_8000 - 0x8000 + 1] << 8
+                    self.assertEqual(t, g, (lv, r, c))
+                    self.assertEqual(t, map_word(mp, r, c), (lv, r, c))
+                    n += 1
+        self.assertEqual(n, (51 + 50 + 50) * 160)
 
 
 def converter_constant(name: str):

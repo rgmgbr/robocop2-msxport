@@ -2137,35 +2137,77 @@ frp_4:  ld hl,(fb_r)
 
 ; Phase FP_TILE: the next cells of the piece (FB_BURST at most) from the tile cache into the
 ; scratch (HMMM: the part of each cell inside the piece); then the BOBs. Each cell's part comes from
-; 8-bit arithmetic on the piece's corner (ftl_ax: a piece is at most 64 x 64, so its cells' edges lie
-; -15 .. 63 px from its corner), and the bytes of fb_cmd that no cell changes are written once a
-; call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave them, about 2,240
-; T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy (performance
-; campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
+; 8-bit arithmetic on the piece's corner (ftl_ax: a piece is at most 64 x 64, a staged one 128 x 64,
+; so its cells' edges lie -15 .. 127 px from its corner), and the bytes of fb_cmd that no cell changes
+; are written once a call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave
+; them, about 2,240 T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy
+; (performance campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
+; Since its TILE-LOOKUP a row of cells at a time: the row's lines in the piece (DY, NY, the tile's first
+; line: fb_r + 2) and its map (tiles.asm gt_row: the row's bank at 8000h, the cells' tiles read there,
+; fb_r; a row with patches through get_tile, cell by cell) once a row in a call, instead of a cell's
+; lines and get_tile's two A000h bank switches a cell (the tile cache keeps the 8000h window when it
+; copies a tile in, tc_load); the 8000h window's bank put back at the end of the call (ftl_rs, as fc_get
+; does); CLR, ARG and CMD written once a call too.
 fb_tiles:
-        xor a                       ; (SX's, DX's, NX's and NY's high bytes; DY's page)
+        xor a                       ; (SX's, DX's, NX's and NY's high bytes; DY's page; CLR, ARG, CMD)
         ld (fb_cmd + 1),a
         ld (fb_cmd + 5),a
         ld (fb_cmd + 9),a
         ld (fb_cmd + 11),a
+        ld (fb_cmd + 12),a
+        ld hl,FB_HMMM * 256
+        ld (fb_cmd + 13),hl
         ld a,3
         ld (fb_cmd + 7),a
         ld a,FB_BURST
         ld (fb_bn),a
-ftl_lp: ld hl,fb_ci
+        ld a,(act_8000)             ; (put back at the end: ftl_rs)
+        push af
+ftl_rw: ld hl,fb_ci                 ; a row of the piece's cells from fb_ci's (a call may start inside it)
         ld a,(fb_cc + 3)
         cp (hl)
-        jr nc,ftl_go                ; (the row inside the piece's)
-        ld a,FP_BOB
-        ld (fb_ph),a
-        ld a,(fb_sn)
-        ld (fb_ci),a
-        jp fb_bobs
-ftl_go: ld d,(hl)                   ; D = the cell's row, E = its column
-        inc hl
+        jp c,ftl_bob                ; (past the piece's last row: the BOBs)
+        ld d,(hl)                   ; D = the row
+        ld a,(fb_pe + 2)            ; its lines inside the piece: DY, NY, the tile's first one
+        ld hl,fb_px + 2
+        sub (hl)
+        ld c,a                      ; (the piece's height)
+        ld a,d
+        call ftl_ax
+        add a,FB_CY
+        ld (fb_cmd + 6),a
+        ld a,c
+        ld (fb_cmd + 10),a
+        ld a,b
+        ld (fb_r + 2),a
+        ld a,d
+        call gt_row                 ; its tiles in the 8000h window (H 0: get_tile, cell by cell)
+        ld (fb_r),hl
+ftl_lp: ld hl,fb_ci + 1             ; a cell: E = its column
         ld e,(hl)
         call fb_cnext
-        ld a,(fb_pe)                ; its columns inside the piece: DX, NX
+        if VAT_ANIM
+        ld a,(fb_cur)
+        and 1
+        ld (vat_pg),a               ; (level 2's vat cells: the looks of the item's page)
+        endif
+        ld hl,(fb_r)                ; its tile: the row's word in the 8000h window,
+        inc h
+        dec h
+        jr z,ftl_pt
+        ld c,e
+        ld b,0
+        add hl,bc
+        add hl,bc
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        call tile_srct              ; cmdbuf: SX, SY of the tile (keeps BC, DE and the 8000h window)
+        jr ftl_x
+ftl_pt: ld a,d                      ; (or get_tile's)
+        call tile_src
+ftl_x:  ld a,(fb_pe)                ; its columns inside the piece: DX, NX
         ld hl,fb_px
         sub (hl)
         ld c,a                      ; (the piece's width)
@@ -2176,47 +2218,37 @@ ftl_go: ld d,(hl)                   ; D = the cell's row, E = its column
         ld (fb_cmd + 4),a
         ld a,c
         ld (fb_cmd + 8),a
-        ld a,b
-        ld (fb_cl),a                ; (its first column in the tile)
-        ld a,(fb_pe + 2)            ; its lines: DY, NY
-        ld hl,fb_px + 2
-        sub (hl)
-        ld c,a                      ; (the piece's height)
-        ld a,d
-        call ftl_ax
-        add a,FB_CY
-        ld (fb_cmd + 6),a
-        ld a,c
-        ld (fb_cmd + 10),a
-        if VAT_ANIM
-        ld a,(fb_cur)
-        and 1
-        ld (vat_pg),a               ; (level 2's vat cells: the looks of the item's page)
-        endif
-        ld a,d
-        call tile_src               ; cmdbuf: SX, SY of the tile (keeps BC, DE)
-        ld a,(fb_cl)
-        ld hl,cmdbuf
-        add a,(hl)
-        ld (fb_cmd),a               ; SX: from the first column used,
-        inc hl
-        inc hl
-        ld a,(hl)
+        ld hl,(cmdbuf)
+        ld a,l
         add a,b
-        ld (fb_cmd + 2),a           ; SY: from the first line used
-        inc hl
-        ld a,(hl)
-        ld (fb_cmd + 3),a
-        ld a,FB_HMMM
-        call fb_issue_now
+        ld (fb_cmd),a               ; SX: from the first column used,
+        ld hl,(cmdbuf + 2)
+        ld a,(fb_r + 2)
+        add a,l
+        ld l,a
+        ld (fb_cmd + 2),hl          ; SY: from the first line used, its page
+        call fin_c                  ; (fb_issue_now, CLR, ARG and CMD written)
         ld hl,fb_bn
         dec (hl)
+        jr z,ftl_rs
+        ld a,(fb_ci)                ; (the next cell's row: fb_cnext)
+        cp d
+        jr z,ftl_lp
+        jp ftl_rw
+ftl_bob:
+        ld hl,fbg_bob               ; (then the BOBs, once the bank is put back)
+        ex (sp),hl
+        push hl
+ftl_rs: pop af                      ; the 8000h window's bank as it was at the call
+        ld hl,act_8000
+        cp (hl)
         ret z
-        jp ftl_lp
+        jp bank_8000
 
 ; (fb_tiles) A = a cell's column (row), HL = the piece's first x (y), C = the piece's width
 ; (height) -> A = the offset of the cell's part in the piece, B = its first pixel in the cell, C =
-; its pixels: low bytes only (the cell's edge lies -15 .. 63 px from the piece's). Keeps DE.
+; its pixels: low bytes only (the cell's edge lies -15 .. 127 px from the piece's: a piece up to 128
+; px wide, field-7). Keeps DE.
 ftl_ax: add a,a
         add a,a
         add a,a
@@ -2261,7 +2293,7 @@ fb_issue_now:
         xor a
         ld (fb_cmd + 12),a
         ld (fb_cmd + 13),a
-        inc a
+fin_c:  ld a,1                      ; (fb_tiles: its CLR, ARG and CMD written once a call)
         ld (fb_shc),a
         ld hl,fb_cmd
         jp vdp_cmd

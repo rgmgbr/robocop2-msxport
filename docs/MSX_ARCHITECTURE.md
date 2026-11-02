@@ -495,7 +495,20 @@ which as sprites were striped, cut or left out.
   command bytes no cell changes are written once a burst: the same copies in the same
   order, with about 2,240 T-states of set-up a cell instead of 3,620 (hand counts; `fb_rpiece`'s six
   `fb_cmp` and `fb_dscr` were about 1,360 of them);
-  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Until then every command waited
+  `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Since
+  campaign 2's TILE-LOOKUP (`docs/PERF2_PLAN.md` item 11) the burst goes a row of cells at a time: the
+  row's lines in the piece (DY, NY, the tile's first line) once a row, and its tiles read in the 8000h
+  window (`tiles.asm` `gt_row`, in the fixed area: the row's map bank mapped there and rowtab's A000h
+  address less 2000h; a row with patches, `MP_ROW`, and level 2's vats in `VAT_ANIM=1` builds through
+  `get_tile` cell by cell, which walks them first) instead of `get_tile`'s two A000h bank switches a cell;
+  the tile cache puts the 8000h window's bank back after copying a tile in (`tc_load`), and `fb_tiles`
+  puts back the bank it found at the end of each call (`ftl_rs`, as `fc_get` does); CLR, ARG and CMD
+  are written once a call too (`fin_c`). The command itself still goes out through `vdp_cmd` (one poll
+  of S#2, R#17, the OTIR): writing it inline would take about 53 more bytes of `BANK_FIELD` for about
+  100 T-states a cell. Hand counts (the same rules for both): about 1,530 T-states of set-up a cell, the
+  first of a row in a call about 500 more (its lines and `gt_row`), instead of about 2,160 (field-2's
+  burst; its own count said 2,240). `tests/test_field_engine.py` reads every cell of every level's map
+  as `get_tile` reads it and as the burst does. Until then every command waited
   for an idle point of the main loop (one a call, 8-10 ms apart in the busy windows, 23-33 ms
   for one in ten): an item of 5-6 commands took 65-75 ms from queue to page.
 - **Background caches**: three 64x64 blocks (page 3 x 0, 64, 128) each hold the tiles of a
