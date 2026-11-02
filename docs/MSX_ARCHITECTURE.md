@@ -663,6 +663,14 @@ which as sprites were striped, cut or left out.
       rule true: the page's pixels then differ from its list in looks only. Levels 1 and 2 never take it:
       their lists have no bit 7 (their silhouettes are sprites, `fb_fwm` 0). It costs 211 bytes of
       `BANK_FIELD` and 3 of RAM (the room from R2, "Code" below).
+    - Measured (2026-11-02, the EXTJOY drive builds against batch 1's, `tools/bstest/perf2/win.py`, ticks/s):
+      the ground floor (kill 1500-1765: Cain shot while he stands, 329 / 329 / 309 pieces taken from their
+      page on the MSX2 / MSX2+ / turbo R) 12.52 -> 13.41 (+7.1 %) on the MSX2, 12.52 -> 13.56 (+8.3 %) on
+      the Expert, 12.50 -> 13.39 (+7.1 %) on the MSX2+, 22.77 -> 22.96 (+0.9 %) on the turbo R, pictures
+      with progress +10.2 / +6.7 / +9.5 / +0.9 %; Cain's route firing (boss 130-1400: 105 / 16 / 2 pieces
+      from their page) +1.3 % on the MSX2, +0.4 % on the MSX2+; the drives' other windows within the
+      timing controls' spread (no look-only change there). With `FLASH_LOOK=6` the ground floor runs
+      14.58 -> 15.34 on the MSX2; with 7 (one look change there) 18.26 -> 18.22.
   - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
     frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
     `death_w21`, and the rocket (bullet 11h, 48 x 16).
