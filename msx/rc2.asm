@@ -331,7 +331,11 @@ pz_done:
 ; the HUD as it is.
 level_restart:
         call dsp_off
+        if L1BRIEF
+        ld hl,rs_init               ; (restart_level0 $8352: level 1 with 2 lives, its briefing and PIC1
+        else                        ;  again, photo.asm; then pl_init)
         ld hl,pl_init
+        endif
         call front_call             ; (cold.asm)
         call logic_map
         call obj_start              ; (lv_fresh clear: the header's values only)
@@ -562,6 +566,7 @@ input_end:
         include "text.inc"          ; the text screens' font and the statistics (tools/msxtext.py)
         include "levels.inc"        ; the levels' descriptors, palettes and view_offy (tools/mkrom.py)
         include "frontx.asm"        ; the game completed and the high scores' ways in (docs/ENDING.md)
+        include "photo.asm"         ; the movie stills and level 1's briefing (PHOTOS, L1BRIEF)
 front_end:
         ds 0xA000 - front_end, 0xFF
 
@@ -626,6 +631,7 @@ l2_end:
 ; upload and the scroll engines' set-up (f2_call) -----
         org 0xA000
         include "ending.asm"
+        include "photo2.asm"        ; level 1's briefing (L1BRIEF)
 front2_end:
         ds 0xC000 - front2_end, 0xFF
 

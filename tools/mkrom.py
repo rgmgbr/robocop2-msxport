@@ -278,6 +278,13 @@ OPTIONS = {
                      " for the game): drawn once each lit period with the original's random choice of its first lit"
                      " frame, kept until the off looks (msx/level3.asm lt2_hold; the logic as always; a turbo R keeps the flicker); 1 = drawn"
                      " every lit frame, as the original (docs/LEVEL3.md, the beams)"),
+    "PHOTOS": (1, "the original's movie stills (the user's choice of 2026-11-02): 1 = PIC1-PIC7 before level 1, the"
+                  " bonus stages and levels 2 and 3, and PICF while the end's tune plays, as SCREEN 8 pictures packed"
+                  " with ZX0 in their own banks (tools/msxphoto.py; msx/photo.asm); 0 = none (with L1BRIEF=0 the"
+                  " rc1 product byte for byte); DIAG builds leave them out"),
+    "L1BRIEF": (1, "1 = level 1's briefing ($11108: load_level0 after the title, restart_level0 when a level-1"
+                   " restart finds 2 lives) before level 1, as levels 2 and 3 have theirs (msx/photo.asm l1_brief,"
+                   " tools/msxtext.py brief1.inc); 0 = none; DIAG builds leave it out"),
     "FLASH_LOOK": (7, "the look of an enemy's hit flash (msx/bob.asm fl_note; docs/MSX_ARCHITECTURE.md): 7 = an"
                       " enemy is white in the game tick of a hit and the 3 ticks after it, every hit starting the 4"
                       " ticks again (hits at most 4 ticks apart keep it white; needs CAD_MAX and CAD_HOLD at most 4),"
@@ -970,6 +977,8 @@ def main(argv: list[str]) -> int:
             print(f"unknown option {a!r}; known: {', '.join(OPTIONS)}, JOY, TELE, LV_CARRY", file=sys.stderr)
             return 2
         opts[k] = int(v, 0)
+    if opts["DIAG"]:                # (no game: neither the pictures nor level 1's briefing)
+        opts["PHOTOS"] = opts["L1BRIEF"] = 0
     if not 1 <= opts["DAMAGE_X"] <= 3:
         print("DAMAGE_X must be 1, 2 or 3 (msx/hits.asm)", file=sys.stderr)
         return 2
@@ -1041,6 +1050,8 @@ def main(argv: list[str]) -> int:
                  "sound.inc", "text.inc", "ending.inc", "voice.inc", "puzl.inc", "puzl_tab.inc", "puzl_cursor.spr",
                  "range.inc", "range_tab.inc", "range_line.spr"):
         shutil.copy(level.parent / name, gen / name)
+    if opts["L1BRIEF"]:             # (level 1's briefing: tools/msxtext.py, for msx/photo.asm)
+        shutil.copy(level.parent / "brief1.inc", gen / "brief1.inc")
     # the global sprite pool (tools/msxsprites.py --pool): per level its frames (ids, play-field
     # frames), BOB index and hit spark (sprites.inc's _L1 / _L2 values: the descriptors' lv_sidx,
     # lv_spark); the silhouettes' colour rows are the same in both levels (msx/sprites.asm reads one)
@@ -1414,6 +1425,26 @@ def main(argv: list[str]) -> int:
     bank_puzl_tv2, bank_end = l3_at["tv2"], l3_at.get("end", banks_used)
     bank_l3_tiles, bank_l3_map, bank_l3_atr, bank_l3_tab = (l3_at[k] for k in ("tiles", "map", "atr", "tab"))
     bank_l3_atlas, bank_l3_fc = l3_at["atlas"], l3_at["fc"]
+    # the movie stills (PHOTOS: tools/msxphoto.py's photos.bin, ZX0 streams one after another, and
+    # photos.json, each one's offset and lines), after the last block: read at A000h only (msx/photo.asm
+    # pz_unz maps bank after bank there), so any bank may hold them
+    photos, photo_at, bank_photos = b"", {}, banks_used
+    if opts["PHOTOS"]:
+        if not (level.parent / "photos.bin").exists() or not (level.parent / "photos.json").exists():
+            print("error: no photos.bin / photos.json (tools/msxphoto.py)", file=sys.stderr)
+            return 1
+        photos = (level.parent / "photos.bin").read_bytes()
+        for e in json.loads((level.parent / "photos.json").read_text()):
+            o = e["offset"]
+            if not 1 <= e["lines"] <= 212 or o + e["size"] > len(photos):
+                print(f"error: photos.json: {e['name']}", file=sys.stderr)
+                return 1
+            photo_at[e["name"]] = (bank_photos + o // BANK, 0xA000 + o % BANK, e["lines"])
+        if sorted(photo_at) != ["PIC1", "PIC2", "PIC3", "PIC4", "PIC5", "PIC6", "PIC7", "PICF"]:
+            print(f"error: photos.json holds {sorted(photo_at)}", file=sys.stderr)
+            return 1
+        photos += b"\xff" * (-len(photos) % BANK)
+        banks_used += len(photos) // BANK
     if banks_used > MAX_BANKS:
         print(f"error: the ROM takes {banks_used} banks (2 MiB: {MAX_BANKS})", file=sys.stderr)
         return 1
@@ -1424,7 +1455,7 @@ def main(argv: list[str]) -> int:
     # padding before end.bin and level 3's (never mapped), FRONT2 and level 3's two code banks (read at
     # A000h only: frontx.asm front2_call, lvl_bank, rc2.asm l3b_call)
     a000_only = set(range(pic_first[0], bank_voice)) | {stage_bank["FRONT2"]} \
-        | {stage_bank["L3"], stage_bank["L3B"]} | set(l3_pad)
+        | {stage_bank["L3"], stage_bank["L3B"]} | set(l3_pad) | set(range(bank_photos, banks_used))
     bad = [b for b in range(2, banks_used) if b & 0x3F == 0x3F and b not in a000_only]
     if bad:
         print(f"error: bank(s) {bad} could be mapped at 8000h (the SCC's registers)", file=sys.stderr)
@@ -1468,7 +1499,9 @@ def main(argv: list[str]) -> int:
         f"L3_PALP: equ 0x{0xA000 + L3_PAL_AT:04X}\nL3_VOFFP: equ 0x{0xA000 + L3_PAL_AT + 32:04X}\n"
         + "".join(f"L{n}_TCN: equ {TC_SLOTS[n]}\nL{n}_DYNP: equ {DYN_PAGE[n]}\n" for n in (1, 2, 3)) +
         f"GUN_FX: equ {gun_fx}\nGUN_TAB: equ 0x{gun_tab:04X}\n"
-        f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\nL2_KY: equ {ky2}\nL3_KY: equ {ky3}\n")
+        f"VIEW_KX: equ {kx}\nVIEW_KY: equ {ky}\nL2_KY: equ {ky2}\nL3_KY: equ {ky3}\n"
+        + "".join(f"PHOTO_{n}_BANK: equ {b}\nPHOTO_{n}_ADDR: equ 0x{a:04X}\nPHOTO_{n}_LINES: equ {ln}\n"
+                  for n, (b, a, ln) in sorted(photo_at.items())))
     (gen / "input.inc").write_text(input_inc(script, tele))
     vq = equates(level.parent / "voice.inc")
     (gen / "music.inc").write_text(music_inc(scc, bank_scc, equates(level.parent / "scc.inc")["SCC_WAVES"], fm, bank_fm,
@@ -1597,6 +1630,7 @@ def main(argv: list[str]) -> int:
     l3_by = {l3_at[n]: stage_code[n] for n in ("FRONT2", "L3", "L3B")} | {l3_at[k]: v for k, v in late.items()}
     l3_by |= {b: b"\xff" * BANK for b in l3_pad}
     rom += b"".join(l3_by[b] for b in sorted(l3_by))
+    rom += photos
     if any(len(rom[stage_bank[n] * BANK:]) < BANK or rom[stage_bank[n] * BANK:(stage_bank[n] + 1) * BANK]
            != stage_code[n] for n in STAGES):
         print("error: a late code section (a bonus stage's, level 2's or 3's) is not at its bank", file=sys.stderr)
@@ -1648,6 +1682,7 @@ def main(argv: list[str]) -> int:
           f"{bank_l3_atr}, tables in {bank_l3_tab}, atlas in {bank_l3_atlas}-{bank_l3_atlas + len(l3_blocks['atlas']) // BANK - 1}, "
           f"frame cache in {bank_l3_fc}-{bank_l3_fc + len(fc_rom) // BANK - 1}"
           + (f" (bank {', '.join(map(str, l3_pad))}: padding)" if l3_pad else "")
+          + (f"; the movie stills in {bank_photos}-{banks_used - 1}" if photos else "")
           + (f"; joystick script {script}" if script else ""))
     return 0
 

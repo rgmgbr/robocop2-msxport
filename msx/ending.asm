@@ -35,6 +35,10 @@ front_ending:
         call fb_prep
         ld hl,txt_end
         call et_keep                ; ($86E4: $10762, its $FE14 after the tune here)
+        if PHOTOS
+        ld a,7
+        call pho_show                ; ($11C54: PICF loaded and shown, copper $123EA, then the tune;
+        endif                       ;  photo.asm: FRONT at 8000h, this bank at A000h again after it)
         ld hl,tn_cmp
         call mus_call               ; ($11CCA-$11CD8: CMP's init, stop all, tune 1)
         xor a
@@ -42,7 +46,9 @@ front_ending:
         ld c,a                      ; (fire not released yet)
 fen_lp: push bc
         call fs_tick
-        call hud_keep
+        if PHOTOS = 0
+        call hud_keep               ; (PICF in G7: no HUD, whose VRAM writes would land in the picture)
+        endif
         call ff_bits
         pop bc
         jr z,fen_r
@@ -55,7 +61,11 @@ fen_t:  ld hl,(tn_left)
         ld a,h
         or l
         jr nz,fen_lp                ; (the tune's ticks)
-fen_x:  call et_black               ; ($11D26, $FE14)
+fen_x:
+        if PHOTOS
+        call pho_cut                 ; (PICF off: black; hs_entry's fc_disp or the title sets the display)
+        endif
+        call et_black               ; ($11D26, $FE14)
         call hs_entry               ; ($86F0: $12082)
         jp cpu_title
 

@@ -101,7 +101,9 @@ class SessionTests(unittest.TestCase):
     def test_title_mode_samples(self):
         rows, out = self.session(0, 8.0)
         self.assertEqual([s.split()[0] for s in rows], ["title", "game1", "game2", "game2b"])
-        self.assertEqual([int(s.split()[6]) for s in rows], [8000, 20000, 27000, 27005])
+        # (the title at 8 s; the game sampled 35 s and 42 s after it: the title's speech, level 1's
+        #  briefing and PIC1 first since release candidate 2)
+        self.assertEqual([int(s.split()[6]) for s in rows], [8000, 43000, 50000, 50005])
         self.assertIn("keys {down 9.000} {up 9.300}", out)
 
     def test_title_mode_gives_up(self):

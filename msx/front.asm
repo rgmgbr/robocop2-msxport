@@ -448,6 +448,11 @@ front_bonus:
         call fb_prep                ; (a turbo R: the Z80's hardware pause off, display_on; g_tick = 0)
         ld hl,txt_bs_intro
         call fe_text                ; ($8384: $114AA through $10762)
+        if PHOTOS
+        ld a,(AG + 0x8050)
+        add a,a
+        call pho_mid                 ; ($8392: show_picture D0 = 2 / 4, PIC3 / PIC5: photo.asm)
+        endif
         ld a,BANK_PUZL
         call bank_a000
         call bs_stage               ; ($83DE: jsr $17100) -> A = 0 solved, 1 failed, 2 out of time
@@ -510,6 +515,13 @@ fbp_go: xor a
 front_range:
         ld hl,txt_rg_intro
         call fe_text                ; ($8422: $1142D through $10762)
+        if PHOTOS
+        ld a,(AG + 0x8050)
+        add a,a
+        add a,a
+        sub 3
+        call pho_mid                 ; ($8430: show_picture D0 = 1 / 5, PIC2 / PIC6: photo.asm)
+        endif
         ld a,BANK_FRNG
         call bank_a000
         xor a
@@ -624,6 +636,24 @@ front_l2test:
 ; ticks, fire ends them from tick 50 on). Silent, the HUD's messages ticking on below; PIC4 and
 ; PIC7 after them are dropped (decision 5 of the port).
 front_brief:
+        if PHOTOS
+        ld a,(AG + 0x8050)          ; (the word's low byte)
+        dec a
+        cp 2
+        ret nc
+        push af
+        ld hl,txt_l2_brief
+        or a
+        jr z,fbr_t
+        ld hl,txt_l3_brief
+fbr_t:  call fe_text
+        pop af                      ; (0: level 2's, 1: level 3's)
+        inc a
+        ld b,a
+        add a,a
+        add a,b                     ; 3 / 6: PIC4 ($85AC) / PIC7 ($8550), then the front end's end
+        jp pho_end                   ;  (photo.asm; the level's start uploads its tiles and atlas)
+        else
         ld a,(AG + 0x8050)          ; (the word's low byte)
         ld hl,txt_l2_brief
         dec a
@@ -632,6 +662,7 @@ front_brief:
         dec a
         jp z,fe_text
         ret
+        endif
 
 ; A text screen of the bonus stages ($10762: $10768's screen and loop, then $FE14), HL = its
 ; script in this bank (positions, characters, FF 02 n, FF 07: tools/msxtext.py txt_bs_*):

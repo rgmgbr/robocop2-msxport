@@ -325,6 +325,10 @@ ng_init:
         ld hl,FADE_STATE
         ld (fade_st),hl             ; the state the fade-in forces ($F89D: level_init's $88A4, 10;
                                     ;  level 3's l3_init sets its 11 at each of its starts)
+        if L1BRIEF
+        ld hl,l1_new
+        call front2_call            ; (load_level0 $82EC: level 1's briefing and PIC1, photo2.asm)
+        endif
         ld c,0                      ; (level 1)
 ; C = the level (0: level 1): its start up to its objects (rc2.asm lv_go, through front_call; the
 ; display and the VDP's interrupts off; level_init $871A): its descriptor, palette and view_offy

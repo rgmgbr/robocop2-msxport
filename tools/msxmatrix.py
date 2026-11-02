@@ -57,8 +57,10 @@ SETUPS = {
     "megaram+": ("Gradiente_Expert20_64K", ["MegaRAM_2MB", "scc+"], "megaram"),
     "megaram_psg": ("Gradiente_Expert20_64K", ["MegaRAM_2MB"], "megaram"),
 }
-# (the session: the title by 20 s at the latest, SPACE, then the game checked 18 s later; with
-# --no-title, ::mx_notitle 1: the game sampled at 20 s and 27 s from the power-on)
+# (the session: the title by 20 s at the latest, SPACE, then the game checked 41 s later: the title's
+# fade and speech, level 1's briefing (485 ticks and the curtain's 16) and PIC1 (its unpacking and 251
+# ticks) come first since release candidate 2, level 1 about 22 s after SPACE; with --no-title,
+# ::mx_notitle 1: the game sampled at 20 s and 27 s from the power-on)
 SESSION = r"""
 set ::mx_f [open $::mx_out w]
 proc mx_w {a} { expr {[peek $a] + 256 * [peek [expr {$a + 1}]]} }
@@ -97,8 +99,8 @@ proc mx_poll {} {
     mx_state title
     after time 1 {keymatrixdown 8 1}
     after time 1.3 {keymatrixup 8 1}
-    after time 12 {mx_state game1}
-    after time 19 mx_end
+    after time 35 {mx_state game1}
+    after time 42 mx_end
     return
   }
   incr ::mx_title
