@@ -31,8 +31,10 @@ l1_show:
         ld bc,32
         xor a
         call fill
-        ld hl,fs_clear
-        call vdp_cmd                ; (the display off: the title's or the level's bytes there)
+        ld hl,l1_clear
+        call vdp_cmd                ; (the display off: the title's or the level's bytes there, on
+                                    ;  all of page 0: the lines under the play area showed the
+                                    ;  title's picture until the split's first frame)
         call fs_list
         call fb_prep                ; (a turbo R: its pause off, the display on; g_tick 0)
         ld a,(cpu_tr)
@@ -53,6 +55,10 @@ l1s_c:  push bc
         endif
         jp cpu_title                ; (a turbo R: its pause on again, the Z80, the display off; as
                                     ;  front_bonus' end before a level)
+
+l1_clear:
+        dw 0, 0, 0, 0, 256, 256     ; SX, SY, DX, DY, NX, NY: page 0 whole (fs_clear: the play area)
+        db 0, 0, 0xC0               ; colour 0, ARG, HMMV
 
         include "brief1.inc"        ; txt_l1_brief (tools/msxtext.py)
         endif
