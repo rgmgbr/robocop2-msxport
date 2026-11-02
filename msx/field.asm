@@ -67,7 +67,8 @@ fld_l3: db FIELD_LATE_l3, FIELD_DYN0_l3, FIELD_DYN1_l3
 ; flash-1): a white copy has its frame's opaque pixels (its mask), so the page's pixels with every BOB
 ; of the list drawn over them again give the new picture exactly. Only while the page's pixels are
 ; its list's composition but for looks (fb_lkf0 / fb_lkf1: set where nothing is queued or composed,
-; cleared by any other change queued, fq_go) and no cell is waiting to be drawn there (fp_lkok).
+; cleared by any other change queued, fq_go) and no cell is waiting to be drawn there; on the V9938
+; for the page shown only, while the page beside it is not synced (fp_lkok).
 
 FB_CY:      equ 112                     ; page 3 lines 112-175: the caches (x 0-191), the scratch
 FB_SX:      equ 192                     ;   (x 192-255)
@@ -1502,6 +1503,17 @@ fp_ph:  ld (fb_ph),a
 ; inside its page's window. The page's pixels with every BOB of fb_sn drawn over them are then the
 ; new picture: each BOB of the list covers the same pixels in both looks (a white copy has its
 ; frame's mask), and fb_sn holds the same BOBs in the same order as the list the pixels show.
+; On the V9938 only for the page shown (s38_vis_page), and not while the page beside it is synced
+; (fb_bsync = s38_back_c0: fb_frame diffs it too). The page being built is copied again for another
+; place when its target changes without a flip (the view turned back: s38_target), and its items
+; queued before would read its old build there; the page shown is never rebuilt, and no flip comes
+; while a piece taken from it is composed (a flip needs the page beside synced, fb_bsync: its sync's
+; marker is taken by fb_next between items, and the page path starts only while it is not synced).
+; And with the page beside synced a look change queues items for both pages each picture: taken from
+; the pages, the shown page's next published items waited behind the other page's item under way, and
+; the pictures went on screen at FB_HOLD, their BOBs a picture behind (kill's ground floor with the
+; page beside built, dir_x set toward the map's inside: 404 / 502 of 900 records on C-BIOS_MSX2 / the
+; Expert; none in the build before flash-1, nor in three builds of it with their timing moved).
 fp_lkok:
         ld a,(fb_cur)
         bit 7,a
@@ -1524,7 +1536,18 @@ fpk_p:  ld a,(hl)
         ld hl,q_row
         and (hl)
         jr fpk_q
-fpk_38: ld a,(s38_rq)
+fpk_38: ld a,(fb_cur)               ; (the V9938: the page shown,
+        ld hl,s38_vis_page
+        xor (hl)
+        and 1
+        ret nz
+        ld a,(s38_back_c0)          ;  the page beside it not synced)
+        ld hl,fb_bsync
+        cp (hl)
+        jr nz,fpk_rq
+        inc a                       ; (both FFh: no page beside it)
+        ret nz
+fpk_rq: ld a,(s38_rq)
 fpk_q:  inc a                       ; (FFh: none)
         ret nz
         call fb_inwin

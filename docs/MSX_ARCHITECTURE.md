@@ -658,11 +658,25 @@ which as sprites were striped, cut or left out.
       a redo clears both;
     - while no cell waits to be drawn: the redraw queue empty, and no V9958 ring column or row queued or
       V9938 row pending (`s38_rq`), whose cells the windows count before they are drawn;
-    - for a piece inside its page's window (`fb_inwin`), not a marker.
+    - for a piece inside its page's window (`fb_inwin`), not a marker;
+    - on the V9938 for the page shown only (`s38_vis_page`), and not while the page beside it is synced
+      (`fb_bsync` = `s38_back_c0`, when `fb_frame` diffs that page too). The page being built is copied
+      again for another place when its target changes without a flip (the view turned back,
+      `s38_target`): its items queued before would read its old build there, 32 px off. And with the
+      page beside synced each look change queues items for both pages: the shown page's next published
+      items then waited behind the other page's item under way, and the pictures went on screen at
+      `FB_HOLD`, their BOBs a picture behind (kill's ground floor with the page beside built, `dir_x`
+      set toward the map's inside from game frame 1500, 900 records from 1560: 404 and 502 records at
+      `FB_HOLD` on C-BIOS_MSX2 and the Expert, 0 in the build before flash-1 and in three builds of it
+      with their timing moved; 0 and 0 with this rule). The page shown is never rebuilt, and no flip
+      comes while a piece taken from it is composed (a flip needs the page beside synced: its sync's
+      marker is taken between items, and the page path starts only while it is not synced).
+      No drive of the gates takes the page path with the page beside synced (1 of 893 pieces, kill and
+      boss on C-BIOS_MSX2 and the Expert).
     - Every other piece takes its background as before. A lost look-only change (`fb_lost`) keeps the
       rule true: the page's pixels then differ from its list in looks only. Levels 1 and 2 never take it:
-      their lists have no bit 7 (their silhouettes are sprites, `fb_fwm` 0). It costs 211 bytes of
-      `BANK_FIELD` and 3 of RAM (the room from R2, "Code" below).
+      their lists have no bit 7 (their silhouettes are sprites, `fb_fwm` 0). It costs 232 bytes of
+      `BANK_FIELD` (21 of them the V9938's rule) and 3 of RAM (the room from R2, "Code" below).
     - Measured (2026-11-02, the EXTJOY drive builds against batch 1's, `tools/bstest/perf2/win.py`, ticks/s):
       the ground floor (kill 1500-1765: Cain shot while he stands, 329 / 329 / 309 pieces taken from their
       page on the MSX2 / MSX2+ / turbo R) 12.52 -> 13.41 (+7.1 %) on the MSX2, 12.52 -> 13.56 (+8.3 %) on
@@ -670,7 +684,9 @@ which as sprites were striped, cut or left out.
       with progress +10.2 / +6.7 / +9.5 / +0.9 %; Cain's route firing (boss 130-1400: 105 / 16 / 2 pieces
       from their page) +1.3 % on the MSX2, +0.4 % on the MSX2+; the drives' other windows within the
       timing controls' spread (no look-only change there). With `FLASH_LOOK=6` the ground floor runs
-      14.58 -> 15.34 on the MSX2; with 7 (one look change there) 18.26 -> 18.22.
+      14.58 -> 15.34 on the MSX2; with 7 (one look change there) 18.26 -> 18.22. With the V9938's rule
+      (above; the V9958 machines run as before) the ground floor runs 13.40 on the MSX2 and 13.54 on the
+      Expert, the boss route 7.37 and 7.35 (kill 332 / 332 and boss 108 / 95 pieces from their page).
   - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
     frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
     `death_w21`, and the rocket (bullet 11h, 48 x 16).

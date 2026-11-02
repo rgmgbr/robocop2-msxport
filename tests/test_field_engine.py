@@ -311,7 +311,9 @@ class LookOnlyTests(unittest.TestCase):
                          ["ld a,(fb_cur)", "bit 7,a", "ret nz", "ld hl,fb_lkf0", "rra", "jr nc,fpk_p", "inc hl",
                           "ld a,(hl)", "dec a", "ret nz", "ld a,(rd_head)", "ld hl,rd_tail", "cp (hl)", "ret nz",
                           "ld a,(fb_eng)", "or a", "jr nz,fpk_38", "ld a,(q_col)", "ld hl,q_row", "and (hl)",
-                          "jr fpk_q", "ld a,(s38_rq)", "inc a", "ret nz", "call fb_inwin", "sbc a,a", "inc a", "ret"])
+                          "jr fpk_q", "ld a,(fb_cur)", "ld hl,s38_vis_page", "xor (hl)", "and 1", "ret nz",
+                          "ld a,(s38_back_c0)", "ld hl,fb_bsync", "cp (hl)", "jr nz,fpk_rq", "inc a", "ret nz",
+                          "ld a,(s38_rq)", "inc a", "ret nz", "call fb_inwin", "sbc a,a", "inc a", "ret"])
         piece = code("field.asm", "fb_piece", "fp_lkok")
         k = piece.index("call fp_lkok")
         self.assertEqual(piece[k - 2:k + 3], ["call vat_inbox", "jp nz,fp_tiles", "call fp_lkok", "jp z,fp_page",
@@ -319,6 +321,31 @@ class LookOnlyTests(unittest.TestCase):
         self.assertLess(piece.index("ld (fb_cc + 3),a"), k)          # (fb_px .. fb_pe, the cells: set)
         self.assertEqual(code("field.asm", "fp_page", "fb_pgbg"),
                          ["call fcp_sp", "xor a", "ld (fb_ci),a", "ld a,FP_PAGE", "ld (fb_ph),a", "ret"])
+
+    def test_the_v9938_rule(self):
+        """On the V9938 the page path takes the page shown only, and not while the page beside it is synced
+        (fb_bsync = s38_back_c0, both FFh: none): the model of fpk_38's test against the rule, every state."""
+        def fpk_38(page: int, vis: int, back: int, bsync: int) -> bool:
+            if (page ^ vis) & 1:                            # xor (hl) / and 1 / ret nz
+                return False
+            if back != bsync:                               # cp (hl) / jr nz,fpk_rq
+                return True
+            return (back + 1) & 0xFF == 0                   # inc a / ret nz
+        for page in (0, 1):
+            for vis in (0, 1):
+                for back in (0, 1, 2, 142, 143, 144, 0xFF):
+                    for bsync in (0, 1, 142, 143, 144, 0xFF):
+                        rule = page == vis and not (bsync == back and back != 0xFF)
+                        self.assertEqual(fpk_38(page, vis, back, bsync), rule, (page, vis, back, bsync))
+        # the page shown is never rebuilt and its first column changes only at a flip, which needs the page
+        # beside synced (fb_bsync, the sync's marker taken by fb_next between items): an item started while
+        # it is not synced meets no flip
+        nxt = code("field.asm", "fb_next", "fn_rect")
+        self.assertIn("ld (fb_bsync),a", nxt)
+        s38 = code("scroll9938.asm", "s38_update", "s38_target")
+        k = s38.index("ld a,(fb_bsync)")
+        self.assertEqual(s38[k + 1:k + 3], ["cp e", "jr nz,s38u_hold"])
+        self.assertLess(k, s38.index("ld (s38_vis_c0),a"))
 
     def test_the_page_phase(self):
         self.assertRegex((ROOT / "msx" / "field.asm").read_text(), r"\nFP_WAIT:\s+equ 6\b.*\nFP_PAGE:\s+equ 7\b")
