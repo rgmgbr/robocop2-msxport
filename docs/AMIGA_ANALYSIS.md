@@ -73,9 +73,10 @@ Then it enters supervisor mode (vector `$20` trick), stores `$100` in `($C0)` an
 Static-screen format: 32 bytes of OCS palette (`$0RGB`) followed by sequential planes
 (DATAE/OAS); `PIC*` have a 128-byte header (32 colours + zeros) and the bitmap at `+$80`.
 Use `tools/planar.py`. The picture shown is `PIC('1'+D0)` (routine `$11E06`): D0 = 0/3/6
-before levels 1/2/3 (PIC1/PIC4/PIC7), 1/5 and 2/4 around the bonus stages, and **8 = game
-over (PIC9)**, called from `main_loop` when the lives counter `$8034` goes negative.
-**[verified]**
+before levels 1/2/3 (PIC1/PIC4/PIC7), 2/4 before Brainstorm and 1/5 before the shooting range
+(PIC3/PIC5, PIC2/PIC6), and **8 = game over (PIC9)**, called from `main_loop` when the lives
+counter `$8034` goes negative; PICF by `$11C54` at the end. **[verified]** (Section 5,
+*Pictures*: every call, the timing, the cache.)
 
 ## 4. Game engine (code at `$8000`)
 
@@ -1075,7 +1076,77 @@ every screen in `screens/`.
   on 4 of every 5 passes (`$11C52` from 0): 4,916 ticks, the tune's 4,800 and its loop's first 116
   **[verified: REA on `level3_full.bin`; `docs/ENDING.md`]**.
 - **Pictures** (`show_picture` `$11E06`): `$FE14` (music stopped) and `$FEDA`, PIC('1'+D0)
-  loaded at `$6FFA0`, shown at once with its own palette, for 251 VBLs or until fire.
+  loaded at `$6FFA0`, shown at once with its own palette; 251 VBLs or fire only when it came from the
+  RAM cache, else none (the next loads are its time). Details: *Pictures* below.
+
+### Pictures (`show_picture` `$11E06`, the ending's `$11C54`) **[verified: REA on `level1_full.bin`, 2026-11-02]**
+
+- **`$11E06`** (D0 = the picture - 1): `'1'` + D0 into the name "PICX" (`$11ECD`, the digit at
+  `$11ED0`), `$FE14` (the music stopped; it falls into `clear_game_vars`) and `$FEDA` (the display set-up),
+  COP1LC = `$10356`, the 16 colour values of the picture's copper list (`$1236C`, every 4 bytes) cleared:
+  black. `$11C2E` with D0 = `$1B80` (40 bytes x 176 lines): the six plane pointers of the list `$12352`
+  from `$70020` (the file's bitmap after its 128-byte header). Then `$11932`: when `$803A` holds
+  `$12343210`, a file loaded before is copied back from a RAM cache (`$119B6`'s table) and D0 = 0.
+  - **From the cache** (D0 = 0): `$11E9E`, then `move #$2000,SR` and a loop of 251 passes (`D7` = `$FA`,
+    `dbf`): the VBL flag `$802C` waited for and cleared, `read_joystick` `$BDEC`, fire (bit 4) ends it.
+    No release is needed: fire held from the screen before ends it at the first VBL. `read_joystick`
+    returns at once while the input lock `$804D` is set, D0 then `$0000FFFF` (`$11E9E`'s `dbf`), bit 4
+    set: one VBL.
+  - **From the disk** (D0 = -1): the loader (`$C0`) loads PICX at `$6FFA0`, `$1195E` copies it into the
+    cache when `$803A` is set and it fits below `$C7FFFF` (`$803E`: the cache's end), then `bra $11E9E`:
+    **shown, and `$11E06` returns at once**. The picture stays while the caller loads the next files,
+    until the next screen replaces it.
+  - `$11E9E`: COP2LC = `$10356`, COP1LC = `$12352` (modulos 0, DDFSTRT `$34` / DDFSTOP `$CC`: 320
+    pixels, DIWSTRT `$0100` / DIWSTOP `$3FFF`, COLOR00-15, the plane pointers, a WAIT for line `$1E`, BPLCON0
+    `$6A00` (six planes, HAM), COPJMP2), the 16 colours of the file's header copied into the list: the
+    picture appears at once, on display lines 30-205.
+  - `$803A` = `$12343210` is the boot's mark of expansion memory at `$C00000` (an A500's trapdoor
+    512 KiB, the cache's `$C7FFFF` limit) **[inferred: its writer not read]**. Without it every picture
+    comes from the disk.
+- **The callers** (xrefs of `$11E06`):
+
+| Call | D0 | Picture | Before it | After it |
+|---|---|---|---|---|
+| `$8306` `load_level0` (a new game) | 0 | PIC1 | the level-1 briefing `$11108` through the curtain entry `$1079A`, `$FE14` | `move #$2700,SR`, MU1 (`$8614`), `$8060` = SHARP, SPERMA and DATAL1 when not resident |
+| `$8376` `restart_level0` (a level-1 restart) | 0 | PIC1 | only when the lives `$8034` are 2: the briefing `$11108` (curtain), `$FE14` | MU1 (`$8614`: init, no tune) |
+| `$8392` Brainstorm `$8382` | 2 / 4 | PIC3 / PIC5 | its intro `$114AA` through `$10762` | the stage's VBL handler, PUZL |
+| `$8430` the range `$8420` | 1 / 5 | PIC2 / PIC6 | its intro `$1142D` through `$10762` | FRNG |
+| `$85AC` `load_level1` | 3 | PIC4 | the level-2 briefing `$110F0` | `move #$2700,SR`, MU1, MADEX, DATAL2 |
+| `$8550` `load_level2` | 6 | PIC7 | the level-3 briefing `$110B4` | MU1, DATAL3 |
+| `$82AA` `main_loop` (the game over) | 8 | PIC9 | the death (`$823E` set the input lock `$804D`) | 128 VBLs (`$82B0`), `high_score_entry`, the continue offer |
+
+  After level 1 the order is: the statistics, Brainstorm's intro, PIC3, Brainstorm, its result, the
+  range's intro, PIC2, the range, its result, the level-2 briefing, PIC4, level 2 (after level 2 the
+  same with PIC5, PIC6, the level-3 briefing, PIC7). `level_init` `$871A` reaches the load table after
+  `clear_game_vars` has cleared `$804D`, so the pictures between levels wait their 251 VBLs on the
+  cache path; PIC9 always ends after one (`$804D` set), then its 128 VBLs.
+- **`restart_level0` `$8352`**: `cmpi.w #2,$8034` / `bne` (`rts`): a level-1 restart shows the briefing
+  and PIC1 again only with 2 lives at the restart: a death with three (the tenth hostage's extra life) or
+  a continue (`$FFD8`: two lives), which level 1 never offers (`$805E` is 0 there). Levels 2 and 3 restart
+  through `$86DC` (`rts`): no briefing, no picture.
+- **`level_init` `$871A`**: `jsr $18000` / `jsr $18004` (the music stopped), the VBL handler `$1032E`,
+  then entry `$8050` of the load table when `$8050` = `$8052` (a restart), else `$8052` = `$8050` and
+  entry `$8050` + 4 (a load).
+- **The level-1 briefing `$11108`** through `$1079A` (no `$FE14` first: the screen as it is; 16 VBLs, each
+  clearing a 16-pixel column of the shown buffer (`$B16` ^ `$18E00`) from both sides, then the text loop):
+  particle set-up 3, two lines, "  THE RIVER ROUGE" and "      COMPLEX"; then NEGOTIATE THE RIVER
+  COMPLEX (column 5, row 1), COLLECT TEN NUKE CAPSULES (6, 3), THEN DESTROY THE DRUGS LAB (6, 5), RESCUE
+  ALL HOSTAGES (9, 7), FOR AN EXTRA LIFE. (9, 9), a wait of 256 calls, the end: 485 calls, fire from
+  VBL 50.
+- **The ending's `$11C54`**: PICF loaded from the disk at `$6FFA0` (no cache), COP2LC = `$123EA` (sprite
+  DMA off, a WAIT for line 254, BPLCON0 `$0A00`: no planes), `$11C2E` with D0 = `$2800` (256-line
+  planes), `$11EA6` (COP1LC = `$12352` and the palette), 141 bytes cleared at `$6FFA0` + 0, `$2800`,
+  `$5000`, `$7800` (the first 13 bytes of planes 0-3's line 0 and the last 128 of planes 0-2; its other
+  two clears, at -`$6000` and -`$3800` through sign-extended word indexes, land before the picture),
+  DMACON `$85A0`, the list's DIWSTRT word `$12364` = `$1818`, the VBL handler `$1032E`, CMP loaded at
+  `$18000` (its init, stop all, tune 1), then the loop of `$1801` passes (raster line `$C0`, fire ends
+  it, the tune on 4 passes in 5); at its end `$12364` = `$0100` again. **PICF shows its lines 0-223**
+  (display lines 30-253: the planes on at line 30, off at 254); lines 224-255 are never shown.
+- **How long each picture stays, without the disk** (the cache path: the files in RAM): PIC1-PIC7 251
+  VBLs (5.02 s at 50 Hz) or fire (held fire ends them at once); PIC9 1 VBL and then 128 (2.6 s); PICF
+  6,145 passes (122.9 s) or fire, the CMP tune meanwhile (4,916 ticks). From the disk (no expansion
+  memory, or a picture's first showing): PIC1-PIC7 stay for the loads after them, which fire cannot
+  shorten; PIC9 128 VBLs after its load; PICF the same loop after CMP's load.
 
 ### Text screens **[verified: code]**
 
