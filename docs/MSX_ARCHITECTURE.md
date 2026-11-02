@@ -1154,6 +1154,18 @@ which as sprites were striped, cut or left out.
   keeps up (5 % of the pictures hold the camera at a page's edge, at most 23 px behind the
   view wanted), a camera that jumps far (teleports, the start of a level) takes one flip per
   build to catch up.
+  Since performance campaign 2's scroll-1 (its V9938 part, `docs/PERF2_PLAN.md` item 6, after the sync by
+  copies) the new column's tiles go in a row while the play-field BOBs have no work (`ending.asm` `s38_colb`,
+  from `s38_work` through `f2_call`; `fs_stop38`: between the HUD split and the VBLANK the changed cells'
+  window first, then it stops while `fb_busy`, a play-field copy waits for the blank or the BOBs have work of a
+  published picture, in `VAT_ANIM=1` builds also while a vat column waits for the blank), each tile set up while
+  the one before is copied: until then one tile a call, a column took 224 ms of the MSX2's kill floors for
+  about 11 ms of VDP. The pending row stays one tile a call: in a row its 32 tiles kept the CPU waiting for
+  the VDP inside the logic's frames (tour3's lifts 545-1065: -2.3 % on C-BIOS_MSX2 and -2.2 % on the Expert
+  against the code before, the column alone -0.3 % and 0.0 %). Lane W2C's first measurement, before the sync by
+  copies, had both bursts raise the pictures held to `FB_HOLD` on the V9938 (kill: 4 -> 11 on the MSX2, 3 -> 9
+  on the Expert: the page being built's composed sync items delayed the page shown's published ones); with
+  the sync by copies 3 and 2 with both, 2 and 4 with the column's alone.
 - **MSX2+ play field (fixed 2026-10-21)**: since the tile cache, `tile_src` leaves the source
   page (2 or 3) in A; the V9958 engine's `draw_tile` took A for the row, so every tile went to
   ring line 32 or 48 and on every MSX2+ the play field stayed almost empty (VRAM's 44h fill).
@@ -1199,7 +1211,12 @@ which as sprites were striped, cut or left out.
   displayed page: before, a cell changed then stayed old on the screen until the flip showed
   (seen: 9 pictures); when the flip reaches the screen a cell half done restarts on the new
   displayed page (`rd_phase`). A changed cell where a play-field BOB is goes to `field.asm`
-  instead (see "Play-field BOBs"). A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
+  instead (see "Play-field BOBs"); its second phase (`rd_phase` 2, since 2026-11-02: lane W2C's review) then
+  draws the V9938's page being built only once that build's copy has passed the cell's row slot
+  (`s38_covr`): the copy brings the slot from the page shown, which gets the new tile only when the BOBs
+  compose it there, and drawn before it could be brought back over the new tile with the old one, which no
+  sync mended (`fb_bb` does not hold that cell): `l2_tour` from game frame 735 on C-BIOS_MSX2, row 38,
+  column 64 old for 55 pictures, with W2C's bursts (the code before has the same path). A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
   bit per cell of the window `rd_queue` keeps; its redraw reads the map then): the level's
   electric beams rewrite their cells every tick and overflowed the queue (238 requests lost in
   the beams' corridor; now none, the queue at most 38). Known: a map object of several cells

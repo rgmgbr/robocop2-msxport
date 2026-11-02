@@ -13,7 +13,9 @@
 ; - New rows go to both pages; on the back page only the new column is drawn when the
 ;   pending copy will still bring the rest of the row.
 ; - VDP commands never block the CPU: s38_work issues at most one command, only when the
-;   VDP is idle, and is also called while the main loop waits for VBLANK.
+;   VDP is idle, and is also called while the main loop waits for VBLANK; but the new column's
+;   tiles go in a row while the play-field BOBs have no work (ending.asm s38_colb), each tile set
+;   up while the one before is copied.
 
 ; tile_to_page: A = row, E = column, D = page (0/1), C = first column of the page.
 ; Ignores whatever falls outside the page or the map.
@@ -305,16 +307,8 @@ s38w_b: ld a,(s38_back_c0)
         ld a,(s38_phase)
         or a
         jr nz,s38w_copy
-        call s38_col_tile
-        ld hl,s38_i
-        inc (hl)
-        ld a,(hl)
-        cp VIEW_ROWS
-        ret c
-        ld (hl),0
-        ld a,1
-        ld (s38_phase),a
-        ret
+        ld hl,s38_colb              ; the new column: its tiles in a row while the play-field BOBs have
+        jp f2_call                  ; no work (ending.asm, performance campaign 2's scroll-1)
 s38w_copy:
         ld a,(s38_i)
         cp VIEW_ROWS
@@ -351,6 +345,12 @@ s38b_lp:
 ; drawn for one picture), then the other one: the page being built, or during a flip not on screen
 ; yet the new displayed page (each draws only the columns it holds; a flip in between starts the
 ; cell again: s38_update). NZ when it took this call.
+; A first phase handed to the play-field BOBs (fb_redraw: rd_phase 2) puts the new tile on the page
+; shown only when they compose it there, at their time; so the page being built takes the cell only
+; once its copy has passed the cell's row slot (s38_covr), which it brings from the page shown. Drawn
+; before (until 2026-11-02), the copy could bring the old tile back over it, and the sync did not
+; mend it (it takes fb_bb, which that cell does not enter: ending.asm fs_sync): every later copy
+; carried it (l2_tour from game frame 735, C-BIOS_MSX2: row 38, column 64 old for 55 pictures).
 s38_redraw:
         call rd_peek
         ret z
@@ -366,7 +366,7 @@ s38_redraw:
         jr nz,s38r_back
         call s38_shown
         call fb_redraw
-        jr nz,s38r_vis              ; (the play-field BOBs compose it there: tiles.asm)
+        jr nz,s38r_fb               ; (the play-field BOBs compose it there: tiles.asm)
         ld a,(split_armed)
         or a
         jr nz,s38r_wait             ; (the beam in the play area: the window, the other work first)
@@ -382,13 +382,26 @@ s38_redraw:
         call ttp_count
 s38r_vis:
         ld a,1
+s38r_ph:
         ld (rd_phase),a
         or a
         ret
+s38r_fb:
+        ld a,2
+        jr s38r_ph
 s38r_wait:
         xor a                       ; (not now: Z, the other work goes on)
         ret
 s38r_back:
+        dec a
+        jr z,s38r_go                ; (rd_phase 1: the page shown holds the new tile)
+        ld a,(s38_back_c0)
+        inc a
+        jr z,s38r_go                ; (no page being built, or a flip's new displayed page: copied)
+        ld a,d
+        call s38_covr
+        jr z,s38r_wait              ; (its copy will still bring the cell's row slot: after it)
+s38r_go:
         call rd_pop
         ld a,(s38_flip_wait)
         or a
@@ -493,12 +506,13 @@ s38rs_done:
         ld (s38_rq),a
         ret
 
-; Z if the build's copy will still bring the slot of the pending row.
+; Z if the build's copy will still bring the slot of the pending row (s38_covr: of row A). Changes
+; A, BC, HL.
 s38_covered:
-        ld a,(s38_r0)
-        ld b,a
         ld a,(s38_rq)
-        sub b
+s38_covr:
+        ld hl,s38_r0
+        sub (hl)
         and 15                      ; position of the row's slot in the build
         cp VIEW_ROWS
         jr nc,s38c_no

@@ -1153,7 +1153,8 @@ atr_lost:   equ 0x1082              ; attribute values lost (atr_lut had no free
 mp_lost:    equ 0x1084              ; tiles lost (their pool full)
 rd_head:    equ 0x1085              ; redraw queue: oldest request,
 rd_tail:    equ 0x1086              ;   next free entry,
-rd_phase:   equ 0x1087              ;   1: the oldest was drawn on the displayed page (V9938),
+rd_phase:   equ 0x1087              ;   1: the oldest was drawn on the displayed page (V9938; 2: its
+                                    ;   BOBs compose it there, scroll9938.asm s38_redraw),
 rd_lost:    equ 0x1088              ;   requests lost (queue full)
 tc_loads:   equ 0x1089              ; tiles copied into VRAM on demand (statistics)
 ATR_RAM0:   equ 0x108C              ; the packed map attributes (tiles.asm atr_load): rows 0-47,

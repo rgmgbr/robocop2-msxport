@@ -1482,3 +1482,59 @@ fs_bxs: ld hl,fb_wbx
 fsb_c:  ld bc,8
         ldir
         ret
+
+
+; ----- scroll-1's V9938 burst (performance campaign 2, docs/PERF2_PLAN.md item 6, the V9938's part: lane W2C's,
+; with V9938-SYNC; here, through rc2.asm f2_call, so that the fixed area keeps its room) -----
+
+; (scroll9938.asm s38_work through f2_call: the V9938's build in its first phase, the VDP idle) The new column's
+; tiles in a row (s38_col_tile: tile_to_page waits for the tile before, so each next one is set up while it is
+; copied), while fs_stop38 lets them go on; its last one starts the copy's phase. Until then one tile a call
+; of s38_work, the next at the next idle point: a column took 224 ms of the MSX2's kill floors for about 11 ms
+; of VDP (a_scroll's measurement on 3b11042). The pending row's tiles stay one a call: in a row they kept the
+; CPU waiting for the VDP inside the logic's frames (tour3's lifts, 545-1065, -2.3 % on C-BIOS_MSX2 and -2.2 %
+; on the Expert against the code before, with V9938-SYNC; the column alone -0.3 and 0.0 %).
+s38_colb:
+        call s38_col_tile
+        ld hl,s38_i
+        inc (hl)
+        ld a,(hl)
+        cp VIEW_ROWS
+        jr nc,fyk_end
+        call fs_stop38
+        jr nc,s38_colb
+        ret
+fyk_end:
+        ld (hl),0
+        ld a,1
+        ld (s38_phase),a
+        ret
+
+; After a tile of the burst: C when it stops, NC when the next tile may follow. Between the HUD split and the
+; VBLANK the changed cells' window first (scroll9938.asm s38_rburst, as at s38_work's start: their first page
+; waits for that window); then it stops while the play-field BOBs have any work (fb_busy: a flip waits for
+; their sync of the page being built, the pictures for their work on the page shown; with it, a play-field copy
+; waiting for the blank, fb_cq 1 or 3, or their work of a published picture, fb_pend), or in VAT_ANIM=1 builds a
+; vat column waits for the blank (vat_fr's VF_RDY: vat_win draws it in the window between the HUD split and the
+; VBLANK, which a burst would keep busy; the shifted copy shrinks to one slot for it, s38_copy_chunk).
+fs_stop38:
+        ld a,(split_armed)
+        or a
+        call z,s38_rburst
+        ld a,(fb_busy)
+        cp 1
+        ccf
+        ret c
+        if VAT_ANIM
+        ld a,(vat_fr + VF_RDY)
+        or a
+        scf
+        ret nz
+        endif
+        ld a,(fb_cq)
+        rra
+        ret c
+        call fb_pend
+        ret z                       ; (NC: fb_pend's Z exits clear the carry)
+        scf
+        ret
