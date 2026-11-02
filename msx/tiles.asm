@@ -659,16 +659,22 @@ fvf_n:
 fvf_n:
         endif
 
-; (scroll9958.asm sw_next: after a tile of the V9958 engine's bursts) C when the burst stops here,
-; NC when its next tile may follow. It stops while a play-field copy waits for the blank (field.asm
-; fb_cq 1 or 3: the split interrupt starts it only with the VDP idle) or the play-field BOBs have
-; work of a published picture (fb_pend: the VBLANK holds that picture for them, FB_HOLD VBLANKs at
-; most); in VAT_ANIM=1 builds also while a vat column waits for the blank (vat_fr's VF_RDY: vat_win
-; draws it at the engine's next call, in the window between the HUD split and the VBLANK, which a
-; burst would keep busy; the V9938's shifted copy shrinks to one slot for it, scroll9938.asm
-; s38_copy_chunk). Here, beside the vats' other hooks: the scroll engines' files hold no VAT_ANIM
-; block (tests/test_level2_rom.py VatAnimTests). Changes AF, BC, HL.
+; (scroll9958.asm sw_next: after a tile of the V9958 engine's bursts) Between the HUD split and the
+; VBLANK the changed cells first (scroll9958.asm sw_redraw, as at scroll_work's start: a burst kept
+; that window busy, and on the turbo R a beam's row of 12 cells on the boss route waited 1.36 s on
+; average for its redraw, 0.58 s without the bursts; 0.57 s with this). Then C when the burst stops
+; here, NC when its next tile may follow. It stops while a play-field copy waits for the blank
+; (field.asm fb_cq 1 or 3: the split interrupt starts it only with the VDP idle) or the play-field
+; BOBs have work of a published picture (fb_pend: the VBLANK holds that picture for them, FB_HOLD
+; VBLANKs at most); in VAT_ANIM=1 builds also while a vat column waits for the blank (vat_fr's
+; VF_RDY: vat_win draws it at the engine's next call, in that window too; the V9938's shifted copy
+; shrinks to one slot for it, scroll9938.asm s38_copy_chunk). Here, beside the vats' other hooks:
+; the scroll engines' files hold no VAT_ANIM block (tests/test_level2_rom.py VatAnimTests). Changes
+; every register (sw_redraw), as scroll_work does.
 sc_stop:
+        ld a,(split_armed)
+        or a
+        call z,sw_redraw            ; (the window: the changed cells first)
         if VAT_ANIM
         ld a,(vat_fr + VF_RDY)
         or a

@@ -1,6 +1,7 @@
 """Performance campaign 2's scroll-1 on the V9958 (docs/PERF2_PLAN.md item 6): msx/scroll9958.asm scroll_work draws
 its column and row queues' tiles in a row while msx/tiles.asm sc_stop allows (sw_next), each tile set up while the one
-before is copied. The loops as built, the stop rule's decision on every state it reads (in VAT_ANIM=0 and VAT_ANIM=1 builds),
+before is copied. The loops as built, the stop rule's decision on every state it reads (in VAT_ANIM=0 and VAT_ANIM=1 builds;
+the changed cells' window first between the HUD split and the VBLANK),
 fb_pend's exits (the carry sc_stop returns), every tile of a burst waiting for the one before, and the V9938's engine
 (msx/scroll9938.asm) still issuing one command a call. Stdlib only."""
 from __future__ import annotations
@@ -26,17 +27,20 @@ def code(path: str, label: str, end: str) -> list[str]:
     return out
 
 
-STOP = ["if VAT_ANIM", "ld a,(vat_fr + VF_RDY)", "or a", "scf", "ret nz", "endif",   # a vat column waits (VAT_ANIM=1),
+STOP = ["ld a,(split_armed)", "or a", "call z,sw_redraw",                      # the window: the changed cells first,
+        "if VAT_ANIM", "ld a,(vat_fr + VF_RDY)", "or a", "scf", "ret nz", "endif",   # a vat column waits (VAT_ANIM=1),
         "ld a,(fb_cq)", "rra", "ret c",                                               # a copy waits for the blank,
         "call fb_pend", "ret z", "scf", "ret"]                                        # work of a published picture
 
 
-def stop(lines: list[str], ram: dict[str, int], pend: bool, vat_anim: bool) -> bool:
-    """sc_stop as the Z80 runs it in a build with VAT_ANIM 0 or 1 -> the carry it returns (True: the burst stops).
-    fb_pend: NZ when pend, its carry clear (FbPendTests)."""
+def stop(lines: list[str], ram: dict[str, int], pend: bool, vat_anim: bool) -> tuple[bool, bool]:
+    """sc_stop as the Z80 runs it in a build with VAT_ANIM 0 or 1 -> (the carry it returns: True when the burst stops,
+    whether the changed cells' window ran). fb_pend: NZ when pend, its carry clear (FbPendTests); sw_redraw: its flags
+    unknown."""
     c = z = None
     a = 0
     skip = False
+    window = False
     for ins in lines:
         if ins == "if VAT_ANIM":
             skip = not vat_anim
@@ -50,6 +54,12 @@ def stop(lines: list[str], ram: dict[str, int], pend: bool, vat_anim: bool) -> b
             a = ram[ins[6:-1]]
         elif ins == "or a":
             c, z = False, a == 0
+        elif ins == "call z,sw_redraw":
+            if z is None:
+                raise AssertionError("call z on an unknown zero flag")
+            if z:
+                window = True
+                c = z = None
         elif ins == "rra":
             a, c = (a >> 1) | (0x80 if c else 0), bool(a & 1)
         elif ins == "call fb_pend":
@@ -60,16 +70,16 @@ def stop(lines: list[str], ram: dict[str, int], pend: bool, vat_anim: bool) -> b
             if c is None:
                 raise AssertionError("ret c on an unknown carry")
             if c:
-                return True
+                return True, window
         elif ins in ("ret z", "ret nz"):
             if z is None:
                 raise AssertionError(ins + " on an unknown zero flag")
             if z == (ins == "ret z"):
                 if c is None:
                     raise AssertionError("a return with an unknown carry")
-                return c
+                return c, window
         elif ins == "ret":
-            return c
+            return c, window
         else:
             raise AssertionError(ins)
     raise AssertionError("no return")
@@ -103,15 +113,21 @@ class BurstTests(unittest.TestCase):
                                          "ret c"])
 
     def test_the_stop_rule(self):
-        """C (stop) when a copy of the play-field BOBs waits for the blank (fb_cq 1 or 3) or they have work of a
-        published picture (fb_pend NZ); in VAT_ANIM=1 builds also while a vat column waits for the blank (vat_fr's
-        VF_RDY, which vat_win draws at the engine's next call). NC: the next tile follows."""
+        """Between the HUD split and the VBLANK (split_armed 0) the changed cells' window first (sw_redraw), whatever
+        it then decides. C (stop) when a copy of the play-field BOBs waits for the blank (fb_cq 1 or 3) or they have
+        work of a published picture (fb_pend NZ); in VAT_ANIM=1 builds also while a vat column waits for the blank
+        (vat_fr's VF_RDY, which vat_win draws at the engine's next call). NC: the next tile follows."""
         self.assertEqual(code("tiles.asm", "sc_stop", "fb_pend"), STOP)
         self.assertNotIn("sc_stop:", (ROOT / "msx" / "scroll9958.asm").read_text())
-        for vat_anim, rdy, cq, pend in itertools.product((False, True), (0, 1), range(5), (False, True)):
-            ram = {"fb_cq": cq, "vat_fr + VF_RDY": rdy}
+        for vat_anim, armed, rdy, cq, pend in itertools.product((False, True), (0, 1), (0, 1), range(5), (False, True)):
+            ram = {"split_armed": armed, "fb_cq": cq, "vat_fr + VF_RDY": rdy}
             want = bool(cq & 1) or pend or (vat_anim and rdy != 0)
-            self.assertEqual(stop(STOP, ram, pend, vat_anim), want, (vat_anim, rdy, cq, pend))
+            self.assertEqual(stop(STOP, ram, pend, vat_anim), (want, armed == 0), (vat_anim, armed, rdy, cq, pend))
+        red = code("scroll9958.asm", "sw_redraw", "swr_one")
+        self.assertEqual(red[:2], ["ld b,RD_BURST", "push bc"])      # (up to RD_BURST cells, each in the window)
+        work = code("scroll9958.asm", "scroll_work", "sw_idle")
+        self.assertEqual(work[2:5], ["ld a,(split_armed)", "or a", "jr nz,sw_vb"])
+        self.assertEqual(work[5], "call sw_redraw")                  # (the same window at scroll_work's start)
 
     def test_the_vat_flag(self):
         """VF_RDY is vat_fr's ready flag (field.asm), set by vats.asm vat_prep and cleared by vat_run; vat_win

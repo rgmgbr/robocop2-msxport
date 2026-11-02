@@ -1159,7 +1159,11 @@ which as sprites were striped, cut or left out.
   Cain's chase a new column took 393 ms on the MSX2+ and 308 ms on the turbo R (measured on 3b11042).
   Now the column and row queues go out tile after tile in one call (`sw_next`), each tile set up
   while the one before is copied (`draw_tile` waits for it), until the queues are empty (then the
-  idle work, `sw_idle`) or `tiles.asm` `sc_stop` says no after a tile:
+  idle work, `sw_idle`) or `tiles.asm` `sc_stop` says no after a tile. Between the HUD split and the
+  VBLANK `sc_stop` first runs the changed cells' window (`sw_redraw`, as at `scroll_work`'s start):
+  without it a burst kept that window busy, and on the turbo R a beam's row of 12 cells on the boss
+  route (from game frame 600) waited 1.36 s on average for its redraw, against 0.58 s without the
+  bursts and 0.57 s with the window. It stops the burst when:
   - a play-field copy waits for the blank (`fb_cq` 1 or 3: the split interrupt starts it only with
     the VDP idle);
   - the play-field BOBs have work of a published picture (`fb_pend`: the VBLANK holds that picture
@@ -1171,7 +1175,7 @@ which as sprites were striped, cut or left out.
   - Only when the tiles go out changes: the same cells by the same rules (`draw_kept`), the changed
     cells' window first as before. The V9938's engine (`scroll9938.asm`) still issues one command a
     call: its bursts (lane W2C's) raised the pictures held to `FB_HOLD` on the V9938 and wait for item
-    7. Fixed area: 18 B (24 in the `VAT_ANIM=1` builds).
+    7. Fixed area: 25 B (31 in the `VAT_ANIM=1` builds).
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about
