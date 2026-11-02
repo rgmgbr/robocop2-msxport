@@ -17,11 +17,11 @@ anything generated in `build/`.
 - An MSX2, MSX2+ or MSX turbo R with 128 KiB of VRAM and 64 KiB of RAM.
 - A cartridge device that runs a **Konami SCC MegaROM** (the Konami5 mapper) of the game's size:
   - releases 0.1.x, with level 1 only: **1 MiB**;
-  - **the complete game: 2 MiB**, the minimum device for it (the user's decision, 2026-10-26:
-    [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). The complete game (the three levels, both bonus
-    stages and the ending; in development, not released yet) is a 2 MiB image (163 of its 256
-    banks). A 2 MiB image checks the device at power-on: on one that holds less, the game shows
-    "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or MegaRAM." and stops.
+  - **the complete game, release 1.0.0 and later: 2 MiB**, the minimum device for it (the user's
+    decision, 2026-10-26: [docs/DISK_VS_ROM.md](docs/DISK_VS_ROM.md)). The complete game (the three
+    levels, both bonus stages and the ending) is a 2 MiB image. It checks the device at power-on:
+    on one that holds less, the game shows "ROBOCOP 2 needs a 2 MB Konami SCC cartridge or
+    MegaRAM." and stops.
 
   No original cartridge is that large, so the game needs one of these: a flash or multi-ROM
   cartridge, a MegaRAM, an FPGA MSX, or an emulator.
