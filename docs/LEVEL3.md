@@ -697,11 +697,14 @@ What step C built and where it departs from 3.5-3.6 (the account and the checks:
   `fc_find` / `fc_get`: a frame not resident is copied from its ROM bank when a piece is composed with
   it, with the VDP idle and no command prepared (`fb_dyn`'s rule), 13-21 ms a copy (1-1.3 KiB: about 15
   us a byte while the screen shows, the R800 the same). Its ROM: 14 banks, the header in the first one
-  (per id [normal, white], per cache frame [bank, address, place], per place [x, line, overlaps]).
+  (per id [normal, white], per cache frame [bank, address, place], per place [x, line, overlaps]). Since
+  performance campaign 2's field-1 the frames are stored cut to their opaque boxes: 11 banks.
 - **ROM**: **163 of 256 banks**. `place_banks` now lays out every block after level 2's atlas (the pool's
   growth had put Brainstorm's visit-2 pictures on bank 127): level 3's map and attributes 124-126,
   `BANK_FRONT2` 127, the visit-2 pictures 128-131, the ending's sound 132-135, level 3's tiles 136-143,
-  tables 144, atlas 145-146, frame cache 147-160, `BANK_L3` 161, `BANK_L3B` 162.
+  tables 144, atlas 145-146, frame cache 147-160, `BANK_L3` 161, `BANK_L3B` 162. Since performance
+  campaign 2's batch 1: **160 banks**, the frame cache 147-157, `BANK_L3` 158, `BANK_L3B` 159
+  (`docs/ROM_BUDGET.md` 2.5).
 - **Default 9**: the vats' display only in `VAT_ANIM=1` builds; there `BANK_FIELD` has no room for level
   3's play field, so those builds leave it out (`fld_l3` empty, level 3's play-field frames out of its
   BOBHASH: not drawn; they serve level 2's comparison).

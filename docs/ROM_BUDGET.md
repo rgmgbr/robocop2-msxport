@@ -20,6 +20,10 @@ the image is **2 MiB, 163 of its 256 banks** at `level2` 56e8f56 (2.4: the bank 
 3's and the ending's real cost against sections 3.3 and 3.5-3.6; section 7: what became of the limits).
 The numbers of 2.4 are mkrom's and the label files' for builds of 56e8f56; later commits change some.
 
+**Update, 2026-11-01 (performance campaign 2, batch 1, branch `perf2/batch1`).** Level 3's play-field frames
+are cut to their opaque boxes: its frame cache takes **11 banks instead of 14**, so the image uses **160 of its
+256 banks** (`BANK_L3` 158, `BANK_L3B` 159). The free bytes of every code bank moved: section 2.5.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -57,6 +61,8 @@ Conventions:
 | Free on 2026-10-31 (bank 127) | 1 | 8 |
 | Used on 2026-11-01 at 56e8f56, with the ending and level 3 (banks 0-162 of the 2 MiB image, 2.4) | 163 | 1,304 |
 | Free at 56e8f56 (banks 163-255; bank 255 carries the boot guard's tag) | 93 | 744 |
+| Used after performance campaign 2's batch 1 (banks 0-159, 2.5) | 160 | 1,280 |
+| Free after it (banks 160-255) | 96 | 768 |
 | Rest of the game with today's pipeline (one palette per level) | about 102 | about 816 |
 | Rest of the game with the plan of section 3 (one palette, one sprite pool), low / likely / high | 58 / 63 / 73 | 464 / 504 / 584 |
 
@@ -340,6 +346,57 @@ area, as before):
 | CMP, the ending's tune | 4/4/4 banks, 25.5/25.5/28.0 KiB (SCC 12,419 + OPLL 8,511 + PSG 5,144 B) | 4 banks (132-135), `end.bin` **27,110 B**: SCC 12,797, OPLL 8,793 (with HH and TCY), PSG 5,287 B, unrolled to the 4,916 ticks the original plays (4,800 and 116 of its loop) |
 | HI1's effects 3 and 4 | in bank 77's free bytes | in `end.bin` beside the tune (`snd_ffx`) |
 | MUSIC | — | `tn_cmp` and its descriptor: 1,331 → 1,251 B free |
+
+### 2.5 Performance campaign 2, batch 1 (2026-11-01)
+
+M, from `tools/mkrom.py`'s output, `gen/banks.inc`, `tools/bstest/variants.sh` (all 61 option sets) and
+`tools/bstest/l2base.py banks`, for builds of the merged branch `perf2/batch1` against `level2` a75405c
+(the code of 3b11042; `docs/PERF2_PLAN.md`, `docs/level3/HANDOFF.md` "Performance campaign 2, batch 1").
+**2 MiB, 160 of 256 banks**: level 3's frame cache holds the frames' opaque boxes (field-1), 90,112 B in
+**11 banks, 147-157** (114,688 B in 14 before); `BANK_L3` moves to **158**, `BANK_L3B` to **159**; banks
+160-255 are free (96; bank 255 carries the boot guard's tag, 191 is padding). Every other block keeps its
+bank (2.4's map).
+
+**Free bytes in the code banks.** "Lowest set" is the option set with the least fixed area among the 58
+that built at a75405c (`DIAG=1 PZ_TEST=1`, `p_pzdiag`; `p_pzdiag2` the same); the last column is the least
+of every set that builds, with the set. All 61 sets build now: `DEMO_ACTORS` 2 and 5 and `DEMO_HUD`, which
+overflowed the fixed area, have 76, 76 and 261 B.
+
+| Bank | Product a75405c | Product batch 1 | Lowest set a75405c | Lowest set batch 1 | Least in any set, batch 1 |
+|---|---:|---:|---:|---:|---|
+| fixed area | 164 | **483** | 29 | **348** | 76 (`DEMO_ACTORS` 2 and 5); 348 of the 58 sets |
+| LC1 | 24 | 24 | 24 | 24 | 24 (153 in the trace builds) |
+| LC2 | 4,827 | 4,827 | 4,827 | 4,827 | 4,827 |
+| `BANK_L1` | 874 | **378** | 874 | 378 | 378 |
+| LC3 | 4,794 | **4,785** | 4,794 | 4,785 | 4,752 (`CHEAT=1`) |
+| INPUT | 11 | 11 | 11 | 11 | 11 |
+| FRONT | 1,112 | **1,105** | 714 | 707 | 659 (`DIAG=1 LV_TEST=2` or `3`) |
+| `BANK_FIELD` | 49 | **112** | 49 | 112 | 71 (the `EXTJOY` drive, trace and lock builds; 8 before) |
+| MUSIC | 1,251 | 1,251 | 1,280 | 1,280 | 0 by the count in the two `DIAG=2` sets, as before |
+| `BANK_PUZL` | 4,483 | 4,483 | 4,483 | 4,483 | 4,483 |
+| `BANK_FRNG` | 264 | 264 | 264 | 264 | 264 |
+| `BANK_L2` | 1,429 | **933** | 1,429 | 933 | 28 (`VAT_ANIM=1`, unchanged) |
+| `BANK_FRONT2` | 7,026 | **6,894** | 7,026 | 6,894 | 6,871 (`TAG` builds) |
+| `BANK_L3` | 3,867 | **3,151** | 3,867 | 3,151 | 3,151 (3,647 with `VAT_ANIM=1`) |
+| `BANK_L3B` | 2,383 | **2,014** | 2,383 | 2,014 | 2,014 |
+
+Where the bytes went, by item (product):
+- **The fixed area +319** (each commit's product, measured): spr-6's first form 164 -> 731 (the whole
+  give-way, 584 B, into `msx/lvshared.asm`'s last section, behind the 17-byte `bu_lvl`), spr-1 -> 692,
+  spr-4 -> 644, spr-6 revised -> 486 (the per-candidate walks back in the fixed area for the turbo R, which
+  runs it from RAM: the level banks keep 496 B, the per-give and per-run code, `bu_order` and the cut, so
+  `BANK_L1`, `BANK_L2` and `BANK_L3` each lose 496); logic-1 +4 and logic-2 -7 (-3).
+- **`BANK_FIELD` +63**: field-2's R1 moved `field_upload` (132 B) to `BANK_FRONT2`, `ftl_ax` took 20 and
+  FC-UPLOAD 49.
+- **`BANK_L3` -716 and `BANK_L3B` -369**: spr-6's section (496) and logic-1/2 (beam and turret caches, the
+  tables with tiles: 220 and 369; the old word tables stay in the banks unread, 80 and 144 B).
+- **LC3 -9 and FRONT -7**: logic-1.
+- The `FLASH_LOOK` option (default 0, byte-identical) costs 6 B (look 6) or 2 B (look 7) of the fixed area
+  and 5 B of LC1 when built.
+
+RAM: 63 B more in use: logic-1's caches (F170h-F190h, ECFBh-ED08h, EDF0h-EDFBh: 59 B), spr-1's `sb_end`
+(ED0Ch), spr-4's `ft_orn` (EDFCh-EDFEh); still free there: ED09h-ED0Bh (flash-1's, `docs/PERF2_PLAN.md`
+5.2), ED0Dh-ED0Fh and EDFFh.
 
 ## 3. What the rest of the game needs
 

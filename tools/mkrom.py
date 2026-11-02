@@ -257,7 +257,7 @@ OPTIONS = {
                     " points"),
     "FLASH_LOOK": (0, "the look of an enemy's hit flash, for the user's choice (docs/PERF2_PLAN.md D1; msx/bob.asm"
                       " fl_due; docs/MSX_ARCHITECTURE.md): 0 = one white picture for each hit (as always); 6 = at"
-                      " most one white picture in 4 per enemy; 7 = an enemy stays white while hit less than 2"
+                      " most one white picture in 4 per enemy; 7 = an enemy stays white while hit at most 2"
                       " pictures apart, and turns normal 2 pictures after its last hit; the logic as always"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
@@ -1285,14 +1285,14 @@ def main(argv: list[str]) -> int:
     # rc2.asm l3b_call), read at A000h only, take the banks the rule leaves to such code (bank 127 in
     # this layout) or follow the data; the data blocks, which the 8000h window maps, in their order where
     # they fit: Brainstorm's visit-2 pictures, the ending's sound, level 3's tiles, map (25 rows a bank),
-    # packed attributes, tables (docs/LEVEL3.md 3.2), its play field's atlas (field.asm field_upload) and
+    # packed attributes, tables (docs/LEVEL3.md 3.2), its play field's atlas (ending.asm field_upload) and
     # its frame cache (field.asm fc_get: docs/LEVEL3.md 3.5); padding only when it must
     tiles3 = vram3[0x10000:0x20000]
     map3_banks = [mp3[b * COLS * 2:(b + ROWS_PER_BANK) * COLS * 2] for b in range(0, rows3, ROWS_PER_BANK)]
     map3_banks = [c + b"\xff" * (BANK - len(c)) for c in map3_banks]
     l3_blocks = {"tiles": tiles3, "map": b"".join(map3_banks), "atr": atr_3 + bytes(BANK - len(atr_3)), "tab": tab3,
                  "atlas": field_img3 + b"\xff" * (-len(field_img3) % BANK), "fc": fc_rom}
-    # (its play field's: the static atlas, field.asm field_upload at 8000h; the frame cache's frames and
+    # (its play field's: the static atlas, ending.asm field_upload at 8000h; the frame cache's frames and
     # header, field.asm fc_get at 8000h: docs/LEVEL3.md 3.5)
     late = {"tv2": puzl_tv2} | ({"end": end + b"\xff" * (-len(end) % BANK)} if end else {}) | l3_blocks
     l3_at, l3_pad, banks_used = place_banks(bank_late, ["FRONT2", "L3", "L3B"],

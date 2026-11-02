@@ -48,7 +48,7 @@ Agent "plan", 2026-11-01. Base: `level2` at 3b11042 (HEAD 4f8fcb4 differs only i
   - The set makes the frame 1.4-1.5x shorter, where 3.1x is needed.
 - **The rest is the user's decision** (section 3):
   - **The cadence cap** (loop-3 or loop-1): MSX2+ Cain's route 15.7 or 17.8 ticks/s.
-  - **The flash's look.** flash-7 is the only change that makes the turbo R's shooting as smooth as its play without flashes: about 38 pictures a second. On the Z80 ground floor it gives about 16.7 ticks/s.
+  - **The flash's look.** flash-7 was estimated as the only change that makes the turbo R's shooting as smooth as its play without flashes: about 38 pictures a second. On the Z80 ground floor it gives about 16.7 ticks/s. Measured on HEAD (Wd1, D1 below), flash-7 as specified counts pictures and gives the turbo R 23.5 pictures/s with the look still changing; a hold counted in ticks would give 38.8.
   - **The V9938 lag tolerance**: about +10 % on the MSX2.
 
 ## 1. Where the time goes (measured)
@@ -157,6 +157,12 @@ Each item keeps the logic tick for tick and the same pictures; only the timing c
 The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = large.
 
 1. **field-1: trim every play-field frame to its opaque pixels.** A converter-only change. Effort S. Prototype: `C/a_field/tools/mktrim.py`, `C/a_field/R/trim.rom`.
+   - **Status (batch 1, 2026-11-01).** Level 3: **done**, `e998eb6` (lane W1F; merged into `perf2/batch1` by
+     `54da0e0`): 55 of level 3's 66 frames cut, the frame cache 14 -> 11 banks (`BANK_L3`/`BANK_L3B` at 158/159).
+     Levels 1-2: **dropped** in the lane: their commit made one turbo R picture of `l2t495` differ (32 px at the
+     trolley's top edge, where the ring draws its new column) that HEAD and the lane's other builds do not show,
+     for a measured gain of +0.1-0.5 % on `l2_tour` (the patch: `C/w1f/dropped/`). Whoever revives it finds that
+     picture's cause first.
    - **Gain (M) on Cain's route.** MSX2 7.26->8.26 (+13.7 %), MSX2+ 10.04->11.69 (+16.5 %), turbo R 15.00->17.87 (+19.2 %).
    - **Gain (E) elsewhere.**
      - The boss route: about +12-14 % on the Z80 machines, +18-20 % on the turbo R.
@@ -174,6 +180,9 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
    - **Gate.** `vertrim.py` as a unit test: 66/66 frames, normal and white, pixel-identical at their places. romdiff limited to `field_tab` and the cache's banks (and the atlas tables for levels 1-2). Then G-LOGIC, G-FIELD (levels 1-3), G-HOLD and G-SPEED.
 
 2. **field-2: `fb_tiles` by byte arithmetic on the piece's corner, plus R1 (`field_upload` moved to FRONT2).** Effort S. Prototype: `C/a_field/patches/field_proto_full.diff` (it also holds item 8's OTIR loop), `C/a_field/tools/eqtiles.py`, `C/a_field/R/trimtiles.rom`.
+   - **Status (batch 1).** **Done**, `5e59ae3` (W1F): BANK_FIELD 8 -> 120 B free in the drive builds before
+     item 8; FRONT2 7,026 -> 6,894 in the product. The level-1 power-on, level-2 start, level-3 start and
+     continue upload the atlas through `front2_call` (0 frames differ on three machines).
    - **Gain (M).** On top of field-1, Cain's route gains +4.7 / +5.5 / +1.1 %. The two together against HEAD:
 
      | Window | MSX2 | MSX2+ | turbo R |
@@ -229,6 +238,9 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      - Then G-LOGIC, G-HOLD (the prototype's 0 -> 7 on boss 110+ lies inside the control builds' 3-5: judge on whole drives), G-GUARD, G-LOCK and G-SPEED (ground floor and boss).
 
 4. **logic-1: skip the beam and turret map writes that would rewrite a cell's own word.** Uses a map-change counter. Effort S. Prototype: `C/a_logic/diffs/p1_logic1.diff`.
+   - **Status (batch 1).** **Done**, `1c0a789` (W1L; merged by `b8c538d`), with `mw_gen` bumped in `tiles_init`,
+     both masks cleared in `l3_init` and the skip also requiring `atr_lost` 0. The map at every tick's start equals
+     HEAD's (review: 4,463 ticks of tour3, park and kill, 0 differ).
    - **Gain (M).**
      - The whole tour3: +3.9 % on the MSX2, +5.9 % on the MSX2+.
      - tour3's roof: +9.3 % / +10.0 %.
@@ -248,6 +260,8 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      - G-SPEED.
 
 5. **logic-2: the beams' and turrets' tiles looked up at build time (`map_write_t`), and `rd_bit` without loops.** Effort M. Prototype: `C/a_logic/diffs/p2_logic2_on_p1.diff`, `C/a_logic/diffs/mktt.py`.
+   - **Status (batch 1).** **Done**, `042965e` (+ `8cabb89`, docs) (W1L): `tools/mapcells.py look_tables` writes
+     `gen/tt_l3.inc` and `tt_l3b.inc` at every build; `tests/test_level3_logic.py`.
    - **Gain (M, logic-1 and logic-2 together against HEAD).**
      - tour3: MSX2 9.07->9.66 (+6.5 %), MSX2+ 12.87->14.17 (+10.1 %).
      - The roof: +15.4 / +16.3 %.
@@ -308,6 +322,8 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      - G-SPEED, with m_l3 B's lost-tick table on the MSX2 and the Expert.
 
 8. **FC-UPLOAD (field-3 merged with flash-2): frame-cache uploads with a tight per-line loop.** Effort S. Prototypes: `field_proto_full.diff` (OTIR) and `C/a_flash/src_p1/` (OUTI).
+   - **Status (batch 1).** **Done**, `ffe75d7` (W1F): 49 B of BANK_FIELD (estimated 35), so 71 B stay free in the
+     drive builds (112 in the product); 9.1-9.3 us a byte on the Z80 machines, 11.1-11.4 on the turbo R.
    - **Gain (M).**
      - field-3 on top of field-1/2: MSX2+ kill +3.3 % (v_gain puts the real effect at +1.5-2 %); turbo R boss +1.1 %.
      - flash-2 alone on the boss route: +1.3 / +1.9 / +2.5 %. Per byte: 12.6 -> 8.5 us (MSX2), 13.4 -> 9.2 us (MSX2+), 12.4 -> 11.0 us (turbo R).
@@ -361,6 +377,11 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
       - G-FIELD, G-LOGIC and G-SPEED.
 
 12. **spr-6 (an enabler): the give-way moves into `lvshared.asm`.** It covers `ft_total`..`ftg_end`, `ft_live` and `ft_map`: about 550 B. Effort M.
+    - **Status (batch 1).** **Done in a revised form**, `630452d` and `90ee7b7` (W1S; merged by `b79bac3`). With
+      the whole give-way in the level banks the turbo R ran its ground floor 4 % slower (the fixed area runs from
+      its internal RAM, the level banks from the cartridge), so the per-candidate walks stay in the fixed area
+      and the level banks hold 496 B (the per-give and per-run code, `bu_order`, the cut). The lowest option set
+      gains 322 B (29 -> 351; 348 at the merged tip with logic-1/2's -3), not about 530; all 61 sets build.
     - **Gain.** None (about 100-150 T-states more per budget run). It frees about 530 B of the fixed area. The lowest option set (p_pzdiag: 29 B free) needs that room for every fixed-area item. It adds no bank to the per-frame set.
     - **Where.**
       - `msx/lvshared.asm` is assembled into every level bank at the same address. Free bytes: L1 874, L2 1,429, L3 3,867.
@@ -372,6 +393,10 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
       - The product started from the title on the three machines.
 
 13. **spr-1 and spr-4: object walks bounded by `fl_last`, and budget micro-changes.** Effort S. Prototype: `C/a_sprites/patches/spr_bundle_loops_budget.diff`.
+    - **Status (batch 1).** **Done**, spr-1 `33a8a62`, spr-4 `58d0ecf` (W1S). `ft_orn` at EDFCh-EDFEh (the
+      fallback, no RAM watch needed); the band test in `tests/test_sprite_pool.py` (144 compositions). At the
+      merged tip: census 0 differing records on the FS-A1FX (kill 878 runs, l2_tour 906) and on C-BIOS_MSX2's
+      l2_tour; budget T-states a run -8.1 % on kill, -12.1 to -12.9 % on l2_tour.
     - **Gain (M).**
       - Level-2 pictures: +3.4 % on the MSX2, +5.1 % on the MSX2+.
       - Cain's ticks: +0.5-1.5 %, at the noise level.
@@ -500,7 +525,7 @@ Numbers are ticks/s / progress pictures/s, on top of the full decision-identical
   | MSX2+ | 13.9-14.3 / 7.2-7.4 |
   | turbo R | 24.0-24.3 / 14.1-14.3 (about 20 pictures/s in all, 37 without flashes) |
 
-- **flash-7: a steady white during a burst.** An enemy hit less than 2 pictures after its previous hit stays white. It turns normal 2 pictures after the last hit. This is the only option that makes the turbo R's shooting as smooth as its play without flashes.
+- **flash-7: a steady white during a burst.** An enemy hit less than 2 pictures after its previous hit stays white. It turns normal 2 pictures after the last hit. This is the only option that makes the turbo R's shooting as smooth as its play without flashes (estimated; on the turbo R the hold as specified lapses: the measured note below).
   - The ground floor:
 
     | Machine | ticks/s / progress pictures/s |
@@ -521,6 +546,23 @@ Numbers are ticks/s / progress pictures/s, on top of the full decision-identical
     | turbo R | 24.2 / 16.9 |
 
   - Cost: about 10-20 B.
+- **Measured on HEAD (Wd1, the `FLASH_LOOK` previews test10 and test11, 2026-11-01).** The ground floor
+  (kill 1500-1765), ticks/s / pictures/s / progress pictures/s:
+
+  | Look | MSX2 | MSX2+ | turbo R |
+  |---|---|---|---|
+  | 0 (today) | 10.18 / 5.53 / 5.34 | 10.06 / 5.43 / 5.20 | 19.54 / 14.01 / 10.99 |
+  | 6 | 12.72 / 7.10 / 6.67 | 12.09 / 6.66 / 6.39 | 20.05 / 26.86 / 14.68 |
+  | 7 | 16.54 / 9.36 / 8.68 | 15.40 / 8.37 / 8.02 | 19.40 / 23.50 / 13.33 |
+
+  - flash-7 as specified counts pictures. The Z80 machines get a steady white (1 look change on the ground floor,
+    87 today), but the turbo R runs about 1.5 ticks a picture, so Cain's hits come 3-4 pictures apart and the
+    2-picture hold lapses: 58 changes and 23.5 pictures/s, not the steady white at about 38 pictures/s above.
+  - A hold counted in game ticks (white for 4 ticks after each hit; an uncommitted experiment, `C/wd1/exp`) looks
+    the same as flash-7 on the Z80 machines and is steady on all three: 15.58 / 15.43 / 22.75 ticks/s, the turbo R
+    at 38.80 pictures/s. It could be offered as its own option.
+  - The code's rule: a hit shows the enemy white in its picture and the next one, so hits at most 2 pictures apart
+    keep it white. Boss route (130-1400): +0.4 to +2.4 % with either look.
 
 **D2. Ticks per picture when pictures are slow.** Today CAD_MAX is 2. On 2026-10-21 the user rejected 3-4 ticks a picture in level 1, when the walk's next step also loaded late.
 - **Keep 2.**
@@ -599,7 +641,7 @@ Ticks/s are capped at 25.
 | | turbo R | 13.87 / 7.63 | 18.1 / 9.3 | 18.3-18.4 / 9.3-9.4 | loop-1 22.8/9.1; loop-3 19.2/9.3; flash-7 18.9/9.7 |
 | Ground floor, Cain shot (1500-1765) | MSX2 | 10.18 / 5.34 | 13.0 / 6.8 | 13.8-14.4 / 7.3-7.6 | flash-7 16.8/9.2; flash-6 15.4/8.2; loop-1 18.7/7.3; loop-3 15.5/7.1 |
 | | MSX2+ | 10.06 / 5.20 | 13.3 / 6.9 | 13.9-14.3 / 7.2-7.4 | flash-7 16.7/9.1; flash-6 15.4/8.1; loop-1 18.8/7.2; loop-3 15.6/7.0; loop-5 19.5/10.1 |
-| | turbo R | 19.54 / 10.99 (14.0 all) | 23.6 / 13.9 | 24.0-24.3 / 14.1-14.3 (about 20 all) | flash-7 24.7/21.2 (about 38 all); flash-6 24.2/16.9; loop-1 25/14.1 |
+| | turbo R | 19.54 / 10.99 (14.0 all) | 23.6 / 13.9 | 24.0-24.3 / 14.1-14.3 (about 20 all) | flash-7 24.7/21.2 (about 38 all); flash-6 24.2/16.9; loop-1 25/14.1 (flash-7: estimated; see D1's measured note) |
 | Level 3's start (tour3 0-1400) | MSX2 | 9.07 / 5.33 | 10.4 / 6.2 | 10.9-11.2 / 6.4-6.6 | loop-1 11.4/6.2; lag-x 11.5/6.8; logic-8 10.9/6.5 |
 | | MSX2+ | 12.87 / 7.14 | 15.0 / 8.7 | 15.6-16.0 / 9.0-9.3 | loop-1 17.1/8.6; loop-3 16.2/8.9; logic-8 15.8/9.1; loop-5 20.3/11.7 |
 | | turbo R | 21.37 / 18.42 | 22.3 / 19.0 | 22.3 / 19.0 | loop-1 23.1/19.0 |
@@ -711,6 +753,13 @@ Serial chains:
 | 3 | W3F-a field | field-7; TILE-LOOKUP; field-10 (100 B budget) | `msx/field.asm` (`fb_piece`/staging, `fb_tiles`, `fb_fill`), `tiles.asm` (the row helper) | W2F, W2L |
 | 3 | W3F-b field | field-6; flash-3; flash-4 | `msx/field.asm` | W3V, W3F-a |
 
+**Batches 0 and 1: done (2026-11-01).** W0's kit `1c5791c` (with its review's fixes `2d58639`, `fdc3469`,
+`47323db`, `c3732a9`, `c734c0b`) and the lanes W1L, W1S, W1F and Wd1 were merged in that order into
+`perf2/batch1` (merge commits `7a3e845`, `b8c538d`, `b79bac3`, `54da0e0`, `44e7cf6`); no lane was dropped,
+field-1's levels 1-2 commit was dropped inside W1F. The gates on the merged tip, the speed table (HEAD
+against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign
+2, batch 1"; the free bytes: `docs/ROM_BUDGET.md` 2.5.
+
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.
 - After every merge: G-BUILD and G-LOGIC on the merged tip.
@@ -766,8 +815,13 @@ Serial chains:
 
 ## 6. Open points
 
-- **The flash in levels 1-2 is unmeasured.** The user's complaint covers all enemies (W0).
-- **The MSX2's boss route with field-1/2 was never measured** (W0).
-- **The x-only lag build was never run** (W0).
+- **The flash in levels 1-2 is unmeasured.** The user's complaint covers all enemies (W0). *Measured by W0:* on
+  `l2_end`, where flashes are dense, the silhouettes cost 9.0 % of the flash pictures' time on the MSX2 (+6.8 ms
+  each), 4.3 % on the MSX2+ and 0 on the turbo R: below 5.3's ~20 %, so W2S gets no item for it.
+- **The MSX2's boss route with field-1/2 was never measured** (W0). *Measured:* `trimtiles.rom` 6.12 -> 7.21
+  ticks/s (W0); the merged batch 1 7.29.
+- **The x-only lag build was never run** (W0). *Measured by W0* on HEAD, C-BIOS_MSX2, kill 130-1400: lagx64
+  7.26 -> 8.91 ticks/s (+22.7 %), c3lagx64 9.89 (+36.2 %); l2_tour 20-1590 +0.7 % / +5.2 % (the Expert the same
+  within 0.5 %).
 - **scroll-1's picture count.** It removes catch-up pictures. Look at the turbo R's scroll on a recording before merging.
 - **A study, not analysed for tears.** After the set, the flash still costs the turbo R about half its picture rate on the ground floor, and only flash-7 removes that. A possible decision-identical step: when no other BOB overlaps a look-only item, draw the new look with LMMM straight onto the page, in the copy's beam slot. That saves both copies, about 30 ms of VDP time per toggle.

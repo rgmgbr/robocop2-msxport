@@ -337,11 +337,16 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   internal RAM, and with the whole give-way in the cartridge (measured on the FS-A1GT, the drive
   builds without `pub_cur`) the R800 took 2 to 4 % more time where Cain is shot: ground floor
   19.35 -> 18.55 ticks/s, boss route 13.96 -> 13.70; with the walks in the fixed area 19.09 and
-  13.98, within what a mere shift of the fixed area's code moves there (19.21-19.23 and
-  13.95-14.06 for HEAD shifted by 1 and 3 bytes); the Z80 machines alike either way. The budget is that code's only caller:
+  13.98 (-1.3 % and +0.1 % against their own base), within what a mere shift of the fixed area's
+  code moves there (gate builds 19.54 -> 19.21-19.23, -1.6/-1.7 %, and 13.87 -> 13.95-14.06 for HEAD
+  shifted by 1 and 3 bytes); the Z80 machines alike either way. The budget is that code's only caller:
   `sprites_tick` runs it through `bu_lvl`, which maps the level's logic bank (`lvl_bank`) at A000h
   and then puts back the bank that was there (the sprite pools, at times), about 150 T-states a
-  run; the logic maps that bank every tick, so a frame's set of banks stays the same. The code
+  run; the logic maps that bank every tick, so a frame's set of banks stays the same, but for a
+  frame without a tick in which `cam_follow` runs the budget (the logic's bank, no logic) and the
+  `VAT_ANIM=1` test builds in levels 2-3 (`BANK_L1`, below): a speed target on page-cache
+  devices only. The census's T-states a run leave `bu_lvl`'s own cost out (about 163 T a run,
+  counted by instruction: about 0.3 points of the saving on kill). The code
   reads and writes RAM only and calls the fixed area's routines. `VAT_ANIM=1` builds, whose level
   2 bank has 28 bytes left, hold it in level 1's bank only (`tools/mkrom.py` `lvshared_copy`'s
   `tail`: the other levels' copies end before the section) and `bu_lvl` maps that bank instead.
@@ -1120,7 +1125,7 @@ plan and, in 3.9-3.11, what was built; `docs/level3/HANDOFF.md`: every step's ac
 
 | Banks (the product at 56e8f56) | What |
 |---|---|
-| 109 `BANK_L2` (A000h) | `msx/level2.asm`: the header, `l2_init` (`$871A`'s level part: the lists, the vat phases and looks, the specials, the header's values, `set_weapon(0)` on a fresh start), `lt1` (the vats' logic, `$91BC`); `gen/lvshared_l2.asm`; `msx/level2obj.asm`: types 1, 2, 5, 6, 14, 16, 49, `death_c33e`, `walk_d6`, `l2_fall8`, `fly_half`, `l2_flash`; **`msx/vats.asm`**, the vats' display, only in `VAT_ANIM=1` builds since level 3's step C; `at_l2.inc`, `cells_l2.inc`, `vats_l2.inc`. 1,429 B free (28 with `VAT_ANIM=1`) |
+| 109 `BANK_L2` (A000h) | `msx/level2.asm`: the header, `l2_init` (`$871A`'s level part: the lists, the vat phases and looks, the specials, the header's values, `set_weapon(0)` on a fresh start), `lt1` (the vats' logic, `$91BC`); `gen/lvshared_l2.asm`; `msx/level2obj.asm`: types 1, 2, 5, 6, 14, 16, 49, `death_c33e`, `walk_d6`, `l2_fall8`, `fly_half`, `l2_flash`; **`msx/vats.asm`**, the vats' display, only in `VAT_ANIM=1` builds since level 3's step C; `at_l2.inc`, `cells_l2.inc`, `vats_l2.inc`. 933 B free since spr-6 (the budget's section of `lvshared.asm`; 28 with `VAT_ANIM=1`, whose copy leaves that section out) |
 | 110-117 `L2_TILES` | the tiles as a VRAM image (`level2.vram`'s pages 2-3) |
 | 118-119 `L2_MAP` | the map, 50 rows, 25 a bank |
 | 120 `L2_ATR` | the packed attributes |
@@ -1145,16 +1150,16 @@ after level 2's atlas since level 3's step C (the map: `docs/ROM_BUDGET.md` 2.4)
 
 ### Level 3's modules and banks (2026-11-01)
 
-| Banks (the product at 56e8f56; since field-1 the frame cache takes 147-157 and the two code banks 158 and 159) | What |
+| Banks (the product at 56e8f56, with performance campaign 2's batch 1: the frame cache 147-157, the two code banks 158 and 159) | What |
 |---|---|
 | 124-125 `L3_MAP` | the map, 50 rows, 25 a bank |
 | 126 `L3_ATR` | the packed attributes |
 | 136-143 `L3_TILES` | the tiles as a VRAM image (`level3.vram`) |
 | 144 `L3_TAB` | at 8000h: OTILE, ATR2, the BOBHASH; at A000h: the graded palette (level 2's bytes again) and its own `view_offy` |
 | 145-146 `L3_ATLAS` | the play-field atlas, 109 lines in two banks |
-| 147-160 `L3_FC` | the frame cache's ROM: 97 frames (the 42 big frames and 55 white copies) after its header ("Play-field BOBs"); 11 banks since field-1 (the frames' opaque boxes) |
-| 161 `BANK_L3` (A000h) | `msx/level3.asm`: the header, `gen/lvshared_l3.asm`, `l3_init` (`level_init`'s level-3 part, `$88AC`: the lists from the bank on a fresh start, the header's values, `$15CA` set, aim 5, `$15DE` 4, state 6, `fade_st` 11, `set_weapon(0)`), `lt2` (the beams, `level_tick_2` `$9436`), `l3_noten`, the deaths `death_cain` (`$C25C`), `death_truck` (`$C360`), `death_w21` (`$C3A8`) with `debris_add` (`$C398`), the wrappers `t4_w`, `t12_w`, `d3_c31e`, `d3_c35a`, the 19 stubs `tNN_s` (`ld hl,tNN` / `jp l3b_call`), `at_l3.inc`, `cells_l3.inc`. 3,867 B free |
-| 162 `BANK_L3B` (A000h) | `msx/level3obj.asm`: types 21, 22 (Cain as RoboCop 2), 33-43, 46, 47, 48, 50, 51 and 52; `obj_push` (`$EF18`); the turrets' map writes (`tur_pnl`, `tur_put`: `$EA50`, `$EAA6`, `$EBB8`); the bank's own helpers (`l3_xy`, `l3_flash`, `l3_tail`, type 38's flight `fly_dx3`, `fly_dy3`, `fly_gfx3`, copied from level 2's `t49`); `at_l3b.inc`. 2,383 B free |
+| 147-157 `L3_FC` | the frame cache's ROM: 97 frames (the 42 big frames and 55 white copies) after its header ("Play-field BOBs"); 11 banks since field-1 (the frames' opaque boxes) |
+| 158 `BANK_L3` (A000h) | `msx/level3.asm`: the header, `gen/lvshared_l3.asm`, `l3_init` (`level_init`'s level-3 part, `$88AC`: the lists from the bank on a fresh start, the header's values, `$15CA` set, aim 5, `$15DE` 4, state 6, `fade_st` 11, `set_weapon(0)`), `lt2` (the beams, `level_tick_2` `$9436`), `l3_noten`, the deaths `death_cain` (`$C25C`), `death_truck` (`$C360`), `death_w21` (`$C3A8`) with `debris_add` (`$C398`), the wrappers `t4_w`, `t12_w`, `d3_c31e`, `d3_c35a`, the 19 stubs `tNN_s` (`ld hl,tNN` / `jp l3b_call`), `at_l3.inc`, `cells_l3.inc`, the beams' looks with their tiles (`gen/tt_l3.inc`). 3,151 B free |
+| 159 `BANK_L3B` (A000h) | `msx/level3obj.asm`: types 21, 22 (Cain as RoboCop 2), 33-43, 46, 47, 48, 50, 51 and 52; `obj_push` (`$EF18`); the turrets' map writes (`tur_pnl`, `tur_put`: `$EA50`, `$EAA6`, `$EBB8`); the bank's own helpers (`l3_xy`, `l3_flash`, `l3_tail`, type 38's flight `fly_dx3`, `fly_dy3`, `fly_gfx3`, copied from level 2's `t49`); `at_l3b.inc`, the turrets' looks with their tiles (`gen/tt_l3b.inc`). 2,014 B free |
 
 - **`l3b_call`** (`rc2.asm`, the fixed area, 14 B): HL = a routine of `BANK_L3B`: that bank at A000h, the
   routine, then `logic_map` (`BANK_L3` again); A and the flags come back (the handler's D0). `lv_htab_l3`

@@ -1,6 +1,6 @@
 """The hit flash's look, tools/mkrom.py FLASH_LOOK (performance campaign 2, docs/PERF2_PLAN.md D1: a comparison
 for the user's choice, nothing decided): 0 the look as always (every build without the option), 6 at most one
-white picture in 4 per enemy, 7 an enemy stays white while hit less than 2 pictures apart and turns normal 2
+white picture in 4 per enemy, 7 an enemy stays white while hit at most 2 pictures apart and turns normal 2
 pictures after its last hit. The option's values, the places its code may take (msx/bob.asm, the frame end in
 msx/rc2.asm, the slot's reset in msx/objects.asm), and the rule as the code's own constants make it: fl_pend's
 byte per enemy slot, bit 0 a hit held from a skipped tick, bits 1-4 shifted right once a picture shown."""

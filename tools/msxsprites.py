@@ -1262,7 +1262,7 @@ def field_frames(ram: bytes, near: np.ndarray, frames: list[dict], removed: dict
     frame's lines in strips of DYN_H side by side, copied there from the ROM when shown
     (msx/field.asm fb_dyn). The rest of the atlas goes into the ROM frame by frame (FIELD_ROM: no
     room for its empty parts), a frame that is another's exact mirror as a reference to that one's
-    pixels (msx/field.asm field_upload mirrors them):
+    pixels (msx/ending.asm field_upload mirrors them):
       db n; n x [db atlas line, db x / 2, db bytes a line, db lines, db 1 when mirrored,
       dw offset of the pixels in the image]; the pixels (two a byte, the left one high).
     The dynamic frames' pixels (a line of the slot after another: its strips' lines side by side,
