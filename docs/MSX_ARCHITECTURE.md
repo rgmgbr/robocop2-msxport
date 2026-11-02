@@ -1241,7 +1241,12 @@ which as sprites were striped, cut or left out.
   (`s38_covr`): the copy brings the slot from the page shown, which gets the new tile only when the BOBs
   compose it there, and drawn before it could be brought back over the new tile with the old one, which no
   sync mended (`fb_bb` does not hold that cell): `l2_tour` from game frame 735 on C-BIOS_MSX2, row 38,
-  column 64 old for 55 pictures, with W2C's bursts (the code before has the same path). A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
+  column 64 old for 55 pictures, with W2C's bursts (the code before has the same path). During a flip not on
+  screen yet its second phase takes the new displayed page as a page shown (since 2026-11-02, lane W3V's review):
+  where a BOB of that page's list meets the cell the BOBs compose it (`fb_redraw`); drawn at once, the tile was a
+  hole in the BOB when the flip showed, until the cell's item had its copy (level 1's cov0 drive from game frame
+  436 on C-BIOS_MSX2: the hostage's cell (42, 25) for 13 pictures; `l3_boss` at game frames 1385-1389, row 40).
+  A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
   bit per cell of the window `rd_queue` keeps; its redraw reads the map then): the level's
   electric beams rewrite their cells every tick and overflowed the queue (238 requests lost in
   the beams' corridor; now none, the queue at most 38). Known: a map object of several cells

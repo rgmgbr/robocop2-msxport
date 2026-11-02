@@ -199,6 +199,15 @@ class RedrawWaitTests(unittest.TestCase):
         k = red.index("jr nz,s38r_back")
         self.assertEqual(red[k - 2:k], ["ld a,(rd_phase)", "or a"])
 
+    def test_a_flip_s_new_page_lets_the_bobs_compose(self):
+        """During a flip not on screen yet (s38_flip_wait) the new displayed page takes a changed cell as a page shown
+        does: where a BOB of its list meets the cell the BOBs compose it (fb_redraw NZ: nothing drawn here), else the
+        tile is drawn there (a tile drawn over a BOB was a hole in it when the flip showed)."""
+        self.assertEqual(block("scroll9938.asm", "s38r_go", 9),
+                         ["s38r_go:", "call rd_pop", "ld a,(s38_flip_wait)", "or a", "jr z,s38r_bk",
+                          "ld a,(s38_vis_page)", "call fb_redraw", "jr nz,s38r_nz", "ld a,(s38_vis_c0)"])
+        self.assertEqual(block("scroll9938.asm", "s38r_nz", 3), ["s38r_nz:", "or 1", "ret"])
+
     def test_the_slot_rule(self):
         """s38_covr (A = row; s38_covered: the pending row s38_rq) -> Z exactly when the build's copy will still
         bring the row's slot: its place (row - s38_r0) & 15 among the copy's VIEW_ROWS slots, with the copy not

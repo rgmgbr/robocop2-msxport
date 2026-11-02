@@ -351,6 +351,11 @@ s38b_lp:
 ; before (until 2026-11-02), the copy could bring the old tile back over it, and the sync did not
 ; mend it (it takes fb_bb, which that cell does not enter: ending.asm fs_sync): every later copy
 ; carried it (l2_tour from game frame 735, C-BIOS_MSX2: row 38, column 64 old for 55 pictures).
+; The new displayed page of a flip not on screen yet takes the cell as a page shown does: where a BOB of
+; its list meets it, the BOBs compose it (fb_redraw). Drawn there at once (until 2026-11-02), the tile
+; was a hole in the BOB when the flip showed, until the cell's item (tiles.asm fb_mark38) had its copy:
+; level 1's cov0 drive from game frame 436 on C-BIOS_MSX2, the hostage's cell (42, 25), 13 pictures (a
+; cell outside the old page's columns: its first phase drew nothing).
 s38_redraw:
         call rd_peek
         ret z
@@ -406,7 +411,10 @@ s38r_go:
         ld a,(s38_flip_wait)
         or a
         jr z,s38r_bk
-        ld a,(s38_vis_c0)           ; (the flip not on screen yet: the new displayed page)
+        ld a,(s38_vis_page)         ; (the flip not on screen yet: the new displayed page, shown at the next
+        call fb_redraw              ;  VBLANK; where the BOBs of its list meet the cell they compose it, as
+        jr nz,s38r_nz               ;  on a page shown: drawn here the tile was a hole in one until then)
+        ld a,(s38_vis_c0)
         ld c,a
         ld a,(s38_vis_page)
         jr s38r_draw
