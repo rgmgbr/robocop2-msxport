@@ -610,7 +610,7 @@ act_08: ld a,(iy+2)
 ; fades in again and the entry is switched on. Then as the default. The entries after this one
 ; meet the new camera's window, as the Amiga's loop goes on with it (the candidates again, from
 ; the next entry); the scroll engine draws the new view before the next picture (jump_pend:
-; rc2.asm, field.asm engines_jump).
+; rc2.asm, ending.asm engines_jump).
 act_10: ld a,(p_state)
         and 0xFE
         cp 0x0C

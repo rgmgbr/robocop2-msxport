@@ -36,7 +36,7 @@
 ;   then a list with R#18 = 0 and the V9958's split byte back (a time out cuts in at any R#18),
 ;   both SATs empty, page 2's tiles back (page 3 lines 88-161 hold sheet S3 over the field engine's
 ;   dynamic slot and caches: front.asm fe_text's fb_init, which the result's screen runs first,
-;   frees them, as field.asm engines_init does before any field use).
+;   frees them, as ending.asm engines_init does before any field use).
 ; - The fade (msx/frng.asm rg_fade): pf_pal is the visit's graded palette limited by fade_cap.
 ;
 ; Rules (docs/BRAINSTORM.md 3.3): every command through vdp_cmd from rgr_cmd (never cmdbuf); VRAM

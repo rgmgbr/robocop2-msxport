@@ -722,7 +722,7 @@ ao_hi:      equ 0xCED5
 ao_cnt:     equ 0xCED6              ; entries in so_x
 ao_curn:    equ 0xCED7              ; the entry being activated
 jump_pend:  equ 0xCED8              ; non-zero: the cracked wall moved RoboCop and the camera (act_10):
-                                    ;   the scroll engine draws the new view (field.asm engines_jump)
+                                    ;   the scroll engine draws the new view (ending.asm engines_jump)
 tick_n:     equ 0xCEE0              ; 2: game ticks since the power-on (the test scripts' frames)
 g_event:    equ 0xCEE2              ; what the last tick's frame_end asks for (FE_..., 0)
 lv_fresh:   equ 0xCEE3              ; non-zero: the level's lists are copied into RAM at its start

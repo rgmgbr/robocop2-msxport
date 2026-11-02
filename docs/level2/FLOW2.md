@@ -355,7 +355,7 @@ the AM mirror at every level start.
   6. `obj_start` (`objects.asm:39`: **`ac_diff` = `diff_tab`, SHARP, `objects.asm:44-45`**;
      camera offsets, energy; `jp lv_init`, so level 1's bank `l1_init` copies its lists and reads
      its header, `level1.asm:66-103`);
-  7. `ao_start` (LC2), `engines_init` (FIELD);
+  7. `ao_start` (LC2), `engines_init` (FIELD; FRONT2 since performance campaign 2's R2);
   8. `hud_init` (`cold.asm:8`: score 0, ammo 0, 2 lives, weapon 0's icon, the panel uploaded);
   9. `display_on`, then the main loop.
 - A death: `FE_RESTART` → `level_restart` (`rc2.asm:337`: `pl_init`, `obj_start`, `ao_start`,

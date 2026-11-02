@@ -650,11 +650,16 @@ which as sprites were striped, cut or left out.
     about 13 ms each, which no blank holds, so Cain and type 21 can show partly old, partly new
     frames while they move or animate (most on the V9958, which has one page;
     `docs/level3/HANDOFF.md`, step 5's open issue 1).
-- **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`; it also holds the
-  scroll engines' set-up); the fixed area keeps only the hooks (`fb_redraw`, `fb_mark`,
-  `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`). The atlas's upload (`field_upload`,
-  at power-on and at a level's start) runs in `BANK_FRONT2` (`ending.asm`, through `front2_call` from
-  `cold.asm`) since field-2, which needed its 132 bytes here.
+- **Code**: a bank of its own at A000h (`BANK_FIELD`, through `field_call`); the fixed area keeps only
+  the hooks (`fb_redraw`, `fb_mark`, `fb_pend`, `fb_invf`, the interrupts' `isr_fbgo` and `ifg_rdy`).
+  The atlas's upload (`field_upload`, at power-on and at a level's start) runs in `BANK_FRONT2`
+  (`ending.asm`, through `front2_call` from `cold.asm`) since field-2, which needed its 132 bytes here;
+  so does the scroll engines' set-up since performance campaign 2's R2 (`docs/PERF2_PLAN.md` 5.2:
+  `engines_init`, `engines_jump`, `scroll_init`, `s38_init`, 306 bytes, which flash-1 needed): the main
+  loop's code reaches it through the fixed area's `f2_call` (9 bytes before its last table: `BANK_FRONT2` at
+  A000h around it, `act_a000` put back, 8000h as it is), and it calls `fb_init` and `vat_init` through
+  `field_call`. It runs at a level's start (`lv_go`), a restart or a continue (`level_restart`) and the
+  cracked wall's jump (`engines_jump`), never in a frame's work.
 
 ## Game logic (`msx/player.asm` and the logic modules)
 
@@ -785,7 +790,7 @@ which as sprites were striped, cut or left out.
   rebuilt from the next entry), as the Amiga's loop goes on with the camera it changed. The
   scroll engines would walk to the new view a column (V9958) or a page (V9938) at a time with
   the ticks held (949 VBLANKs on an MSX2): `act_10` sets `jump_pend` and the main loop, after
-  the tick, calls `field.asm` `engines_jump`: the play field black from the next VBLANK
+  the tick, calls `ending.asm` `engines_jump` (`f2_call`): the play field black from the next VBLANK
   (`pal_fade` 0), the view computed (`pl_view`), the play-field BOBs and the waiting changed
   cells forgotten (`fb_init`, `rd_*`), the view drawn by the engine's set-up (`scroll_init` /
   `s38_init`) with the display, the HUD and the interrupts going on; about 26 VBLANKs on an
@@ -1109,7 +1114,7 @@ plan and, in 3.9-3.11, what was built; `docs/level3/HANDOFF.md`: every step's ac
 
 - **One level start for every level** (`rc2.asm` `lv_go`, A = the level: 0 level 1, 1 level 2, 2 level 3;
   `level_init` `$871A`): `ld c,a` / `ld hl,lv_select` / `call front_call`, then `obj_start` (the
-  level bank's `lv_init`), `ao_start` (LC2), `engines_init` (`field_call`), `hud_start` (FRONT) and
+  level bank's `lv_init`), `ao_start` (LC2), `engines_init` (FRONT2, `f2_call`), `hud_start` (FRONT) and
   `display_on`. A new game is `new_game`: `dsp_off`, then `ng_go`, whose `cold.asm` `ng_init` (FRONT)
   clears AG, gives two lives, sets SHARP (`ac_diff` = `diff_tab`, `$8314`) and falls into
   `lv_select` with C = 0.

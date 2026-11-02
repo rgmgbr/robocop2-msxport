@@ -154,5 +154,55 @@ class CacheUploadTests(unittest.TestCase):
             self.assertTrue(c["w"] % 2 == 0 and c["w"] // 2 <= 64, c)
 
 
+def code_lines(path: str) -> list[str]:
+    """msx/PATH's lines without their comments, stripped (labels kept)."""
+    return [l.split(";")[0].strip() for l in (ROOT / "msx" / path).read_text().splitlines()]
+
+
+class EngineSetupTests(unittest.TestCase):
+    """R2 (docs/PERF2_PLAN.md 5.2): the scroll engines' set-up in BANK_FRONT2 (ending.asm), reached from the
+    main loop's code through the fixed area's f2_call (BANK_FRONT2 at A000h around it, act_a000 kept)."""
+    MOVED = ("engines_init", "engines_jump", "scroll_init", "s38_init")
+
+    def test_the_set_up_left_the_field_bank(self):
+        field = (ROOT / "msx" / "field.asm").read_text()
+        ending = (ROOT / "msx" / "ending.asm").read_text()
+        for label in self.MOVED:
+            self.assertIsNone(re.search(rf"^{label}:", field, re.M), label)
+            self.assertIsNotNone(re.search(rf"^{label}:", ending, re.M), label)
+
+    def test_its_calls_go_through_f2_call(self):
+        rc2 = code_lines("rc2.asm")
+        calls = [rc2[k + 1] for k, l in enumerate(rc2) if l in ("ld hl,engines_init", "ld hl,engines_jump")]
+        self.assertEqual(sorted(calls), ["call f2_call", "call f2_call", "jp f2_call"])
+        for path in ("rc2.asm", "cold.asm", "front.asm", "frontx.asm", "ending.asm", "isr.asm", "tiles.asm",
+                     "scroll9938.asm", "scroll9958.asm", "vats.asm"):
+            for l in code_lines(path):
+                for label in self.MOVED:
+                    if re.fullmatch(rf"(call|jp)( \w+,)? ?{label}", l.replace("  ", " ")):
+                        self.assertEqual(path, "ending.asm", (path, l))      # (only its own jumps)
+
+    def test_f2_call_is_field_calls_way_in_with_front2(self):
+        self.assertEqual(code("rc2.asm", "f2_call", "rowtab"),
+                         ["ld a,(act_a000)", "push af", "ld a,BANK_FRONT2", "jp fc_bk"])
+        self.assertEqual(code("rc2.asm", "field_call", "fc_hl"),
+                         ["ld a,(act_a000)", "push af", "ld a,BANK_FIELD", "call bank_a000", "call fc_hl", "pop af",
+                          "jp bank_a000"])
+        self.assertIn("fc_bk:  call bank_a000", (ROOT / "msx" / "rc2.asm").read_text())
+        rc2 = code_lines("rc2.asm")             # (after the code, before the last table: no routine moves)
+        k = rc2.index('include "grade.inc"')
+        self.assertEqual([l for l in rc2[k + 1:rc2.index("rowtab:")] if l][:1], ["f2_call:"])
+
+    def test_the_field_routines_it_runs_through_field_call(self):
+        body = code("ending.asm", "engines_init", "s38_init") + code("ending.asm", "s38_init", "s38i_row")
+        for label in ("fb_init", "vat_init"):
+            self.assertNotIn("call " + label, body)
+        pairs = [(body[k], body[k + 1]) for k, l in enumerate(body) if l in ("ld hl,fb_init", "ld hl,vat_init")]
+        self.assertEqual(len(pairs), 4)
+        self.assertTrue(all(b == "call field_call" for _, b in pairs), pairs)
+        k = body.index("di")
+        self.assertEqual(body[k:k + 4], ["di", "ld hl,fb_init", "call field_call", "ei"])   # (engines_jump)
+
+
 if __name__ == "__main__":
     unittest.main()

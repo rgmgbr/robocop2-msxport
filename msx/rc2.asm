@@ -64,7 +64,7 @@ lv_gs:  call front_call
         call ao_start               ; the map objects and their first pass over the whole map
         call logic_map
         ld hl,engines_init
-        call field_call             ; (field.asm)
+        call f2_call                ; (ending.asm)
         if DEMO_ACTORS
         call spr_demo_init
         endif
@@ -159,7 +159,7 @@ ml_flc: ld (hl),0                   ; (held hit flashes: shown now or never)
         xor a
         ld (jump_pend),a
         ld hl,engines_jump
-        call field_call
+        call f2_call                ; (ending.asm)
 ml_ev:  ld a,(g_event)
         or a
         jp z,mainloop
@@ -342,7 +342,7 @@ level_restart:
         xor a
         call set_weapon             ; ($8844)
         ld hl,engines_init
-        jp field_call
+        jp f2_call                  ; (ending.asm)
 
 ; The title (front end) before a new game (front.asm fr_title); test builds with a script start
 ; the game at once: after a game over with the front end's end alone (front_done, fr_title's: PIC9
@@ -369,12 +369,13 @@ dsp_off:
         jp wrreg
 
 ; HL = a routine of the play-field BOB module (BANK_FIELD at A000h around it; the bank that was
-; there comes back). Keeps nothing but what the routine returns in BC, DE, HL.
+; there comes back). Keeps nothing but what the routine returns in BC, DE, HL. (fc_bk: f2_call's
+; way in, another bank in A.)
 field_call:
         ld a,(act_a000)
         push af
         ld a,BANK_FIELD
-        call bank_a000
+fc_bk:  call bank_a000
         call fc_hl
         pop af
         jp bank_a000
@@ -487,6 +488,19 @@ fr_rated:
 
         include "sprites_flash.inc" ; RoboCop's palette flashes (tools/msxsprites.py)
         include "grade.inc"         ; the fade's limits through the colour grade (tools/mkrom.py)
+
+; HL = a routine of the front end's second bank that the main loop's code calls (BANK_FRONT2 at
+; A000h around it, the bank that was there comes back; 8000h as it is: frontx.asm front2_call is
+; FRONT's): the scroll engines' set-up (ending.asm engines_init, engines_jump), once a level's
+; start, restart or continue and at the cracked wall's jump. Keeps nothing but what the routine
+; returns in BC, DE, HL. (Performance campaign 2's R2: in BANK_FIELD until its room went to the
+; field engine, docs/PERF2_PLAN.md 5.2; here, before the last table, so that no routine moves.)
+f2_call:
+        ld a,(act_a000)
+        push af
+        ld a,BANK_FRONT2
+        jp fc_bk
+
 ; (rowtab.inc, tools/mkrom.py: the map's rows, their banks relative to lv_mapb; the attributes'
 ; rows; view_offx)
 rowtab:
@@ -549,8 +563,7 @@ input_end:
 front_end:
         ds 0xA000 - front_end, 0xFF
 
-; ----- the play-field BOBs and the scroll engines' set-up (BANK_FIELD at A000h around its calls:
-; field_call) -----
+; ----- the play-field BOBs (BANK_FIELD at A000h around its calls: field_call) -----
         org 0xA000
         include "field.asm"
 field_end:
@@ -607,7 +620,8 @@ l2_end:
         ds 0xC000 - l2_end, 0xFF
 
 ; ----- the front end's second bank: the game completed and the high scores (BANK_FRONT2 at A000h
-; around their calls, FRONT at 8000h: frontx.asm front2_call; docs/ENDING.md) -----
+; around their calls, FRONT at 8000h: frontx.asm front2_call; docs/ENDING.md), the play-field atlas's
+; upload and the scroll engines' set-up (f2_call) -----
         org 0xA000
         include "ending.asm"
 front2_end:
