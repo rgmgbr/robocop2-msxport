@@ -27,6 +27,11 @@ are cut to their opaque boxes: its frame cache takes **11 banks instead of 14**,
 **Update, 2026-11-02 (performance campaign 2, batch 2, branch `perf2/batch2`).** No bank moves; the fixed area has
 426 B free in the product and 291 in the lowest set, `BANK_FIELD` 186 (145 in the drive builds): section 2.7.
 
+**Update, 2026-11-02 (release candidate 2: the movie stills and level 1's briefing, branch `photos`).** The
+original's eight movie stills (PIC1-PIC7, PICF) are back, the user's choice of 2026-11-02: **banks 160-189**
+(30 banks, 242,541 bytes of ZX0 streams), so the image uses **190 of its 256 banks** (66 free); FRONT has
+534 B free (1,088 before), FRONT2 5,044 (5,394), the fixed area 287 as before: section 2.10.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -552,6 +557,42 @@ is 6cbf71f's product byte for byte (`950151ef94e0a653`).
 
 The lowest set is `DIAG=1 PZ_TEST=1` and `DIAG=2 PZ_TEST=1` (`p_pzdiag`, `p_pzdiag2`), as in 2.6-2.8. With `LAG_X=64`
 (D3, not decided) the fixed area takes 12 bytes more (2.6). No RAM changes: flash-7 keeps its state in `fl_pend`.
+
+### 2.10 The movie stills and level 1's briefing (release candidate 2, 2026-11-02)
+
+Measured on the `photos` branch (builds of `tools/bstest/variants.sh`'s 61 sets, `tools/mkrom.py`'s map). `tools/msxphoto.py`
+converts PIC1-PIC7 (256 x 176) and PICF (256 x 212, its lines 0-211) to SCREEN 8 and packs each with ZX0
+(`tools/zx0.py`), offsets up to 256 and a penalty of 12 bits a copy (`msx/photo.asm` unpacks from a 256-byte
+ring in RAM; the penalty trades size for the unpacking's time); `tools/mkrom.py` places the streams one after
+another from the first bank after level 3's blocks, read at A000h only. `PHOTOS=0 L1BRIEF=0` builds rc1's
+product byte for byte (`50806da26c6a25ae`), and `CHEAT=1` with them rc1's `-cheat` file (`a8d922b6003cd6f0`).
+
+| Picture | Lines | ZX0 bytes | Of the raw 256 x lines |
+|---|---:|---:|---:|
+| PIC1 | 176 | 29,304 | 65.0 % |
+| PIC2 | 176 | 33,172 | 73.6 % |
+| PIC3 | 176 | 18,629 | 41.3 % |
+| PIC4 | 176 | 30,990 | 68.8 % |
+| PIC5 | 176 | 24,529 | 54.4 % |
+| PIC6 | 176 | 24,397 | 54.1 % |
+| PIC7 | 176 | 35,842 | 79.5 % |
+| PICF | 212 | 45,678 | 84.2 % |
+| **All** | | **242,541 (30 banks, 160-189)** | 66.3 % |
+
+- The trade-off, measured with the converter (all eight; the unpacking's seconds a picture on the Z80 at
+  3.58 MHz, the model of `photo.asm`'s loops, 176-line pictures / PICF): any offset and no penalty 165,617 B
+  (21 banks) but copies read back from VRAM, 4.9-7.6 s; offsets up to 256 and no penalty 194,601 B (24 banks),
+  1.3-1.9 / 2.5 s; penalty 6: 213,499 B (27), 1.1-1.5 / 2.2 s; **penalty 12: 242,541 B (30), 1.0-1.3 / 1.6 s**
+  (measured in openMSX on the Expert: 1.36-1.80 s, PICF 2.10 s); penalty 18: 258,921 B (32). Raw they would
+  take 46 banks.
+- The code: FRONT `msx/photo.asm` and its calls in `front.asm` and `cold.asm` (the table, the wait, the display
+  set-ups, the unpacker, `rs_init`: 554 B; FRONT has **534 B free** in the product, 410 in the tightest set,
+  `PZ_TEST=1 SPLITDIAG=1 R800PING=1`), FRONT2 `msx/photo2.asm` and the ending's calls (level 1's briefing's
+  screens and its 169-byte script, PICF: 350 B; **5,044 B free**, 4,994 in the tightest);
+  the fixed area unchanged (287 B, `level_restart`'s `ld hl` points at `rs_init` instead of `pl_init`).
+  59 of 61 sets build, as at rc1 (`DEMO_ACTORS` 2 and 5: 136 B short in the fixed area, as without the
+  photos). `DIAG` builds leave both out (no game).
+- Free after them: banks 190-255, 66 banks (bank 255 carries the boot guard's tag).
 
 ## 3. What the rest of the game needs
 

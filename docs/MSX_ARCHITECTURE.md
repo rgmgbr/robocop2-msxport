@@ -1679,7 +1679,8 @@ after level 2's atlas since level 3's step C (the map: `docs/ROM_BUDGET.md` 2.4)
   `txt_l2_brief` ("TOKUGAWA BREWERY", "ARREST CAIN"), 2 `txt_l3_brief` ("CIVIC CENTRUM", ...), else
   nothing, through `fe_text` (the original's particle titles typed in the 8 × 8 font at their calls:
   393 and 411, the screens 394 and 412 ticks; silent, the HUD's messages ticking below, fire from tick
-  50, TEST n in a `TAG` build). PIC4 and PIC7 are dropped (decision 5).
+  50, TEST n in a `TAG` build). Then PIC4 or PIC7 (`PHOTOS=1`, the default since release candidate 2:
+  "The photo screens" under Front end; `PHOTOS=0` drops them as decision 5 did).
 - The stages' second visits read AG `$8050` = 2: the range its darker palette (`frng.asm`),
   Brainstorm its boards and Ellen's face (`puzl.asm` `bs_v2`, out of line: visit 1 runs its old code).
 - **`hud_start`** (FRONT, from `lv_go`): `hud_init` while AG `$8050` is 0 (a new game), else
@@ -1885,6 +1886,46 @@ eases `v_addx` (CE43h, `G_VARS`: 0 at every life) by 2 a tick up to `VU_ADD` = 4
   overwritten, so the game redraws them when it starts again (`new_game` / `display_on` set
   SCREEN 5 back). While a picture shows, `front_mode` makes the VBLANK interrupt count frames
   and run the sound only.
+- **The photo screens** (`msx/photo.asm`, `msx/photo2.asm`; `tools/mkrom.py` `PHOTOS=1`, `L1BRIEF=1`,
+  the defaults since release candidate 2; `docs/AMIGA_ANALYSIS.md` section 5, *Pictures*):
+  - The original's movie stills PIC1-PIC7 (256 × 176) and PICF (256 × 212, its lines 0-211 of the 224
+    `$11C54` shows) are SCREEN 8 pictures packed with ZX0 (`tools/msxphoto.py`, `tools/zx0.py`: offsets up
+    to 256, a penalty of 12 bits a copy) in banks 160-189, read at A000h (`PHOTO_<name>_BANK`, `_ADDR`,
+    `_LINES` in `gen/banks.inc`; the table `pho_tab` by `show_picture`'s D0, 7 for PICF).
+  - `pho_show` (FRONT; A = the picture): `front_mode` 1, the display off with the VBLANK interrupt on, G7
+    as `pic_show` sets it, the screen cleared (HMMV), `lv_vram` FFh; the write address at the first line
+    (106 − lines / 2), then `pho_unz`: ZX0 to port 98h, the literals from the stream (the A000h window,
+    bank after bank at C000h: `pho_nbank`), the copies from a 256-byte ring in RAM (`pho_buf` = `pat_slot`'s
+    first page, which `spr_init` fills again at every level start and restart) that keeps the last bytes
+    written, never from VRAM; A' is the bit buffer. Then the display on and the A000h window's bank back
+    (FRONT2 in the ending). The unpacking takes 1.4-1.8 s for a 176-line picture and 2.1 s for PICF on
+    the Z80 at 3.58 MHz (openMSX, the Expert; the screen black meanwhile, as the original's while it
+    loads the file); every machine runs it on the Z80 (a turbo R's front end).
+  - `pho_photo`: the picture, then 251 ticks of 50 Hz (`fs_tick`: 5.02 s at 50 and 60 Hz), `show_picture`'s
+    251 VBLs, or fire pressed once released (`ff_bits`), then the display off (`pho_cut`). `pho_end` adds
+    `front_done` (SCREEN 5, the interrupts' game work); `pho_mid` also turns the display on again with the
+    list `fe_text` left (page 0 unscrolled, the HUD split, `pf_pal` black) and clears the play area, the
+    state a bonus stage starts from.
+  - Where: `front_bonus` after Brainstorm's intro (PIC3, PIC5: `pho_mid`), `front_range` after the range's
+    intro (PIC2, PIC6: `pho_mid`), `front_brief` after the level-2 and level-3 briefings (PIC4, PIC7:
+    `pho_end`), `photo2.asm` `l1_show` after level 1's briefing (PIC1), `ending.asm` `front_ending` after
+    WELL DONE (PICF while the CMP tune plays: no `hud_keep` then, whose SCREEN 5 addresses would land in
+    the picture in G7; `pho_cut` at the tune's end or fire). PIC9 stays `front_over`'s, uncompressed.
+  - VRAM after a picture: its G7 bytes cover page 0 (the play field) and page 2 lines 0-211 (the tile
+    cache, level 3's frame cache); pages 1 and 3 (the atlas, the sprite tables, the HUD) keep theirs.
+    `lv_vram` FFh makes the next `lv_select` (a new game, the next level) or `rs_init` upload the level's
+    tiles and atlas again; the stages and the title upload their own; level 3's frame cache starts empty
+    at every start (`fb_init`). Checked: pages 2 and 3 equal rc1's at the level starts after PIC1, PIC4, the
+    level-1 restart and the continue, but for the sprite tables and the HUD's digits.
+  - Level 1's briefing (`photo2.asm`, FRONT2; `L1BRIEF=1`): `cold.asm` `ng_init` calls `l1_new` (through
+    `front2_call`) after the globals are cleared: a new game's HUD (`hud_init`), then `l1_show`: the play
+    area black and `fs_list` published with the display off, the display on, the curtain's 16 ticks (black:
+    the title is gone by then), `fe_text(txt_l1_brief)` (`tools/msxtext.py` `brief1.inc`: its two-line
+    particle title typed as the other briefings', 485 calls), PIC1, `cpu_title`. Script builds and a test
+    build's first start skip it, as they skip the title. `rc2.asm` `level_restart` maps `rs_init` instead
+    of `pl_init`: level 1 with 2 lives (`restart_level0` `$8352`) shows the briefing and PIC1 again (on the
+    Z80: `cpu_title`), then the level's tiles and atlas and the tile cache as `lv_cfront` does (`lvs_vram`,
+    `tc_reset`: the R800 again on a turbo R); every other restart goes straight to `pl_init`.
 - Text added at build time (`tools/msxtext.py`, in the game's own 8 × 8 font: capitals only;
   the strokes in the logo's light grey-blue, their shadow dark blue): the port's credit on the
   title, over the dark band below RoboCop's chin ("2026 PORT BY RODRIGO G.M. GARCIA", "ORIGINAL

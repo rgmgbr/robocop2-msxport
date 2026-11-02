@@ -49,15 +49,16 @@ Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank tes
 The complete game, in order:
 
 1. The title (fire starts a game).
-2. Level 1, the River Rouge complex, then its statistics.
-3. The bonus stages: Brainstorm (the chip puzzle; solving it gives a game credit), then the shooting
-   range (its rating sets the next level's enemy hit points).
-4. The level-2 briefing and level 2, the Tokugawa brewery, then its statistics.
-5. Both bonus stages again (Brainstorm's second set of boards, the range's darker street).
-6. The level-3 briefing and level 3, the Civic Centrum: up through the building to the roof, where
-   Cain, now RoboCop 2, appears; the chase down through the car park ends with his death.
-7. The game completed: WELL DONE, with the ending's tune (no statistics after level 3, as in the
-   original).
+2. The level-1 briefing, a movie still, then level 1, the River Rouge complex, then its statistics.
+3. The bonus stages, each after its intro and a movie still: Brainstorm (the chip puzzle; solving it
+   gives a game credit), then the shooting range (its rating sets the next level's enemy hit points).
+4. The level-2 briefing, a movie still and level 2, the Tokugawa brewery, then its statistics.
+5. Both bonus stages again (Brainstorm's second set of boards, the range's darker street), each with
+   its still.
+6. The level-3 briefing, a movie still and level 3, the Civic Centrum: up through the building to the
+   roof, where Cain, now RoboCop 2, appears; the chase down through the car park ends with his death.
+7. The game completed: WELL DONE, then the final picture while the ending's tune plays (no
+   statistics after level 3, as in the original).
 8. The high-score entry, when the score enters TODAYS BEST (six names and scores, kept from the
    power-on), then the table.
 9. The title again.
@@ -65,15 +66,22 @@ The complete game, in order:
 A game over shows the game-over picture, then the high-score entry when the score enters the
 table; when Brainstorm has given a credit, a continue screen follows, and fire restarts the same
 level with two lives and the score kept, the map as it was left (the first offer can come in level
-2).
+2). As in the original, a level-1 restart that finds two lives (a death with three, after the tenth
+hostage's extra life) shows the level-1 briefing and its still again.
+
+The original's eight movie stills are SCREEN 8 pictures here (256 x 176, the final one 256 x 212),
+packed in the cartridge: the screen stays black for about one to two seconds while one is unpacked,
+then it shows for 5 seconds, as the original's do when they come from memory.
 
 **Controls.**
 - RoboCop: joystick port 1 (button A fires, button B jumps, also while walking or firing and from a
   crouch, up aims) or the keyboard as on the Amiga (cursor keys, up jumps; SPACE or RETURN fire). The
   bonus stages take the same joystick or keys.
 - The text screens (statistics, briefings, the stages' intros and results, WELL DONE, the table) end
-  with fire after their first second; the game-over picture after 30 s or with fire; the ending's
-  tune with fire (pressed once released); the continue screen continues with fire.
+  with fire after their first second; a movie still after 5 s or with fire (pressed once released:
+  the fire that ended the screen before does not skip it); the game-over picture after 30 s or with
+  fire; the ending's tune and picture with fire (pressed once released); the continue screen
+  continues with fire.
 - The name entry is typed on the MSX keyboard, as the original's on the Amiga's: the letters A-Z,
   the digits (the main row or the keypad) and SPACE, up to nine characters; BACKSPACE deletes the
   last one, RETURN ends the name. No joystick and no time limit, as the original.
@@ -206,6 +214,8 @@ PSG alone (`tools/msxtune.py` converts them, `msx/tune.asm` plays them). Build o
 | `CAD_MAX=n` `CAD_HOLD=n` `CAD_ADAPT=n` | the game ticks one picture may run when pictures are slow (more are lost: the game slows down): at most `CAD_MAX` (`CAD_HOLD` while the MSX2's scroll holds the camera at a page's edge), and at most 2 for a picture that took fewer than `CAD_ADAPT` VBLANKs. Default `3`, `3`, `8` (loop-3, the user's choice of 2026-11-02, [docs/PERF2_PLAN.md](docs/PERF2_PLAN.md) D2): 3 ticks only for a picture of 8 VBLANKs or more (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), every faster picture at most 2, and level 1 at most 2 for every picture (the user's rule: no 3-tick step of RoboCop's walk there). `CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0`: at most 2 for every picture, the cadence until then (with `FLASH_LOOK=0` the product of before, byte for byte; `CAD_ADAPT` is refused without a cap above 2); `CAD_ADAPT=0` alone: 3 whenever a picture is late (loop-1) ([docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md), "Game logic") |
 | `LAG_X=n` | for comparison (nothing decided, [docs/PERF2_PLAN.md](docs/PERF2_PLAN.md) D3): on an MSX2 (the V9938's scroll engine), the view may lag n pixels (32-64, default 32) behind the camera in x before the game's ticks are held while its next page is built (they are also held, as always, while RoboCop's next picture could show an opaque pixel past the picture's edge); y and the MSX2+'s and turbo R's scroll keep 32 |
 | `CAM38=n` | the MSX2's camera (the V9938's scroll engine): `1` (default, the user's choice of 2026-11-02) the view follows RoboCop without the 16-pixel jumps: it moves at most his step + 4 px a picture, and the game waits while it lags 4 px or more; `0` the old camera (held at a page's edge while the next page is built, then a 16-pixel step); `2` also paces the view by the last page's build time; the MSX2+ and turbo R scroll as always |
+| `PHOTOS=0` | without the original's movie stills (PIC1-PIC7 between the screens, PICF during the ending's tune; default `1`); with `L1BRIEF=0` too, release candidate 1's game byte for byte |
+| `L1BRIEF=0` | without the level-1 briefing (default `1`: after the title, and at a level-1 restart with two lives) |
 | `TAG=n` | a test candidate (1-99): the text screens (the stages', the briefings, the ending's and the high scores') show TEST n below their text |
 | `RG_ADJ=0` | the range's camera in 16-pixel steps without R#18 (the VDP's horizontal adjust), for a VDP that ignores R#18 |
 | `EXTJOY=1` | the trace harness's input (`tools/openmsx_rc2.tcl`); the stages' timers stand still |

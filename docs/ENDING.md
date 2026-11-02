@@ -15,7 +15,8 @@ at its end): particle set-up 7, "  WELL DONE" (colour set A, origin (32, -24): 1
 "YOU HAVE DEFEATED ROBOCOP 2," (column 4, row 1), "AND THE SUPPLY OF NUKE HAS BEEN" (2, 3),
 "STAMPED OUT." (12, 5), a wait of 160 calls, the end: 341 calls; fire ends it from VBL 50.
 
-**`$11C54`, the tune.** PICF loaded at `$6FFA0` and shown (copper `$123EA`); CMP loaded at `$18000`,
+**`$11C54`, the tune.** PICF loaded at `$6FFA0` and shown (copper `$123EA`: its lines 0-223, display lines
+30-253); CMP loaded at `$18000`,
 its init, stop all and tune 1; then a loop of 1801h passes, one a frame (raster line `$C0`), which
 ends at once on fire (`read_joystick` bit 4, no release needed). The tune is ticked on 4 of every 5
 passes (`$11C52` from 0: `subq` / `beq` skip / `bpl` tick / else 4 and tick): **4,916 ticks in the
@@ -79,9 +80,15 @@ HI1's effects 3 (6 ticks) and 4 (14 ticks) sound on channel 3 (the VBL ticks HI1
 - WELL DONE: `txt_end`, its particle title typed at column 11, row -3 as the briefings' are, then the
   original's lines and wait: 341 calls, fire from tick 50, which types the rest of the text at once
   (`et_go`: default 10).
-- The tune: CMP tune 1 (`tune.asm` `tn_cmp`) while the WELL DONE screen stays on, until the tune's
-  end (`tn_left` 0: 4,916 ticks and the end's, 98.3 s at the port's 50 ticks a second) or fire pressed
-  once released; then the play area black and silence.
+- The tune: CMP tune 1 (`tune.asm` `tn_cmp`) until the tune's end (`tn_left` 0: 4,916 ticks and the
+  end's, 98.3 s at the port's 50 ticks a second) or fire pressed once released; then the screen black and
+  silence. With `PHOTOS=1` (the default since release candidate 2) **PICF shows meanwhile**, as `$11C54`
+  shows it: after WELL DONE, `photo.asm` `pho_show` unpacks it (2.1 s of black on the Z80, the
+  original's disk load), then the tune starts with the picture on (256 x 212: PICF's lines 0-211 of
+  the 224 the original shows; `docs/AMIGA_ANALYSIS.md` section 5, *Pictures*); the loop leaves out
+  `hud_keep` (the HUD is not shown in G7), and `pho_cut` blacks the screen at its end; `hs_entry`'s
+  `fc_disp` (`front_mode` set) or the title sets the display after it. `PHOTOS=0`: the WELL DONE screen
+  stays on during the tune, as before.
 - The name entry: `txt_hisc` (the original's bytes, 92 calls; fire from tick 50 types the rest at once,
   default 10), the name's 9 cells at x 96 + 8i, lines
   80-87 (`hs_draw`), the mark under the second position at the start, the original's rules for Return,
