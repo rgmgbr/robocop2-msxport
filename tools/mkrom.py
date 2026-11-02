@@ -80,8 +80,8 @@ it moves), grade.inc
 (the fade's limits through the colour grade, tools/msxbright.py) and the
 original's tables the logic banks include (tools/amitab.py
 with analysis/amiga_tables.tsv, from the level's RAM image build/ram/level1_full.bin) and the
-camera-cell masks of the levels' spawn lists and hazards (tools/cellmasks.py: cells_l1.inc,
-cells_l2.inc, the game logic's shortcuts), the copy of the code every level bank shares for level
+camera-cell masks of the levels' spawn lists, hazards and object lists (tools/cellmasks.py: cells_l1.inc,
+cells_l2.inc, cells_l3.inc, the game logic's shortcuts), the copy of the code every level bank shares for level
 2's and level 3's banks (lvshared_l2.asm, lvshared_l3.asm: msx/lvshared.asm with its labels and the
 level data's names suffixed _l2, _l3; the copies' labels must equal level 1's, checked after the
 assembly), checks that every map cell and attribute value each level's writers can change fits the
@@ -1134,9 +1134,9 @@ def main(argv: list[str]) -> int:
     if r.returncode != 0:
         print(r.stdout + r.stderr, file=sys.stderr)
         return 1
-    # the camera-cell masks of the levels' spawn lists and hazards (cells_l1.inc, cells_l2.inc: the
-    # logic's shortcuts; the main code, and so both lists, is the same in every level's image; level
-    # 2's 50 rows give the same 13 cells of camera y as level 1's 51)
+    # the camera-cell masks of the levels' spawn lists, hazards and object lists (cells_l1.inc,
+    # cells_l2.inc, cells_l3.inc: the logic's shortcuts; the main code, and so every list, is the same
+    # in every level's image; level 2's and 3's 50 rows give the same 13 cells of camera y as level 1's 51)
     r = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "cellmasks.py"),
                         str(ROOT / "build" / "ram" / "level1_full.bin"), str(ROOT / "analysis" / "amiga_tables.tsv"),
                         str(gen), str(COLS), str(rows)], capture_output=True, text=True)

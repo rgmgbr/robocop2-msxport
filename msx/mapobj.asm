@@ -64,6 +64,9 @@ as_px:  call activate_objects
 ; collision slot (x + 7, y, the type's flags, the entry, 5) and loses one hit when the shots hit
 ; it ($42,A4). Past $BEC the slots overlap the enemy slots' fields, as on the Amiga. A look of
 ; -1 destroys it ($F98C drops its value as a pickup) and its look index becomes negative.
+; (The port: the visit of an entry outside the window ends at its y test, after its look cache's,
+; Amiga address's, IY's, x's and y's loads: a candidate ao_ykey flagged is passed by without it,
+; but the last one, ao_skp.)
 activate_objects:
         xor a
         ld (AM + (0x0C18 ^ 1)),a
@@ -72,12 +75,15 @@ activate_objects:
         ld hl,AM + 0x0BD8
         ld (ao_a4),hl
         call ao_cands               ; (the port: the entries with x in the window, in list order)
+        call ao_ykey                ; (the port: those the camera's y cell rules out flagged)
 ao_lp:  ld hl,(ao_cnd)
-        ld a,(hl)
+ao_lh:  ld a,(hl)
         cp 0xFF
         ret z                       ; no candidate left
         inc hl
-        ld (ao_cnd),hl
+        or a
+        jp m,ao_skp                 ; (the port: outside the window, ao_ykey)
+ao_vis: ld (ao_cnd),hl
         ld (ao_curn),a
         ld l,a
         ld h,0
@@ -285,6 +291,102 @@ ao_clp: push bc
 ao_next:
         jp ao_lp
 
+; (the port) A candidate whose y the camera's cell rules out (ao_ykey): passed by when another one
+; follows; the last one is visited, its y test failing as for the original, so that ao_curn,
+; ao_lkc, ao_a1, IY, ao_x, ao_y and ao_cnd are left as the original's last visit leaves them. HL =
+; the next candidate's place.
+ao_skp: ld b,(hl)
+        inc b
+        jp nz,ao_lh                 ; (another one follows)
+        and 0x7F
+        jp ao_vis
+
+; (the port) ao_cands' candidates for the camera's 64-pixel cell of y: bit 7 of an entry of ao_cand
+; set when no camera y of the cell brings its y inside the window (y in camera y - 20h..AFh: ao_lp's
+; test), so that ao_lp passes it by; the level's masks (tools/cellmasks.py, objmasks.inc: ao_ym_l1,
+; _l2, _l3 in this bank, AO_YN cells from camera y 0). ao_ykc keeps the cell the flags were made for
+; (FEh: none, ao_cands has built the list again; FFh: the camera outside the masks' cells, no entry
+; flagged). Changes AF, BC, DE, HL.
+ao_ykey:
+        ld hl,(gcam_y)
+        ld a,h
+        cp 0x40
+        jr nc,ayk_out               ; (negative, or 4000h and more)
+        add hl,hl
+        add hl,hl
+        ld a,h                      ; camera y / 64
+        cp AO_YN
+        jr c,ayk_key
+ayk_out:
+        ld a,0xFF
+ayk_key:
+        ld hl,ao_ykc
+        cp (hl)
+        ret z                       ; (the flags were made for it)
+        ld (hl),a
+        ld de,ao_cand
+        cp 0xFF
+        jr z,ayk_no
+        ld b,a
+        inc b                       ; (B = the cell + 1)
+        ld a,(lvl_bank)             ; the level's masks
+        ld hl,ao_ym_l2
+        ld c,AO_MB_l2
+        cp BANK_L2
+        jr z,ayk_t
+        ld hl,ao_ym_l3
+        ld c,AO_MB_l3
+        cp BANK_L3
+        jr z,ayk_t
+        ld hl,ao_ym_l1
+        ld c,AO_MB_l1
+ayk_t:  push de
+        ld e,c
+        ld d,0
+        jr ayk_c
+ayk_cl: add hl,de
+ayk_c:  djnz ayk_cl                 ; HL = the cell's mask
+        pop de                      ; DE = the list
+ayk_lp: ld a,(de)
+        cp 0xFF
+        ret z
+        and 0x7F
+        ld c,a                      ; the entry
+        push de
+        push hl
+        rrca
+        rrca
+        rrca
+        and 0x1F
+        ld e,a
+        ld d,0
+        add hl,de
+        ld b,(hl)                   ; its byte of the mask
+        ld a,c
+        and 7
+        ld e,a
+        ld hl,ao_bits
+        add hl,de
+        ld a,b
+        and (hl)                    ; its bit
+        pop hl
+        pop de
+        ld a,c
+        jr nz,ayk_in
+        or 0x80                     ; (outside for every camera y of the cell)
+ayk_in: ld (de),a
+        inc de
+        jr ayk_lp
+ayk_no: ld a,(de)                   ; (no cell: every flag cleared)
+        cp 0xFF
+        ret z
+        and 0x7F
+        ld (de),a
+        inc de
+        jr ayk_no
+ao_bits:
+        db 1,2,4,8,16,32,64,128
+
 ; The entries are sorted by x once (ao_sort, at the level's start: so_x, so_n); the range of
 ; those with x in [camera x + 60h, camera x + 1ACh) follows the camera (ao_lo..ao_hi), and its
 ; entry numbers, sorted, are the candidates (ao_cand, FFh after the last; ao_cnd the next one).
@@ -361,6 +463,8 @@ ac_put: ld (hl),c
         djnz ac_ins
 ac_end: ld a,0xFF
         ld (de),a
+        dec a
+        ld (ao_ykc),a               ; (no flag made for them yet: ao_ykey)
         ; the camera x range where lo and hi stay: above so_x[lo - 1] - 60h and so_x[hi - 1] -
         ; 1ACh (nothing below an index of 0), at most so_x[lo] - 60h and so_x[hi] - 1ACh
         ; (nothing above the last entry)
@@ -660,10 +764,12 @@ a10_c:  ld hl,(AM + 0x169E)
         ld (iy+5),a
         ld (jump_pend),a
         call ao_cands
+        call ao_ykey                ; (the port: the flags for the new camera's y)
         ld a,(ao_curn)
         ld c,a
         ld hl,(ao_cnd)
-a10_sk: ld a,(hl)                   ; (FFh, the end, is above every entry)
+a10_sk: ld a,(hl)                   ; (FFh, the end, is above every entry: 7Fh without the port's
+        and 0x7F                    ;  flag, ao_ykey)
         cp c
         jr z,a10_n
         jr nc,a10_cd

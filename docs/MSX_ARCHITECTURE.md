@@ -502,8 +502,9 @@ which as sprites were striped, cut or left out.
   that a moving owner refills only the cells that come in (one 16x16 HMMM each, `FB_BURST` in a
   row); the background of an item is then one to four HMMMs. An item of 5 columns takes the
   narrower edge column from the tile cache (the hostage moves 2 px with its animation: 52 px).
-  `map_write` forgets a cell whose tile changed (`fb_inval`). Items without an owner or larger
-  than that take their background tile by tile.
+  `map_write` forgets a cell whose tile changed (`fb_inval`, called only for a cell inside a cache's
+  window: `tiles.asm` `fb_invf`). Items without an owner or larger than that take their background
+  tile by tile.
 - **Never half a change on screen**: the copy onto the page shown starts only where the beam is
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
@@ -777,6 +778,45 @@ which as sprites were striped, cut or left out.
   every level bank holds right after the header at the same addresses (level 2's bank a copy
   with its labels suffixed, `tools/mkrom.py` `gen/lvshared_l2.asm`), so `objects.asm` and
   `special.asm` call it at level 1's addresses.
+- **More shortcuts (performance campaign 2's batch 2: logic-4 and logic-6, 2026-11-02)**, the same rule
+  (the logic and the map the original's tick for tick). (7) `activate_objects` passes by the candidates
+  whose y no camera y of the camera's 64-pixel cell brings into its window (y in camera y − 20h..AFh):
+  the original's visit of such an entry loads its look cache, its Amiga address, IY, x and y and ends at
+  the y test. `mapobj.asm` `ao_ykey`, after `ao_cands` and after `act_10`'s jump, flags them with bit 7
+  of their `ao_cand` byte from the level's masks (`tools/cellmasks.py` writes `gen/objmasks.inc` into
+  `BANK_LC2` beside `mapobj.asm`: per level `ao_ym_l1`, `_l2`, `_l3`, a mask of `AO_MB_<level>` bytes per
+  cell of camera y, 13 cells from y 0, from the routine's own 16-bit test at each of the cell's 64
+  camera positions: 104, 78 and 26 bytes; `tests/test_tools.py` checks that every entry the window holds
+  at any camera y has its bit), and only when the cell changed or `ao_cands` built the list again
+  (`ao_ykc`, the byte after the list's 60: the cell the flags are for, FEh none, FFh a camera outside the
+  cells, no flag). `ao_lp` passes a flagged candidate in 60 T-states (69 with the MSX's M1 wait
+  states) against 495-534 (547-591) for its visit, and a candidate it visits costs 14 (16) more; the
+  last candidate, flagged or not, is visited, its y test failing as before, so that `ao_curn`,
+  `ao_lkc`, `ao_a1`, IY, `ao_x`, `ao_y` and `ao_cnd` are left as the original's last visit leaves them.
+  The masks live in `BANK_LC2`, not in the level banks: level 2's bank has 28 bytes free in the
+  `VAT_ANIM=1` sets. No store reaches an entry's y (`objl_ram` +10/+11) after the level's copy. (8)
+  `plmove.asm` `pl_lift`: `sp_update` clears every entry's right edge and fills entries 0, 1, ... with
+  `$168C` 0, 2, ... (2 a filled entry), so with `$168C` below 8 the entries from `$168C` / 2 on have right 0
+  and `x < right` fails there for an x not negative: the loop starts at the last entry filled (its own
+  order, entry 3 first) and, with none filled, returns NC at once (64 T-states against about 950 for
+  four entries RoboCop is right of); `$168C` 8 or more or a negative x take every entry, as before. (9)
+  `sp_update`'s dispatch tests the trolleys (handler 4) first: 14 T-states less a trolley, 14 more the
+  vehicle, a lift the same. (Running a trolley at once, before the rest shortcut's flag and rest
+  lookups, was measured too: 81 T-states a tick less in `l2_tour`, but 73 and 74 more in `l3_kill` and
+  `l3_tour3` and 169 more in `drive_play`, whose lifts paid its test: not kept.) (10) `hits.asm` `pl_hits`
+  tests an enemy's x against the box's right edge before loading its type's size (a reorder: LC1's
+  bytes unchanged): 162 T-states less for each enemy at or right of that edge (`ph_w`, `ph_h`, read only
+  by the next tests, are loaded for the enemies that reach them). Measured on the FS-A1FX (the `EXTJOY`
+  drive builds, the CPU's T-states a tick inside each routine with the interrupts left out, against the
+  same builds of batch 1's tip): `activate_objects` 6,509 -> 5,227 in `l2_tour` (ticks 20-1589), 3,885 ->
+  3,447 in `l3_kill` (130-1764), 7,404 -> 7,111 in `drive_play` (40-1449), 2,430 -> 2,388 in `l3_tour3`
+  (0-1399) and 2,628 -> 2,598 in `l3_park` (40-1199); `pl_lift` 1,094 -> 522 (l2_tour, where a lift or a
+  trolley is nearly always seen: 1,092 when only the none-filled case returned at once), 1,061 -> 71
+  (kill), 1,053 -> 71 (drive_play), 1,053 -> 78 (park), 1,189 -> 416 (tour3); `pl_hits` 26 to 191 less;
+  `sp_update` 9,451 -> 9,388 in l2_tour; the four together 1,943 a tick less in l2_tour, 1,619 in kill,
+  941 in tour3, 1,085 in park and 1,442 in drive_play (`hz_update`, unchanged, within 3). A watch on every
+  store to an entry's y over `l3_tour3`,
+  `l3_park`, `l3_boss`, `l3_kill`, `l2_tour` and `drive_play`: none after the level's copy at tick 0.
 - **The cracked wall** (map object 25 of level 1, type 5Ch, activator `obj_relocate` `$9FC4`,
   `mapobj.asm` `act_10`): after 80 ticks of "up" in front of it RoboCop and the camera go to
   the level header's +20/+22 (`$15D6`/`$15D8`, set by `level1.asm` `l1i_hdr` as `level_init`
@@ -884,6 +924,37 @@ which as sprites were striped, cut or left out.
   `rc2_guard`'s tear counts move as they do for builds of the base that change only a few T-states (the
   base with `cam_cells`' rewrite alone, or with the aging's stores alone: 4-6 such pictures in tour3's lifts
   window on the MSX2+, tears up to 9 more or fewer per drive).
+- **The changed cells' window test and no second walk (scroll-2 (b); performance campaign 2's batch 2,
+  2026-11-02)**: `tiles.asm` `fb_invf` (each tile `map_write` changes: a patch's tile, or a patch taken)
+  counts the change in `mw_gen` as before, then tests the cell against the three play-field caches'
+  windows (`fb_cache` +2, +3: a window's first column and row, 4 × 4 cells) and calls `field.asm`
+  `fb_inval` through `field_call` only for a cell inside one; a cell outside every window is held by no
+  cache, so `fb_inval` would change nothing (a free cache's window passes the test too: `fb_inval` skips
+  that cache, as before). `map_write`'s `mw_new` (a cell without a patch, just after its own walk of the
+  row found none) reads the ROM's tile through `get_tile`'s entry `gt_nop`, which does not walk the row's
+  chain again. Counted over `l3_tour3` on the FS-A1FX: `fb_invf` 16.37 calls a tick, none for a cell
+  inside a cache's window, so `fb_inval` 16.37 -> 0 calls a tick; `get_tile` 12.54 -> 9.39 (`mw_new`'s
+  3.11 through `gt_nop`); `l3_park` 2.03 -> 0 and 4.52 -> 3.46. Measured (the CPU's T-states a tick inside
+  the routines, interrupts left out, against the same builds without this item): in `l3_tour3` `hz_update`
+  (the beams' writes) 33,704 -> 26,292 and `update_objects` (the turrets') 24,054 -> 22,452 on the FS-A1FX,
+  33,825 -> 26,286 and 24,135 -> 22,531 on C-BIOS_MSX2; in `l3_park` 3,634 -> 3,030 and 15,588 -> 14,818;
+  71 less in `l3_kill`. With logic-4 and logic-6 above (the m3 runs of the kit's G-SPEED against batch 1's
+  tip, the test drives' teleport stalls left out; ticks a second): `l3_tour3`'s beams, lifts and roof
+  (215-540, 545-1065, 1085-1400) 16.18, 17.04, 15.11 -> 17.33, 17.86, 15.97 on the FS-A1FX (+7.1, +4.8,
+  +5.7 %), 13.88, 15.27, 15.09 -> 14.51, 15.87, 15.94 on C-BIOS_MSX2 (+4.6, +4.0, +5.6 %), 14.04, 15.23,
+  15.00 -> 14.46, 15.88, 16.04 on the Expert; `l2_tour` (20-1590) 23.05 -> 23.23 (FS-A1FX), 19.03 -> 19.16
+  (C-BIOS_MSX2), its end (2080-2350) 21.48 -> 22.25 and 17.24 -> 17.49; every other window of the gate,
+  the turbo R's included, within its timing controls. The fixed area +48 bytes (the test 46, `gt_nop` 2).
+  The plan's part (c), a "last
+  patch found" hint per row in `MP_ROW`'s tail, was not built: a record of every `get_tile` and
+  `map_write` walk with the row's chain at that moment (`l3_tour3` on both VDPs, `l3_park`, `l2_tour`)
+  shows the chains listing a row's patches newest first while the beams, the turrets and the engines go
+  through a row's cells in ascending columns, the order those patches were made, so such a hint holds the
+  cell before the one asked for: 648 of 46,833 checks would hit over tour3 (FS-A1FX), and the hint's code,
+  its T-states counted on the recorded walks, would cost 1,811 a tick more there (2,062 to 2,193 in its
+  beams, lifts and roof windows; 350 in park). A hint of each row's lowest and highest patched column, for `get_tile` alone, would save 280 to
+  1,790 T-states a tick in those windows, for about 58 bytes of the fixed area (estimated) that batches 2
+  and 3 need (`docs/PERF2_PLAN.md` 5.2): not built either.
 - **Palette on screen**: `pf_pal` (RAM) is the play field's palette the VBLANK loads (the HUD
   keeps its own, loaded at the split). It changes as the original's copper colours do: the
   fade (`pal_fade`: every 3-bit component at most the fade level / 4, the original's eight

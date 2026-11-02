@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""Camera-cell masks of a level's spawn list and hazards, for the port's game logic shortcuts.
+"""Camera-cell masks of a level's spawn list, hazards and object list, for the port's game logic
+shortcuts.
 
 Every game tick the original walks the whole spawn list of the level for each free enemy slot
 (update_objects $C44C: 28 entries in level 1, each tested against a window around the camera and
 reset when outside it) and tests every hazard record against another window ($9150: 15 electric
-beams in level 1), though only one or two of them are ever near the camera. The port visits only
-the entries that can be inside the window for the camera's position (msx/objects.asm uo_free with
-msx/lvshared.asm sw_prep; msx/special.asm hz_update): this tool works out, per 64-pixel cell of
-camera x and per cell of camera y, the mask of the entries whose window test passes for some
-camera coordinate in the cell. The tests are the ported routines' own, evaluated for each of the
-cell's 64 coordinates, so a mask is a superset of the entries inside the window for any camera in
-its cell: an entry in neither mask is outside the window for sure, and the code ANDs the x and the
-y mask of the camera's cells. The windows, the camera at (cx, cy), with 16-bit arithmetic:
+beams in level 1), though only one or two of them are ever near the camera; activate_objects
+($9C06) tests each entry of the object list against a window too (59 entries in level 1; the port
+visits only those whose x is inside it, msx/mapobj.asm ao_cands, and of those most fail the y
+test). The port visits only the entries that can be inside the window for the camera's position
+(msx/objects.asm uo_free with msx/lvshared.asm sw_prep; msx/special.asm hz_update; msx/mapobj.asm
+ao_ykey and ao_lp): this tool works out, per 64-pixel cell of camera x and per cell of camera y,
+the mask of the entries whose window test passes for some camera coordinate in the cell. The
+tests are the ported routines' own, evaluated for each of the cell's 64 coordinates, so a mask is
+a superset of the entries inside the window for any camera in its cell: an entry in neither mask
+is outside the window for sure, and the code ANDs the x and the y mask of the camera's cells (the
+object list: its y mask alone, the candidates' x being exact). The windows, the camera at (cx, cy),
+with 16-bit arithmetic:
 
-    spawn list: x - (cx + 5Eh) in [0, 152h) and cy - 28h < y <= cy + A8h
-    hazards:    window x >= cx + 73h, x < cx + 1A0h and y - (cy - 64h) in [0, 110h)
+    spawn list:  x - (cx + 5Eh) in [0, 152h) and cy - 28h < y <= cy + A8h
+    hazards:     window x >= cx + 73h, x < cx + 1A0h and y - (cy - 64h) in [0, 110h)
+    object list: y - cy + 20h not negative and y - cy + 20h - D0h negative (y in cy - 20h..cy + AFh)
 
 Output: build/msx/gen/cells_<level>.inc for each level bank (l1, l2, l3) whose spawn list
 (spawn_<level>) and hazard list (hz_<level>) analysis/amiga_tables.tsv lists, read from the
@@ -26,6 +32,11 @@ hz_all. Level 1's names are these; another level's carry its suffix (SW_N_l2, sw
 names tools/mkrom.py's copy of msx/lvshared.asm for that level's bank uses; z80asm's labels are
 global). The shared code reads the entries' addresses from lvshared.asm's sw_ptr, the spawn walk's
 last entry and the hazards' cells and masks from the level header (msx/objects.asm lv_swn1 ...).
+And build/msx/gen/objmasks.inc, which msx/rc2.asm includes in the logic's module 2 (BANK_LC2,
+msx/mapobj.asm, mapped whatever the level): AO_YN (the cells of camera y, as SW_YN) and per level
+whose object list (objl_<level>) the table lists AO_N_<level> (its entries: up to AO_MAX, 59,
+msx/msx.inc AO_MAX: the candidates and their flags' cell share ao_cand's 61 bytes), AO_MB_<level>
+(the bytes of its masks, AO_N / 8 rounded up) and ao_ym_<level> (a mask per cell of camera y).
 
 usage: cellmasks.py build/ram/level1_full.bin analysis/amiga_tables.tsv build/msx/gen MAP_COLS MAP_ROWS
        (the map's size in 16-pixel cells, as tools/mkrom.py knows it: the camera never leaves it)
@@ -43,8 +54,10 @@ CELL = 6                            # a cell is 2^6 = 64 pixels of camera x or y
 LEVELS = ("l1", "l2", "l3")
 SPAWN_REC = 14                      # a spawn list entry: x, y, type.b, ?, ?, flags.b, reload, counter, spawned.b, ?
 HZ_REC = 8                          # a hazard record: x, y, window x, rows - 1 (words)
+OBJ_REC = 12                        # an object list entry: type, look, hits, value, x, y (words)
 SW_MAX, HZ_MAX = 40, 16             # the masks: 5 bytes per cell (msx/msx.inc SW_MAX, SW_MB), a word
 SW_MB = (SW_MAX + 7) // 8
+AO_MAX = 59                         # the object list's entries at most (msx/msx.inc AO_MAX)
 
 
 def s16(v: int) -> int:
@@ -70,6 +83,15 @@ def hazard_records(img: bytes, addr: int) -> list[tuple[int, int, int, int]]:
     return out
 
 
+def object_entries(img: bytes, addr: int) -> list[int]:
+    """y of the object list's entries at addr, up to the end word (a negative type)."""
+    out = []
+    while struct.unpack_from(">h", img, addr)[0] >= 0:
+        out.append(struct.unpack_from(">h", img, addr + 10)[0])
+        addr += OBJ_REC
+    return out
+
+
 def spawn_x(entry: tuple[int, int], cx: int) -> bool:
     """update_objects $C44C: x - D0 - 1 below 152h, D0 = camera x + 5Dh (objects.asm uf_at)."""
     return (entry[0] - (cx + 0x5E)) & 0xFFFF < 0x152
@@ -88,6 +110,13 @@ def hazard_x(rec: tuple[int, int, int, int], cx: int) -> bool:
 def hazard_y(rec: tuple[int, int, int, int], cy: int) -> bool:
     """y - (camera y - 64h) below 110h, unsigned (special.asm hz_lp)."""
     return (rec[1] - (cy - 0x64)) & 0xFFFF < 0x110
+
+
+def object_y(y: int, cy: int) -> bool:
+    """activate_objects $9C06's y test (mapobj.asm ao_lp): y - camera y + 20h, then that - D0h, each a
+    16-bit result: the first not negative, the second negative."""
+    t = (y - cy + 0x20) & 0xFFFF
+    return not t & 0x8000 and bool((t - 0xD0) & 0xFFFF & 0x8000)
 
 
 def cell_masks(items: list, cells: int, test) -> list[int]:
@@ -138,6 +167,29 @@ def inc_text(level: str, entries: list, records: list, xn: int, yn: int, source:
             f"entries) and hazards ({len(records)} records) per 64-pixel cell of the camera\n" + "\n".join(sw + hz) + "\n")
 
 
+def masks_table(label: str, masks: list[int], size: int, axis: str, what: str) -> list[str]:
+    """A table of masks, a cell a line: its label, then db lines."""
+    out = [f"{label}:{' ' * max(1, 36 - len(label) - 1)}; per camera {axis} cell {what}"]
+    out += [f"        db {db(m, size)}{' ' * max(0, 25 - 5 * size)}      ; camera {axis} "
+            f"{c << CELL}..{((c + 1) << CELL) - 1}" for c, m in enumerate(masks)]
+    return out
+
+
+def obj_inc_text(levels: list[tuple[str, list[int]]], yn: int, source: str) -> str:
+    """objmasks.inc: per level (its name, its object list's y values) AO_N_<level>, AO_MB_<level> and
+    ao_ym_<level> (yn cells of camera y), after AO_YN."""
+    out = [f"; generated by tools/cellmasks.py from {source}: the object lists' masks per 64-pixel cell of camera y "
+           f"(msx/mapobj.asm ao_ykey, BANK_LC2)",
+           f"AO_YN:      equ {yn}                  ; the cells of camera y (the maps' height)"]
+    for lv, ys in levels:
+        mb = max(1, (len(ys) + 7) // 8)
+        out += [f"AO_N_{lv}:    equ {len(ys)}                  ; level {lv[1:]}'s object list's entries (up to {AO_MAX})",
+                f"AO_MB_{lv}:   equ {mb}                   ;   the bytes of a mask"]
+        out += masks_table(f"ao_ym_{lv}", cell_masks(list(ys), yn, object_y), mb, "y",
+                           "the entries whose y activate_objects' window can reach")
+    return "\n".join(out) + "\n"
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 6:
         print(__doc__, file=sys.stderr)
@@ -149,6 +201,7 @@ def main(argv: list[str]) -> int:
     cols, maprows = int(argv[4], 0), int(argv[5], 0)
     xn, yn = -(-cols * 16 >> CELL), -(-maprows * 16 >> CELL)
     done = []
+    objs = []
     for lv in LEVELS:
         sp, hz = rows.get(f"spawn_{lv}"), rows.get(f"hz_{lv}")
         if sp is None or hz is None:
@@ -160,6 +213,17 @@ def main(argv: list[str]) -> int:
             return 1
         (out / f"cells_{lv}.inc").write_text(inc_text(lv, entries, records, xn, yn, Path(argv[1]).name))
         done.append(f"{lv}: {len(entries)} entries, {len(records)} hazards")
+    for lv in LEVELS:
+        ol = rows.get(f"objl_{lv}")
+        if ol is None:
+            continue
+        ys = object_entries(img, ol["addr"])
+        if len(ys) > AO_MAX:
+            print(f"error: {lv}: {len(ys)} object list entries: the masks and ao_cand hold {AO_MAX}", file=sys.stderr)
+            return 1
+        objs.append((lv, ys))
+    (out / "objmasks.inc").write_text(obj_inc_text(objs, yn, Path(argv[1]).name))
+    done.append("objects " + ", ".join(f"{lv} {len(ys)}" for lv, ys in objs))
     print(f"{out}: {xn} x {yn} cells; " + "; ".join(done))
     return 0
 

@@ -112,10 +112,10 @@ spu_full:
         ld h,(ix+SR_Y+1)
         ld (sp_y),hl                ; D1
         ld a,(ix+0)
+        cp 4
+        jr z,spu_tro                ; (the port: the trolleys first, level 2's 4 of its 9 records)
         cp 8
         jr z,spu_veh
-        cp 4
-        jr z,spu_tro
         or a
         call z,sp_lift
         jr spu_nx
