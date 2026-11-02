@@ -154,6 +154,12 @@ l3i_hdr:
         ld hl,0
         ld (mc_prev),hl             ; (the port: no map-write cache entry stands at a life's start,
         ld (mc_cur),hl              ;  lt2_off, level3obj.asm tur_put)
+        if BEAM_ANIM = 0
+        ld (lb_st),hl               ; (nor a beam's lit look held: lt2_hold; lb_st's BM_N = 7 bytes)
+        ld (lb_st + 2),hl
+        ld (lb_st + 4),hl
+        ld (lb_st + 5),hl
+        endif
         jp sw_init_l3               ; (the port: the logic shortcuts' caches from the lists)
 l3i_sp0:
         ld hl,sp_l3                 ; the special objects ($8B54: $9008): records into RAM,
@@ -201,7 +207,10 @@ l3i_spe:
 ; (random + x + 2n) & 1Eh; off, 1900h and 1880h on top, 1800h and 1780h below (the port: not again
 ; while the cells hold them, lt2_off; every look from tt_l3.inc, the words with their tiles, through
 ; lt2_putt). Unlike level 1's $933A: two cells wide, 32/32 frames (bit 5), 0Ch, (rows + 2) x 16 below
-; the top in reach.
+; the top in reach. (BEAM_ANIM=0, the product: the user's choice of 2026-11-02, the lit look held,
+; lt2_hold: drawn once a lit period, with the random of the first lit frame the record runs in, then
+; kept until the off looks; the logic and $B32 as always: every beam word's attributes are 0, the
+; tiles display only. BEAM_ANIM=1: drawn every lit frame, as the original.)
 lt2:    ld a,(g_frame)
         and 0x20
         jp nz,lt2_off
@@ -247,8 +256,17 @@ lt2:    ld a,(g_frame)
         ld a,0x22
         ld (snd_b30),a
 lt2_map:
+        if BEAM_ANIM
         call lt2_cell               ; ($EF8E at x, top)
         ld a,(AM + 0x0B32)
+        else
+        call lt2_hold               ; A = the look's random; Z: held, nothing to write
+        ret z
+        push af
+        call lt2_cell               ; ($EF8E at x, top)
+        pop af
+        push af
+        endif
         and 6
         ld e,a
         add a,a
@@ -263,7 +281,11 @@ lt2_map:
         inc de
         inc de                      ; DE = its low word (the right cell)
         call lt2_putt
+        if BEAM_ANIM
         ld a,(AM + 0x0B32)
+        else
+        pop af
+        endif
         add a,(ix+0)                ; D3 = random + x
         ld c,a
         ld b,(ix+6)
@@ -333,6 +355,10 @@ lt2_bk: rlca
         jr z,lt2_om                 ; (no change since: its cells hold the off looks)
 lt2_ow: push hl
         push bc
+        if BEAM_ANIM = 0
+        call lt2_st
+        ld (hl),d                   ; (D = 0: no lit look held, lt2_hold)
+        endif
         call lt2_cell
         ld hl,lt2_off_t             ; 1900h,
         ld de,lt2_off_t + 3         ;   1880h
@@ -355,6 +381,54 @@ lt2_om: ld a,(mc_cur)
         or c
         ld (mc_cur),a               ; (used this tick)
         ret
+        if BEAM_ANIM = 0
+
+; (The port, BEAM_ANIM=0) The lit look held: record k's stamp lb_st + k is the lit period's (g_frame
+; bits 6-7; bit 5 set: one held, lit frames have it clear) with the random's bits 0-4 the look was
+; drawn with (all its words take: random & 6 on top, (random + x + 2n) & 1Eh below). Its cells hold
+; the look while the stamp is this period's: no other writer changes them (tools/mapcells.py checks)
+; and every write took (mp_lost, atr_lost 0, as lt2_off's rule; else the same look again). lt2_off's
+; writes and l3_init clear the stamp. Out: Z = held (nothing to write); else A = the stamp (a new one
+; with this frame's random: the first lit frame the record runs in a period).
+lt2_hold:
+        call lt2_st                 ; HL = its stamp
+        ld a,(g_frame)
+        and 0xC0
+        or 0x20
+        ld e,a                      ; E = this lit period's stamp
+        xor (hl)
+        and 0xE0
+        jr nz,lth_new               ; (none held, or another period's)
+        ld a,(mp_lost)
+        ld d,a
+        ld a,(atr_lost)
+        or d
+        ret z                       ; (held)
+        ld a,(hl)                   ; (a write was lost once: the same look again; NZ: bit 5)
+        or a
+        ret
+lth_new:
+        ld a,(AM + 0x0B32)
+        and 0x1F
+        or e
+        ld (hl),a                   ; (the new look's stamp; NZ: bit 5)
+        ret
+
+; HL = lb_st + k, DE = k for record k of hz_l3 at IX (8 bytes each).
+lt2_st: push ix
+        pop hl
+        ld de,(0 - hz_l3) & 0xFFFF
+        add hl,de                   ; 8k
+        ld a,l
+        rrca
+        rrca
+        rrca
+        ld e,a
+        ld d,0
+        ld hl,lb_st
+        add hl,de
+        ret
+        endif
 
 ; h_row, h_col = the cell $EF8E's A0 points at for (x, top) of the record: row y >> 4, or 0 outside
 ; $EF8E's 51 rows (its constant in every level), column (x >> 4) - 8 (level1.asm t23_cell's rule).
