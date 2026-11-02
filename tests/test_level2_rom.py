@@ -396,9 +396,9 @@ class RingQueueTests(unittest.TestCase):
 
 class DamageTests(unittest.TestCase):
     """DAMAGE_X 2 (the user's choice of 2026-10-31) and the missiles' own damage in every build: enemy
-    bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied, nor Cain's damage (2026-11-01:
-    his shots 9 and 0Ah, touching him or his bombs and missiles); the other bullets, the touch and the
-    drip times DAMAGE_X."""
+    bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied, nor Cain's shots 9 and 0Ah
+    (2026-11-01), nor touching any enemy (2026-11-02: the original's 1); the other bullets and the drip
+    times DAMAGE_X."""
 
     def test_the_default(self):
         self.assertEqual(mkrom.OPTIONS["DAMAGE_X"][0], 2)
@@ -422,17 +422,15 @@ class DamageTests(unittest.TestCase):
         self.assertEqual(touch, ["t38_hit:", "ld hl,(AM + 0x169A)", "ld de,0 - 0x18", "add hl,de",
                                  "ld (AM + 0x169A),hl"])
 
-    def test_cain_keeps_the_original_touch(self):
-        # touching Cain (type 22) or his bombs and missiles (38, 39, 52) takes the original's 1 a frame
-        # (the user's choice of 2026-11-01: docs/LEVEL3.md default 16); any other enemy DAMAGE_X
-        x = if_blocks("hits.asm", "DAMAGE_X > 1")[16:]
-        self.assertEqual(x, ["ld a,(ix+OS_TYPE)", "cp 22", "jr z,pht_1", "cp 52", "jr z,pht_1", "sub 38", "cp 2",
-                             "jr nc,pht_dx", "pht_1:  ld de,0 - 1", "pht_dx:"])
+    def test_every_touch_takes_the_original_1(self):
+        # touching any enemy takes the original's 1 a frame, never times DAMAGE_X (the user's choice of
+        # 2026-11-02; Cain and his bombs and missiles since 2026-11-01: docs/LEVEL3.md default 16)
+        self.assertEqual(len(if_blocks("hits.asm", "DAMAGE_X > 1")), 16)
         code = [l.split(";")[0].strip() for l in (ROOT / "msx" / "hits.asm").read_text().splitlines()]
-        i = code.index("ld de,0 - DAMAGE_X")
-        self.assertEqual(code[i - 1], "ld hl,(AM + 0x169A)")
-        self.assertEqual(code[i + 1], "if DAMAGE_X > 1")
-        self.assertEqual(code[i + 13:i + 15], ["add hl,de", "ld (AM + 0x169A),hl"])
+        i = code.index("ld (ix+OS_TOUCH),0xFF")
+        self.assertEqual(code[i + 1:i + 5], ["ld a,PAL_ENEMYHIT", "call pal_flash", "ld hl,(AM + 0x169A)",
+                                             "dec hl"])
+        self.assertEqual(code[i + 6], "ld (AM + 0x169A),hl")
 
     def test_damage_x_where_the_rule_says(self):
         uses = []
@@ -441,8 +439,6 @@ class DamageTests(unittest.TestCase):
                 if "DAMAGE_X" in l.split(";")[0]:
                     uses.append((f.name, l.split(";")[0].strip()))
         self.assertEqual(uses, [("hits.asm", "if DAMAGE_X > 1"), ("hits.asm", "if DAMAGE_X > 2"),
-                                ("hits.asm", "ld de,0 - DAMAGE_X"),                          # (the touch)
-                                ("hits.asm", "if DAMAGE_X > 1"),                             # (Cain's touch)
                                 ("level2obj.asm", "ld de,0 - 0x0A * DAMAGE_X")])             # (the drip)
 
 

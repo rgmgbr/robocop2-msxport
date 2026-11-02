@@ -225,7 +225,7 @@ OPTIONS = {
     "SPLITDIAG": (0, "1 = test build: the HUD split's display-on later by 14 T-states a step, steps 0-15 of 256"
                      " frames each (the step in the score's last digits); the timer shows this step's fewest and"
                      " most polls from the display-on to the match of display line 169 (msx/isr.asm isr_split)"),
-    "DAMAGE_X": (2, "1-3: the enemies' damage to RoboCop multiplied (their bullets, touching them, the drip): 2 = the"
+    "DAMAGE_X": (2, "1-3: the enemies' damage to RoboCop multiplied (their bullets, the drip; touching them takes the original's 1 since 2026-11-02): 2 = the"
                     " user's choice of 2026-10-31 for the fewer enemies (ENEMY_CAP; 3 made the game impossible), 1 = the"
                     " original, for trace tests; the missiles (enemy bullet types 1 and 2, damage 40h, and level 2's"
                     " drone) keep the original's damage in every build, the user's choice (msx/hits.asm, level2obj.asm),"

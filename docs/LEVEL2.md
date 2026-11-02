@@ -35,7 +35,8 @@ numbers are those of the phase's task):
   gunners that stay put, explosions and smoke (decisions 11-16). Left = right mirrored (14).
 - `ENEMY_CAP` 1, and the hostage does not count (18, 25).
 - The game logic runs at 25 Hz, ported routine by routine, trace-identical to the Amiga bench (10).
-- Damage to RoboCop × 2 (`DAMAGE_X`; × 3 until 2026-10-31), the missiles × 1, the original's (17, 19).
+- Damage to RoboCop × 2 (`DAMAGE_X`; × 3 until 2026-10-31), the missiles × 1, the original's (17, 19); touching
+  an enemy × 1, the original's 1, since 2026-11-02 (the user's choice).
 - The colour grade applies to game play only (24).
 - The PSG always; an SCC in any slot and MSX-MUSIC or an FM-PAC when present; the in-game effects
   on the SCC (21, 23).

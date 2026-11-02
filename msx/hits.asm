@@ -24,8 +24,8 @@ PK_VY:      equ AM + 0x0DA4
 ;   the bullet was less than 50 pixels right of him, the hit spark runs 7 frames ($16A0) at
 ;   ($16A2, $16A4) = y + 3Ch - his y, 0..32h, twice (the x written first is overwritten);
 ; - the first of the 5 enemies whose box (obj_desc width, height; no -8 margins here) overlaps
-;   it: its touch byte (+23h) set, the palette flashes (PAL_ENEMYHIT), energy - 1 (DAMAGE_X; Cain,
-;   type 22, and his bombs and missiles, types 38, 39 and 52, the original's 1: 2026-11-01);
+;   it: its touch byte (+23h) set, the palette flashes (PAL_ENEMYHIT), energy - 1 (the original's 1
+;   for every enemy, never times DAMAGE_X: the user's choice of 2026-11-02);
 ; - the pickups (slot 3 to 0) no longer rising whose box (x - 8, y - 8, 15 x 15) overlaps it:
 ;   the first one is taken: its message, its sound ($FC0B), the vehicle's vy + 6 when he rides it
 ;   ($16D8, $D7C), and its effect ($FBE0 + type) - nothing more this frame.
@@ -250,20 +250,8 @@ pht_lp: ld a,(ix+OS_TYPE)
         ld a,PAL_ENEMYHIT
         call pal_flash
         ld hl,(AM + 0x169A)
-        ld de,0 - DAMAGE_X          ; (the original: 1)
-        if DAMAGE_X > 1             ; (Cain, type 22, and his bombs and missiles, types 38, 39 and
-        ld a,(ix+OS_TYPE)           ; 52: the original's 1, the user's choice of 2026-11-01;
-        cp 22                       ; docs/LEVEL3.md default 16)
-        jr z,pht_1
-        cp 52
-        jr z,pht_1
-        sub 38
-        cp 2
-        jr nc,pht_dx
-pht_1:  ld de,0 - 1
-pht_dx:
-        endif
-        add hl,de
+        dec hl                      ; (the original's 1, never multiplied: the user's choice of
+                                    ; 2026-11-02, docs/LEVEL3.md default 16)
         ld (AM + 0x169A),hl
         jr php_go
 pht_nx: ld de,4

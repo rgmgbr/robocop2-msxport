@@ -282,7 +282,9 @@ hit points at GOOD; size = the REA function body; the coverage saw all but 46):
   `DAMAGE_X`. Level 3 adds **bullet 11h, a rocket with the missiles' 40h** (default 11: × 1), and
   the 18h touches of 38, 39, 52 (default 12: × 1, as level 2's drone `t49_hit`). The beams: a
   hazard, × 1. **Cain's damage × 1** (default 16, 2026-11-01): his bullets 9 and 0Ah, touching him
-  and touching his bombs and missiles (38, 39, 52) take the original's 1.
+  and touching his bombs and missiles (38, 39, 52) take the original's 1. **Every touch × 1** (2026-11-02, the
+  user: "encostar nos inimigos deve causar o dano padrao do jogo"): touching any enemy takes the original's 1
+  a frame in every build (`hits.asm`'s touch: `dec hl`); bullets other than the missiles keep `DAMAGE_X`.
 
 ### 2.7 The frames [V: bench]
 
