@@ -1838,9 +1838,15 @@ fcn_c:  ld (fb_ci + 1),a
         ret
 
 ; Phase FP_FILL: the next cells of the piece the cache does not hold (FB_BURST at most), from the
-; tile cache into it (HMMM); then the background.
+; tile cache into it (HMMM); then the background. When the cache holds every cell of its 4 x 4 window it
+; holds every cell of the piece (fb_cfind put the window over it): no cell is tested (performance
+; campaign 2's field-10; level 2's tour: 500 of 841 pieces, of 675 with every cell held).
 fb_fill:
         call fb_cix
+        ld a,(ix+6)
+        and (ix+7)
+        inc a
+        jr z,ffl_done
         ld a,FB_BURST
         ld (fb_bn),a
 ffl_lp: ld a,(fb_cc + 3)

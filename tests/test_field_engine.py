@@ -3,7 +3,8 @@ fb_tiles, ftl_ax: a cell's part in a piece by 8-bit arithmetic on the piece's co
 replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell, field-7's band pieces (up to 128
 px wide) included; field-7's staging (fb_stage, fb_piece's clamp, fcp_next, fsl_sx, fst_chain's bands) against the
 64 x 64 pieces it replaced; TILE-LOOKUP's row reads (tiles.asm gt_row, fb_tiles' cells: a row's map bank at
-8000h) against get_tile's (at A000h) over every level's map; FC-UPLOAD's line loop (fc_get:
+8000h) against get_tile's (at A000h) over every level's map; field-10's fill (fb_fill: no cell tested when the
+cache holds its whole window, which fb_cfind puts over the piece); FC-UPLOAD's line loop (fc_get:
 R#14 set once, the frame cache's places in page 2's lines 128-255, a line's bytes in two halves of sprites.asm's
 outi32 chain, an odd count's extra byte in the second). Stdlib only."""
 from __future__ import annotations
@@ -343,6 +344,52 @@ class TileLookupTests(unittest.TestCase):
                     self.assertEqual(t, map_word(mp, r, c), (lv, r, c))
                     n += 1
         self.assertEqual(n, (51 + 50 + 50) * 160)
+
+
+def cfind_window(w: int, c0: int, c1: int) -> int:
+    """msx/field.asm fb_cfind's window move on one axis (fcf_got: columns, then rows the same way): the
+    window's first cell w, the piece's first and last c0, c1 -> the window's first cell after it."""
+    if c0 < w:                                          # cp (ix+2) / jr c,fcf_xm (A = c0)
+        return c0
+    if c1 <= w + 3:                                     # jr c,fcf_y / jr z,fcf_y
+        return w
+    return c1 - 3                                       # sub 3
+
+
+class FillSkipTests(unittest.TestCase):
+    """field-10 (docs/PERF2_PLAN.md item 19): fb_fill tests no cell when its cache holds all 16 cells of its
+    window: the piece (at most 4 x 4 cells: fb_piece's cache path, the 5th column from the tiles) lies inside
+    the window fb_cfind leaves, and every cell of the window has its bit (fb_cbit: row * 4 + column from the
+    origin, both mod 4)."""
+
+    def test_the_routine(self):
+        fill = code("field.asm", "fb_fill", "ffl_held")
+        self.assertEqual(fill[:6], ["call fb_cix", "ld a,(ix+6)", "and (ix+7)", "inc a", "jr z,ffl_done",
+                                    "ld a,FB_BURST"])
+        self.assertEqual(code("field.asm", "ffl_done", "fb_bg"), ["xor a", "ld (fb_ci),a", "ld a,FP_BG",
+                                                                 "ld (fb_ph),a"])
+        got = code("field.asm", "fcf_got", "fcf_mvx")
+        self.assertEqual(got[4:24], ["ld a,(fb_cc)", "cp (ix+2)", "jr c,fcf_xm", "ld a,(ix+2)", "add a,3", "ld b,a",
+                                     "ld a,(fb_cc + 2)", "cp b", "jr c,fcf_y", "jr z,fcf_y", "sub 3", "call fcf_mvx",
+                                     "ld a,(fb_cc + 1)", "cp (ix+3)", "jr c,fcf_ym", "ld a,(ix+3)", "add a,3",
+                                     "ld b,a", "ld a,(fb_cc + 3)", "cp b"])
+
+    def test_the_window_holds_the_piece(self):
+        """Every window place and piece of 1-4 cells (map columns 0-159, rows 0-50): the piece's cells lie in the
+        window fb_cfind leaves, and with all 16 bits held each of them is held, whatever the origin."""
+        n = 0
+        for w in range(0, 157):
+            for c0 in range(0, 157):
+                for k in range(4):
+                    c1 = c0 + k
+                    nw = cfind_window(w, c0, c1)
+                    self.assertTrue(nw <= c0 and c1 <= nw + 3, (w, c0, c1, nw))
+                    n += 1
+        self.assertEqual(n, 157 * 157 * 4)
+        for ox in range(4):                             # (the bits of a window's 16 cells: each once)
+            for oy in range(4):
+                bits = {((r - oy) & 3) * 4 + ((c - ox) & 3) for r in range(10, 14) for c in range(20, 24)}
+                self.assertEqual(bits, set(range(16)))
 
 
 def converter_constant(name: str):

@@ -518,7 +518,13 @@ which as sprites were striped, cut or left out.
   narrower edge column from the tile cache (the hostage moves 2 px with its animation: 52 px).
   `map_write` forgets a cell whose tile changed (`fb_inval`, called only for a cell inside a cache's
   window: `tiles.asm` `fb_invf`). Items without an owner or larger than that take their background
-  tile by tile.
+  tile by tile. Since performance campaign 2's field-10 (`docs/PERF2_PLAN.md` item 19) the fill
+  (`fb_fill`) tests no cell when its cache holds all 16 cells of its window (`fb_cfind` always puts the
+  window over the piece, so every cell of the piece is held): until then it called `fb_cbit` for each
+  cell of the piece, about 350 T-states a cell held. Measured on level 2's tour (FS-A1FX, 2,654 ticks):
+  841 pieces filled, 675 of them with every cell held (7,476 of the 9,630 cells tested), 500 with the
+  whole window held; the exact test of the piece's cells did not fit `BANK_FIELD` (about 40 bytes) for
+  the 175 others. Level 1's play (`drive_play`) fills none.
 - **Never half a change on screen**: the copy onto the page shown starts only where the beam is
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
