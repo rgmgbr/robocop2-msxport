@@ -29,11 +29,14 @@ bob_begin:
         ld (bob_n),a
         ld hl,bob_list
         ld (bob_ptr),hl
-        ld hl,cat_head
-        ld b,2 * BOB_CATS
-bbg_c:  ld (hl),a
-        inc hl
-        djnz bbg_c
+        ld h,a
+        ld l,a
+        ld (cat_head),hl            ; (no category has a record: 2 x BOB_CATS bytes, 112 T-states
+        ld (cat_head + 2),hl        ;  where a loop took 362, the M1 waits counted)
+        ld (cat_head + 4),hl
+        ld (cat_head + 6),hl
+        ld (cat_head + 8),hl
+        ld (cat_head + 10),hl
         if FLASH_LOOK = 7
         ld hl,fl_pend               ; (the hit flash's look: each slot's white ticks to come, one
         ld b,5                      ;  fewer at every tick's start, fl_note)
@@ -508,6 +511,10 @@ BC_EFFECT:  equ 3                   ; RoboCop's shots and effects (update_player
 BC_SPECIAL: equ 4                   ; lifts, the vehicle ($8B32)
 BC_EXPL:    equ 5                   ; explosions ($F080)
 BOB_CATS:   equ 6
+        if BOB_CATS != 6
+bbg_c:                              ; (an error: bob_begin clears the heads of 6 categories)
+bbg_c:
+        endif
 
 ; After the game's tick (main loop, after pl_show): the BOBs it drew (bob_list) become sprite
 ; objects 1..SPARK_OBJ-1. A BOB keeps the object its identity (category, owner, part: bd_rec)
@@ -524,26 +531,20 @@ BOB_CATS:   equ 6
 bob_flush:
         xor a
         ld (fb_n),a                 ; (the play-field BOBs of the tick: fb_add)
+        ld (bf_nnew),a
+        ld hl,bf_gen                ; this flush's stamp: an object a record takes gets it in
+        inc (hl)                    ; bf_claim (1-255; after 255 the bytes go back to 0 and the
+        jr nz,bf_g                  ; stamps start again at 1), so that no flush clears them (483
+                                    ; T-states, and the count below 876)
+        inc (hl)
         ld hl,bf_claim
         ld b,MAX_OBJ
-        xor a
 bf_cl:  ld (hl),a
         inc hl
         djnz bf_cl
-        ld (bf_nnew),a
-        ld hl,obj_key + 4 + 3       ; the objects with an identity (bf_match looks at every
-        ld bc,(SPARK_OBJ - 1) * 256 ; object only while some of them are not taken yet)
-bf_un:  ld a,(hl)
-        or a
-        jr z,bf_un0
-        inc c
-bf_un0: inc l
-        inc l
-        inc l
-        inc l
-        djnz bf_un
-        ld a,c
-        ld (bf_unm),a
+bf_g:   ld a,(bf_idn)               ; the objects with an identity (bf_key and bf_hide count them;
+        ld (bf_unm),a               ; bf_match looks at every object only while some of them are
+                                    ; not taken yet)
         ld hl,cat_head
         ld c,0                      ; category
 bf_cat: ld e,(hl)
@@ -639,10 +640,10 @@ bf_fr:  ld a,c
         ld l,a
         ld h,bf_claim / 256
         inc c
-        ld a,(hl)
-        or a
-        jr nz,bf_fr
-        ld (hl),1
+        ld a,(bf_gen)
+        cp (hl)
+        jr z,bf_fr                  ; (taken)
+        ld (hl),a
         ld a,c
         dec a
         push bc                     ; (bf_show uses BC)
@@ -655,14 +656,17 @@ bf_fr:  ld a,c
 bf_full:
         pop hl
 bf_hide:
+        ld a,(bf_unm)               ; (every identity of the tick before has its record, so every
+        or a                        ;  object with one has a record now: most ticks; the walk below
+        ret z                       ;  takes 1,680-1,790 T-states with 3-5 objects taken)
         ld c,1                      ; the objects without a record
 bf_hl:  ld a,c
         add a,bf_claim & 0xFF
         ld l,a
         ld h,bf_claim / 256
-        ld a,(hl)
-        or a
-        jr nz,bf_hn
+        ld a,(bf_gen)
+        cp (hl)
+        jr z,bf_hn                  ; (taken)
         ld a,c
         add a,a
         add a,a
@@ -673,6 +677,8 @@ bf_hl:  ld a,c
         or a
         jr z,bf_hn                  ; (no identity already: hidden and forgotten then)
         ld (hl),0                   ; no identity
+        ld hl,bf_idn
+        dec (hl)
         ld a,1
         ld (bo_dirty),a             ; (the budget's order of importance again)
         ld (pg_new),a               ; (the plan's objects with parts again: sprites.asm pg_build)
@@ -852,13 +858,15 @@ bm_try: ld a,c
         add a,bf_claim & 0xFF
         ld l,a
         ld h,bf_claim / 256
-        ld a,(hl)
-        or a
-        ret nz
-        inc (hl)                    ; (taken)
+        ld a,(bf_gen)
+        cp (hl)
+        jr z,bmt_t
+        ld (hl),a                   ; (taken)
         ld hl,bf_unm
         dec (hl)
         xor a                       ; (Z, NC)
+        ret
+bmt_t:  or a                        ; (taken already: NZ, bf_gen is never 0)
         ret
 
 ; IX = a record, D = part, E = category + 1 -> L = its identity's place in bf_htab. Keeps BC,
@@ -923,7 +931,14 @@ bf_key: push af
         ld a,(ix+13)
         ld (hl),a
         inc l
-        ld a,(ix+9)
+        ld a,(hl)                   ; (it had none: one more object with an identity, bf_idn)
+        or a
+        jr nz,bk_k
+        push hl
+        ld hl,bf_idn
+        inc (hl)
+        pop hl
+bk_k:   ld a,(ix+9)
         and 0xF0
         rrca
         rrca

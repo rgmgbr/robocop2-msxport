@@ -166,6 +166,13 @@ spr_init:
         ld bc,MAX_OBJ*4
         xor a
         call fill                   ; no BOB identity (bob.asm)
+        ld hl,bf_claim
+        ld bc,MAX_OBJ
+        xor a
+        call fill                   ; (no object taken by a stamp of bob_flush's)
+        xor a
+        ld (bf_gen),a
+        ld (bf_idn),a               ; (no object with an identity)
         ld hl,pl_st                 ; (the plan's look skips the objects not wanted: their work
         ld bc,MAX_OBJ               ;  and parts' states must start at 0)
         xor a

@@ -377,6 +377,16 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   muzzle flash, drawn before the legs, has an owner of its own (`level2obj.asm` `l2_flash`, as
   RoboCop's has), so that the legs keep their part. Level 1's frames all have 0 there: its
   objects decide as before.
+
+  `bob_flush`'s fixed walks (2026-11-02, the same objects and identities; T-states with the M1
+  waits): an object a record takes is marked with the flush's stamp (`bf_gen`, 1-255, in
+  `bf_claim`; the bytes are cleared only when the stamps start again), not by a 16-byte clear
+  each flush (483 T-states); the objects with an identity are counted where one is given or
+  taken (`bf_idn`: `bf_key`, `bf_hide`), not walked each flush (876 T-states); the walk that
+  hides the objects left without a record (`bf_hide`, 1,680-1,790 T-states with 3-5 objects
+  taken) runs only when an identity of the tick before found no record (`bf_unm` above 0), since
+  otherwise every object with an identity has one; and `bob_begin` clears the categories' heads
+  with six word stores (112 T-states a tick, 362 for the loop).
 - **Frame structure** (main loop): wait for the last list's VBLANK; keys, seconds, HUD; after
   ticks: scroll update, `cam_mark`, RoboCop's composition, BOBs to objects, budget; without a
   tick: scroll update, `cam_follow`; then the plan (`spr_plan`: versions, queues, commits; its

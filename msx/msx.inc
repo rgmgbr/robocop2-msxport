@@ -258,7 +258,8 @@ col_held:   equ 0xCA00              ; 32 x 2: colour id | 8000h (EC) each SAT en
                                     ; set B: col_held_b)
 ent_own:    equ 0xCA40              ; 32: object whose run holds each SAT entry (FFh: free)
 pl_obj:     equ 0xCA60              ; plan: the object,
-pl_wait:    equ 0xCA61              ;   1: some of its patterns are on their way,
+bf_gen:     equ 0xCA61              ; bob.asm bob_flush: its stamp (1-255) in bf_claim (the old upload
+                                    ;   queues' pl_wait)
 pc_start:   equ 0xCA62              ;   its new run's first entry,
 up_window:  equ 0xCA63              ; 2: upload units of one blank time (60 or 50 Hz)
 pq_left:    equ 0xCA65              ; 2: units the frame's queue may still take,
@@ -271,7 +272,8 @@ sat_cur:    equ 0xCA6E              ; 2: the SAT pair of the frame on screen,
 sat_nb:     equ 0xCA70              ; 2:   of the frame being built
 pl_n:       equ 0xCA72              ; plan: the objects its look gave work (pl_st 1 or 2) that pl_put
                                     ;   has not put in a work list yet (the old upload queues' pl_pq)
-pl_pass:    equ 0xCA73              ;   0: the objects showing nothing yet, 1: the others,
+bf_idn:     equ 0xCA73              ; bob.asm: the BOB objects with an identity (obj_key; bf_key and
+                                    ;   bf_hide count them; the old upload queues' pl_pass)
 pl_rcz:     equ 0xCA74              ;   low byte of ent_own past RoboCop's zone (no BOB run there)
 pr_bsz:     equ 0xCA75              ; pc_run: the best hole's size (FFh: none),
 pr_bst:     equ 0xCA76              ;   the run's first SAT entry there
@@ -677,7 +679,7 @@ bf_nnew:    equ 0xEC5C              ;   records still without an object,
 bf_new:     equ 0xEC5D              ;   2 x BOB_MAX: those records (EC5Dh-EC98h)
 obj_key:    equ 0xECA0              ; MAX_OBJ x 4: each BOB object's identity: part, owner (2),
                                     ;   category + 1 (0: none) (bob.asm bob_flush)
-bf_claim:   equ 0xECE0              ; MAX_OBJ: 1 for the objects bob_flush gave a record this tick
+bf_claim:   equ 0xECE0              ; MAX_OBJ: bf_gen for the objects bob_flush gave a record this tick
 bf_htab:    equ 0xE800              ; 256: per hash of an identity the object it was given last
 bf_unm:     equ 0xED58              ; bob_flush: objects with an identity no record took yet
 bf_lp:      equ 0xED59              ; 2: bf_show: the object's bf_last record
