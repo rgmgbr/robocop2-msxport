@@ -606,7 +606,9 @@ which as sprites were striped, cut or left out.
       that waited for the page shown. Ticks a second: Cain's route (kill 130-1400) 8.81 -> 9.83 on the
       MSX2 and 8.84 -> 9.85 on the Expert, the kill floors (300-1500) 9.23 -> 10.32 and 9.26 -> 10.29,
       the ground floor (1500-1765, nothing scrolls) unchanged. The V9958 machines run the code before
-      (`fb_sync`'s gate: `fb_eng` 0).
+      (`fb_sync`'s gate: `fb_eng` 0). Ticks lost (m_l3's table, kill 300-1500 on the MSX2): 2,049 -> 1,707, those
+      to the view's lag 1,513 -> 1,112. `BANK_FIELD` 31 bytes for the gate and the hooks (the product 411 free,
+      the drive builds 370), `BANK_FRONT2` 818.
 - **Checked** (headless, `fieldcheck.py` in the scratchpad: every play-area pixel no sprite
   covers against the tiles and the BOB list of the list on screen, `fb_vis` in test builds; cells
   the game rewrote in the last 30 frames are the scroll engine's and not checked; a hostage may
@@ -753,8 +755,12 @@ which as sprites were striped, cut or left out.
   its page not synced, the only time it maps `BANK_FRONT2`) and `fb_queuec` (`fb_queue` with the page in C:
   `field_call` takes A and HL, so the code in `BANK_FRONT2` passes its arguments in BC, DE and RAM, and keeps
   its own copies of `fb_dnp`, `fb_lsz` and `fbx_set`). `BANK_FIELD` gains 256 bytes (the product 186 -> 442 free,
-  the drive builds 145 -> 401); the V9938's frames map `BANK_FRONT2` once a build (a bank more in their set
-  only then, a speed target on page-cache devices).
+  the drive builds 145 -> 401). The V9938's frames map `BANK_FRONT2` at a build's start, its sync's steps and its
+  new column's burst (below): a bank more in their set then, a speed target on page-cache devices only. Measured
+  (R3 alone, the `EXTJOY` drive builds on C-BIOS_MSX2 and the Expert against the code before): kill, boss, tour3
+  and l2_tour's long windows within -0.54 .. +0.54 % ticks a second, the timing controls' own scatter; counted on
+  the sync's build, about 11 `f2_call`s a second on the kill drive (about 200 T-states each: 0.06 % of the Z80's
+  time; a page-cache device's miss, about 880 T, at most about 0.3 %).
 
 ## Game logic (`msx/player.asm` and the logic modules)
 
@@ -1165,7 +1171,18 @@ which as sprites were striped, cut or left out.
   against the code before, the column alone -0.3 % and 0.0 %). Lane W2C's first measurement, before the sync by
   copies, had both bursts raise the pictures held to `FB_HOLD` on the V9938 (kill: 4 -> 11 on the MSX2, 3 -> 9
   on the Expert: the page being built's composed sync items delayed the page shown's published ones); with
-  the sync by copies 3 and 2 with both, 2 and 4 with the column's alone.
+  the sync by copies 3 and 2 with both. The fixed area keeps 5 bytes of it (the redraw's wait below, 18, less
+  the column's 13), `BANK_FRONT2` 51.
+  Measured with the sync by copies (the `EXTJOY` drive builds against the code before both, ticks a second, C-BIOS_MSX2
+  / the Expert): Cain's route (kill 130-1400) 8.81 -> 10.30 (+16.9 %) / 8.84 -> 10.28 (+16.4 %), the kill floors
+  (300-1500) 9.23 -> 10.73 (+16.3 %) / 9.26 -> 10.73 (+15.9 %), the boss route 7.41 -> 8.67 (+17.0 %) / 7.37 -> 8.76
+  (+18.9 %), tour3's street +8.4 / +8.8 %, beams +11.3 / +11.4 %, lifts -0.2 / -0.4 %, roof +3.6 / +1.5 %, the car park
+  +6.9 / +6.7 %, l2_tour (20-1590) 19.09 -> 20.44 (+7.1 %) / 19.07 -> 20.36 (+6.8 %), its end +7.9 / +5.5 %; the ground
+  floor and level 1 as before; the V9958 machines within their timing controls. Pictures with game progress a second
+  on Cain's route 6.02 -> 6.62 (all pictures 18.2 -> 13.8: fewer pictures repeat a game state while the view
+  catches up). Ticks lost on the kill floors (m_l3's table, the MSX2): 2,049 -> 1,595, those to the view's lag 1,513 ->
+  997 (the boss route 1,507 -> 735). Pictures shown at `FB_HOLD` over whole drives: kill 4 -> 1 / 3 -> 6, boss 6 -> 1 /
+  1 -> 3 (the gate's limits 8 / 8, 12 / 11).
 - **MSX2+ play field (fixed 2026-10-21)**: since the tile cache, `tile_src` leaves the source
   page (2 or 3) in A; the V9958 engine's `draw_tile` took A for the row, so every tile went to
   ring line 32 or 48 and on every MSX2+ the play field stayed almost empty (VRAM's 44h fill).
