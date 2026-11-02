@@ -2098,7 +2098,9 @@ frp_4:  ld hl,(fb_r)
 ; so its cells' edges lie -15 .. 127 px from its corner), and the bytes of fb_cmd that no cell changes
 ; are written once a call: the same commands in the same order as fb_rpiece's clip and fb_dscr gave
 ; them, about 2,240 T-states of set-up a cell instead of 3,620 (hand counts), for 0.4 ms of VDP a copy
-; (performance campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip).
+; (performance campaign 2, field-2; tests/test_field_engine.py checks the arithmetic against the clip);
+; since TILE-LOOKUP about 1,530 T-states a cell, a row's first cell in a call about 500 more (hand counts,
+; docs/MSX_ARCHITECTURE.md).
 ; Since its TILE-LOOKUP a row of cells at a time: the row's lines in the piece (DY, NY, the tile's first
 ; line: fb_r + 2) and its map (tiles.asm gt_row: the row's bank at 8000h, the cells' tiles read there,
 ; fb_r; a row with patches through get_tile, cell by cell) once a row in a call, instead of a cell's

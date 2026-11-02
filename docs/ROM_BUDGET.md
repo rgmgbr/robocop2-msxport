@@ -470,6 +470,56 @@ W2S's spr-7, spr-2, spr-3, spr-8 take the fixed area -158 more and FRONT -17; W2
 On top of batch 2 both together would leave the product about 198 B of fixed area and the lowest set about 63
 (estimated: the sum of the lanes' measured changes; `DEMO_ACTORS` 2 and 5 would fail again).
 
+### 2.8 Performance campaign 2, batch 3a (2026-11-02)
+
+Measured, from `tools/bstest/variants.sh` (all 61 option sets) and `tools/bstest/l2base.py`'s bank limits, for builds of
+the merged branch `perf2/batch3a` (W3K's rc-edge, W2B's scroll-1 on the V9958 and spr-7, spr-2, spr-3, spr-8, W3F-a's
+field-7, TILE-LOOKUP and field-10, W3V's R3, V9938-SYNC and scroll-1 on the V9938) against `level2` 7752890 (batch 2's
+code; `docs/PERF2_PLAN.md`, `docs/level3/HANDOFF.md` "Performance campaign 2, batch 3a"). The bank map is 2.5's: no
+block moves, no bank is added (2 MiB, 160 of 256 banks; the product's mkrom summary equal to batch 2's). **59 of 61
+sets build**: `DEMO_ACTORS` 2 and 5 fail again (122 B short in the fixed area, as at 3b11042); every set that built at
+3b11042 builds.
+
+| Bank | Product batch 2 | Product batch 3a | Lowest set batch 2 | Lowest set batch 3a | Least in any set, batch 3a |
+|---|---:|---:|---:|---:|---|
+| fixed area | 426 | **285** | 291 | **150** | 63 (`DEMO_HUD=1`); `DEMO_ACTORS` 2 and 5 do not build |
+| LC1 | 24 | 24 | 24 | 24 | 24 (153 in the trace builds) |
+| LC2 | 4,467 | 4,467 | 4,467 | 4,467 | 4,467 |
+| `BANK_L1` | 378 | 378 | 378 | 378 | 378 |
+| LC3 | 4,745 | **4,291** | 4,745 | 4,291 | 4,258 (`CHEAT=1`) |
+| INPUT | 11 | 11 | 11 | 11 | 11 |
+| FRONT | 1,105 | **1,088** | 707 | 690 | 642 (`DIAG=1 LV_TEST=2` or `3`) |
+| `BANK_FIELD` | 186 | **326** | 186 | 326 | 285 (the `EXTJOY` drive, trace and lock builds; 145 before) |
+| MUSIC | 1,251 | 1,251 | 1,280 | 1,280 | 0 by the count in the two `DIAG=2` sets, as before |
+| `BANK_PUZL` | 4,483 | 4,483 | 4,483 | 4,483 | 4,483 |
+| `BANK_FRNG` | 264 | 264 | 264 | 264 | 264 |
+| `BANK_L2` | 933 | 933 | 933 | 933 | 28 (`VAT_ANIM=1`, unchanged) |
+| `BANK_FRONT2` | 6,576 | **5,394** | 6,576 | 5,394 | 5,349 (`VAT_ANIM=1 VAT_TICK=1 CHEAT=1 LV_TEST=2 TAG=7`) |
+| `BANK_L3` | 3,151 | 3,151 | 3,151 | 3,151 | 3,151 (3,647 with `VAT_ANIM=1`) |
+| `BANK_L3B` | 2,014 | 2,014 | 2,014 | 2,014 | 2,014 |
+
+Every set moved by the same amount in each bank (but the two `VAT_ANIM=1` sets where noted):
+- **The fixed area -141** (`VAT_ANIM=1` -153): rc-edge +49 (`rc_safe` 66 -> 17 B, the bound moved to LC3); scroll-1 on
+  the V9958 -18 (`VAT_ANIM=1` -24) and its window rule -7; spr-7 -65, spr-2 -29, spr-3 -41, spr-8 +22; TILE-LOOKUP -39
+  (`gt_row` 31, `tc_load`'s 8000h put-back 8; `VAT_ANIM=1` -45); scroll-1 on the V9938 -5 and its review's fix (the
+  changed cell's second phase) -8. field-7, field-10, R3 and V9938-SYNC take none.
+- **LC3 -454**: rc-edge's `rc_bound` and its table `gen/rcedge.inc` (-177), the conveyors and the mounts' snaps (-168),
+  type 21's push (-109).
+- **FRONT -17**: spr-2.
+- **`BANK_FIELD` +140** (`VAT_ANIM=1` +161): R3 +256 (the field's set-up and the V9938 builds' start and sync moved
+  out), V9938-SYNC -31 (the gate and the hooks), its review's flip wait -6; field-7 -23, TILE-LOOKUP -47, field-10 -9.
+- **`BANK_FRONT2` -1,182** (`VAT_ANIM=1` -1,204): R3 -313, V9938-SYNC -818, scroll-1's V9938 column burst -51.
+
+The user's options on batch 3a (product / lowest set, fixed area): none 285 / 150; `FLASH_LOOK=6` 279 / 144;
+`FLASH_LOOK=7` 307 / 172; loop-3 (`CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`) 271 / 136; loop-1 (`CAD_MAX=3 CAD_HOLD=3`) 285 /
+150; `LAG_X=64` 273 / 138. Every option builds; the lowest set keeps at least 136 B with any of them (the plan's floor
+is 60 B).
+
+RAM: spr-2 and spr-7 take `bf_gen` CA61h, `pl_n` CA72h and `bf_idn` CA73h (the old upload queues' `pl_wait`, `pl_pq`
+and `pl_pass`); V9938-SYNC `fb_bsq` 074Bh, `fb_sbi` E0FEh and `fb_sdm` E0FFh; TILE-LOOKUP keeps a row's state in
+`fb_r` within a call and frees `fb_cl` (E0FCh). rc-edge, field-7 and field-10 take none. Still free: ED0Dh-ED0Fh,
+EDFFh, E0FCh; MP_ROW's tail (0A33h-0AFFh, scroll-2 (c)'s, not built).
+
 ## 3. What the rest of the game needs
 
 ### 3.1 The plan behind the numbers

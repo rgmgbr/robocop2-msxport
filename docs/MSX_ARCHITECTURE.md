@@ -705,8 +705,9 @@ which as sprites were striped, cut or left out.
       syncs, 214 copies, 111 new-column parts composed, 1 rectangle composed after a change, 57 steps
       that waited for the page shown. Ticks a second: Cain's route (kill 130-1400) 8.81 -> 9.83 on the
       MSX2 and 8.84 -> 9.85 on the Expert, the kill floors (300-1500) 9.23 -> 10.32 and 9.26 -> 10.29,
-      the ground floor (1500-1765, nothing scrolls) unchanged. The V9958 machines run the code before
-      (`fb_sync`'s gate: `fb_eng` 0). Ticks lost (m_l3's table, kill 300-1500 on the MSX2): 2,049 -> 1,707, those
+      the ground floor (1500-1765, nothing scrolls) unchanged. The V9958 machines skip the sync (`fb_sync`'s
+      gate: `fb_eng` 0); `fn_take`'s `fb_qlk`, now set at `fn_got`, and `fn_s3`'s extra `fb_sync` call apply on both
+      VDPs. Ticks lost (m_l3's table, kill 300-1500 on the MSX2): 2,049 -> 1,707, those
       to the view's lag 1,513 -> 1,112. `BANK_FIELD` 31 bytes for the gate and the hooks (the product 411 free,
       the drive builds 370), `BANK_FRONT2` 818.
 - **Checked** (headless, `fieldcheck.py` in the scratchpad: every play-area pixel no sprite

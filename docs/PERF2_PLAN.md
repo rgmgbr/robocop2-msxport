@@ -291,6 +291,17 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      V9938 (kill: MSX2 4 -> 11, Expert 3 -> 9 FB_HOLD pictures) and G-SPEED on tour3's lifts (-2.9 / -3.0 %). On the V9958
      every gate passes: FB_HOLD kill_fx 16 -> 1, boss_tr 12 -> 3; kill_tr +8.2 %, boss_tr +10.0 %; the turbo R's scroll on a
      recording is not worse (looked at). The plan's flip rule and a `cam_held`-gated column were measured and fail too.
+   - **Status (batch 3a, 2026-11-02).** **Done** on both VDPs, merged into `perf2/batch3a`:
+     - The V9958's part by lane W2B: `15c5333` (W2C's `scroll9958.asm` bursts, `sc_stop` in `tiles.asm`) with the window
+       rule `a593bde` (a burst first gives the changed cells their window between the HUD split and the VBLANK); merge
+       `7eb5b2e`. Alone (measured on BASE): kill 130-1400 MSX2+ 12.83 -> 13.38 ticks/s (+4.2 %), turbo R 18.47 -> 19.83
+       (+7.4 %), boss on the turbo R 16.98 -> 18.70 (+10.1 %); FB_HOLD pictures kill_fx 18 -> 2, boss_tr 16 -> 6; the turbo
+       R's roof (tour3 1085-1400) 24.64 -> 24.14 (-2.0 %); the V9938 machines' records identical.
+     - The V9938's part by lane W3V: `66b2618` (the new column's tiles in a row while the field engine is idle, from
+       `ending.asm` through `f2_call`; the pending row stays one tile a call: its bursts cost tour3 545-1065 -2.3 % on the
+       MSX2 and -2.2 % on the Expert, so they were left out); merge `f61dc2c`. Over V9938-SYNC: kill +4.8 %, boss +7.8 %
+       on the MSX2.
+     - The merged tip against batch 2: `docs/level3/HANDOFF.md` "Performance campaign 2, batch 3a".
    - **Prototype.** `C/a_scroll/B/pQ2.diff`. Drop its `cam_cells` part: logic-1's version is the campaign's.
    - **Gain (M, on HEAD).**
      - MSX2: Cain's route +5.4 %, boss +6.3 %, tour3 +5.4 %, level 2 +5.8 % (horizontal windows +5-20 %).
@@ -317,6 +328,13 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      - G-SPEED, the Expert included.
 
 7. **V9938-SYNC (field-5, the same as scroll-3): the page being built takes its BOB rectangles from the page shown, with one HMMM each.** Effort L. Not prototyped. The priority-only experiment pS gave +3.5 % on boss, but with FB_HOLD at 1.82/s: not acceptable as it was.
+   - **Status (batch 3a, 2026-11-02).** **Done**, `1d84112` with R3 `09c4783` (the field's set-up, the V9938 builds' start
+     and the sync moved to `BANK_FRONT2` behind `f2_call`: `BANK_FIELD` +256 B) and its review's fixes `1c3a6fd` (at a
+     flip `fb_frame` waits for the VDP, so that the sync's last copy no longer writes the page shown) and `a5d6547`
+     (`s38r_go`: a changed cell on a flip's new displayed page lets the BOBs compose it); lane W3V, merge `f61dc2c`.
+     Alone (`1d84112` against BASE, MSX2 / Expert): kill 130-1400 8.81 -> 9.83 / 8.84 -> 9.85 ticks/s (+11.5 %), boss
+     7.41 -> 8.04 / 7.37 -> 8.14, tour3's street +6.4 / +7.7 %, level 2 +2.5 / +2.2 %; composed sync pieces a build 4.05
+     -> 1.10 plus 1.02 page copies. RAM `fb_bsq` 074Bh, `fb_sbi` E0FEh, `fb_sdm` E0FFh.
    - **Gain (E).** MSX2 only:
      - Cain's route and the boss route: +8-15 % on top of scroll-1.
      - Level 2: +3-5 %.
@@ -355,6 +373,11 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
      - G-SPEED (boss).
 
 9. **field-7: stage a band of pieces as one piece, up to 128 px wide.** Effort M.
+   - **Status (batch 3a, 2026-11-02).** **Done**, `087b25d` (lane W3F-a, merge `493d4f6`): a staged item's band composed
+     as one piece up to 128 x 64 (`fb_stg` 1-4), `fsl_sx` keeps the bands' copies as before, `VAT_ANIM=1` byte-identical.
+     Alone against BASE: Cain's route +2.5 / +2.7 / +2.7 / +1.2 % (MSX2 / Expert / MSX2+ / turbo R), boss +1.9 / +2.7 /
+     +4.7 / +1.5 %; tile copies 16.55 -> 15.09 and LMMMs 2.69 -> 1.76 a tick on the MSX2+'s Cain's route. `BANK_FIELD`
+     -23 B. flash-1's page-path uses fall with the pieces (kill1560 on the MSX2 302 -> 154: one use a piece).
    - **Gain (E).** +2-3 % on the Z80 machines and +1-2 % on the turbo R, after field-1/2. Per composition: 3 to 4 fewer tile commands and 1.5 fewer LMMMs.
    - **Where.** `field.asm` `fb_piece`, `fb_stage`, `fst_done`, `fst_place` and `fst_slot`.
      - Find every place that assumes 64-px pieces: `fb_piece`'s clamp, `fb_lastp`, `fcp_next`, the staged pieces' records.
@@ -385,6 +408,12 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
       - G-SPEED on tour3's windows, and the counters (`cnt.tcl`).
 
 11. **TILE-LOOKUP (field-4 together with scroll-6): one cell lookup per row, and an inline command write in the tile burst.** Effort M.
+    - **Status (batch 3a, 2026-11-02).** **Partly done**, `c0ee5a6` (lane W3F-a, merge `493d4f6`): the burst reads a row's
+      map at 8000h once a row (`tiles.asm` `gt_row`, 31 B of the fixed area; `tc_load` puts the 8000h bank back, 8 B;
+      rows with patches and level 2's vats in `VAT_ANIM=1` builds through `get_tile`), CLR/ARG/CMD written once a call.
+      On top of field-7: Cain's route +2.0 / +0.6 / +2.8 / +0.7 % (MSX2 / Expert / MSX2+ / turbo R). **Not done**: the
+      inline register write (about 53 B more of `BANK_FIELD` for about 100 T-states a cell, about 0.5 % of Cain's time),
+      and the patched rows' row read (24-30 % of the burst's cells on Cain's drives, about 0.3 %, about 30 B).
     - **Gain (E).** +1.5-2 % on the MSX2 and the MSX2+; about 0 on the turbo R. scroll-6's remainder (`fb_fill`, `draw_tile`) adds +0.3-0.5 % in level 2.
     - **Where.**
       - `field.asm` `fb_tiles`: for each row of cells, map the map row's bank at 8000h once, with `act_8000` saved and restored as `fc_get` does. Read each cell's tile there, falling back to `get_tile` when the row has patches (MP_ROW).
@@ -468,6 +497,13 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
       24-40 there against 16-27), and no small fix lies in its files. Its gain, counted: 2.04 % of the Z80's time in
       level 2, 1.22 % on Cain's kill drive; level 2's end +3.7 % on the MSX2+, nothing in Cain's windows. It waits for the
       V9958's picture pipeline (scroll-1's V9958 bursts or W3V). Fixed area -158 B, FRONT -17.
+    - **Status (batch 3a, 2026-11-02).** **Done**, by lane W2B with scroll-1's V9958 bursts (item 6): `22a01de` spr-7
+      (W2S's without the same-run commits), `de6d103` spr-2, `67e733b` spr-3, `30ae148` spr-8 (the pool's ROM format: a
+      composition's header 9 bytes, `SPR_COMP_HDR`; `build/msx` must be converted again, `make msx`); merge `7eb5b2e`
+      (whose tree also reads rc-edge's table after `SPR_COMP_HDR`). With the bursts G-HOLD passes (FB_HOLD pictures over
+      the 16 drives 73 -> 36 on the lane, 15 on the merged tip). On top of the bursts: the MSX2+'s level 2's end +5.7 %,
+      l2_tour +1.0 %, park +2.1 %, kill +1.2 %; counted 1.98 % (l2_tour) and 1.15 % (kill) of the Z80's time. Fixed area
+      -113 B (spr-7 -65, spr-2 -29, spr-3 -41, spr-8 +22), FRONT -17.
     - **Gains (E).**
       - spr-7 (the plan): +1-1.4 % on the MSX2+.
       - spr-2 (`bob_flush`'s loops): +1 % in level 2, +0.3-0.5 % in level 3.
@@ -514,6 +550,9 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
     - **Gate.** G-FIELD on kill 1560+ (900 records) on the three machines, with a reuse counter, and G-SPEED (the turbo R first).
 
 19. **field-10: `fb_fill` skips the per-cell tests when the cache holds every cell of the piece.** Levels 1-2. Effort S.
+    - **Status (batch 3a, 2026-11-02).** **Partly done**, `f9a4b93` (lane W3F-a, merge `493d4f6`): the exact sufficient
+      test (all 16 cells of the cache's 4 x 4 window held), 9 B of `BANK_FIELD`; on l2_tour (FS-A1FX) 500 of 841 fills
+      skip their walk. The piece's own cell mask (about 40 B) would skip 175 more: not done.
     - **Gain (E).** +0.5-1 % in level 2's item windows.
     - **Room.** About 20 B of BANK_FIELD: the last claim on that bank.
     - **Gate.** Level 2's field check, G-LOGIC and l2_tour's speed.
@@ -779,6 +818,10 @@ That leaves about 60 B in the lowest set for the user's options (loop-3 14, lag-
   | field-10 | 20 |
 
   So R3 must free at least 150 B. R3 moves the V9938-only sync code to FRONT2 (or to a new bank: 93 banks are free) behind a stub. Otherwise flash-4 and field-10 wait.
+- *Batch 3a (2026-11-02).* R3 (`09c4783`) freed 256 B (the field's set-up and the V9938 builds' start and sync in
+  `BANK_FRONT2`); V9938-SYNC took 31 and its review's fix 6, field-7 23, TILE-LOOKUP 47, field-10 9: 326 B free in the
+  product, 285 in the drive, trace and lock builds (`docs/ROM_BUDGET.md` 2.8). Batch 3b's field-6, flash-3 and flash-4
+  (about 135 B) fit.
 
 **RAM.** Free per msx.inc's audit: F170h-F190h (33 B), ECFBh-ED0Fh (21 B), EDF0h-EDFFh (16 B), plus crumbs.
 
@@ -791,6 +834,9 @@ That leaves about 60 B in the lowest set for the user's options (loop-3 14, lag-
 | spr-4 (`ft_orn`...) | 3 | E553h-E555h only after a RAM watch over every drive proves it unwritten; otherwise EDFCh-EDFEh |
 | flash-4 (the last staged item) | about 10 | C5F7h-C5FFh (9 B) plus EDFFh, or shrink it |
 | scroll-2(c) (row hints) | 51 | MP_ROW's tail, 0A33h-0AFFh (check the largest map's rows; cleared in `tiles_init`) |
+| spr-2, spr-7 (`bf_gen`, `pl_n`, `bf_idn`; batch 3a) | 3 | CA61h, CA72h, CA73h (the old upload queues' `pl_wait`, `pl_pq`, `pl_pass`) |
+| V9938-SYNC (`fb_bsq`, `fb_sbi`, `fb_sdm`; batch 3a) | 3 | 074Bh, E0FEh, E0FFh |
+| TILE-LOOKUP (a row's state within a call; batch 3a) | 0 | `fb_r` (E0EFh); `fb_cl` (E0FCh) free since |
 
 ED0Eh-ED0Fh stay spare.
 
@@ -798,6 +844,9 @@ ED0Eh-ED0Fh stay spare.
 - VRAM does not change in the planned set.
 - LC1 has 24 B free: logic-6's `pl_hits` change stays byte-neutral.
 - Per-frame banks: R1 and R2 add none. R3 adds one bank on the V9938: a speed target on page-cache devices, not a rule.
+  *Batch 3a:* R3 and V9938-SYNC put `BANK_FRONT2` into the V9938's per-frame bank set while a build starts, during its
+  sync steps and its column burst (the V9958 never maps it per frame: `fb_sync`'s gate tests `fb_eng`); its cost on a
+  page-cache device is estimated (about 880 T-states a miss), not measured.
 
 ### 5.3 Batches
 
@@ -872,6 +921,48 @@ to +7.2 %; Cain's route stays as batch 1 left it.
   10, 14 and 74 are only 1 px wider than his opaque pixels). The bound above, for the product's 2-tick frames as well,
   needs its own lane (fixed-area bytes; the MSX2's speed in the building); the doc's correction is `0fa8d90`.
 
+**Batch 3a: done (2026-11-02).** Merged into `perf2/batch3a` (from `level2` 7752890), in this order: W3K (the kit's
+fixes `6eae5d4`; rc-edge `15c34ee` with its review's `c32c670` and `4516f82`; merge `6a7fce6`), W2B (scroll-1 on the
+V9958 `15c5333` with its window rule `a593bde`; spr-7 `22a01de`, spr-2 `de6d103`, spr-3 `67e733b`, spr-8 `30ae148`;
+docs and its review's test commits; merge `7eb5b2e`, with the one-line fix that makes rc-edge's table read the
+compositions after `SPR_COMP_HDR`), W3F-a (field-7 `087b25d`, TILE-LOOKUP `c0ee5a6`, field-10 `f9a4b93`; merge
+`493d4f6`), W3V (R3 `09c4783`, V9938-SYNC `1d84112`, scroll-1 on the V9938 `66b2618`, its review's `1c3a6fd` and
+`a5d6547`; merge `f61dc2c`); then `b4f7a59` (the kit's page-path probe takes `fb_bbinit`'s bank from the build). No lane
+was dropped and no merge conflicted. Every gate passes on the tip (`docs/level3/HANDOFF.md`, "Performance campaign 2,
+batch 3a": the gates with their commands, the speed table of batch 1, batch 2 and batch 3a per scene and machine, the
+open issues); the free bytes: `docs/ROM_BUDGET.md` 2.8. Against batch 2, Cain's route (kill 130-1400) runs +21.8 % on
+the MSX2, +21.3 % on the Expert, +13.6 % on the MSX2+ and +10.8 % on the turbo R; the boss route +23.2 / +23.0 / +7.3 /
++14.7 %; level 2 +8.1 / +7.5 / +1.4 / +0.1 %; the turbo R's roof (tour3 1085-1400) -1.5 % (inside G-SPEED's floor).
+
+*rc-edge's outcome (batch 3a).* Done: `15c34ee` (lane W3K) makes `rc_safe` a 17-byte trampoline into `plmove.asm`
+`rc_bound` (LC3): while the view lags, the frame's ticks run only when RoboCop's next picture stays inside the picture
+shown, Q + Gr + R <= 255 and Q - Gl + L >= 0 (8 on the V9958's mask), with Q his place in SAT x, R and L his state's
+opaque reach (`gen/rcedge.inc`, built from the sprite pool by `tools/mkrom.py`: the state's records and every state's
+first records within RC_K = max(CAD_MAX, CAD_HOLD) ticks, which covers a punch started in the frame) and Gr, Gl the
+frame's growth per side: 3 px a tick of his walk (k = min(the ticks due, RC_K)), level 1's conveyors (4 px a tick, 8 on
+the doubled belt) and the mounts' snaps (a trolley's grab, level 1's vehicle) by the review's `c32c670`, type 21's push
+(8 px a tick for each walker within 96 px, on the side it pushes) by `4516f82`. The forced probes on the merged tip
+(C-BIOS_MSX2 and the Expert, the product's options, loop-1, loop-3, `LAG_X=64`): 0 cut pictures (HANDOFF). The push's
+held frames cost tour3's street 4-5 % on the V9938 against `15c34ee` alone; on the merged tip the street runs 15.04 ->
+16.04 ticks/s on the MSX2.
+
+*What batch 3b needs (W3F-b: field-6, flash-3, flash-4; `msx/field.asm`).*
+- Its BASE is batch 3a's tip: the gate records of `C/integ3/N` hold BASE's runs; the timing controls (ct1-3, W3K's
+  `C/w3k/tools/mktree.py` patches) and the ground floor's trajectory controls must be rebuilt and recorded on it
+  before the lanes' gates (batch 3a's are against level2 7752890).
+- Room: `BANK_FIELD` 285 B in the drive builds (about 135 planned); RAM ED0Dh (field-6 (c)), C5F7h-C5FFh and EDFFh
+  (flash-4); no fixed-area byte is planned (150 B in the lowest set, 60 kept for the user's options).
+- flash-4's "last staged item" must hold field-7's staging (`fb_stg` 1-4, a band's piece up to 128 x 64, `fsl_sx`'s
+  places), and its reuse counter goes with the page-path probe (one use a piece: kill1560 154 uses on the MSX2 now).
+- flash-3's per-piece pending-draw rule must also cover the bursts this batch added: the V9958's ring bursts
+  (`scroll9958.asm` `sw_next`, `tiles.asm` `sc_stop`'s window), the V9938's column burst (`ending.asm` `s38_colb`,
+  `fs_stop38`) and the V9938 sync's own copies (`fs_qmeet`, `fb_bsync`), besides the redraw queue and `s38_rq`; check it
+  offline against recorded queues first (item 14).
+- The redraw queue's stale cells (`docs/level3/HANDOFF.md` batch 2's open issue 4, still open): G-FIELD's boss580 shows
+  them (the MSX2 86, the MSX2+ 77 pictures; BASE 96 / 24, its controls up to 107 / 76), and the walkway breaking under
+  Cain on the boss route (game frames 990-1004: 14 pictures on the MSX2, 7 on the Expert; BASE 5 and 10): flash-3's
+  territory, or an item of its own.
+
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.
 - After every merge: G-BUILD and G-LOGIC on the merged tip.
@@ -889,6 +980,12 @@ to +7.2 %; Cain's route stays as batch 1 left it.
 - If W0 finds a flash spike in levels 1-2 above about 20 % of those pictures' time, W2S gets an item for the silhouette toggle's cost (the budget rerun, the plan, the colour rows, the uploads).
 
 ### 5.4 Gates
+
+*Batch 3a (lane W3K, `HARNESS.md` 12.3):* batch 2's rules with the ground floor (kill 1500-1765) judged by its parts,
+1500-1600 by the range rule and 1600-1765 per trajectory (the frames' tick parity, 56 trajectory controls); G-HOLD's slack
+sized by the sample (highest + max(spread x 4 / runs, 2)); G-LOCK judging every list whose displayed cameras agree;
+G-FIELD's window boss580; banked probes conditioned on the ROM block; `fb_bbinit`'s page-path breakpoint in
+`BANK_FRONT2` on R3's builds (`b4f7a59`). BASE = `level2` 7752890 with ct1-3 rebuilt on it (`C/w3k/base`).
 
 *Batch 2 (lane W2K, `HARNESS.md` 12.2):* BASE is batch 1's tip with three timing controls (BASE plus a few
 T-states where nothing is decided); G-SPEED, G-HOLD, G-GUARD and G-FIELD judge each build against the range they
