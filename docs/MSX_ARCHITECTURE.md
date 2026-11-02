@@ -491,7 +491,8 @@ which as sprites were striped, cut or left out.
   set-up of each takes about as long as the copy before it). Since performance campaign 2's field-2
   (`docs/PERF2_PLAN.md` item 2) a tile copy's part of its cell comes from 8-bit arithmetic on the
   piece's corner (`ftl_ax`: a piece is at most 64 x 64, so its cells' edges lie -15 .. 63 px from its
-  corner) and the command bytes no cell changes are written once a burst: the same copies in the same
+  corner; since field-7 a staged piece up to 128 px wide, -15 .. 127, still a signed byte) and the
+  command bytes no cell changes are written once a burst: the same copies in the same
   order, with about 2,240 T-states of set-up a cell instead of 3,620 (hand counts; `fb_rpiece`'s six
   `fb_cmp` and `fb_dscr` were about 1,360 of them);
   `tests/test_field_engine.py` checks the arithmetic against the clip on every piece and cell. Until then every command waited
@@ -524,6 +525,18 @@ which as sprites were striped, cut or left out.
   until then each piece after the first was started by the main loop when it found the VDP idle,
   2-15 ms later and often while the beam drew it (level 3's Cain partly old, partly new in 8 % of
   the pictures of the boss fight on the V9958). `VAT_ANIM=1` builds keep the old staging.
+  Since performance campaign 2's field-7 (`docs/PERF2_PLAN.md` item 9) a band of two places is composed
+  as one piece up to 128 x 64 (`fb_piece`'s clamp while `fb_stg` is set): (across + 1) / 2 pieces a band,
+  so an item two places wide and one tall is a single staged piece (staged all the same: it needs the
+  places, and never takes a cache, which are lent), three or four places wide two pieces (128 px, then
+  the rest), two by two one piece a band; one place wide, the bands' pieces as before. A cell at the
+  64-px seam was copied in two parts, one a piece, and every BOB across it drawn twice (two LMMMs, about
+  1 ms of Z80 set-up each); now once. The pieces lie side by side in page 3 from x 0 (`fsl_sx`: 128 k
+  with up to two pieces, else 64 k), a band's as in the map, so `fst_chain`'s copies are the same as
+  before: the same rectangles, the same pixels. `ftl_ax`'s byte arithmetic holds up to 128 px (a cell's
+  edge -15 .. 127 px from the piece's corner); the scratch's single pieces stay 64 x 64.
+  `tests/test_field_engine.py` models the staging of every item size a window allows against the 64 x 64
+  pieces (the pieces cover the item, fit their places, and the bands' copies are the old ones).
   All of an owner's BOBs change in one item (items of one owner always merge). `cmd_lock` keeps
   the interrupts off the command registers while the main program writes them.
 - **With the sprites**: every item carries the picture it belongs to (`fb_tick`, counted by
@@ -1451,7 +1464,7 @@ which is the level's start look (every vat cell of the map has attributes 0 and 
 holds one look of the vat tables). `get_tile`'s `gt_rom` takes no level-2 branch (no `vat_tile`, so
 a tile costs what it costs in level 1), `vat_init` leaves `vat_on` 0 (with `vat_disp` cleared, so
 the pictures' models read every column as the map's own: `tools/mapcmp.py` `vat_look` None), and
-`vat_idle`, `vat_win`, `vat_inbox` and `vat_bbinit` do nothing: a play-field piece over a vat cell
+`vat_idle`, `vat_win` and `vat_bbinit` do nothing and `fb_piece` calls no `vat_inbox`: a play-field piece over a vat cell
 takes the cache as any other. The logic is unchanged in every build (`lt1`: the sinking check,
 `vat_cut_line`, the energy and death flags, sound 10h, `vat_phase` and `vat_shown`). Since level 3's
 step C (its default 9) `vats.asm`, `field.asm`'s vat section after `vat_init` and `tiles.asm`'s `vat_win`

@@ -1374,10 +1374,12 @@ fwi_c:  call fb_c16
         or a
         ret
 
-; The piece from fb_px: up to 64 x 64 (the scratch) of fb_cur, its cells (fb_cc) and the source of
-; its background: its page when the change is look-only (fp_lkok: flash-1), else the owner's cache
-; when the piece is the whole item and has at most 4 rows and 4 columns of cells (5: the narrower edge
-; column from the tiles, fb_slc), else the tiles.
+; The piece from fb_px: up to 64 x 64 (the scratch) of fb_cur, a staged item's up to 128 x 64 (a band
+; of two 64 x 64 places composed as one piece: performance campaign 2's field-7; VAT_ANIM=1 builds keep
+; 64 x 64), its cells (fb_cc) and the source of its background: its page when the change is look-only
+; (fp_lkok: flash-1), else the owner's cache when the piece is the whole item, not staged (the caches
+; are lent then), and has at most 4 rows and 4 columns of cells (5: the narrower edge column from the
+; tiles, fb_slc), else the tiles.
 fb_piece:
         xor a
         ld (fb_cpi),a
@@ -1388,6 +1390,13 @@ fb_piece:
         ld (fb_slc),a
         ld hl,(fb_px)
         ld de,64
+        if VAT_ANIM = 0
+        ld a,(fb_stg)               ; (staged: up to 128 px wide, ftl_ax's signed byte)
+        or a
+        jr z,fp_w
+        ld e,128
+fp_w:
+        endif
         add hl,de
         ex de,hl
         ld hl,(fb_cur + 7)
@@ -1418,10 +1427,17 @@ fp_y:   ld (fb_pe + 2),hl
         dec hl
         call fb_cell
         ld (fb_cc + 3),a
+        if VAT_ANIM
         call vat_inbox              ; (level 2's drawn vats, VAT_ANIM=1: a piece over a vat cell takes
         jp nz,fp_tiles              ;  its background from the tiles, which follow its column's look)
+        endif
         call fp_lkok                ; (a look-only change: from the page)
         jp z,fp_page
+        if VAT_ANIM = 0
+        ld a,(fb_stg)               ; (a staged piece: from the tiles, its cache's place lent; field-7's
+        or a                        ;  band piece is the whole item when the item is one band)
+        jp nz,fp_tiles
+        endif
         ld hl,(fb_cur + 1)          ; an owner's?
         ld a,h
         and l
@@ -3105,12 +3121,16 @@ fcp_redo:
         ld (fb_stg),a
         ret
 
-; The item fb_cur (clipped) at its start: on the page shown, one of 2 to 4 pieces of 64 x 64 is
-; staged (fb_stg): each piece composed in a 64 x 64 of its own (the scratch, then the caches'
-; places, whose tiles are forgotten: such an item takes its background from the tiles), then all
-; copied in a row, the pieces after the first right away; until 2026-10-21 each piece was copied
-; when composed and the page showed the item half old, half new for as many pictures as the rest
-; took (a smoke next to a hostage: 7).
+; The item fb_cur (clipped) at its start: on the page shown, one of 2 to 4 places of 64 x 64 is
+; staged (fb_stg): each piece composed in a place of its own (the caches' places and the scratch,
+; whose tiles are forgotten: such an item takes its background from the tiles), then all copied in a
+; row, the pieces after the first right away; until 2026-10-21 each piece was copied when composed and
+; the page showed the item half old, half new for as many pictures as the rest took (a smoke next to
+; a hostage: 7). Since performance campaign 2's field-7 a band's pieces are composed as one piece up to
+; 128 px wide (two places side by side: one tile copy a cell and one LMMM a BOB where two 64 x 64 pieces
+; split the cells and the BOBs at their seam), (across + 1) / 2 of them a band: an item of one band
+; two places wide is one piece, staged all the same (it needs the places); one place wide, the bands'
+; pieces as before. VAT_ANIM=1 builds keep 64 x 64 pieces (piece 0 in the scratch).
 fb_stage:
         xor a
         ld (fb_stg),a
@@ -3132,6 +3152,9 @@ fb_stage:
         sbc hl,de
         call fst_n
         ld b,a                      ; down
+        if VAT_ANIM = 0
+        ld e,a
+        endif
         xor a
 fsg_m:  add a,c
         djnz fsg_m
@@ -3139,14 +3162,22 @@ fsg_m:  add a,c
         ret c                       ; (one: as always)
         cp 5
         ret nc                      ; (more than four: one at a time)
-        ld (fb_stg),a
         if VAT_ANIM = 0
-        ld a,c
+        ld a,c                      ; (field-7: a band's pieces up to two places wide, (across + 1) / 2
+        inc a                       ;  of them; the pieces: that times the bands)
+        srl a
         ld (fb_scol),a
+        ld c,a
+        ld b,e
         xor a
-        ld (fb_sbx),a               ; (piece k composed at page 3 x 64k: a band's pieces side by side,
-        ld b,3                      ;  one copy a band, fst_chain; the three caches lent, piece 3 in the
-        else                        ;  scratch)
+fsg_n:  add a,c
+        djnz fsg_n
+        ld (fb_stg),a
+        xor a
+        ld (fb_sbx),a               ; (the pieces side by side in page 3 from x 0, fsl_sx: one copy a
+        ld b,3                      ;  band, fst_chain; the three caches lent, and the scratch)
+        else
+        ld (fb_stg),a
         dec a
         ld b,a                      ; (VAT_ANIM=1: piece 0 in the scratch, the caches lent 0 .. pieces - 2)
         endif
@@ -3184,13 +3215,15 @@ fst_done:
         ld a,(fb_stg)
         cp (hl)
         jr z,fst_cp
+        if VAT_ANIM = 0
+        call fsl_sx                 ; (its x in page 3)
+        else
         ld a,(hl)
-        if VAT_ANIM
         dec a
-        endif
         rrca
         rrca                        ; (its x in page 3: * 64)
         ld (fb_sbx),a
+        endif
         jp fcp_next
 fst_cp:
         if VAT_ANIM = 0
@@ -3223,16 +3256,27 @@ fst_place:
         ld de,fb_pe
         ld bc,4
         ldir
+        if VAT_ANIM = 0
+; (fst_done) fb_sbx: the staged piece fb_spk's x in page 3, 128 k with up to two pieces (field-7: each up
+; to 128 px wide), else 64 k (a column of three or four 64 x 64 pieces). Changes C.
+fsl_sx: ld a,(fb_spk)
+        rrca
+        ld c,a
+        ld a,(fb_stg)
+        cp 3
+        ld a,c
+        jr c,fsl_x
+        rrca
+        else
         ld a,(fb_spk)
-        if VAT_ANIM
         or a
         ld a,FB_SX
         jr z,fsl_x
         ld a,(fb_spk)
         dec a
+        rrca
+        rrca
         endif
-        rrca
-        rrca
 fsl_x:  ld (fb_sbx),a
         ret
 
@@ -4668,10 +4712,8 @@ vds_38: ld a,(ix+VF_CC)
         ret
         else
 ; (VAT_ANIM=0: the vats drawn as the map's static images, the user's choice of 2026-10-31; the
-; vats' display, vats.asm and the rest of this section, is not assembled: docs/LEVEL3.md default 9)
-vat_inbox:                          ; Z: no piece holds a drawn vat cell
-        xor a
-        ret
+; vats' display, vats.asm and the rest of this section, is not assembled: docs/LEVEL3.md default 9;
+; fb_piece calls no vat_inbox then: no piece holds a drawn vat cell)
 vat_bbinit:                         ; (no vat column on any page)
         ret
         endif

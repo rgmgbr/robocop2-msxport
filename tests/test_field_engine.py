@@ -1,6 +1,8 @@
 """The field engine's arithmetic of performance campaign 2 (docs/PERF2_PLAN.md): field-2's tile burst (msx/field.asm
 fb_tiles, ftl_ax: a cell's part in a piece by 8-bit arithmetic on the piece's corner) against the 16-bit clip it
-replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell; FC-UPLOAD's line loop (fc_get:
+replaced (fb_rpiece, fb_dscr), on every piece position and extent and every cell, field-7's band pieces (up to 128
+px wide) included; field-7's staging (fb_stage, fb_piece's clamp, fcp_next, fsl_sx, fst_chain's bands) against the
+64 x 64 pieces it replaced; FC-UPLOAD's line loop (fc_get:
 R#14 set once, the frame cache's places in page 2's lines 128-255, a line's bytes in two halves of sprites.asm's
 outi32 chain, an odd count's extra byte in the second). Stdlib only."""
 from __future__ import annotations
@@ -69,6 +71,18 @@ class TileBurstTests(unittest.TestCase):
                             self.fail(f"piece {p0} + {ext}, cell {cell}: {ftl_ax(p0, ext, cell)} != {clip(p0, ext, cell)}")
         self.assertEqual(n, 606720)
 
+    def test_every_cell_of_every_band_piece_as_the_clip(self):
+        """field-7: a staged band's piece up to 128 px wide (its cells' edges -15 .. 127 px from its corner,
+        ftl_ax's signed byte); x only (a piece stays 64 lines tall)."""
+        n = 0
+        for p0 in range(0, 2560, 2):
+            for ext in range(66, 129, 2):
+                for cell in range(p0 >> 4, ((p0 + ext - 1) >> 4) + 1):
+                    n += 1
+                    if ftl_ax(p0, ext, cell) != clip(p0, ext, cell):
+                        self.fail(f"piece {p0} + {ext}, cell {cell}: {ftl_ax(p0, ext, cell)} != {clip(p0, ext, cell)}")
+        self.assertEqual(n, 284160)
+
     def test_the_burst_uses_it(self):
         body = code("field.asm", "fb_tiles", "ftl_ax")
         self.assertEqual(body.count("call ftl_ax"), 2)
@@ -85,6 +99,140 @@ class TileBurstTests(unittest.TestCase):
         cold = [l.split(";")[0].strip() for l in (ROOT / "msx" / "cold.asm").read_text().splitlines()]
         calls = [cold[k + 1] for k, l in enumerate(cold) if l == "ld hl,field_upload"]
         self.assertEqual(sorted(calls), ["call front2_call", "jp front2_call"])
+
+
+def fst_n(length: int) -> int:
+    """msx/field.asm fst_n: HL = a length (1 or more) -> the 64 px pieces it takes ((HL + 63) * 4, its high byte)."""
+    return (((length + 63) * 4) >> 8) & 0xFF
+
+
+def rrca(a: int) -> int:
+    return ((a >> 1) | (a << 7)) & 0xFF
+
+
+def staging(x0: int, y0: int, x1: int, y1: int, band: bool):
+    """fb_stage, fb_piece's clamp, fcp_next and fsl_sx as the Z80 runs them, for an item on the page shown (map
+    coordinates, x even) -> None when it is not staged, else (fb_stg, fb_scol, the pieces in their order as
+    (x0, y0, x1, y1, their x in page 3)); band: field-7 (VAT_ANIM=0), else the 64 x 64 pieces before it."""
+    c, b = fst_n(x1 - x0), fst_n(y1 - y0)
+    n = c * b
+    if n < 2 or n >= 5:
+        return None
+    if band:
+        scol = (c + 1) >> 1                                 # ld a,c / inc a / srl a
+        stg = scol * b
+    else:
+        scol, stg = c, n
+    pieces, px, py = [], x0, y0
+    while True:
+        k = len(pieces)
+        if band:                                            # fsl_sx: rrca, and once more for three or four
+            sx = rrca(k) if stg < 3 else rrca(rrca(k))
+        else:
+            sx = rrca(rrca(k))
+        ex = min(px + (128 if band else 64), x1)            # fb_piece's clamp
+        ey = min(py + 64, y1)
+        pieces.append((px, py, ex, ey, sx))
+        if ex < x1:                                         # fcp_next: to the right, else the next band
+            px = ex
+        elif ey < y1:
+            px, py = x0, ey
+        else:
+            break
+    return stg, scol, pieces
+
+
+def band_copies(stg: int, scol: int, pieces):
+    """fst_chain's copies: per band, from the last band to the first, its rectangle in the map and its x in page
+    3 (its first piece's corner and place, its last piece's other corner)."""
+    out, k = [], stg
+    while True:
+        k -= scol
+        first, last = pieces[k], pieces[k + scol - 1]
+        out.append(((first[0], first[1], last[2], last[3]), first[4]))
+        if k == 0:
+            return out
+
+
+class StagedBandTests(unittest.TestCase):
+    """field-7 (docs/PERF2_PLAN.md item 9): a staged item's band of pieces composed as one piece up to 128 px
+    wide; the copies onto the page as before."""
+
+    def test_the_routines_modelled(self):
+        stage = code("field.asm", "fb_stage", "fst_n")
+        k = stage.index("ld a,c")
+        self.assertEqual(stage[k:k + 15], ["ld a,c", "inc a", "srl a", "ld (fb_scol),a", "ld c,a", "ld b,e", "xor a",
+                                           "add a,c", "djnz fsg_n", "ld (fb_stg),a", "xor a", "ld (fb_sbx),a",
+                                           "ld b,3", "else", "ld (fb_stg),a"])
+        self.assertEqual(stage[stage.index("call fst_n") + 1:][:12],
+                         ["ld c,a", "ld hl,(fb_cur + 9)", "ld de,(fb_cur + 5)", "or a", "sbc hl,de", "call fst_n",
+                          "ld b,a", "if VAT_ANIM = 0", "ld e,a", "endif", "xor a", "add a,c"])
+        self.assertEqual(code("field.asm", "fst_n", "fst_done"), ["ld de,63", "add hl,de", "add hl,hl", "add hl,hl",
+                                                                  "ld a,h", "ret"])
+        sx = code("field.asm", "fsl_sx", "fsl_x")
+        self.assertEqual(sx[:sx.index("else")], ["ld a,(fb_spk)", "rrca", "ld c,a", "ld a,(fb_stg)", "cp 3", "ld a,c",
+                                                 "jr c,fsl_x", "rrca"])
+        piece = code("field.asm", "fb_piece", "fp_lkok")
+        k = piece.index("ld de,64")
+        self.assertEqual(piece[k - 1:k + 8], ["ld hl,(fb_px)", "ld de,64", "if VAT_ANIM = 0", "ld a,(fb_stg)",
+                                              "or a", "jr z,fp_w", "ld e,128", "endif", "add hl,de"])   # (fp_w: endif)
+        done = code("field.asm", "fst_done", "fst_cp")
+        self.assertEqual(done[-11:], ["jr z,fst_cp", "if VAT_ANIM = 0", "call fsl_sx", "else", "ld a,(hl)", "dec a",
+                                      "rrca", "rrca", "ld (fb_sbx),a", "endif", "jp fcp_next"])
+        nxt = code("field.asm", "fcp_next", "fcp_redo")
+        self.assertEqual(nxt[:5], ["ld hl,(fb_pe)", "ld (fb_px),hl", "ld de,(fb_cur + 7)", "call fb_cmp", "jr c,fcn_p"])
+
+    def test_every_staged_item(self):
+        """Every item size a page's window allows (x even, 2-304 px wide, 1-208 lines tall; x0 0-15 apart from the
+        cells' grid, y0 0-15): fb_stg counts the pieces fcp_next takes; they cover the item exactly, each at most
+        128 x 64 (64 x 64 before field-7) and inside its place in page 3 (x 0-255), the places not overlapping; a
+        band's pieces lie side by side there as in the map, and its copy (fst_chain) is the old staging's: the same
+        rectangle in the map, the same pixels."""
+        items = staged = merged = 0
+        for x0 in range(0, 16, 2):
+            for y0 in range(0, 16, 5):
+                for w in range(2, 305, 2):
+                    for h in range(1, 209, 3):
+                        x1, y1 = x0 + w, y0 + h
+                        old, new = staging(x0, y0, x1, y1, False), staging(x0, y0, x1, y1, True)
+                        items += 1
+                        self.assertEqual(old is None, new is None, (w, h))
+                        if new is None:
+                            continue
+                        staged += 1
+                        for (stg, scol, pieces), wmax in ((old, 64), (new, 128)):
+                            self.assertEqual(len(pieces), stg, (w, h, wmax))
+                            self.assertTrue(1 <= stg <= 4 and stg % scol == 0, (w, h, wmax))
+                            area = 0
+                            for i, (a, b, c, d, sx) in enumerate(pieces):
+                                self.assertTrue(0 < c - a <= wmax and 0 < d - b <= 64, (w, h, wmax, i))
+                                self.assertLessEqual(sx + (c - a), 256, (w, h, wmax, i))
+                                area += (c - a) * (d - b)
+                                for e, f, g, hh, sy in pieces[:i]:
+                                    self.assertFalse(a < g and e < c and b < hh and f < d, (w, h, wmax, i))
+                                    self.assertFalse(sx < sy + (g - e) and sy < sx + (c - a), (w, h, wmax, i))
+                            self.assertEqual(area, w * h, (w, h, wmax))
+                            for j in range(0, stg, scol):           # (a band's pieces side by side in page 3)
+                                band = pieces[j:j + scol]
+                                for a, b, c, d, sx in band:
+                                    self.assertEqual(sx - band[0][4], a - band[0][0], (w, h, wmax, j))
+                        old_c, new_c = band_copies(*old), band_copies(*new)
+                        self.assertEqual([r for r, _ in old_c], [r for r, _ in new_c], (w, h))
+                        merged += old[0] - new[0]
+        self.assertEqual((items, staged), (8 * 4 * 152 * 70, 138240))
+        self.assertGreater(merged, 0)
+
+    def test_a_staged_piece_takes_no_cache(self):
+        """A one-band item two places wide is one piece, the whole item: the caches are lent (fb_stage frees all
+        three), so fb_piece sends a staged piece to the tiles before its cache test."""
+        piece = code("field.asm", "fb_piece", "fp_lkok")
+        k = piece.index("jp z,fp_page")
+        self.assertLess(k, piece.index("ld a,(fb_stg)", k))
+        self.assertLess(piece.index("jp nz,fp_tiles", k), piece.index("call fb_cfind"))
+        stage = code("field.asm", "fb_stage", "fst_n")
+        k = stage.index("ld hl,fb_cache")
+        self.assertEqual(stage[k:k + 9], ["ld hl,fb_cache", "ld de,FB_CSZ", "ld (hl),0xFF", "inc hl", "ld (hl),0xFF",
+                                          "dec hl", "add hl,de", "djnz fsg_c", "ret"])
 
 
 def converter_constant(name: str):
@@ -316,8 +464,9 @@ class LookOnlyTests(unittest.TestCase):
                           "ld a,(s38_rq)", "inc a", "ret nz", "call fb_inwin", "sbc a,a", "inc a", "ret"])
         piece = code("field.asm", "fb_piece", "fp_lkok")
         k = piece.index("call fp_lkok")
-        self.assertEqual(piece[k - 2:k + 3], ["call vat_inbox", "jp nz,fp_tiles", "call fp_lkok", "jp z,fp_page",
-                                              "ld hl,(fb_cur + 1)"])
+        self.assertEqual(piece[k - 4:k + 8], ["if VAT_ANIM", "call vat_inbox", "jp nz,fp_tiles", "endif",
+                                              "call fp_lkok", "jp z,fp_page", "if VAT_ANIM = 0", "ld a,(fb_stg)",
+                                              "or a", "jp nz,fp_tiles", "endif", "ld hl,(fb_cur + 1)"])
         self.assertLess(piece.index("ld (fb_cc + 3),a"), k)          # (fb_px .. fb_pe, the cells: set)
         self.assertEqual(code("field.asm", "fp_page", "fb_pgbg"),
                          ["call fcp_sp", "xor a", "ld (fb_ci),a", "ld a,FP_PAGE", "ld (fb_ph),a", "ret"])

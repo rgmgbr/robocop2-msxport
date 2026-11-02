@@ -1168,12 +1168,13 @@ fb_dsn:     equ 0x0602              ; 1 while fb_bobs draws a dynamic frame stri
 fb_ds:      equ 0x0603              ;   the frame's line its next strip starts from,
 fb_dse:     equ 0x0604              ;   past its part's last line (lines of the frame),
 fb_dpr:     equ 0x0605              ;   8: its part (fb_r's layout)
-fb_stg:     equ 0x0610              ; the item's pieces when they are staged (2-4, the page shown's:
-                                    ;   each composed in a 64 x 64 of its own, then all copied in a
-                                    ;   row), else 0;
+fb_stg:     equ 0x0610              ; the item's pieces when they are staged (1-4, the page shown's:
+                                    ;   each composed in a place of its own, a band's up to 128 x 64
+                                    ;   since field-7, then all copied in a row), else 0;
 fb_spk:     equ 0x0611              ;   the piece being composed or copied (0 .. fb_stg - 1),
 fb_scp:     equ 0x0612              ;   0 composing them, 1 copying them
-fb_sbx:     equ 0x0613              ; the x in page 3 of the piece's 64 x 64 (FB_SX, or a cache's)
+fb_sbx:     equ 0x0613              ; the x in page 3 of the piece (FB_SX: the scratch; a staged one's:
+                                    ;   field.asm fsl_sx)
 fb_spx:     equ 0x0614              ; 32: per staged piece its fb_px and fb_pe (x0, y0, x1, y1)
 fb_bki:     equ 0x0634              ; field.asm fn_take: the best rank so far (fn_key; 0 none),
 fb_bkp:     equ 0x0635              ;   2: its item
