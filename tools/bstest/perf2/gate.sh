@@ -5,9 +5,11 @@
 #   gate.sh builds R [SRC]     the gates' builds into R from SRC (a source tree with build/ linked to the
 #                              main checkout's, e.g. a worktree; default this repository): R/l3/cap3.rom
 #                              (EXTJOY=1 LV_TEST=3), R/l2/cap2.rom (EXTJOY=1 LV_TEST=2), R/l1/ext.rom
-#                              (EXTJOY=1), R/L/l1|l2|l3/lock.rom (+ LOCKSTEP=24), and hz.sh's trace builds
-#                              in R/T (l3builds, l2builds, trace)
-#   gate.sh speed BASE NEW     G-SPEED: win.py --gate BASE/speed NEW/speed
+#                              (EXTJOY=1), R/L/l1|l2/lock.rom (+ LOCKSTEP=24), R/L/l3/lock.rom (+ LOCKSTEP=48:
+#                              24 VBLANKs are too few for level 3 on the V9938, docs/HARNESS.md 12.2), and
+#                              hz.sh's trace builds in R/T (l3builds, l2builds, trace)
+#   gate.sh speed BASE NEW     G-SPEED: win.py --gate BASE/speed NEW/speed (the drives' teleports from
+#                              REPO's build/emu)
 #   gate.sh hold BASE NEW      G-HOLD: holds.py --gate BASE/speed NEW/speed (the same records)
 #   gate.sh field BASE NEW [JOBS]
 #                              G-FIELD: fieldcheck.py on NEW/field's windows (REPO's build/msx and
@@ -23,8 +25,10 @@
 #                              lost counters 0 (W/logic/l<k>/lost.txt)
 #   gate.sh all BASE NEW R     every verdict above in turn (each one's output in NEW/gate_<name>.txt);
 #                              "gate: PASS" when all pass
-# BASE: W0's HEAD records (the campaign's base folder); NEW: the run folder of pf_gate_jobs. Each verdict's
-# last line reads "G-NAME: PASS" or "G-NAME: FAIL ...". Exit 0 only when the verdicts asked for pass.
+# BASE: the baseline folder (batch 2: lane W2K's, BASE's records with its timing controls' in
+# BASE/<gate>/ctl/<name>/, docs/HARNESS.md 12.2: G-SPEED, G-HOLD, G-GUARD and G-FIELD judge NEW against the
+# range they span); NEW: the run folder of pf_gate_jobs. Each verdict's last line reads "G-NAME: PASS" or
+# "G-NAME: FAIL ...". Exit 0 only when the verdicts asked for pass.
 # A run, window or record BASE holds that NEW lacks FAILs its verdict (as does one cut short).
 # Environment: REPO, the checkout whose build/ (the drives' references, the conversions), analysis/ and
 # tools/bstest/hz.sh, fieldcheck.py the verdicts use (default this repository; a git worktree has no
@@ -33,7 +37,7 @@
 set -u
 H="$(cd "$(dirname "$0")" && pwd -P)"
 ROOT="$(cd "$H/../../.." && pwd -P)"
-usage() { sed -n 2,32p "$0" >&2; exit 2; }
+usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' >&2; exit 2; }
 REPO="${REPO:-$ROOT}"
 PA=""; [ "${PARTIAL:-}" = 1 ] && PA="--partial"
 cmd="${1:-}"; shift || true
@@ -56,7 +60,7 @@ builds)
   b l1/ext.rom EXTJOY=1
   b L/l1/lock.rom EXTJOY=1 LOCKSTEP=24
   b L/l2/lock.rom EXTJOY=1 LV_TEST=2 LOCKSTEP=24
-  b L/l3/lock.rom EXTJOY=1 LV_TEST=3 LOCKSTEP=24
+  b L/l3/lock.rom EXTJOY=1 LV_TEST=3 LOCKSTEP=48
   mkdir -p "$R/T"
   sh "$HZ" l3builds "$R/T" > "$R/T/l3builds.txt" 2>&1 || bad=$((bad + 1)); tail -1 "$R/T/l3builds.txt"
   sh "$HZ" l2builds "$R/T" > "$R/T/l2builds.txt" 2>&1 || bad=$((bad + 1)); tail -1 "$R/T/l2builds.txt"
@@ -64,8 +68,8 @@ builds)
   echo "gate builds: $([ $bad -eq 0 ] && echo OK || echo "$bad FAILED") ($R)"
   [ $bad -eq 0 ]
   ;;
-speed) [ $# -eq 2 ] || usage; python3 -I "$H/win.py" --gate "$1/speed" "$2/speed" $PA ;;
-hold) [ $# -eq 2 ] || usage; python3 -I "$H/holds.py" --gate "$1/speed" "$2/speed" $PA ;;
+speed) [ $# -eq 2 ] || usage; python3 -I "$H/win.py" --gate "$1/speed" "$2/speed" --emu "$REPO/build/emu" $PA ;;
+hold) [ $# -eq 2 ] || usage; python3 -I "$H/holds.py" --gate "$1/speed" "$2/speed" --emu "$REPO/build/emu" $PA ;;
 field)
   [ $# -ge 2 ] || usage
   J="${3:-4}"

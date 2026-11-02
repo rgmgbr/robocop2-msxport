@@ -6,10 +6,16 @@ section 12; docs/PERF2_PLAN.md 5.4).
                                driven, rc2_guard's counts (reg, pal, cmd, cpu, vbl, tear), patcheck,
                                sprlines, satcheck
   guardsum.py gate BASE NEW [--partial]
-                               every record of BASE: FAIL when NEW's tears exceed BASE's (the plan's
-                               rule), when patcheck finds a bad entry BASE did not, when the drive was
-                               not driven to its end, or when NEW lacks the record (--partial: listed,
-                               not judged); the other counters are listed (an increase: WARN)
+                               every record of BASE: FAIL when NEW's tears exceed the highest count of
+                               BASE and its timing controls (BASE/ctl/<name>/, ref.py: builds that differ
+                               from BASE only by a few T-states; a tear's count moves with timing, 108 ->
+                               116 for 4 NOPs a tick) by more than their spread (highest - lowest) and at
+                               least by SLACK (3 tears, or 5 % of the highest):
+                                 NEW > highest + max(spread, SLACK)
+                               (without controls: NEW > BASE, batch 1's rule); when patcheck finds more
+                               bad entries than any of them, when the drive was not driven to its end, or
+                               when NEW lacks the record (--partial: listed, not judged); the other
+                               counters are listed (above the reference set's highest: WARN)
 Exit 0 only when nothing FAILs (a gate that judged no record FAILs). The guard (tools/openmsx_rc2.tcl rc2_guard) counts a VDP command still
 writing into lines being shown (tear), register writes during the shown lines (reg), palette writes (pal),
 commands running into the picture's start (cmd), CPU VRAM access during them (cpu), late VBLANK work (vbl).
@@ -17,7 +23,12 @@ commands running into the picture's start (cmd), CPU VRAM access during them (cp
 import os
 import re
 import sys
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ref  # noqa: E402  (tools/bstest/perf2/ref.py)
+
+SLACK_ABS, SLACK_REL = 3, 0.05   # tears a count may pass the reference set's highest: 3, or 5 % of it
 KEYS = ('reg', 'pal', 'cmd', 'cpu', 'vbl', 'tear')
 
 
@@ -67,6 +78,12 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == 'gate':
         base, new = table(argv[1]), table(argv[2])
+        ctls = [(c.name, table(str(c))) for c in ref.controls(argv[1])]
+        if ctls:
+            print(f"reference: BASE and its controls {', '.join(n for n, _ in ctls)} (NEW above highest + "
+                  f"max(spread, {SLACK_ABS} or {SLACK_REL:.0%}) FAILs)")
+        else:
+            print("reference: BASE alone (no controls: more tears than BASE FAILs)")
         bad = judged = 0
         for k in sorted(new):
             r = new[k]
@@ -76,17 +93,26 @@ def main(argv):
             b = base[k]
             judged += 1
             why, warn = [], []
+            cs = [ct.get(k) for _, ct in ctls]
+            if not all(cs):
+                why.append(f"the controls {', '.join(n for (n, _), c in zip(ctls, cs) if not c)} lack the record")
+                cs = [c for c in cs if c]
+            refs = [b] + cs
             if r.get('rows') != b.get('rows'):
                 why.append(f"rows {r.get('rows')} (base {b.get('rows')})")
-            if r['tear'] > b['tear']:
-                why.append(f"tears {b['tear']} -> {r['tear']}")
-            if r.get('pat_bad', 0) > b.get('pat_bad', 0):
+            vals = [x['tear'] for x in refs]
+            lo, hi, sp = ref.span(vals)
+            thr = hi + max(sp, SLACK_ABS, round(SLACK_REL * hi)) if ctls else hi
+            if r['tear'] > thr:
+                why.append(f"tears {r['tear']} above {thr}")
+            if r.get('pat_bad', 0) > max(x.get('pat_bad', 0) for x in refs):
                 why.append(f"patcheck bad {b.get('pat_bad')} -> {r.get('pat_bad')}")
             for kk in ('reg', 'pal', 'cmd', 'cpu', 'vbl', 'sprlines', 'satcheck'):
-                if r.get(kk, 0) > b.get(kk, 0):
-                    warn.append(f"{kk} {b.get(kk)} -> {r.get(kk)}")
+                if r.get(kk, 0) > max(x.get(kk, 0) for x in refs):
+                    warn.append(f"{kk} {'/'.join(str(x.get(kk)) for x in refs)} -> {r.get(kk)}")
             bad += bool(why)
-            print(f"{k:10s} tears {b['tear']} -> {r['tear']}" + (f"  FAIL ({'; '.join(why)})" if why else '') +
+            rt = f" (reference {', '.join(str(v) for v in vals)}, FAIL above {thr})" if ctls else ''
+            print(f"{k:10s} tears {b['tear']} -> {r['tear']}{rt}" + (f"  FAIL ({'; '.join(why)})" if why else '') +
                   (f"  WARN ({'; '.join(warn)})" if warn else ''))
         for k in sorted(set(base) - set(new)):
             if partial:

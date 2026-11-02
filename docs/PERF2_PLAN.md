@@ -889,6 +889,13 @@ to +7.2 %; Cain's route stays as batch 1 left it.
 
 ### 5.4 Gates
 
+*Batch 2 (lane W2K, `HARNESS.md` 12.2):* BASE is batch 1's tip with three timing controls (BASE plus a few
+T-states where nothing is decided); G-SPEED, G-HOLD, G-GUARD and G-FIELD judge each build against the range they
+span (speed: below the lowest by more than the spread and at least 1 % / 4 %; FB_HOLD pictures and tears: above the
+highest by more than the spread and at least 2 / 3 or 5 %; a field class: above the highest by more than the spread
+and at least 3 pictures), the test drives' teleport stalls and the field records past a drive's end left out, level
+3's lock builds at LOCKSTEP=48. The rules below are batch 1's.
+
 **Baseline.** Every gate compares with HEAD (3b11042), built with the same options and run on the same drive, machine and emulator (openMSX 21 headless). W0 records the baselines once. m_l3's, m_l2's and the analysts' base runs count where their options match.
 
 - **G-BUILD.**

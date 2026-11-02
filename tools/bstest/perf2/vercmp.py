@@ -2,7 +2,9 @@
 """vercmp.py BASE NEW: two cen.tcl censuses of the sprite budget (performance campaign 2's kit, docs/HARNESS.md
 section 12; agent a_sprites' compare of 2026-11-01), record by record: every R, E, C, F and O record equal
 but the R records' times (the census of docs/PERF2_PLAN.md items 12, 13 and 16: 0 differing records), then
-the budget's own time per run in T-states (t_end - t_budget) and the line phase's (t_bgtot - t_lnfill).
+the budget's own time per run in T-states (t_end - t_budget: since cen.tcl times bu_lvl's run whole, its
+bank switch of about 163 T included; a census made before that left it out) and the line phase's
+(t_bgtot - t_lnfill).
 An E/O record's O_OUT of an object not wanted (O_FLAGS bit 7 clear) is never read and not compared; an R
 record's cand and anyb are visit counts, not decisions, and not compared. Exit 1 when a record differs or
 the record counts differ.

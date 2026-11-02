@@ -2508,8 +2508,10 @@ here so that the repository alone reruns every gate:
 The measurement and gate scripts of `docs/PERF2_PLAN.md` (5.4's gates), from the campaign's
 analysts (m_l3, m_l2, a_field, a_flash, a_scroll, a_sprites, a_logic, a_loop, v_gain), with every
 address taken from the build's own label file and ROM and every path an argument. `W` is a run
-folder, `R` a builds folder, `BASE` the HEAD records every gate compares with (made once by the
-campaign's measurement lane with these very scripts; HEAD here is `a75405c`).
+folder, `R` a builds folder, `BASE` the records every gate compares with (batch 1: HEAD `a75405c`'s,
+made once by the campaign's measurement lane; batch 2: batch 1's tip with its timing controls, 12.2).
+
+### 12.1 The scripts
 
 **The session.** A private one (2, 5.24): `python3 -I tools/bstest/mcpd.py DIR &`, then
 `MCPD_DIR=DIR sh tools/bstest/mx.sh NAME 'TCL'`; during the campaign under its semaphore (at most two
@@ -2520,8 +2522,9 @@ from there.
 
 **The builds** (`gate.sh builds R [SRC]`, from SRC: a source tree whose `build/` links to the main
 checkout's, 5.3): `R/l3/cap3.rom` (`EXTJOY=1 LV_TEST=3`, the product's options otherwise),
-`R/l2/cap2.rom` (`EXTJOY=1 LV_TEST=2`), `R/l1/ext.rom` (`EXTJOY=1`), `R/L/l1|l2|l3/lock.rom`
-(`LOCKSTEP=24`) and hz.sh's trace builds in `R/T` (`l3builds`, `l2builds`, `trace`).
+`R/l2/cap2.rom` (`EXTJOY=1 LV_TEST=2`), `R/l1/ext.rom` (`EXTJOY=1`), `R/L/l1|l2/lock.rom`
+(`LOCKSTEP=24`), `R/L/l3/lock.rom` (`LOCKSTEP=48`, 12.2) and hz.sh's trace builds in `R/T` (`l3builds`,
+`l2builds`, `trace`).
 
 **A gate run**: `hz_chain [pf_gate_jobs {W} {R}] {W/gates.done}` (149 jobs; `pf_gate_jobs W R
 {speed lock}` for some), then `REPO=<main checkout> sh tools/bstest/perf2/gate.sh all BASE W R`:
@@ -2538,16 +2541,17 @@ on an earlier run's records.
 |---|---|---|---|
 | `load.tcl` | Tcl | sources the harness and the kit's Tcl | |
 | `m3.tcl` | Tcl | `m3_job NAME MACHINE DIR ROM LABELS DRIVE N ?MODE?`: a drive (N rows from tick 0, `rc2_drive_rom`'s inputs without its RAM dump) -> `DIR/NAME_ticks.txt` (per tick: tick_n, emulated time, counters), `_pics.txt` (per picture: time, tick, fb_hold, the list's game frame, VBLANK), `_pubs.txt`, `_frames.txt` (cadence: wf_n, ticks due, cap), `_fcs.txt` (frame-cache uploads); MODE `flash` adds to each ticks line the BOBs drawn as a colour-15 silhouette in the tick (`bd_mode` with BM_FLASH: shown, all); `cmds` adds `_cmds.txt` (every VDP command) and `_ce.txt`, `full` adds `_samp.txt` (a PC sample every 0.2 ms); `m3_job2`/`m3_job3` stack variants. Probes take no emulated time: a lean run's records equal a full one's | G-SPEED, G-HOLD |
-| `win.py` | python | `T0-T1 PREFIX...`; `--table DIR [--json OUT]`; `--gate BASE NEW` -> ticks/s, pictures/s, pictures/s with game progress, held VBLANKs per window (each drive's windows: kill 130-1400, 300-1500, 1500-1765; boss 130-1400; tour3 40-210, 215-540, 545-1065, 1085-1400; park 40-1200; l2tour 20-1590, 2080-2350; l1play 40-1450). FAIL: a window slower than BASE by more than 1 % (400 ticks or more) or 5 % (shorter); for l1play (level 1's play "must stay at 25 ticks/s and 25 pictures/s", its ticks/s at the logic's cap) also its pictures/s or progress pictures/s below BASE's by more than that; a window not reached; a run BASE holds that NEW lacks (`--partial`: not judged) | G-SPEED |
-| `holds.py` | python | `PREFIX [FROM TO]`; `--table DIR`; `--gate BASE NEW [--partial]` -> pictures shown after FB_HOLD (fb_hold 8 at `iv_take`: BOBs one picture behind the sprites) per minute over whole drives (kill, boss, tour3, l2tour judged). FAIL: more per minute than BASE; a run that does not span BASE's ticks; a run NEW lacks | G-HOLD |
-| `gates.tcl` | Tcl | `pf_speed_jobs`, `pf_field_jobs`, `pf_guard_jobs`, `pf_lock_jobs`, `pf_map_jobs`, `pf_logic_jobs`, `pf_gate_jobs W R ?GATES?` (each `DIR R ?TAGS?`; TAGS `::pf_m4` = C-BIOS_MSX2 m2, Gradiente_Expert20_64K ex, FS-A1FX fx, FS-A1GT tr; `::pf_m3`, `::pf_vdp2` = m2 fx); `pf_fd_setup` (`l2b_fd_setup`'s records plus `holds.txt`: each record's fb_hold), `pf_guard_setup` (the guard from the level's first tick to the drive's end); `pf_logic_jobs`' level-1 jobs run through `hz_l2_drive` (the same trace, plus the lost counters in `DIR/l1/lost.txt`) | all |
-| `fieldsum.py` | python (venv for fieldcheck) | `run DIR [--root REPO] [--jobs N] [--check FIELDCHECK]` -> `fieldcheck.py` on every window (`DIR/<win>_<tag>.fc.txt`, `.png`), `DIR/fieldsum.json`; `table DIR`; `gate BASE NEW [--partial]`. Windows: kill300, kill1025, kill1560, boss110, boss300, park40, tour545 (900 records each), l2_tour's 11 of 5.24, level 1's c430, c860, c1490. FAIL: a difference class BASE's window does not show, the pictures after FB_HOLD left out (G-HOLD's); or the window's other pictures with differences beyond 3 x BASE's + 30 (a gross regression a class BASE shows would hide); a window whose check did not cover its records (no summary line: fieldcheck stopped, e.g. a wrong `--root`; fewer checked than level.txt's n: skipped or cut short; a check older than the window's level.txt or holds.txt: recorded again since, which `run` checks again); a window NEW lacks; WARN: a class more than doubles | G-FIELD |
-| `guardsum.py` | python | `table DIR`; `gate BASE NEW [--partial]` -> `rc2_guard`'s counts over whole kill and boss drives (cap3), patcheck, sprlines, satcheck. FAIL: more tears, a bad patcheck entry, a drive not driven to its end, a record NEW lacks | G-GUARD |
-| `lockgate.py` | python | `BASE NEW [--partial]` -> `tools/dispcmp.py`'s comparison of every LOCKSTEP=24 record (l1cov0 3000 lists, l2tour 1300, kill 900, boss 680; m2 fx), judged up to the first late frame (`.over`) of either run. FAIL: a judged list differs, NEW has fewer lists, a record NEW lacks | G-LOCK |
+| `win.py` | python | `T0-T1 PREFIX...`; `--table DIR [--json OUT]`; `--gate BASE NEW [--emu DIR]` -> ticks/s, pictures/s, pictures/s with game progress, held VBLANKs per window (each drive's windows: kill 130-1400, 300-1500, 1500-1765; boss 130-1400; tour3 40-210, 215-540, 545-1065, 1085-1400; park 40-1200; l2tour 20-1590, 2080-2350; l1play 40-1450), each teleport's stall left out (12.2). FAIL: a window below the reference set's lowest by more than its spread, at least 1 % of BASE (400 ticks or more) or 4 % (shorter) (12.2; without controls: 1 % or 5 % below BASE); for l1play (level 1's play "must stay at 25 ticks/s and 25 pictures/s", its ticks/s at the logic's cap) its pictures/s and progress pictures/s the same; a window not reached; a run BASE or a control holds that NEW lacks (`--partial`: not judged) | G-SPEED |
+| `holds.py` | python | `PREFIX [FROM TO]`; `--table DIR`; `--gate BASE NEW [--partial] [--emu DIR]` -> pictures shown after FB_HOLD (fb_hold 8 at `iv_take`: BOBs one picture behind the sprites) over whole drives (kill, boss, tour3, l2tour judged), the teleports' stalls left out. FAIL: more than the reference set's highest + max(spread, 2) (12.2; without controls: more per minute than BASE); a run that does not span BASE's ticks; a run NEW lacks | G-HOLD |
+| `gates.tcl` | Tcl | `pf_speed_jobs`, `pf_field_jobs`, `pf_guard_jobs`, `pf_lock_jobs`, `pf_map_jobs`, `pf_logic_jobs`, `pf_gate_jobs W R ?GATES?` (each `DIR R ?TAGS?`; TAGS `::pf_m4` = C-BIOS_MSX2 m2, Gradiente_Expert20_64K ex, FS-A1FX fx, FS-A1GT tr; `::pf_m3`, `::pf_vdp2` = m2 fx); `pf_fd_setup` (`l2b_fd_setup`'s records plus `holds.txt`: each record's fb_hold, game frames, the redraw queue's entries and lost requests read at the label file's `rd_head`, `rd_tail`, `rd_lost`, `RD_Q_SIZE`; `level.txt` names the drive, its rows and teleports), `pf_guard_setup` (the guard from the level's first tick to the drive's end); `pf_logic_jobs`' level-1 jobs run through `hz_l2_drive` (the same trace, plus the lost counters in `DIR/l1/lost.txt`) | all |
+| `fieldsum.py` | python (venv for fieldcheck) | `run DIR [--root REPO] [--jobs N] [--check FIELDCHECK]` -> `fieldcheck.py` on every window (`DIR/<win>_<tag>.fc.txt`, `.png`), `DIR/fieldsum.json`; `table DIR`; `gate BASE NEW [--partial]`. Windows: kill300, kill1025, kill1560, boss110, boss300, park40, tour545 (900 records each), l2_tour's 11 of 5.24, level 1's c430, c860, c1490. FAIL: a class's pictures (FB_HOLD's left out: G-HOLD's) above the reference set's highest + max(spread, 3) and above the same window's highest on another machine (12.2; a class none shows: from 4), or the window's pictures with differences beyond 3 x the highest + 30 (a gross regression); left out: a teleport's stall, "other" up to 40 game frames after it while the redraw queue holds requests (`holds.txt`'s qn), the records past the drive's end; a window whose check did not cover its records (no summary line: fieldcheck stopped, e.g. a wrong `--root`; fewer checked than level.txt's n: skipped or cut short; a check older than the window's level.txt or holds.txt: recorded again since, which `run` checks again); a window NEW or a control lacks; WARN: a class above the highest | G-FIELD |
+| `guardsum.py` | python | `table DIR`; `gate BASE NEW [--partial]` -> `rc2_guard`'s counts over whole kill and boss drives (cap3), patcheck, sprlines, satcheck. FAIL: tears above the reference set's highest + max(spread, 3, 5 %) (12.2; without controls: above BASE's), a bad patcheck entry, a drive not driven to its end, a record NEW lacks | G-GUARD |
+| `lockgate.py` | python | `BASE NEW [--partial]` -> `tools/dispcmp.py`'s comparison of every LOCKSTEP record (l1cov0 3000 lists, l2tour 1300 at 24; kill 900, boss 680 at 48; m2 fx), judged up to the first late frame (`.over`) of either run. FAIL: a judged list differs, NEW has fewer lists, a record NEW lacks | G-LOCK |
 | `cnt.tcl` | Tcl | `cnt_job NAME MACHINE DIR ROM LABELS DRIVE N ?NAMES? ?MAP?` -> `DIR/NAME_cnt.txt` (per tick, cumulative calls of NAMES: `label` or `label@BANK`), `DIR/NAME_map.txt` (every 100 ticks: 0910h-0FFFh, 1082h-1F9Bh, F500h-F9FFh) | G-MAP, counters |
 | `mapdiff.py` | python | `A_map.txt B_map.txt`; `--gate BASE NEW [--ignore FROM-TO] [--partial]` (tour3, park; m2 fx). FAIL: a byte differs (1085h-108Bh never compared; `--ignore 0A33-0AFF` for item 10's row hints); a tick one dump has and the other lacks; a dump NEW lacks | G-MAP |
-| `gate.sh` | shell | `builds R [SRC]`; `speed`, `hold`, `field`, `guard`, `lock`, `map` `BASE NEW`; `logic W R` (hz.sh compare: level 3's 16 traces and level 2's 23 named, so a missing one FAILs; level 1's cov1, cov0, cov0_tr; every job's lost counters 0, level 1's from `l1/lost.txt`); `all BASE NEW R`. Environment `REPO`: the checkout with `build/`; `PARTIAL=1`: the verdicts' `--partial` | all |
-| `cen.tcl`, `vercmp.py` | Tcl, python | `cen_jobs DIR ROM LABELS DRIVE N ?TAGS?` -> the sprite budget's census per run (`R`, `E`, `C`, `F`, `O` records; labels at 8000h-BFFFh counted while the ROM's `romblocks` debuggable shows a level bank there: `msx/lvshared.asm`'s); `vercmp.py BASE NEW`: 0 differing records, the budget's T-states per run | items 12, 13, 16 |
+| `gate.sh` | shell | `builds R [SRC]`; `speed`, `hold`, `field`, `guard`, `lock`, `map` `BASE NEW`; `logic W R` (hz.sh compare: level 3's 16 traces and level 2's 23 named, so a missing one FAILs; level 1's cov1, cov0, cov0_tr; every job's lost counters 0, level 1's from `l1/lost.txt`); `all BASE NEW R`. Environment `REPO`: the checkout with `build/` (the drives' teleports from its `build/emu`); `PARTIAL=1`: the verdicts' `--partial` | all |
+| `ref.py` | python | `BASE`: the reference set of each gate folder (BASE's records and its timing controls' in `BASE/<gate>/ctl/<name>/`), the gate drives' files, rows and teleports; imported by the verdicts (12.2) | G-SPEED, G-HOLD, G-GUARD, G-FIELD |
+| `cen.tcl`, `vercmp.py` | Tcl, python | `cen_jobs DIR ROM LABELS DRIVE N ?TAGS?` -> the sprite budget's census per run (`R`, `E`, `C`, `F`, `O` records; labels at 8000h-BFFFh counted while the ROM's `romblocks` debuggable shows a level bank there: `msx/lvshared.asm`'s); `vercmp.py BASE NEW`: 0 differing records, the budget's T-states per run (from `bu_lvl`'s entry to the instruction after sprites_tick's call of it: its bank switch included, 12.2) | items 12, 13, 16 |
 | `sync3.py` | python | `PREFIX FROM TO` (an m3 run in `cmds` mode) -> the V9938 build's copy end -> sync -> flip timing | item 7 |
 | `fl.tcl`, `flcmp.py` | Tcl, python | `fl_jobs DIR ROM LABELS DRIVE N TAG TAGS` -> level 3's flash probe (ticks, pictures with fb_hold, uploads, fb_wants with white entries); `flcmp.py T0-T1 LOG...` | items 3, 8, 14, 18 |
 | `pgprobe.tcl` | Tcl | `pg_jobs DIR R ?TAGS? ?WINS?` on flash-1's builds -> `DIR/<win>_<tag>/pg.txt` (each page-path use, each diff's verdict) beside the field records | item 3 |
@@ -2572,3 +2576,129 @@ REPO=<main checkout> sh K/gate.sh logic W R
 python3 -I K/vercmp.py B/cen/cen_l3_kill_m2.txt W/cen/cen_l3_kill_m2.txt
 python3 -I K/sync3.py W/kill_m2 300 1500
 ```
+
+### 12.2 Batch 2's recalibration: BASE, its timing controls and the verdicts
+
+Batch 1's verdicts compared each count with HEAD's alone: G-SPEED 1 % (5 % for a short window), G-HOLD
+"at or below HEAD's" per minute, G-GUARD "tears not above HEAD's", G-FIELD "no class HEAD's window does
+not show". They failed on pure timing shifts of the same code (a build that only adds 4 NOPs a game tick
+failed G-HOLD in 7 runs, G-GUARD in 3, G-SPEED in 4 windows and G-FIELD in 2 against batch 1's tip) and
+on the test drives' teleports and end (`docs/level3/HANDOFF.md`, batch 1, open issues 1 and 7). Batch 2
+judges every build against a reference set instead.
+
+**The reference set.** BASE (batch 2: `level2` 27ed66d, whose gate builds equal batch 1's tip a431d23's
+byte for byte) and three timing controls: builds of BASE that differ from it only in timing, a few
+T-states more where nothing is decided:
+- ct1: 4 NOPs at `special.asm` `hz_update`'s entry, +16 T a game tick in every level (the integration's
+  GP: its `l3/cap3.rom` is GP's byte for byte, and its records equal GP's);
+- ct2: 8 NOPs at `rc2.asm` `ml_spr`, +32 T a picture (every frame, with or without a tick);
+- ct3: 3 NOPs at `sprites.asm` `bu_lvl`'s entry, +12 T a budget run.
+
+Their records sit beside BASE's in the base folder, in the gate's own layout: `BASE/<gate>/ctl/<name>/`
+(`ref.py` finds them; `gate.sh all BASE NEW R` needs nothing more). What a timing shift alone does,
+measured on them against BASE: speed windows -4.14..+2.50 % (kill_fx 1500-1765 -4.14 % with ct2; the
+long windows within -2.36..+1.75 %), FB_HOLD pictures per drive kill_fx 16 / 27 / 24 / 23 (BASE, ct1,
+ct2, ct3), tears boss_tr 112 / 124 / 126 / 129, a field class appearing in a window where BASE has none
+(boss300_tr one hostage tear with ct1; l1c860_m2 three with ct3, a class BASE shows in the same window on
+the FS-A1FX).
+
+**The verdicts** (`win.py`, `holds.py`, `guardsum.py`, `fieldsum.py`; without controls each keeps
+batch 1's rule):
+- G-SPEED, per window: FAIL when NEW's ticks/s < lowest - max(spread, floor), lowest and spread
+  (highest - lowest) over BASE and the controls, floor 1 % of BASE's value for a window of 400 ticks or
+  more, 4 % for a shorter one. l1play's pictures/s and progress pictures/s the same.
+- G-HOLD, per drive and machine over the whole drive (no longer per minute: a faster build's shorter
+  drive raised the rate of the same count): FAIL when NEW's FB_HOLD pictures > highest + max(spread, 2).
+- G-GUARD, per drive and machine: FAIL when NEW's tears > highest + max(spread, 3, 5 % of the highest);
+  a patcheck bad entry above theirs FAILs; the other counters above the highest WARN.
+- G-FIELD, per window and difference class (FB_HOLD's pictures left out, G-HOLD's): FAIL when NEW's
+  pictures of a class > highest + max(spread, 3) over the reference set (a class none shows: from 4
+  pictures) and > the highest count the reference set shows in the same window on another machine, or
+  when the window's pictures with differences > 3 x the highest + 30; above the highest but within: WARN
+  (look at them). A control that lacks a run, window or record FAILs the verdict (the reference set must
+  be whole).
+- G-LOCK, G-MAP, G-LOGIC: exact, as before (every control passes them with 0 differences).
+
+**Left out.**
+- A teleport's stall. The test drive pokes RoboCop's place and the camera at its teleports' game frames
+  (`ref.py`: the drive file's second line; tour3 210, 340, 380, 540, 720, 900, 1080; park 30, 250, 600;
+  kill and boss 30, 45; l2_tour 1598, 1910, 2410), and the engines walk to the new view while the cadence
+  holds the ticks: 0.3-12.3 s on the MSX2 for one tick interval, a stall play never has (the game's own
+  relocation, `mapobj.asm` act_10, goes through `engines_jump`). G-SPEED and G-HOLD leave out the tick
+  intervals from T to T + 2 (the stall lands in the first or the second), their time, ticks and pictures
+  (tour3 215-540 on the MSX2: 10.6 s of 33.8; the turbo R's 545-1065 window that failed batch 1 by
+  -1.25 % reads -0.12 % without it). G-FIELD leaves out the records of game frames T .. T + 2 (the
+  stall's pictures: 312 records at game frame 722 in tour545_m2) and the class "other" up to T + 39 while
+  the redraw queue holds requests (the queue waits behind the walk: BASE's 62 stale beam cells after
+  tour3's teleport at 540, in game frames 554-574; the queue held 16 entries at 545, 5 at 574). Only a
+  record whose `holds.txt` shows entries waiting (qn > 0) at it or at the record before is left out:
+  every "other" picture BASE and its controls show after a teleport had 4-14 entries waiting, while
+  level 1's `drive_cov0.txt` pokes RoboCop's place every 150 game frames with the queue mostly empty, so
+  the 40 frames alone hid the class in 24-70 % of level 1's field records (l1c430, l1c860, l1c1490) and
+  18-23 % of l2t2385's and l2t2420's; with the queue's condition 0-24 % of level 1's and none of level 2's.
+- The field records past the drive's end (game frame >= the gate's rows: kill's 1861 is the level's end
+  screen, which `fieldcheck.py` does not model: kill1560_tr's 131 "other" pictures in batch 1).
+- `gates.tcl` `pf_fd_setup` writes the drive, its rows and teleports into each window's `level.txt`, and
+  each record's game frame into `holds.txt` (records made before that: the window's gate drive from
+  `fieldsum.py` `WIN_DRIVES`).
+
+**Level 3's lock builds at LOCKSTEP=48.** At 24 the level-3 records on the V9938 did not complete:
+BASE against ct1 stopped at boss's game frame 300 (the V9938's displayed camera, moved in the engine's
+idle time, parted) and ct2 had a late frame at kill's 989 (a frame longer than 24 VBLANKs), so 150 of
+676 and 495 of 896 lists were judged. At 36 and at 48 every list of both drives is judged against both
+controls, with no late frame and no camera stop; `gate.sh builds` makes `R/L/l3/lock.rom` with
+`LOCKSTEP=48` (the margin over 36 for slower frames; kill's 900 lists take 720 s of emulated time).
+Levels 1-2 stay at 24 (their records were already complete on both VDPs). The census builds
+(`LOCKSTEP=24` without `pub_cur`) show the same V9938 camera offsets in level 3 (batch 1's 8 records of
+3,361): build them at 48 for an exact level-3 census on the MSX2.
+
+**The redraw queue in the field records.** It moved to 1085h-1088h (`rd_head`, `rd_tail`, `rd_phase`,
+`rd_lost`; entries in RD_Q at 1000h) with the map caches, outside the record's RAM, while `fieldcheck.py`
+still printed "qn" and "lost" from 0890h and 069Ch. `pf_fd_setup` now reads the queue at each record
+where the build's label file puts `rd_head`, `rd_tail`, `rd_lost` and `RD_Q_SIZE`, and writes the
+entries waiting and the requests lost as `holds.txt`'s fifth and sixth columns; `fieldcheck.py` prints
+them from there ("qn ? lost ?" for records without them), never from a fixed address.
+
+**The census times bu_lvl's run whole.** Since spr-6 the budget runs inside `sprites.asm` `bu_lvl`, and
+the census' run bounds (the budget's entry and the instruction after "call budget", found in
+sprites_tick's first bytes) fell inside it, leaving out its bank switch there and back. `cen.tcl` now
+times from `bu_lvl`'s entry to the instruction after sprites_tick's "call bu_lvl" (builds without
+`bu_lvl`: as before). Measured on batch 1's census build (`kill`, FS-A1FX, 878 runs): the same records
+(0 differ), 46,951 -> 47,138 T a run (+187 T, the review's count was about 163).
+
+**lvshared_check.** `tools/mkrom.py` `lvshared_check` skipped a label whose `_l2`/`_l3` copy was
+missing, so a VAT_ANIM=0 build whose level banks lacked the last section would have built and jumped
+into another bank's code at the first budget run. It now takes `tail`: with it every label of
+`msx/lvshared.asm` must have its copy in each level's bank, without it (VAT_ANIM=1) the last section's
+labels must have none; the build passes it the same `tail` it gives `lvshared_copy`.
+
+**The self-checks** (lane W2K's scripts `C/w2k/tools/selfcheck.sh`, `loospeed.py`; records `C/w2k/self`):
+- Each control judged against BASE and the other two only (left out of the reference set it is judged
+  by): G-SPEED, G-HOLD, G-GUARD and G-FIELD PASS for each. The rules were set by this: the speed's floors
+  0.5 % / 2 % failed three windows, 1 % / 3 % one (kill_fx 1500-1765 with ct2, -4.14 %), 1 % / 4 % none
+  (the tightest window 0.17 % of BASE above its threshold); the field's slack of 2 pictures failed
+  l1c860_m2 with ct3 (three hostage tears); G-HOLD's slack 2 and G-GUARD's 3 / 5 % passed as set.
+- Each control against the whole set, and G-LOCK, G-MAP and G-LOGIC on each: PASS.
+- Known-bad builds against the whole set, each a change no gate may let pass:
+  - a slowed loop (`rc2.asm` `ml_spr`: 333 x 30 T, about 10,000 T a picture: -1 to -6 % on the Z80
+    machines' windows, level 1's pictures 26.6 -> 22.3 a second): G-SPEED FAIL in 16 of 48 windows
+    (kill 130-1400 and 300-1500 on the MSX2 and the Expert, boss on the Expert, park and tour3 545-1065 on
+    the three Z80 machines, l2_tour 20-1590 on the MSX2 and the Expert, level 1's pictures on the three);
+    the turbo R's windows and the short ones stay inside their wider ranges;
+  - a forced hold (`isr.asm` iv_rdy: every 16th picture held FB_HOLD VBLANKs): G-HOLD FAIL in all 16
+    runs (e.g. tour3_m2 0 -> 76);
+  - a misdrawn piece (`field.asm` fbb_fc: every frame-cache BOB drawn from the line below): G-FIELD FAIL
+    in 18 of level 3's 21 windows (tour545 shows no frame-cache BOB);
+  - a copy into the page being shown (`scroll9938.asm` s38_copy_chunk's destination page): G-GUARD FAIL
+    (kill_m2 121 -> 1,090 tears, boss_m2 6 -> 972); skipping the field engine's beam rules for its copies
+    onto the page shown (`fb_mayq`, or `fb_fits` always true) added only -3..+16 tears and stayed inside
+    the reference set: those copies are short, the guard's tears come mostly from elsewhere;
+  - a one-byte logic change (`level3.asm` lt2: the beams' period bit 20h -> 10h): G-LOGIC FAIL (tour3 112
+    frames, beam 470, cont3 370 differ) and G-MAP FAIL (tour3_m2: 11 of 15 dumps);
+  - every object's x + 1 in the SAT (`sprites.asm` sb_object): G-LOCK FAIL in all 8 records.
+
+**The baselines** for batch 2: `C/w2k/base` (`C` the campaign's folder), listed line by line in
+`C/w2k/base/INDEX.txt` (gate, drive, window, machine, build and options, files, rule): BASE's speed,
+guard and map records are batch 1's (`C/integ/N`, the same ROMs, read the same way), its field windows
+recorded again with the new `level.txt` and `holds.txt` (every class and count equal to batch 1's), its
+level-3 lock records at LOCKSTEP=48; the controls' records of every gate in `<gate>/ctl/ct1..ct3`.

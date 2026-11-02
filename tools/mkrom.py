@@ -850,15 +850,26 @@ def lvshared_copy(src: str, level: str, level_data: set[str], tail: bool = True)
     return "\n".join(out)
 
 
-def lvshared_check(src: str, labels: str, levels: tuple[str, ...] = ("l2", "l3")) -> list[str]:
+def lvshared_check(src: str, labels: str, levels: tuple[str, ...] = ("l2", "l3"), tail: bool = True) -> list[str]:
     """Every label msx/lvshared.asm defines against its copies' in the assembled image (z80asm -L):
-    the shared code (objects.asm, special.asm) calls and reads it at level 1's addresses."""
+    the shared code (objects.asm, special.asm) calls and reads it at level 1's addresses. Every label
+    must have its copy in each level's bank, the last section's (LVS_TAIL) too when tail (the copies
+    lvshared_copy made with tail: a copy without them would leave sprites.asm bu_lvl's jump into
+    another bank's code); without tail the last section's labels must have none."""
     val = dict(re.findall(r"^(\w+):\s+equ \$([0-9a-f]+)$", labels, re.M))
+    cut = src.find("\n" + LVS_TAIL)
+    head = set(LABEL_DEF.findall(src if cut < 0 else src[:cut + 1]))
     bad = []
     for name in LABEL_DEF.findall(src):
+        want = tail or name in head
         for lv in levels:
             copy = val.get(f"{name}_{lv}")
-            if copy is not None and copy != val.get(name):
+            if copy is None:
+                if want:
+                    bad.append(f"{name}_{lv}: no copy ({name} at {val.get(name)}h)")
+            elif not want:
+                bad.append(f"{name}_{lv} at {copy}h: a copy of the last section's {name} in a build without it")
+            elif copy != val.get(name):
                 bad.append(f"{name}_{lv} at {copy}h, {name} at {val.get(name)}h")
     return bad
 
@@ -1474,7 +1485,7 @@ def main(argv: list[str]) -> int:
     if lost:
         print("error: z80asm truncated a value:\n" + "\n".join(lost), file=sys.stderr)
         return 1
-    bad = lvshared_check(lvshared, labels)
+    bad = lvshared_check(lvshared, labels, tail=tail)
     if bad:
         print("error: msx/lvshared.asm's copies are not at level 1's addresses (each level bank's header "
               "must be objects.asm's, lvshared at LV_HDR_END):\n" + "\n".join(bad[:8]), file=sys.stderr)
