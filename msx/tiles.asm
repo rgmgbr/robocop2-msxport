@@ -611,15 +611,17 @@ fb_mark:
         ret
 
 ; B = row, E = column, D = V9938 page of a tile drawn: on the page shown, or on the page being
-; built once it holds the BOBs (fb_bsync), the same; before, where it meets a BOB the sync composes
-; it (field.asm fb_bbcell). Keeps BC, DE, HL.
+; built once its sync has begun (fb_bsq: its list set, ending.asm fs_sync; until performance
+; campaign 2's V9938-SYNC once it held the BOBs, fb_bsync, and a tile drawn between went into fb_bb,
+; which the sync had already taken), the same; before, where it meets a BOB the sync composes it
+; (field.asm fb_bbcell). Keeps BC, DE, HL.
 fb_mark38:
         ld a,(s38_vis_page)
         cp d
         jr z,fm38_go
         ld a,(s38_back_c0)
         push hl
-        ld hl,fb_bsync
+        ld hl,fb_bsq
         cp (hl)
         pop hl
         jr nz,fm38_bb

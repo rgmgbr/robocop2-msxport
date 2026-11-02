@@ -660,6 +660,55 @@ which as sprites were striped, cut or left out.
   held the page shown's for ~12 pictures (a hostage shown long after turning into smoke).
   Page-copy chunks are one row slot instead of four while the field has work, so its commands
   never wait long behind them.
+  - **The sync by copies** (performance campaign 2's V9938-SYNC, `docs/PERF2_PLAN.md` item 7; `ending.asm`
+    `fs_sync`, in `BANK_FRONT2` through `f2_call`, `field.asm` `fb_sync` its gate). Until then the sync
+    waited for the field engine to have nothing queued, then composed every `fb_bb` rectangle again from
+    the tiles (an item of no owner each: on the MSX2's kill floors 4.05 composed pieces a build, the
+    build's copy end to the next build 193 ms on average). Now each rectangle (in the kept rows and the
+    page's columns, even x edges) is taken from the page shown with one HMMM, the page copy's 16-px shift
+    (SX = x - `s38_vis_c0` x 16, DX = x - `s38_back_c0` x 16, each page's line y & 255; a rectangle
+    across the pages' line 256 in two), where that page holds its list's composition; the rest is
+    composed as before. The page being built's list becomes the page shown's (`fb_want`, which
+    `fb_frame` gives the page shown at every picture) when the sync begins (`fs_begin`, `fb_bsq`), and
+    its steps run among the items: one a call of `fn_take` (after the page shown's published items,
+    which the pictures wait for) or of `fb_step` (nothing queued), as soon as the build's copy is done.
+    A step takes the next rectangle not done (`fb_sbi`, a bit each):
+    - its part in the new column, which the page shown does not hold, is composed when a BOB of the
+      list meets it (each entry's rectangle, `field.asm` `fb_rect`; else the build's tiles are all there);
+    - the rest is copied (`fs_copy`: `fb_cmd` prepared, `fb_rdy` 1, started by `fb_work` or the
+      interrupts: it writes the page not shown, at any time);
+    - but composed when a change of the page shown met it since the sync began (`fb_bbadd` -> `fs_dirty`,
+      `fb_sdm`: the page shown may hold the change by then, while the page being built keeps the list the
+      sync began with);
+    - and left for later while an item of the page shown waiting in the queue meets it (`fs_qmeet`: a
+      change queued before the sync began brings that page to the list there; its cells waiting for the
+      BOBs among them).
+    Every rectangle done, the marker (`fs_mark`: `fb_bsync` once `fn_take` takes it, then the flip may
+    come). `fn_take` takes it in the same `fb_work` call as `fb_go` started the sync's last copy, which runs
+    for tens of ms (an HMMM from page to page, not a 64 x 64 piece): so at a flip `fb_frame` waits for the
+    VDP (`vdp_wait`; not at the first picture since `fb_init`, `fb_vlast` FFh) before the picture that shows
+    the page is published, and no command started while the page was hidden (at any time) still writes it
+    when that picture goes on screen. Until the lane's review a list went in with a copy unfinished in 18 of
+    70 runs on C-BIOS_MSX2 and the Expert (kill's and boss's with timing controls among them), 19 times, 5
+    of them with bytes still old: at most 9.6 ms and 20 lines of a 176 x 79 copy on `l3_boss`, the beam
+    behind the copy in those runs. The tiles the scroll engine draws on that page from the sync's start
+    meet its list
+    (`tiles.asm` `fb_mark38` tests `fb_bsq`: a cell item of that page; until then such a tile went into
+    `fb_bb`, which the sync had already taken). A new target without a flip (the view turned back,
+    `fb_bbinit`) drops the page being built's work for the target before: a copy of the sync prepared and
+    not started (it would write this page at that target's place), its items queued, and the item being
+    composed goes into `fb_bb` (its copy may come after the build's). `VAT_ANIM=1` builds compose every
+    rectangle, as before. RAM: `fb_bsq` 074Bh, `fb_sbi` E0FEh, `fb_sdm` E0FFh.
+    - Measured (the `EXTJOY` drive builds, C-BIOS_MSX2, `l3_kill`, against the code before): the sync
+      by copies 0.98 copies (2,728 bytes) and 1.03 composed pieces a build; copy end to the next build
+      193 -> 118 ms on average (median 142 -> 68: `C/w3v/tools/sync4.py`); over the whole drive 319
+      syncs, 214 copies, 111 new-column parts composed, 1 rectangle composed after a change, 57 steps
+      that waited for the page shown. Ticks a second: Cain's route (kill 130-1400) 8.81 -> 9.83 on the
+      MSX2 and 8.84 -> 9.85 on the Expert, the kill floors (300-1500) 9.23 -> 10.32 and 9.26 -> 10.29,
+      the ground floor (1500-1765, nothing scrolls) unchanged. The V9958 machines run the code before
+      (`fb_sync`'s gate: `fb_eng` 0). Ticks lost (m_l3's table, kill 300-1500 on the MSX2): 2,049 -> 1,707, those
+      to the view's lag 1,513 -> 1,112. `BANK_FIELD` 31 bytes for the gate and the hooks (the product 411 free,
+      the drive builds 370), `BANK_FRONT2` 818.
 - **Checked** (headless, `fieldcheck.py` in the scratchpad: every play-area pixel no sprite
   covers against the tiles and the BOB list of the list on screen, `fb_vis` in test builds; cells
   the game rewrote in the last 30 frames are the scroll engine's and not checked; a hostage may
@@ -798,6 +847,20 @@ which as sprites were striped, cut or left out.
   A000h around it, `act_a000` put back, 8000h as it is), and it calls `fb_init` and `vat_init` through
   `field_call`. It runs at a level's start (`lv_go`), a restart or a continue (`level_restart`) and the
   cracked wall's jump (`engines_jump`), never in a frame's work.
+  Since performance campaign 2's R3 (`docs/PERF2_PLAN.md` 5.2: its room went to batch 3's field items) the
+  field's own set-up (`fb_init`, from the set-up above directly, from the front end's text screens through
+  `f2_call`), a V9938 build's start (`fb_bbinit`, from `scroll9938.asm` `s38_target` through `f2_call`) and its
+  sync (`fs_sync`) run there too: 313 bytes of `BANK_FRONT2`. `BANK_FIELD` keeps the level's tables' copy
+  (`fb_fldcp`: `lv_fld` points into this bank), the sync's gate (`fb_sync`: on the V9938, a build's copy done and
+  its page not synced, the only time it maps `BANK_FRONT2`) and `fb_queuec` (`fb_queue` with the page in C:
+  `field_call` takes A and HL, so the code in `BANK_FRONT2` passes its arguments in BC, DE and RAM, and keeps
+  its own copies of `fb_dnp`, `fb_lsz` and `fbx_set`). `BANK_FIELD` gains 256 bytes (the product 186 -> 442 free,
+  the drive builds 145 -> 401). The V9938's frames map `BANK_FRONT2` at a build's start, its sync's steps and its
+  new column's burst (below): a bank more in their set then, a speed target on page-cache devices only. Measured
+  (R3 alone, the `EXTJOY` drive builds on C-BIOS_MSX2 and the Expert against the code before): kill, boss, tour3
+  and l2_tour's long windows within -0.54 .. +0.54 % ticks a second, the timing controls' own scatter; counted on
+  the sync's build, about 11 `f2_call`s a second on the kill drive (about 200 T-states each: 0.06 % of the Z80's
+  time; a page-cache device's miss, about 880 T, at most about 0.3 %).
 
 ## Game logic (`msx/player.asm` and the logic modules)
 
@@ -1222,6 +1285,29 @@ which as sprites were striped, cut or left out.
   keeps up (5 % of the pictures hold the camera at a page's edge, at most 23 px behind the
   view wanted), a camera that jumps far (teleports, the start of a level) takes one flip per
   build to catch up.
+  Since performance campaign 2's scroll-1 (its V9938 part, `docs/PERF2_PLAN.md` item 6, after the sync by
+  copies) the new column's tiles go in a row while the play-field BOBs have no work (`ending.asm` `s38_colb`,
+  from `s38_work` through `f2_call`; `fs_stop38`: between the HUD split and the VBLANK the changed cells'
+  window first, then it stops while `fb_busy`, a play-field copy waits for the blank or the BOBs have work of a
+  published picture, in `VAT_ANIM=1` builds also while a vat column waits for the blank), each tile set up while
+  the one before is copied: until then one tile a call, a column took 224 ms of the MSX2's kill floors for
+  about 11 ms of VDP. The pending row stays one tile a call: in a row its 32 tiles kept the CPU waiting for
+  the VDP inside the logic's frames (tour3's lifts 545-1065: -2.3 % on C-BIOS_MSX2 and -2.2 % on the Expert
+  against the code before, the column alone -0.3 % and 0.0 %). Lane W2C's first measurement, before the sync by
+  copies, had both bursts raise the pictures held to `FB_HOLD` on the V9938 (kill: 4 -> 11 on the MSX2, 3 -> 9
+  on the Expert: the page being built's composed sync items delayed the page shown's published ones); with
+  the sync by copies 3 and 2 with both. The fixed area keeps 5 bytes of it (the redraw's wait below, 18, less
+  the column's 13), `BANK_FRONT2` 51.
+  Measured with the sync by copies (the `EXTJOY` drive builds against the code before both, ticks a second, C-BIOS_MSX2
+  / the Expert): Cain's route (kill 130-1400) 8.81 -> 10.30 (+16.9 %) / 8.84 -> 10.28 (+16.4 %), the kill floors
+  (300-1500) 9.23 -> 10.73 (+16.3 %) / 9.26 -> 10.73 (+15.9 %), the boss route 7.41 -> 8.67 (+17.0 %) / 7.37 -> 8.76
+  (+18.9 %), tour3's street +8.4 / +8.8 %, beams +11.3 / +11.4 %, lifts -0.2 / -0.4 %, roof +3.6 / +1.5 %, the car park
+  +6.9 / +6.7 %, l2_tour (20-1590) 19.09 -> 20.44 (+7.1 %) / 19.07 -> 20.36 (+6.8 %), its end +7.9 / +5.5 %; the ground
+  floor and level 1 as before; the V9958 machines within their timing controls. Pictures with game progress a second
+  on Cain's route 6.02 -> 6.62 (all pictures 18.2 -> 13.8: fewer pictures repeat a game state while the view
+  catches up). Ticks lost on the kill floors (m_l3's table, the MSX2): 2,049 -> 1,595, those to the view's lag 1,513 ->
+  997 (the boss route 1,507 -> 735). Pictures shown at `FB_HOLD` over whole drives: kill 4 -> 1 / 3 -> 6, boss 6 -> 1 /
+  1 -> 3 (the gate's limits 8 / 8, 12 / 11).
 - **MSX2+ play field (fixed 2026-10-21)**: since the tile cache, `tile_src` leaves the source
   page (2 or 3) in A; the V9958 engine's `draw_tile` took A for the row, so every tile went to
   ring line 32 or 48 and on every MSX2+ the play field stayed almost empty (VRAM's 44h fill).
@@ -1308,7 +1394,17 @@ which as sprites were striped, cut or left out.
   displayed page: before, a cell changed then stayed old on the screen until the flip showed
   (seen: 9 pictures); when the flip reaches the screen a cell half done restarts on the new
   displayed page (`rd_phase`). A changed cell where a play-field BOB is goes to `field.asm`
-  instead (see "Play-field BOBs"). A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
+  instead (see "Play-field BOBs"); its second phase (`rd_phase` 2, since 2026-11-02: lane W2C's review) then
+  draws the V9938's page being built only once that build's copy has passed the cell's row slot
+  (`s38_covr`): the copy brings the slot from the page shown, which gets the new tile only when the BOBs
+  compose it there, and drawn before it could be brought back over the new tile with the old one, which no
+  sync mended (`fb_bb` does not hold that cell): `l2_tour` from game frame 735 on C-BIOS_MSX2, row 38,
+  column 64 old for 55 pictures, with W2C's bursts (the code before has the same path). During a flip not on
+  screen yet its second phase takes the new displayed page as a page shown (since 2026-11-02, lane W3V's review):
+  where a BOB of that page's list meets the cell the BOBs compose it (`fb_redraw`); drawn at once, the tile was a
+  hole in the BOB when the flip showed, until the cell's item had its copy (level 1's cov0 drive from game frame
+  436 on C-BIOS_MSX2: the hostage's cell (42, 25) for 13 pictures; `l3_boss` at game frames 1385-1389, row 40).
+  A cell waiting in `RD_Q` is not queued again (`rd_bits`, one
   bit per cell of the window `rd_queue` keeps; its redraw reads the map then): the level's
   electric beams rewrite their cells every tick and overflowed the queue (238 requests lost in
   the beams' corridor; now none, the queue at most 38). Known: a map object of several cells
