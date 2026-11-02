@@ -2,8 +2,10 @@
 
 Agent "plan", 2026-11-01. Base: `level2` at 3b11042 (HEAD 4f8fcb4 differs only in `docs/LEVEL3.md`).
 
-- **`C`**: the campaign's working folder, kept locally as `build/archive/perf_2026-11-01.tar.gz`
-  (git-ignored; the run dumps are left out and listed in its `EXCLUDED.txt`).
+- **`C`**: the campaign's working folder, kept locally (git-ignored) as `build/archive/perf_2026-11-01.tar.gz` (the
+  plan's folders) and `build/archive/perf2_batch1_2026-11-02.tar.gz` (batch 1's lanes, their reviews, the integration
+  and the previews of D1-D3); the run dumps, ROMs and source copies are left out and listed in their `EXCLUDED.txt` and
+  `EXCLUDED_batch1.txt`.
 - **`P`**: the repository.
 
 **Sources.**
