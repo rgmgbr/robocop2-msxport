@@ -223,6 +223,17 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   zone (`pr_clear`); dropped instead, an enemy's legs vanished for up to 10 pictures whenever
   his next frame took more sprites. His zone is worked out again once his new version is shown
   (`rc_zone`): the entries only the old one took serve the BOBs in that plan already.
+
+  The plan's bookkeeping (2026-11-02, the same versions, slots and runs; T-states counted with
+  the MSX's wait state on every M1): a version with nothing dropped and no silhouette (RoboCop's
+  always, most BOBs') is built by a record loop without the general one's park and A1 tests,
+  silhouette test and record push (`pend_build` `pf_lp`: 576 T-states an entry, 692 in the
+  general loop), and the head of every version is copied with LDIs (478 T-states, 653 before);
+  and the look counts the objects it gives work (`pl_n`), so that its last pass over `pl_st`
+  (`pc_r`, the objects the budget's order missed: 644 T-states) runs only while one is left. (A
+  commit that keeps its run marking or freeing only the entries its size gained or lost, 27
+  T-states an entry, was left out: 45 bytes of the fixed area for 0.06 % of the Z80's time on
+  level 2's tour and 0.07 % on Cain's kill drive, counted on the FS-A1FX.)
 - **Parts of one character** (the BOB objects of one owner and category, `obj_key`: an enemy's
   legs, torso and arm) always show versions prepared in one plan, so of one tick, and change
   together: shown one by one, a walking enemy's torso stood on legs of another tick for 7–17

@@ -269,7 +269,8 @@ bq_tail:    equ 0xCA6C              ;   next free one (main program); low bytes 
 fl_n:       equ 0xCA6D              ; low byte of the last slot released for later (SLOT_PG)
 sat_cur:    equ 0xCA6E              ; 2: the SAT pair of the frame on screen,
 sat_nb:     equ 0xCA70              ; 2:   of the frame being built
-pl_pq:      equ 0xCA72              ; plan: 1 when the object's patterns may take the frame's queue,
+pl_n:       equ 0xCA72              ; plan: the objects its look gave work (pl_st 1 or 2) that pl_put
+                                    ;   has not put in a work list yet (the old upload queues' pl_pq)
 pl_pass:    equ 0xCA73              ;   0: the objects showing nothing yet, 1: the others,
 pl_rcz:     equ 0xCA74              ;   low byte of ent_own past RoboCop's zone (no BOB run there)
 pr_bsz:     equ 0xCA75              ; pc_run: the best hole's size (FFh: none),
