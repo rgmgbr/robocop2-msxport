@@ -141,6 +141,21 @@ class CadenceOptionTests(unittest.TestCase):
         self.assertLess(lag_max, 256)
         self.assertLess(64 - lag_max, 256)
 
+    def test_cam38(self):
+        # CAM38 (the MSX2's camera): 1 (lock) by default, the user's choice of 2026-11-02; 0 the old camera (its
+        # code only under 'if CAM38' blocks), 2 (pace) an option, anything else refused
+        self.assertEqual(mkrom.OPTIONS["CAM38"][0], 1)
+        for name in ("player.asm", "scroll9938.asm", "ending.asm"):
+            lines = code(name)
+            for i, l in enumerate(lines):
+                if any(k in l for k in ("s38_glide", "s38_pace", "cam_lock", "s38_lv", "s38_tb", "s38_lim")):
+                    opened = [j for j in range(i) if lines[j].startswith("if CAM38")]
+                    self.assertTrue(opened and "endif" not in lines[opened[-1] + 1:i], (name, l))
+        with tempfile.TemporaryDirectory() as t:
+            out = str(Path(t) / "x.rom")
+            for opts in (["CAM38=3"], ["CAM38=-1"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+
 
 if __name__ == "__main__":
     unittest.main()

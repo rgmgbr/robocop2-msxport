@@ -1079,7 +1079,13 @@ fb_vok:     equ 0xF1ED              ; 1: the copy waiting keeps ahead of the bea
 fb_c2:      equ 0xF1EE              ; 1: fb_cmd2 ... hold the copy's other parts (the split interrupt
                                     ;   starts them right after fb_cmd's, each when the one before is
                                     ;   done: 2; 3: the blank began first, the VBLANK goes on after its
-                                    ;   list, isr.asm; F1EFh-F1FDh free since the chain moved)
+                                    ;   list, isr.asm; F1EFh-F1F7h free since the chain moved)
+s38_pc0:    equ 0xF1F8              ; 1: CAM38 2: the page shown (s38_vis_c0) at the last s38_pace
+s38_lv:     equ 0xF1F9              ; 2: CAM38 (tools/mkrom.py): the game's view (v_x) of the last picture
+s38_tflip:  equ 0xF1FB              ; 1: CAM38 2: the VBLANK count (tick) of the last page flip
+s38_tb:     equ 0xF1FC              ; 1: CAM38 2: the VBLANKs the last page took when the camera waited for it
+                                    ;   (0: it did not: no pace; ending.asm s38_pace)
+s38_lim:    equ 0xF1FD              ; 1: CAM38 2: the camera waited for the page being built (held or paced)
 fb_cmd2:    equ 0xEDC0              ; 45: field.asm: the copy's other parts for the page shown (up to
                                     ;   three: the V9958's ring crossed at x 256 and at y 256), 15
                                     ;   bytes each (R#32-R#46), started in a row after fb_cmd's

@@ -970,6 +970,15 @@ which as sprites were striped, cut or left out.
     any of the three, on the four machines). The cadence
     until 2026-11-02 is `CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` (with `FLASH_LOOK=0` the product of before,
     byte for byte). Loop-1 is `CAD_ADAPT=0` with the caps of 3: 3 whenever a picture is late (no code).
+  - `CAM38=n` (default 1, the user's choice of 2026-11-02, after the previews test19 and test20): the V9938
+    view no longer stops at a page's edge and then jumps 16 px at the flip, which threw RoboCop back on
+    the screen ("socos"). `ending.asm` `s38_glide` (FRONT2, through `f2_call`) moves the view shown at
+    most the game view's step + 4 px a picture (a jump of 64 px or more at once), and `player.asm`
+    `cam_lock` holds the ticks while it lags 4 px or more. Measured on C-BIOS_MSX2 / the Expert, Cain's
+    chase (kill 130-700): 16-px jumps 89 -> 0, throw-backs 10 / 6 -> 0, RoboCop's screen-x change a
+    picture 5.5 -> 2.2 px (mean), the same speed (11.5 / 11.7 -> 11.7 / 11.7 ticks/s); level 3's street
+    15.5 / 15.7 -> 15.1 / 14.3. `0` the old camera; `2` (pace) also slows the view to the last page's build
+    time (no smoother, 3-10 % slower). The V9958 as always.
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
     view shown may lag n pixels behind the camera in x before the ticks are held (`cam_lag`, after
     `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next

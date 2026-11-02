@@ -767,6 +767,221 @@ si_col: push bc
         jp scroll_publish
 
 
+        if CAM38
+; ----- CAM38 (tools/mkrom.py): the MSX2's camera, for the user's choice (scroll9938.asm, player.asm) -----
+; The V9938 engine shows the view the game wants (v_x) but for its page's edge: while the next page is built the
+; view waits there, and the flip shows it 16 px further at once (RoboCop walks on in the picture, then the view
+; throws him back). 1 (lock): the view shown catches up at most CAM_K px a picture faster than the game's view
+; (s38_glide), and the ticks wait while it lags CAM_LK px or more (cam_lock): RoboCop stays where the game's
+; camera puts him, the scene waits for the page instead. 2 (pace): 1, and while the next page is not built the
+; view crosses the page shown no faster than the last page took (s38_pace). The V9958 as always.
+CAM_K:      equ 4
+CAM_LK:     equ 4
+
+; The view shown in x (cam_x = v_x, s38_update) moves at most the game's view's step since the last picture +
+; CAM_K px from the last picture's (sp_cam_x); a jump of the game's view (64 px or more from the view shown: a
+; level's start, a teleport) is shown at once. The page's own hold comes after it, as always.
+s38_glide:
+        ld hl,(v_x)
+        ld de,(s38_lv)
+        ld (s38_lv),hl
+        or a
+        sbc hl,de
+        call sg_abs                 ; HL = the game's view's step
+        ld a,h
+        or a
+        ret nz                      ; (a jump)
+        ld a,l
+        add a,CAM_K
+        ret c
+        ld c,a                      ; C = the most the view shown moves now
+        ld hl,(v_x)
+        ld de,(sp_cam_x)
+        or a
+        sbc hl,de                   ; HL = v_x - the view shown last
+        ld b,0                      ; (B = 0: v_x on its right)
+        jr nc,sg_r
+        inc b
+        call sg_neg
+sg_r:   ld a,h
+        or a
+        ret nz                      ; (a jump)
+        ld a,l
+        cp 64
+        ret nc                      ; (a jump)
+        cp c
+        ret c                       ; (within the step: v_x)
+        ld l,c
+        ld h,0
+        dec b
+        jr nz,sg_set
+        call sg_neg
+sg_set: add hl,de                   ; the view shown last + or - C
+        ld (cam_x),hl
+        ret
+sg_abs: bit 7,h
+        ret z
+sg_neg: xor a                       ; HL = -HL
+        sub l
+        ld l,a
+        sbc a,a
+        sub h
+        ld h,a
+        ret
+
+; The cadence (player.asm): E = 0 (D = 0) while the V9938 engine's view shown lags CAM_LK px or more behind the
+; game's in x: no tick (the view catches up first, RoboCop waits with the scene); else E = 1. Keeps BC.
+cam_lock:
+        ld de,1
+        ld a,(fb_eng)
+        or a
+        ret z                       ; (the V9958's ring: as always)
+        ld hl,(v_x)
+        ld de,(cam_x)
+        or a
+        sbc hl,de
+        call sg_abs
+        ld de,CAM_LK
+        or a
+        sbc hl,de
+        ld de,0
+        ret nc
+        inc e
+        ret
+        endif
+
+        if CAM38 == 2
+; While the next page on the side the view moves to (dir_x) is not built, the view shown crosses the page shown
+; no faster than the last page was built (s38_tb: the VBLANKs from flip to flip when the camera waited for it,
+; held at the page's edge or paced; 0: the build kept up, no pace): at most f = min(15, 16 x the VBLANKs since
+; the flip / s38_tb) px from the edge it came in by, never back (the view shown last, when it was beyond that
+; already). Keeps BC.
+s38_pace:
+        ld a,(cam_held)
+        or a
+        jr z,cpc_p
+        ld (s38_lim),a              ; (held at the page's edge: the camera waited for it)
+cpc_p:  ld hl,s38_pc0
+        ld a,(s38_vis_c0)
+        cp (hl)
+        jr z,cpc_t
+        ld (hl),a                   ; a flip: s38_tb = the VBLANKs since the last one when the camera
+        ld hl,s38_tflip             ; waited for this page (held or paced), else 0 (the build kept up)
+        ld a,(tick)
+        sub (hl)
+        push af
+        ld a,(tick)
+        ld (hl),a
+        pop af
+        ld hl,s38_lim
+        bit 0,(hl)
+        ld (hl),0
+        jr nz,cpc_tb
+        xor a
+cpc_tb: ld (s38_tb),a
+cpc_t:  ld hl,s38_tflip
+        ld a,(tick)
+        sub (hl)
+        cp 200
+        jr c,cpc_a
+        ld a,(tick)                 ; (a long wait: kept at 200 VBLANKs)
+        sub 200
+        ld (hl),a
+        ld a,200
+cpc_a:  ld e,a                      ; E = the VBLANKs since the flip
+        ld a,(s38_tb)
+        or a
+        ret z                       ; (no pace)
+        ld d,a
+        ld a,(s38_flip_wait)
+        or a
+        jr nz,cpc_go                ; (the flip not on screen yet: nothing built)
+        ld a,(s38_vis_c0)
+        inc a
+        ld hl,dir_x
+        bit 0,(hl)
+        jr z,cpc_c
+        sub 2
+cpc_c:  ld hl,s38_back_c0
+        cp (hl)
+        jr nz,cpc_go                ; (built for the other side, or none)
+        ld a,(s38_phase)
+        or a
+        jr z,cpc_go
+        ld a,(s38_i)
+        cp VIEW_ROWS
+        ret z                       ; (built: free)
+cpc_go: ld l,e
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl                   ; HL = 16 x the VBLANKs since the flip
+        ld e,d
+        ld d,0                      ; DE = the last page's VBLANKs
+        ld a,0xFF
+cpc_d:  inc a
+        cp 15
+        jr nc,cpc_f
+        or a
+        sbc hl,de
+        jr nc,cpc_d
+cpc_f:  ld e,a                      ; E = f
+        ld a,(s38_vis_c0)
+        ld l,a
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,hl                   ; HL = the page's first x
+        ld a,(dir_x)
+        or a
+        jr nz,cpc_l
+        ld d,0
+        add hl,de
+        ex de,hl                    ; DE = the most (moving right)
+        ld hl,(cam_x)
+        or a
+        sbc hl,de
+        ret c
+        ret z
+        ld hl,(sp_cam_x)
+        or a
+        sbc hl,de
+        jr c,cpc_set
+        jr z,cpc_set                ; (the view shown last within: the most)
+        ld de,(sp_cam_x)
+        ld hl,(cam_x)
+        or a
+        sbc hl,de
+        ret c
+        jr cpc_set                  ; (the view shown last: never back)
+cpc_l:  ld a,15
+        sub e
+        ld e,a
+        ld d,0
+        add hl,de
+        ex de,hl                    ; DE = the least (moving left)
+        ld hl,(cam_x)
+        or a
+        sbc hl,de
+        ret nc
+        ld hl,(sp_cam_x)
+        or a
+        sbc hl,de
+        jr nc,cpc_set               ; (the view shown last within: the least)
+        ld de,(sp_cam_x)
+        ld hl,(cam_x)
+        or a
+        sbc hl,de
+        ret nc
+cpc_set:
+        ld (cam_x),de
+        ld a,1
+        ld (s38_lim),a
+        ret
+        endif
+
 ; (scroll9938.asm)
 s38_init:
         xor a
@@ -781,6 +996,12 @@ s38_init:
         xor a
         ld (s38_vis_page),a
         ld (s38_flip_wait),a
+        if CAM38
+        ld (s38_tb),a               ; (CAM38: no pace yet, the game's view's last step from here)
+        ld (s38_lim),a
+        ld hl,(v_x)
+        ld (s38_lv),hl
+        endif
         ld a,0xFF
         ld (s38_back_c0),a
         ld (s38_rq),a
