@@ -20,8 +20,8 @@ line, "tick:x:y ..."): the test drive pokes RoboCop's place and the camera at th
 engines walk to the new view while the cadence holds the ticks (msx/player.asm cadence's lag rule), a
 stall the game itself never has (its own relocation, mapobj.asm act_10, draws the view at once:
 engines_jump). The verdicts leave each teleport's ticks out (TELE_TICKS from the teleport's game frame;
-the field check TELE_FIELD), and the field records past the drive's end (ROWS: kill's 1861 ends with
-the level's end screen, which tools/bstest/fieldcheck.py does not model).
+the field check: fieldsum.py TELE_REC and TELE_NOTE), and the field records past the drive's end (ROWS:
+kill's 1861 ends with the level's end screen, which tools/bstest/fieldcheck.py does not model).
 """
 import sys
 from pathlib import Path
@@ -39,8 +39,6 @@ DRIVES = {
 }
 TELE_TICKS = 2          # a teleport's stall: the tick intervals from its game frame T to T + 2 (the
                         # stall lands in the first or the second: m3's tick_n against the game frame)
-TELE_FIELD = 60         # the field check: records of game frames T .. T + 59 (BASE's stale beam cells
-                        # after tour3's teleport at 540 last to 574; play draws a relocation at once)
 
 
 def controls(d):

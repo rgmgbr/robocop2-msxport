@@ -216,13 +216,15 @@ class KitVerdictTests(unittest.TestCase):
     def test_fieldsum_with_controls_teleports_and_end(self):
         # a class only a control shows passes; one none shows fails from 4 pictures (or above what another
         # machine's same window shows); left out: the records of a teleport's stall (game frames T .. T + 2),
-        # the class "other" up to T + 39, the records past the end
-        def win(d, classes):
+        # the class "other" up to T + 39 while the redraw queue holds requests (holds.txt's qn at the record
+        # or the one before), the records past the end
+        def win(d, classes, busy=range(20, 40)):
             w = d / "kill300_m2"
             w.mkdir(parents=True, exist_ok=True)
             (w / "level.txt").write_text("level 3 from 300 n 60 drive l3_kill.drive rows 355 tele 320 rom x.rom\n")
             stems = [f"j001_f{k:04d}" for k in range(60)]
-            (w / "holds.txt").write_text("".join(f"{s} 0 {300 + k} {300 + k} 0 0\n" for k, s in enumerate(stems)))
+            (w / "holds.txt").write_text("".join(f"{s} 0 {300 + k} {300 + k} {5 if k in busy else 0} 0\n"
+                                                 for k, s in enumerate(stems)))
             lines = [f"CLASS j001_f{k:04d} {c} px=10" for k, c in classes]
             (d / "kill300_m2.fc.txt").write_text("\n".join(lines + ["60 pictures (60 checked): 0 with differences"]) + "\n")
 
@@ -243,6 +245,18 @@ class KitVerdictTests(unittest.TestCase):
         self.assertIn("left out", gate().stdout + run(KIT / "fieldsum.py", "table", self.new / "field").stdout)
         win(self.new / "field", [(k, "smoke-tear") for k in (23, 24, 25, 26)])
         self.assertEqual(gate().returncode, 1)               # after the stall another class is judged
+        # "other" after the teleport with the queue empty is judged (drive_cov0's pokes every 150 game frames
+        # would hide a quarter to two thirds of level 1's records otherwise); the record after the queue's
+        # last entry still counts as busy
+        win(self.new / "field", [(k, "other") for k in (24, 25, 26, 27)], busy=())
+        self.assertEqual(gate().returncode, 1)
+        win(self.new / "field", [(k, "other") for k in (24, 25, 26, 27)], busy=range(20, 27))
+        r = gate()
+        self.assertEqual(r.returncode, 0, r.stdout)          # 27: the record after the last busy one
+        win(self.new / "field", [(k, "other") for k in (24, 25, 26, 27, 28)], busy=range(20, 27))
+        r = gate()
+        self.assertEqual(r.returncode, 0, r.stdout)          # 28 judged: one picture, within the slack
+        self.assertIn("WARN", r.stdout)
         # a control lacking the window fails
         shutil.rmtree(self.base / "field" / "ctl" / "ct1" / "kill300_m2")
         win(self.new / "field", [])

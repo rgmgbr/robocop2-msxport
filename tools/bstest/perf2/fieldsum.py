@@ -31,11 +31,16 @@ docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4).
       Left out of every window, BASE's and its controls' as NEW's: the records of a teleport's stall (game
       frames T .. T + TELE_REC - 1 of each teleport T of the window's drive: the test drive pokes RoboCop's
       place and the engines walk to the new view, ref.py), the class "other" in the TELE_NOTE game frames
-      after it (the redraw queue waits behind that walk: stale beam cells, the test drive's artefact; play
-      relocates through engines_jump, which clears the queue and draws the view), and the records past
-      the drive's end (game frame >= its rows: kill's level ends at 1861, the end screen fieldcheck.py
-      does not model); level.txt names the drive's rows and teleports (gates.tcl pf_fd_setup), holds.txt
-      each record's game frame.
+      after it while the redraw queue holds requests (the queue waits behind that walk: stale beam cells,
+      the test drive's artefact; play relocates through engines_jump, which clears the queue and draws the
+      view): only a record whose holds.txt shows entries waiting (qn > 0) at it or at the record before
+      (the last request popped while its picture was composed) is left out, so an "other" picture after
+      a teleport with the queue empty is judged (level 1's drive_cov0 pokes RoboCop's place every 150
+      game frames: without that condition a quarter to two thirds of its windows' records went
+      unjudged for the class; records without the queue's columns: left out as before), and the records
+      past the drive's end (game frame >= its rows: kill's level ends at 1861, the end screen
+      fieldcheck.py does not model); level.txt names the drive's rows and teleports (gates.tcl
+      pf_fd_setup), holds.txt each record's game frame and the queue's entries waiting.
       A window is judged only when fieldcheck.py checked every record it wanted (its summary line's
       "N pictures (M checked)" with M the window's n, level.txt): a check that stopped (no summary: a
       crash, a wrong --root), records of another length (skipped), a recording cut short (a timed-out
@@ -64,6 +69,7 @@ FB_HOLD = 8
 FIRST = 'j001_f0000'                     # a window's first record (l2b_fd_hit's file name)
 TELE_REC = 3                             # a teleport's stall: its records show game frame T + 1 or T + 2
 TELE_NOTE = 40                           # game frames after a teleport whose "other" pictures are left out
+                                         # (while the redraw queue holds requests: parse)
 SLACK = 3                                # pictures a class may pass the reference set's highest
 
 
@@ -113,15 +119,20 @@ def parse(win):
     fc = win.parent / (win.name + '.fc.txt')
     lv = (win / 'level.txt').read_text().split() if (win / 'level.txt').exists() else []
     rows, teles = drive_of(win, lv)
-    holds, gfs = {}, {}
+    holds, gfs, qbusy = {}, {}, {}
     hp = win / 'holds.txt'
     if hp.exists():
+        q0 = 0
         for line in hp.read_text().splitlines():
             f = line.split()
             if len(f) >= 2:
                 holds[f[0]] = int(f[1])
             if len(f) >= 4:
                 gfs[f[0]] = int(f[3])
+            if len(f) >= 6:                     # (the redraw queue's entries waiting: at this record or
+                q = int(f[4])                   #  the one before; records without them: busy)
+                qbusy[f[0]] = q > 0 or q0 > 0
+                q0 = q
 
     def why_out(stem):
         g = gfs.get(stem)
@@ -151,7 +162,8 @@ def parse(win):
                     continue
                 w = why_out(stem)
                 g = gfs.get(stem)
-                if not w and kind == 'other' and g is not None and any(t <= g < t + TELE_NOTE for t in teles):
+                if (not w and kind == 'other' and g is not None and qbusy.get(stem, True)
+                        and any(t <= g < t + TELE_NOTE for t in teles)):
                     w = 'after a teleport'
                     after_tele.add(stem)
                 if w:
