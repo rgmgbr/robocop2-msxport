@@ -35,7 +35,6 @@ FLOOR:      equ 5
 ; (only then the game slows down, as the original does when its frame takes 3 VBLs).
 LAG_MAX:    equ 32                  ; pixels the view shown may lag behind the camera (cadence;
                                     ; tools/mkrom.py LAG_X: in x with the V9938 engine)
-RC_EDGE:    equ 16                  ; pixels RoboCop keeps from the screen's edges while it lags
 CAD_TICK:   equ 300 / TICK_HZ       ; + g_step (6 at 50 Hz, 5 at 60 Hz) per VBLANK, a tick at 10
                                     ; (30 Hz) or 12 (25 Hz)
 cadence:
@@ -124,48 +123,19 @@ cl_p:   ld de,LAG_MAX
         sbc hl,de
         ret
 
-; -> NC when the view shown lags behind the one the game wants (x) and RoboCop's sprites reach
-; within RC_EDGE pixels of the screen's left or right edge; D = 0 then (the cadence's tick cap).
-; Keeps BC.
+; -> NC when the view shown lags behind the one the game wants and RoboCop's next picture could show an
+; opaque pixel outside the picture shown (plmove.asm rc_bound: his reach within the frame's ticks, from
+; the sprite pool's pixels; BANK_LC3 at 8000h for it, the bank there comes back); D = 0 then (the
+; cadence's tick cap). B = the ticks due. Keeps BC.
 rc_safe:
-        ld hl,(v_x)
-        ld de,(cam_x)
-        or a
-        sbc hl,de
-        scf
-        ret z                       ; (no lag: at the map's ends he may walk to its edge)
-        ld ix,obj_tab
-        bit 7,(ix+O_FLAGS)
-        scf
-        ret z
-        ld l,(ix+O_X)
-        ld h,(ix+O_X+1)
-        ld a,(ix+O_MINDX)
-        ld e,a
-        rla
-        sbc a,a
-        ld d,a
-        push hl
-        add hl,de                   ; his left edge
-        ld de,RC_EDGE
-        or a
-        sbc hl,de
-        pop hl
-        jp p,rs_r
-        or a                        ; (NC: too far left)
-        ret
-rs_r:   ld a,(ix+O_MAXDX)
-        ld e,a
-        rla
-        sbc a,a
-        ld d,a
-        add hl,de
-        ld de,16 + RC_EDGE - 256
-        add hl,de                   ; his right edge + RC_EDGE - 256
-        ld d,0                      ; (NC: the cadence takes D as its tick cap, none; with D = FFh
-        ld a,h                      ;  from the load above every due tick ran and he could leave
-        rla                         ; C when it is left of the edge          the screen, 2026-10-23)
-        ret
+        ld a,(act_8000)
+        push af
+        ld a,BANK_LC3
+        call bank_8000
+        call rc_bound
+        pop hl                      ; (H: the bank there; F as rc_bound left it)
+        ld a,h
+        jp bank_8000
 
 ; One game frame: main_loop's calls that are ported so far, in its order.
 game_tick:

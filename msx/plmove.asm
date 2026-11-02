@@ -688,3 +688,105 @@ pl_cellof:
         sub 7
         ld (p_col),a
         ret
+
+; ----- rc-edge: may the frame's ticks run? (player.asm rc_safe, for the cadence) -----
+
+; -> C when the view shown is the one the game wants (no lag: at the map's ends he may walk to its
+; edge), when RoboCop is not shown, or when his next picture keeps every opaque pixel on the columns
+; the VDP shows whatever the frame's ticks do: within k = min(B, RC_K) ticks his place moves at most
+; RC_VX x k and his drawing reaches at most his state's rc_reach columns (gen/rcedge.inc, tools/mkrom.py
+; rcedge: from the sprite pool's pixels, the compositions of his state's records and those any state
+; starts with, against O_X - p_hotx), against SAT x 0-255 (the V9938's R#18 moves the sprites with the
+; picture: spr_xadj) or 8-255 (the V9958's MSK hides 0-7). NC with D = 0 (the cadence's tick cap: none:
+; the scroll catches up first) otherwise. B = the ticks due. Keeps BC.
+rc_bound:
+        ld hl,(v_x)
+        ld de,(cam_x)
+        or a
+        sbc hl,de
+        scf
+        ret z                       ; (no lag)
+        ld ix,obj_tab
+        bit 7,(ix+O_FLAGS)
+        scf
+        ret z                       ; (not shown)
+        push bc
+        ld a,b                      ; k = min(B, RC_K) ticks
+        cp RC_K
+        jr c,rcb_k
+        ld a,RC_K
+rcb_k:  ld b,a
+        xor a
+        inc b
+        jr rcb_g1
+rcb_g:  add a,RC_VX
+rcb_g1: djnz rcb_g
+        ld c,a                      ; C = G: his place's largest move, RC_VX x k
+        ld a,(p_state + 1)
+        or a
+        jr nz,rcb_no                ; (a state the table lacks: hold)
+        ld a,(p_state)
+        cp RC_STATES
+        jr nc,rcb_no
+        add a,a
+        ld e,a
+        ld d,0
+        ld hl,rc_reach
+        add hl,de
+        ld a,(hl)                   ; A = the leftmost column,
+        inc hl
+        ld b,(hl)                   ; B = the rightmost
+        push af
+        ld l,(ix+O_X)
+        ld h,(ix+O_X+1)
+        ld de,(p_hotx)
+        or a
+        sbc hl,de                   ; his place P
+        ld a,(spr_xadj)
+        ld e,a
+        rla
+        sbc a,a
+        ld d,a
+        add hl,de
+        ex de,hl                    ; DE = Q: his place in SAT x
+        ld l,b
+        ld a,b
+        rla
+        sbc a,a
+        ld h,a
+        add hl,de                   ; Q + the rightmost
+        ld a,c
+        add a,l
+        ld l,a
+        jr nc,rcb_r
+        inc h                       ; + G
+rcb_r:  ld a,h                      ; (at most 255: H 0, or negative)
+        or a
+        jr z,rcb_l
+        jp p,rcb_nf                 ; (past SAT x 255)
+rcb_l:  pop af
+        ld l,a
+        rla
+        sbc a,a
+        ld h,a
+        add hl,de                   ; Q + the leftmost
+        ld e,c
+        ld d,0
+        or a
+        sbc hl,de                   ; - G
+        ld a,(hud_msk)
+        or a
+        jr z,rcb_m
+        ld de,8
+        or a
+        sbc hl,de                   ; (the V9958: from SAT x 8)
+rcb_m:  bit 7,h
+        pop bc
+        jr nz,rcb_nd                ; (left of the first column)
+        scf
+        ret
+rcb_nf: pop af
+rcb_no: pop bc
+rcb_nd: ld d,0
+        or a
+        ret
