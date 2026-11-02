@@ -33,7 +33,8 @@ FLOOR:      equ 5
 ; At most CAD_MAX ticks in a frame (tools/mkrom.py CAD_MAX; CAD_HOLD while the V9938 scroll keeps
 ; the camera at a page's edge; CAD_ADAPT: 2 for a frame of fewer VBLANKs): a longer delay is lost
 ; (only then the game slows down, as the original does when its frame takes 3 VBLs).
-LAG_MAX:    equ 32                  ; pixels the view shown may lag behind the camera (cadence)
+LAG_MAX:    equ 32                  ; pixels the view shown may lag behind the camera (cadence;
+                                    ; tools/mkrom.py LAG_X: in x with the V9938 engine)
 RC_EDGE:    equ 16                  ; pixels RoboCop keeps from the screen's edges while it lags
 CAD_TICK:   equ 300 / TICK_HZ       ; + g_step (6 at 50 Hz, 5 at 60 Hz) per VBLANK, a tick at 10
                                     ; (30 Hz) or 12 (25 Hz)
@@ -94,13 +95,22 @@ cd_max: ld (g_tick),a
         ret
 
 ; -> C when the view shown (cam_x, cam_y: the scroll engine holds them while its next page or row
-; is not ready) is less than LAG_MAX pixels from the one the game wants (v_x, v_y). Keeps BC.
+; is not ready) is less than LAG_MAX pixels from the one the game wants (v_x, v_y); in x LAG_X
+; pixels with the V9938 engine (tools/mkrom.py LAG_X, default LAG_MAX). NC: D = 0. Keeps BC.
 cam_lag:
         ld hl,(v_x)
         ld de,(cam_x)
         call cl_abs
+        if LAG_X != LAG_MAX
+        jr c,cl_y                   ; (less than LAG_MAX in x)
+        ld a,(fb_eng)               ; (LAG_X: the V9938 engine's two pages may lag further in x
+        or a                        ;  while its next page is built; the V9958's ring as always)
+        ret z
+        ld de,LAG_X - LAG_MAX       ; (HL = the lag - LAG_MAX; D = 0, LAG_X at most 64)
+        sbc hl,de
+        endif
         ret nc
-        ld hl,(v_y)
+cl_y:   ld hl,(v_y)
         ld de,(cam_y)
 cl_abs: or a
         sbc hl,de
