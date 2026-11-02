@@ -665,14 +665,41 @@ which as sprites were striped, cut or left out.
   `CAD_MAX` = 2 for one picture (4 until 2026-10-21: catching up skipped animation steps,
   the walk's among them; 2 costs about 5 % of speed in busy scenes, 92 % in the worst 2 s), `CAD_HOLD` = 2 while the V9938 scroll keeps the camera at a
   page's edge, none while the view shown is 32 px or more behind the one wanted, or behind at
-  all with RoboCop's sprites within 16 px of the screen's edge (`cam_lag`, `rc_safe`: the scroll
-  catches up first, so he never runs off the screen; until 2026-10-23 `rc_safe` left D = FFh on its
+  all with RoboCop's sprites within 16 px of the screen's edge on the picture shown (`cam_lag`, `rc_safe`:
+  the scroll catches up first; the test comes before the frame's ticks, so that frame's steps and
+  drawing change still move him on, `docs/PERF2_PLAN.md` 5.3's rc-edge; until 2026-10-23 `rc_safe` left D = FFh on its
   right-edge return and the cadence took that as its cap: every due tick ran there instead of
   none, up to 4 a picture, and his sprites reached 7-9 px past the right edge in 1-4 lists of
   each busy coverage window; fixed: never above 2, 0 lists beyond); a longer delay is lost and only then the
   game slows down, as the original does when its frame takes 3 VBLs) and the display skips
   their pictures (`bob_skip`: their BOBs are not even recorded). The timer's seconds count
   VBLANKs, not frames.
+- **The cadence's options for the user's choice** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md`
+  D2 and D3; nothing decided: every build without them runs as always, byte for byte):
+  - `CAD_ADAPT=n` (default 0): a frame that took fewer than n VBLANKs (`wf_n`) runs at most 2
+    ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 14 bytes of the
+    fixed area). Loop-3 is `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`: 3 ticks a picture only for the
+    pictures of 8 VBLANKs or more (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), where
+    RoboCop's walk advances 1 and 2 drawings alternately; the faster scenes as always. Loop-1 is
+    `CAD_MAX=3 CAD_HOLD=3` alone: 3 whenever a picture is late (no code).
+  - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
+    view shown may lag n pixels behind the camera in x before the ticks are held (`cam_lag`, after
+    `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next
+    page, RoboCop may run ahead of the scrolled view by up to n - 1 pixels when the cadence decides,
+    plus that frame's own steps (measured: 70 px with n = 64, 37 with 32), and the view catches up in
+    page steps; `rc_safe` (unchanged) still holds the ticks while his sprite boxes are within 16 px of
+    x 0 or 256 on the picture shown (measured: they come within 12 px of x 256, 13 without the option;
+    at the V9938's hold R#18 insets the picture, which then ends at x 248: 5 px, 6 without). y keeps
+    32, and so does the V9958's ring (`fb_eng` 0: the MSX2+ and the
+    turbo R take the default's path, a few T-states longer). D = 0 when the ticks are held, as the
+    cadence needs: n - 32 is below 256.
+  - Measured on batch 1 (2026-11-01, `docs/PERF2_PLAN.md` D2 and D3, ticks/s): loop-3 MSX2 / MSX2+
+    / turbo R Cain's route 8.81 -> 9.68 / 12.89 -> 15.77 / 18.35 -> 18.58, the ground floor 12.52 ->
+    17.59 / 12.50 -> 17.80 / 22.77 -> 22.93; loop-1 9.73 / 15.76 / 20.41 and 18.44 / 18.46 / 24.30;
+    both at fewer pictures with progress where they act, the longest gaps between pictures up to
+    about 85 ms longer. `LAG_X=64`: the MSX2's Cain's route 8.81 -> 10.44 (+18.4 %), the boss route
+    7.29 -> 8.53, the Expert the same; the view lags up to 70 px (37 without), RoboCop's sprite boxes
+    within 39 px of x 0 (64 without) and 12 of x 256 (13).
 - **Ported**: `main_loop` in its order: palette effects (`$F878`), `frame_keys` (`$F76C`),
   `player_move` (`$AFF8`), the collisions and pickups (`$FA7C`), the level's hazards (`$9150`:
   level 1's electric beams), `activate_objects` (`$9C06`), the special objects (`$8B32`: lifts,
@@ -999,51 +1026,65 @@ which as sprites were striped, cut or left out.
   - `6`: at most one white picture in 4 per enemy. A hit within the 3 pictures after a white one
     shows the enemy normal; hits every 2 pictures give white, normal, normal, normal (half the hits
     show no white picture).
-  - `7`: a hit shows the enemy white in its picture and the next one; a hit within them keeps it
-    white, and it turns normal 2 pictures after its last hit. Hits every 2 pictures give a steady
-    white; hits 3 pictures apart white, white, normal.
-  - "Pictures" are the pictures with game progress (a tick shown, `bob_skip` 0): a picture that
-    repeats a game state repeats its look. Per enemy slot (the 5 `OBJ_SLOTS`, `fl_slot`).
+  - `7`: an enemy is white in the game tick of a hit and the 3 ticks after it, and every hit starts
+    the 4 ticks again: hits at most 4 ticks apart keep it white (Cain's on the ground floor come
+    every 4), and it turns normal 4 ticks after its last hit. Counted in game ticks, not pictures,
+    so it looks the same at every frame rate: at 2 ticks a picture a single hit shows 2 white
+    pictures, at 1 tick a picture (the turbo R often) 4, at 3 ticks 1 or 2. A hit in a tick whose
+    picture is skipped is still inside its 4 ticks at the tick shown, for a frame of up to 4 ticks
+    (`tools/mkrom.py` refuses `7` with `CAD_MAX` or `CAD_HOLD` above 4). (The first `7`, of
+    2026-11-01, counted pictures: white in the hit's picture and the next one. On the turbo R, at
+    about 1.5 ticks a picture, Cain's hits came 3-4 pictures apart and the hold lapsed.)
+  - `6` counts the pictures with game progress (a tick shown, `bob_skip` 0): a picture that repeats
+    a game state repeats its look. Both per enemy slot (the 5 `OBJ_SLOTS`, `fl_slot`).
   - **How.** Only the look a part's BOB record takes (`bob_mode`, `BM_FLASH` or `BM_NORMAL`)
-    changes: `bob.asm` `fl_note` (a hit now, `OS_FLASH`), `fl_held` (no hit now) and `fl_due` (a
-    hit shown in this picture). `OS_FLASH`, the results (`$16BA`) and everything else the logic
-    reads stay as always (`l3_tail`'s minterm is a constant), so the logic traces are the original's.
-    The state is `fl_pend`'s byte per slot: bit 0 a hit held from a skipped tick (as always), bits
-    1-4 the slot's pictures to come, which `rc2.asm`'s frame end (`ml_flc`, once per frame with
-    ticks: one picture with progress) shifts right instead of clearing; bit 1 is the picture's own:
-    with `7` white, with `6` no white. A hit sets bit 2 (`7`) or bits 2-4 (`6`, only when it shows
-    white), never bit 1, so every part of an enemy takes one look in its picture whichever part
-    sets them. `objects.asm` `slot_clear` clears the slot's byte: a new enemy starts with its own
-    look. No RAM of its own (`ED0Eh`-`ED0Fh` stay spare); the fixed area 6 bytes more (`6`) or 2
-    (`7`), LC1 5 (`slot_clear`).
+    changes: `bob.asm` `fl_note` (a hit now, `OS_FLASH`), `fl_held` (no hit now) and, for `6`,
+    `fl_due` (a hit shown in this picture). `OS_FLASH`, the results (`$16BA`) and everything else
+    the logic reads stay as always (`l3_tail`'s minterm is a constant), so the logic traces are the
+    original's. The state is `fl_pend`'s byte per slot. `6`: bit 0 a hit held from a skipped tick
+    (as always), bits 1-4 the slot's pictures to come, which `rc2.asm`'s frame end (`ml_flc`, once
+    per frame with ticks: one picture with progress) shifts right instead of clearing; bit 1 is the
+    picture's own (no white); a hit that shows white sets bits 2-4, never bit 1, so every part of an
+    enemy takes one look in its picture whichever part sets them. `7`: bits 0-3 the slot's white
+    ticks to come, which `bob_begin` (at every game tick's start: its one caller is `player.asm`
+    `gt_go`) shifts right; a hit (`fl_note`) sets all four, `fl_held` shows bit 0, so the parts drawn
+    after the one that notes a hit are white too; no hit is held apart and the frame end has no
+    loop for `7`. `objects.asm` `slot_clear` clears the slot's byte: a new enemy starts with its own
+    look. No RAM of its own (`ED0Eh`-`ED0Fh` stay spare); the fixed area 6 bytes more with `6`, 22
+    fewer with `7` (no held hit, no frame-end loop); LC1 5 more (`slot_clear`).
   - **Where it shows**: wherever `BM_FLASH` goes. Levels 1 and 2: the enemies' sprite silhouettes
     (and a gunner's silhouette over the play field, level 2's types 2, 14 and 16). Level 3: the play
     field's white copies (`fb_add`'s bit 7: Cain's parts, types 21, 33, 35 and 51) and its sprite
     enemies' silhouettes (Cain's 32 x 40 part). Not changed: the blinks a type draws itself by the
     frame counter (`bob_flashd` or `bob_black` called directly: level 1's type 25, level 2's type 2),
     which are not hit flashes; Cain's hit-look frames of his 32 x 40 part (`$16D9`, the logic).
-  - **Measured** (2026-11-01; openMSX headless, EXTJOY drive builds with the product's options;
-    ticks/s / pictures/s / pictures with progress per second; MSX2 C-BIOS_MSX2, MSX2+ Panasonic
-    FS-A1FX, turbo R Panasonic FS-A1GT):
+  - **Measured** (2026-11-01, on performance campaign 2's batch 1, `7` counted in game ticks; openMSX
+    headless, EXTJOY drive builds with the product's options; ticks/s / pictures/s / pictures with
+    progress per second; MSX2 C-BIOS_MSX2, MSX2+ Panasonic FS-A1FX, turbo R Panasonic FS-A1GT;
+    `docs/PERF2_PLAN.md` D1):
 
     | Window | Look | MSX2 | MSX2+ | turbo R |
     |---|---|---|---|---|
-    | Ground floor, Cain shot 44 times (`l3_kill` 1500-1765) | 0 | 10.18 / 5.53 / 5.34 | 10.06 / 5.43 / 5.20 | 19.54 / 14.01 / 10.99 |
-    | | 6 | 12.72 / 7.10 / 6.67 | 12.09 / 6.66 / 6.39 | 20.05 / 26.86 / 14.68 |
-    | | 7 | 16.54 / 9.36 / 8.68 | 15.40 / 8.37 / 8.02 | 19.40 / 23.50 / 13.33 |
-    | Cain's route firing (`l3_boss` 130-1400) | 0 | 6.12 / 9.67 / 3.76 | 8.07 / 4.27 / 4.07 | 13.87 / 10.42 / 7.63 |
-    | | 6 | 6.25 / 9.77 / 3.85 | 8.11 / 4.23 / 4.09 | 14.17 / 10.39 / 7.80 |
-    | | 7 | 6.21 / 9.88 / 3.82 | 8.12 / 4.23 / 4.08 | 14.20 / 10.69 / 7.78 |
+    | Ground floor, Cain shot 44 times (`l3_kill` 1500-1765) | 0 | 12.52 / 6.99 / 6.47 | 12.50 / 6.84 / 6.51 | 22.77 / 17.53 / 13.06 |
+    | | 6 | 14.58 / 8.42 / 7.70 | 13.93 / 7.62 / 7.25 | 23.39 / 28.24 / 17.12 |
+    | | 7 | 18.26 / 9.92 / 9.65 | 16.71 / 9.46 / 8.89 | 23.88 / 38.38 / 21.35 |
+    | Cain's route firing (`l3_boss` 130-1400) | 0 | 7.29 / 10.81 / 4.49 | 9.73 / 5.05 / 4.88 | 17.02 / 13.20 / 9.41 |
+    | | 6 | 7.41 / 10.87 / 4.50 | 9.76 / 5.14 / 4.92 | 17.02 / 13.39 / 9.49 |
+    | | 7 | 7.57 / 10.95 / 4.64 | 10.12 / 5.25 / 5.10 | 17.42 / 13.74 / 9.82 |
 
     On the ground floor's pictures (the shown page's list and the published sprites at every
     picture), Cain's look changes 87 times with `0` (44 white pictures, white and normal in turn),
-    44 times with `6` (22 white pictures, at most one in any 4 with progress) and once with `7` on
-    the MSX2 and the MSX2+ (white from the first hit on). The turbo R, at about 1.5 ticks a picture,
-    sees Cain's hits 3-4 pictures apart: with `7` he still changes 58 times (white 2 pictures, then
-    normal 1-2). Level 2 (`l2_barrel`, 13 hits in pairs 4-6 ticks apart): `0` white, normal, white;
-    `6` one white picture a pair; `7` four white pictures, or white, white, normal, white, white;
-    its speed within the builds' own timing scatter. Without hits (Cain's route, `l3_kill`
-    130-1400) the three builds run within 1 %.
+    44 times with `6` (22 white pictures) and once with `7`, on all three machines (white from the
+    first hit on: the turbo R shows him white in 320 of its 426 pictures there). With `7` each single
+    hit is white exactly 4 ticks (the boss route's 27, `l2_barrel`'s 9, each machine). Level 2's
+    pairs of hits 4-6 ticks apart show, in the pictures with progress, 4 white pictures or white,
+    white, normal, white, white on the MSX2; 4-5 white or W W N W W on the MSX2+; 6-7 white or
+    W W W N W W W on the turbo R. The
+    rule holds at every tick of the 27 runs (kill, boss, `l2_barrel`; looks 0, 6, 7; three
+    machines). Without hits (Cain's route without fire, tour3, `l2_tour`) `6` and `7` run within -1.5
+    to +0.7 % of `0`, the timing scatter. The first `7`, counted in pictures, measured before
+    batch 1: the ground floor 16.54 / 15.40 / 19.40 ticks/s, the turbo R at 23.50 pictures/s with 58
+    look changes there.
 - **Speed (2026-10-20, 25 Hz)**: about 23 ticks per second and 7.2-7.5 pictures in the busiest
   scene of level 1 (the start, five enemies), 8.2 pictures walking (the CPU is the limit: the
   logic about 74,000 T-states a tick, the sprite pipeline about 165,000 per picture, the

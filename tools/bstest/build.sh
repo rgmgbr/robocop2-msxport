@@ -1,9 +1,9 @@
 #!/bin/sh
 # usage: build.sh OUT.rom [NAME=VALUE ...]
-# Builds the ROM with tools/mkrom.py from the repository's msx/ into OUT.rom (never in build/msx:
-# the user picks ROMs there; docs/HARNESS.md), from build/msx/level1, and checks the build: mkrom's
-# exit status, no "error" in its output, a ROM written by this build (the old one is removed
-# first), and z80asm's messages in OUT.labels (mkrom keeps z80asm's stderr there): only the 12
+# Builds the ROM with tools/mkrom.py from the repository's msx/ into OUT.rom (never in build/msx or the
+# folder it resolves to: the user picks ROMs there; docs/HARNESS.md), from build/msx/level1, and checks
+# the build: mkrom's exit status, no "error" in its output, a ROM written by this build (the old one is
+# removed first), and z80asm's messages in OUT.labels (mkrom keeps z80asm's stderr there): only the 12
 # known "expression fully enclosed in parenthesis" warnings may appear. Writes OUT.log (the ROM's
 # name with .log; the label file is the ROM's name with .labels, gen/ lands next to it).
 # Exit 0 only when every check passed.
@@ -34,6 +34,20 @@ refuse() {
   case "$1" in
     "$ROOT"/build/msx/*) echo "build.sh: OUT must not be in build/msx (the user picks ROMs there)" >&2; exit 2 ;;
   esac
+  # (also the folder build/msx resolves to: a tree whose build/ or build/msx links to another
+  # checkout's, as a git worktree's may, would write into that checkout's build/msx; and any other
+  # spelling of it, build/MSX on a case-insensitive volume: each existing folder of OUT is compared
+  # with build/msx by inode)
+  if [ -d "$ROOT/build/msx" ]; then
+    d="$(dirname "$1")"
+    while :; do
+      if [ "$d" -ef "$ROOT/build/msx" ]; then
+        echo "build.sh: OUT must not be in build/msx (the user picks ROMs there; here $d)" >&2; exit 2
+      fi
+      case "$d" in /|.) break ;; esac
+      d="$(dirname "$d")"
+    done
+  fi
 }
 OUT="$(abspath "$OUT")"
 refuse "$OUT"

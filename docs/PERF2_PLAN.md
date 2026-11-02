@@ -46,10 +46,14 @@ Agent "plan", 2026-11-01. Base: `level2` at 3b11042 (HEAD 4f8fcb4 differs only i
 - **It does not reach 25 ticks/s with Cain on a Z80.**
   - With CAD_MAX 2 that needs an 80-ms frame. The MSX2+'s frame is 250 ms today.
   - The set makes the frame 1.4-1.5x shorter, where 3.1x is needed.
-- **The rest is the user's decision** (section 3):
-  - **The cadence cap** (loop-3 or loop-1): MSX2+ Cain's route 15.7 or 17.8 ticks/s.
-  - **The flash's look.** flash-7 was estimated as the only change that makes the turbo R's shooting as smooth as its play without flashes: about 38 pictures a second. On the Z80 ground floor it gives about 16.7 ticks/s. Measured on HEAD (Wd1, D1 below), flash-7 as specified counts pictures and gives the turbo R 23.5 pictures/s with the look still changing; a hold counted in ticks would give 38.8.
-  - **The V9938 lag tolerance**: about +10 % on the MSX2.
+- **The rest is the user's decision** (section 3; measured on batch 1, previews test10-test15):
+  - **The cadence cap** (loop-3 or loop-1): MSX2+ Cain's route 12.89 -> 15.77 or 15.76 ticks/s, the boss route 9.73 ->
+    12.77 or 12.98, at fewer pictures with progress; loop-1 also the turbo R's Cain's route 18.35 -> 20.41.
+  - **The flash's look.** flash-7, counted in game ticks, gives a steady white during a burst on every machine: the
+    ground floor MSX2 12.52 -> 18.26 ticks/s, MSX2+ 12.50 -> 16.71, turbo R 22.77 -> 23.88 at 38.4 pictures/s (17.5).
+    flash-6: 14.58 / 13.93 / 23.39.
+  - **The V9938 lag tolerance** (LAG_X 64): MSX2 Cain's route 8.81 -> 10.44 ticks/s (+18.4 %), the boss route +17.1 %;
+    the MSX2+ and turbo R unchanged.
 
 ## 1. Where the time goes (measured)
 
@@ -514,86 +518,124 @@ These are not in section 4's numbers. Reopen one only with its check.
 
 ## 3. Options for the user's decision (what the player would see)
 
-Numbers are ticks/s / progress pictures/s, on top of the full decision-identical set (realized estimate; `C/plan/combined_plan.txt`).
+D4-D6's numbers are ticks/s / progress pictures/s, on top of the full decision-identical set (realized estimate;
+`C/plan/combined_plan.txt`). D1-D3 are measured on batch 1, and the user's previews built (below).
 
-**D1. The hit flash's look: the complaint.** Today a hit shows one white picture. With hits every 4 ticks, the shot enemy alternates white and normal every picture. The Amiga shows white 1 frame in 4 at 25 Hz.
-- **Keep it.** The ground floor:
+**Measured on batch 1** (D1-D3; lane dprev, 2026-11-01): openMSX headless, emulated time, the `EXTJOY` drive builds
+with the product's options plus the option (`C/dprev/R`), one m3 lean run per drive and machine (`C/dprev/N/<set>/speed`)
+against batch 1's (`C/integ/N/speed`); MSX2 = C-BIOS_MSX2, Expert = Gradiente_Expert20_64K, MSX2+ = Panasonic_FS-A1FX,
+turbo R = Panasonic_FS-A1GT. Each cell: ticks/s / pictures/s / progress pictures/s, batch 1 -> **option** (the change in
+ticks/s). The user's previews: test10-test15 (`C/dprev/preview/NOTES.txt`).
 
-  | Machine | ticks/s / progress pictures/s |
-  |---|---|
-  | MSX2 | 13.8-14.4 / 7.3-7.6 |
-  | MSX2+ | 13.9-14.3 / 7.2-7.4 |
-  | turbo R | 24.0-24.3 / 14.1-14.3 (about 20 pictures/s in all, 37 without flashes) |
+**D1. The hit flash's look: the complaint.** Batch 1 shows one white picture for each hit. With hits every 4 ticks, the
+shot enemy alternates white and normal every picture. The Amiga shows white 1 frame in 4 at 25 Hz.
+- **Keep it** (`FLASH_LOOK` 0, test12).
+- **flash-7: a steady white during a burst** (`FLASH_LOOK=7`, test11). An enemy is white in the game tick of a hit and
+  the 3 ticks after it, and every hit starts the 4 ticks again: hits at most 4 ticks apart keep it white (Cain's on the
+  ground floor come every 4). Counted in game ticks, so it looks the same at every frame rate: a single hit shows 2
+  white pictures at 2 ticks a picture, 4 at 1 tick a picture (the turbo R often). A hit in a skipped tick is still
+  inside its 4 ticks at the tick shown, for frames of up to 4 ticks (`tools/mkrom.py` refuses more).
+  - Cost: none in the fixed area, which has 22 B more free than without the option (no held hit, no frame-end
+    loop); LC1 5 B.
+  - The first flash-7 (`82c94a5`, measured on HEAD) counted pictures: white in the hit's picture and the next one. On
+    the turbo R, at about 1.5 ticks a picture, Cain's hits came 3-4 pictures apart and the hold lapsed (58 look changes
+    on the ground floor, 23.5 pictures/s); the tick-counted hold (Wd1's experiment `C/wd1/exp`, now flash-7) is steady.
+- **flash-6: at most one white picture in 4 per enemy** (`FLASH_LOOK=6`, test10, unchanged). At today's hit rate the
+  pictures go white, normal, normal, normal, white: half the hits show no white picture. Cost: the fixed area 6 B, LC1 5 B.
 
-- **flash-7: a steady white during a burst.** An enemy hit less than 2 pictures after its previous hit stays white. It turns normal 2 pictures after the last hit. This is the only option that makes the turbo R's shooting as smooth as its play without flashes (estimated; on the turbo R the hold as specified lapses: the measured note below).
-  - The ground floor:
-
-    | Machine | ticks/s / progress pictures/s |
-    |---|---|
-    | MSX2 | 16.8 / 9.2 |
-    | MSX2+ | 16.7 / 9.1 |
-    | turbo R | 24.7 / 21.2 (about 38 pictures/s in all) |
-
-  - The boss route: +2-4 %.
-  - Cost: about 20-30 B in `bob.asm` (fixed area). The bound was measured (nofl3b).
-- **flash-6: at most one white picture in N per enemy.** With N = 4 at today's hit rate, the pictures go white, normal, normal, normal, white: half the hits show no white picture.
-  - The ground floor:
-
-    | Machine | ticks/s / progress pictures/s |
-    |---|---|
-    | MSX2 | 15.4 / 8.2 |
-    | MSX2+ | 15.4 / 8.1 |
-    | turbo R | 24.2 / 16.9 |
-
-  - Cost: about 10-20 B.
-- **Measured on HEAD (Wd1, the `FLASH_LOOK` previews test10 and test11, 2026-11-01).** The ground floor
-  (kill 1500-1765), ticks/s / pictures/s / progress pictures/s:
-
-  | Look | MSX2 | MSX2+ | turbo R |
-  |---|---|---|---|
-  | 0 (today) | 10.18 / 5.53 / 5.34 | 10.06 / 5.43 / 5.20 | 19.54 / 14.01 / 10.99 |
-  | 6 | 12.72 / 7.10 / 6.67 | 12.09 / 6.66 / 6.39 | 20.05 / 26.86 / 14.68 |
-  | 7 | 16.54 / 9.36 / 8.68 | 15.40 / 8.37 / 8.02 | 19.40 / 23.50 / 13.33 |
-
-  - flash-7 as specified counts pictures. The Z80 machines get a steady white (1 look change on the ground floor,
-    87 today), but the turbo R runs about 1.5 ticks a picture, so Cain's hits come 3-4 pictures apart and the
-    2-picture hold lapses: 58 changes and 23.5 pictures/s, not the steady white at about 38 pictures/s above.
-  - A hold counted in game ticks (white for 4 ticks after each hit; an uncommitted experiment, `C/wd1/exp`) looks
-    the same as flash-7 on the Z80 machines and is steady on all three: 15.58 / 15.43 / 22.75 ticks/s, the turbo R
-    at 38.80 pictures/s. It could be offered as its own option.
-  - The code's rule: a hit shows the enemy white in its picture and the next one, so hits at most 2 pictures apart
-    keep it white. Boss route (130-1400): +0.4 to +2.4 % with either look.
-
-**D2. Ticks per picture when pictures are slow.** Today CAD_MAX is 2. On 2026-10-21 the user rejected 3-4 ticks a picture in level 1, when the walk's next step also loaded late.
-- **Keep 2.**
-- **loop-3: 3 ticks a picture, only when a picture takes 8 VBLANKs or more** (below 7.5 pictures/s). Faster scenes look exactly as today, level 2 included.
-  - Where it acts:
-    - RoboCop's walk advances 1 and 2 drawings alternately;
-    - Cain's legs step unevenly;
-    - hits closer together than one picture merge into one flash picture.
-  - A scene near 7.5 pictures/s switches between 2-tick and 3-tick pictures.
-  - MSX2+: Cain's route 15.7 / 6.9, boss 13.0 / 5.0, ground floor 15.6 / 7.0.
-  - turbo R: +3-5 %. MSX2: +4 %.
-  - Cost: 14 B. A threshold of 6 VBLANKs would also reach most of the turbo R's frames.
-- **loop-1: CAD_MAX 3 everywhere.** The same look as loop-3, whenever a picture is late. The longest gaps between pictures grow by up to 67 ms. Cost: 0 B.
-
-  | Machine | Cain's route | boss | ground floor | level 2 |
+  | Scene | Look | MSX2 | MSX2+ | turbo R |
   |---|---|---|---|---|
-  | MSX2+ | 17.8 / 6.6 | 13.9 / 4.9 | 18.8 / 7.2 | |
-  | turbo R | 23.5 | 22.8 | | |
-  | MSX2 | 12.3 / 6.3 | | | 23.1 |
+  | Ground floor, Cain shot (kill 1500-1765) | 6 | 12.52 / 7.0 / 6.47 -> **14.58** / 8.4 / 7.70 (+16.4 %) | 12.50 / 6.8 / 6.51 -> **13.93** / 7.6 / 7.25 (+11.4 %) | 22.77 / 17.5 / 13.06 -> **23.39** / 28.2 / 17.12 (+2.7 %) |
+  | | 7 | -> **18.26** / 9.9 / 9.65 (+45.8 %) | -> **16.71** / 9.5 / 8.89 (+33.7 %) | -> **23.88** / 38.4 / 21.35 (+4.9 %) |
+  | Cain's route firing (boss 130-1400) | 6 | 7.29 / 10.8 / 4.49 -> **7.41** / 10.9 / 4.50 (+1.7 %) | 9.73 / 5.0 / 4.88 -> **9.76** / 5.1 / 4.92 (+0.3 %) | 17.02 / 13.2 / 9.41 -> **17.02** / 13.4 / 9.49 (0.0 %) |
+  | | 7 | -> **7.57** / 10.9 / 4.64 (+3.8 %) | -> **10.12** / 5.3 / 5.10 (+4.0 %) | -> **17.42** / 13.7 / 9.82 (+2.3 %) |
 
-- **loop-4: even caps up to 6 (not recommended).** MSX2+ Cain's route 21.1 / 5.7, boss 17.1 / 4.1.
+  - Elsewhere (Cain's route without fire, tour3, l2_tour: no hits) both looks run within -1.5 to +0.7 % of batch 1, the
+    timing scatter of a few T-states moved (flash-7's kill 130-1400 on the MSX2+, -1.0 %, is the one window of either look
+    outside G-SPEED's 1 %).
+  - The longest gap between two pictures on the ground floor: MSX2 250 -> 234 ms (6 and 7), MSX2+ 234 -> 250, turbo R
+    117 -> 117.
+  - The look (Wd1's `lk.tcl` records, `C/dprev/lkan2.py`; kill, boss and l2_barrel on the MSX2, MSX2+ and turbo R, 27
+    runs): the rule holds in every run (flash-7: at every tick, shown and skipped). On the ground floor Cain's look
+    changes 87 times with 0, 44 with 6 and once with 7 on all three machines (white from the first hit on). With 7 each
+    single hit is white exactly 4 ticks (boss 27 hits, l2_barrel 9, each machine). No enemy shows two looks in a picture
+    on the ground floor or l2_barrel. On the boss route the mixed pictures are Cain's muzzle flash (`$41358`, which
+    `c22_fl` draws with `bob_draw`, draw_bob `$AB08`: its own colours in every look; 13 / 15 / 13 pictures on the MSX2 /
+    MSX2+ / turbo R with 0, 14 / 8 / 7 with 6, 71 / 16 / 37 with 7) and, with 7 only, one end-of-stretch picture on the
+    MSX2 and one on the turbo R (the play-field parts normal, the 32 x 40 sprite part still white). No picture starts a
+    white stretch with a part still normal, in any look. (Each picture's sprite objects are matched with the `obj_key`
+    of its list's own tick, gfr - 1: `bob_flush` keys the list built after that tick.)
+  - The contact sheets of a burst on the ground floor (16 pictures from tick 1600, looks 0, 6, 7, three machines):
+    `C/dprev/sheets/burst_*.png`.
+
+**D2. Ticks per picture when pictures are slow.** Today CAD_MAX is 2. On 2026-10-21 the user rejected 3-4 ticks a
+picture in level 1, when the walk's next step also loaded late.
+- **Keep 2** (test12).
+- **loop-3: 3 ticks a picture, only when a picture takes 8 VBLANKs or more** (below 7.5 pictures/s at 60 Hz;
+  `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`, test13). Faster scenes look exactly as today.
+  - Where it acts: RoboCop's walk advances 1 and 2 drawings alternately; Cain's legs step unevenly; hits closer
+    together than one picture merge into one flash picture. A scene near 7.5 pictures/s switches between 2-tick and
+    3-tick pictures.
+  - The pictures with 3 ticks (of those with ticks): MSX2 23.5 % on Cain's route, 69.6 % on the ground floor, 42.3 % on
+    the boss route, 3.7 % in level 2; MSX2+ 81.1 %, 74.5 %, 92.7 %, 3.1 %; turbo R 3.5 %, 0, 8.9 %, 0.1 %.
+  - Cost: 14 B (fixed area). A threshold of 6 VBLANKs (`CAD_ADAPT=6`) would also reach most of the turbo R's frames
+    (not built).
+- **loop-1: CAD_MAX 3 everywhere** (`CAD_MAX=3 CAD_HOLD=3`, test14; the CAD_HOLD a_loop's analyst measured loop-1 with,
+  its `c3` and `T_c3` builds). The same look as loop-3, whenever a picture is late: 3-tick pictures MSX2 28.9 / 88.4 /
+  44.1 / 13.3 %, MSX2+ 86.4 / 88.3 / 95.4 / 11.6 %, turbo R 31.9 / 14.4 / 49.2 / 0.3 % (the same four scenes). Cost: 0 B.
+
+  | Scene | Option | MSX2 | MSX2+ | turbo R |
+  |---|---|---|---|---|
+  | Cain's route (kill 130-1400) | loop-3 | 8.81 / 18.0 / 5.99 -> **9.68** / 18.6 / 5.89 (+9.8 %) | 12.89 / 7.4 / 6.73 -> **15.77** / 6.6 / 5.78 (+22.4 %) | 18.35 / 15.6 / 10.49 -> **18.58** / 16.0 / 10.56 (+1.3 %) |
+  | | loop-1 | -> **9.73** / 19.2 / 5.75 (+10.4 %) | -> **15.76** / 6.6 / 5.67 (+22.3 %) | -> **20.41** / 16.2 / 10.21 (+11.3 %) |
+  | Ground floor (kill 1500-1765) | loop-3 | 12.52 / 7.0 / 6.47 -> **17.59** / 7.3 / 6.70 (+40.4 %) | 12.50 / 6.8 / 6.51 -> **17.80** / 6.9 / 6.58 (+42.4 %) | 22.77 / 17.5 / 13.06 -> **22.93** / 16.8 / 13.15 (+0.7 %) |
+  | | loop-1 | -> **18.44** / 7.0 / 6.61 (+47.3 %) | -> **18.46** / 6.9 / 6.55 (+47.7 %) | -> **24.30** / 18.6 / 13.30 (+6.7 %) |
+  | Boss route (boss 130-1400) | loop-3 | 7.29 / 10.8 / 4.49 -> **8.02** / 12.3 / 4.14 (+10.0 %) | 9.73 / 5.0 / 4.88 -> **12.77** / 4.7 / 4.40 (+31.2 %) | 17.02 / 13.2 / 9.41 -> **17.50** / 13.5 / 9.30 (+2.8 %) |
+  | | loop-1 | -> **8.02** / 12.6 / 4.16 (+10.0 %) | -> **12.98** / 4.7 / 4.42 (+33.4 %) | -> **19.95** / 13.5 / 8.88 (+17.2 %) |
+  | tour3 (street, beams, lifts, roof) | loop-3 | +2.5, -1.3, +9.5, +3.3 % | +7.3, +5.9, +7.6, +9.3 % | +0.5, -1.7, -0.1, -0.4 % |
+  | | loop-1 | +4.4, -1.1, +11.9, +3.8 % | +15.2, +8.9, +13.1, +11.3 % | +0.9, +0.7, 0.0, 0.0 % |
+  | Level 2 (l2_tour 20-1590) | loop-3 | 19.03 / 19.6 / 12.47 -> **19.33** / 19.8 / 12.55 (+1.6 %) | 23.05 / 17.4 / 15.53 -> **23.39** / 17.2 / 15.39 (+1.5 %) | 24.87 / 42.3 / 24.28 -> **24.92** / 42.1 / 24.32 (+0.2 %) |
+  | | loop-1 | -> **19.86** / 20.1 / 12.23 (+4.4 %) | -> **24.39** / 17.0 / 15.16 (+5.8 %) | -> **24.93** / 42.1 / 24.27 (+0.3 %) |
+
+  - Both trade pictures with progress for game speed where they act (MSX2+ Cain's route 6.73 -> 5.78 / 5.67 progress
+    pictures/s).
+  - The longest gap between two pictures grows by up to about 85 ms where they act: loop-3 MSX2 Cain's route 250 ->
+    334 ms, boss 367 -> 417, the roof 267 -> 334; MSX2+ Cain's route 250 -> 300, boss 367 -> 401, the beams 334 -> 384;
+    loop-1 MSX2 boss 367 -> 417, the lifts 234 -> 317, the roof 267 -> 350; MSX2+ the beams 334 -> 400; turbo R at most
+    +34 ms.
+- **loop-4: even caps up to 6 (not recommended; estimated on HEAD, not built).** MSX2+ Cain's route 21.1 / 5.7, boss
+  17.1 / 4.1.
   - Cain's legs strobe at 4 ticks a picture and look as if they walk backwards at 6.
   - Progress pictures drop 15-22 %.
   - The longest gaps reach 417-484 ms.
 
-**D3. MSX2 only: how far the view may lag behind the camera.** x goes from 32 px to 64 (or 48); y stays at 32.
-- What the player sees: while the V9938 scroll is late, RoboCop may run up to 63 px ahead of the scrolled view, never closer than 16 px to the screen's side (`rc_safe`). The view catches up in page steps, and enemies may act near the edge.
-- MSX2: Cain's route 10.4 -> 11.4 / 7.2, boss 8.7 -> 9.5 / 5.2, tour3 10.9 -> 11.5, level 2 22.2 -> 22.5.
-- The V9958 machines: nothing changes.
-- Cost: 9 B.
-- On HEAD this was measured only with x and y both relaxed (floors +21 %, roof +49 %). The x-only builds (`C/a_loop/bv/lagx64.rom`, `C/a_loop/bv/c3lagx64.rom`) are measured in batch 0, before the user decides.
+**D3. MSX2 only: how far the view may lag behind the camera** (`LAG_X=64`, test15). With the V9938 engine (`fb_eng` 1:
+an MSX2, or `FORCE_V9938`) x may lag 64 px instead of 32 before the ticks are held; y stays at 32. The V9958's ring keeps
+32 (`fb_eng` 0: the MSX2+ and the turbo R take the default's return, so their cadence decides as without the option).
+C/a_loop's prototype relaxed x on every machine; on the MSX2+ the x lag reaches 32-37 px in 10-12 frames of Cain's route.
+- What the player sees: while the V9938 scroll is late, RoboCop may run ahead of the scrolled view, the view catches up
+  in page steps, and enemies may act near the edge. Measured (`C/dprev/lx.tcl`, from tick 130, kill and boss): the
+  view lags at most 37 px with batch 1 (held at 32-39 px in about 53 % of the MSX2's frames on Cain's route) and at most
+  70 px with 64 (held at 64-71 px in about 45 %): `cam_lag` tests the lag before the frame's ticks, so a frame allowed
+  at 63 px adds its own steps. RoboCop's sprite boxes come within 39 px of x 0 (64 with batch 1) and 12 px of x 256
+  (13 with batch 1). While the V9938 holds the camera, R#18 insets the picture (moving right it ends at x 248), so
+  his right edge came within 5 px of the picture's edge (6 with batch 1). `rc_safe`, unchanged, holds the ticks while
+  his boxes are within 16 px of x 0 / 256 on the picture already shown, before the frame's ticks run; one frame's steps
+  and drawing change can take him past that (5.3's rc-edge). The frames without a tick on the MSX2: Cain's route
+  1,723 -> 1,385, boss 1,101 -> 856.
+- Cost: 12 B (fixed area).
+
+  | Scene | MSX2 | Expert | MSX2+ |
+  |---|---|---|---|
+  | Cain's route (kill 130-1400) | 8.81 / 18.0 / 5.99 -> **10.44** / 18.4 / 7.03 (+18.4 %) | 8.87 / 18.1 / 6.02 -> **10.46** / 18.5 / 7.11 (+17.9 %) | 12.89 / 7.4 / 6.73 -> **12.89** / 7.3 / 6.73 (0.0 %) |
+  | Ground floor (kill 1500-1765) | 12.52 / 7.0 / 6.47 -> **12.54** / 6.9 / 6.63 (+0.2 %) | 12.52 / 6.9 / 6.62 -> **12.47** / 7.1 / 6.59 (-0.4 %) | 12.50 / 6.8 / 6.51 -> **12.03** / 6.6 / 6.27 (-3.8 %) |
+  | Boss route (boss 130-1400) | 7.29 / 10.8 / 4.49 -> **8.53** / 10.9 / 5.11 (+17.1 %) | 7.34 / 10.7 / 4.49 -> **8.53** / 10.8 / 5.14 (+16.2 %) | 9.73 / 5.0 / 4.88 -> **9.76** / 5.1 / 4.93 (+0.3 %) |
+  | tour3 (street, beams, lifts, roof) | +7.7, +2.0, +1.4, +0.2 % | +6.7, +1.4, +1.6, +0.6 % | 0.0, +0.6, +0.2, -0.5 % |
+  | Level 2 (l2_tour 20-1590) | 19.03 / 19.6 / 12.47 -> **19.27** / 19.4 / 12.65 (+1.2 %) | 19.02 / 20.0 / 12.66 -> **19.38** / 19.4 / 12.62 (+1.9 %) | 23.05 / 17.4 / 15.53 -> **23.08** / 17.2 / 15.42 (+0.1 %) |
+
+  - The MSX2+ is unchanged by construction; its windows move within the timing scatter (the ground floor's -3.8 %: a
+    265-tick window, G-SPEED's 5 % tolerance; the decisions the same, 7 to 24 T-states more a frame).
+  - The longest gap between two pictures: MSX2 within -50..+33 ms of batch 1's, the Expert's Cain's route 234 -> 334 ms.
 - scroll-7's AX_MAX 144 is not offered: it moves RoboCop's framing on every machine.
 
 **D4. field-12: Cain's and type 21's legs at half their animation steps.** Each legs drawing is shown for two steps, as FIELD_HALF already does for the explosions and the smoke.
@@ -627,7 +669,7 @@ Each cell is ticks/s / progress pictures/s. The columns:
 - **Today**: measured.
 - **Measured set**: the prototyped items of batches 1-2 (field-1/2, FC-UPLOAD, flash-1, logic-1/2, scroll-1, spr-1/4), chained by v_gain's model.
 - **Full DI set**: all three batches. The range runs from 60 % to 100 % of each unmeasured item's corrected gain.
-- **Options**: each option alone, on top of the full set (realized).
+- **Options**: each option alone, on top of the full set (realized). Estimates; D1-D3 measured on batch 1 alone: section 3.
 
 Ticks/s are capped at 25.
 
@@ -745,6 +787,7 @@ Serial chains:
 | 1 | W1F field | field-1 (level 3); field-2 with R1; FC-UPLOAD; field-1 (levels 1-2) | `tools/msxsprites.py`, `tools/bstest/fieldcheck.py`, `tools/msxframe.py`, `msx/field.asm`, `msx/ending.asm`, `msx/cold.asm`, `tests/` | W0 step 1 |
 | 1 | W1L logic | logic-1; logic-2 | `msx/tiles.asm`, `special.asm`, `level3.asm`, `level3obj.asm`, `msx.inc` (its rows), `tools/mkrom.py` with the table generator, `tests/` | W0 step 1 |
 | 1 | W1S sprites | spr-6; spr-1; spr-4 | `msx/sprites.asm`, `lvshared.asm`, `msx.inc` (its rows), the trampoline, `tests/` | W0 step 1 |
+| 2 | W2K kit, edges | the kit's recalibration (HANDOFF "batch 1" open issues); rc-edge | `tools/bstest/perf2/*`, `tools/bstest/fieldcheck.py`, `msx/player.asm` (`rc_safe`), `tests/` | batch 1 |
 | 2 | W2F flash | R2; flash-1 | `msx/field.asm`, `ending.asm`, the engines' callers, `msx.inc` | W1F |
 | 2 | W2C scroll | scroll-1 | `msx/scroll9938.asm`, `scroll9958.asm`, `tiles.asm` (the `fm38_bb` hook) | W1L, W1S |
 | 2 | W2L logic | logic-6; logic-4; scroll-2 (b, c) | `mapobj.asm`, `special.asm`, `plmove.asm`, `hits.asm`, `tiles.asm` (`fb_invf`, `map_write`, `get_tile`), `tools/cellmasks.py`, `tests/` | W1L, W1S |
@@ -760,6 +803,28 @@ field-1's levels 1-2 commit was dropped inside W1F. The gates on the merged tip,
 against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign
 2, batch 1"; the free bytes: `docs/ROM_BUDGET.md` 2.5.
 
+**Batch 2's lane W2K (added after batch 1 and the previews' review).**
+- The kit's recalibration: the open issues in HANDOFF "Performance campaign 2, batch 1". They cover:
+  - the gates against timing controls, leaving out teleport ticks and records past a drive's end;
+  - `holds.py` judged per drive;
+  - `fieldcheck`'s redraw-queue addresses;
+  - LOCKSTEP for level 3 on the MSX2;
+  - `lvshared_check`'s tail copies;
+  - the census' `bu_lvl`.
+- rc-edge: `rc_safe` (player.asm) tests RoboCop's sprite boxes on the picture already shown, 16 px from x 0 / 256,
+  before the frame's ticks run.
+  - The V9938's hold insets the picture by R#18: 8 px on the left moving left, 7 px on the right moving right.
+  - One frame then adds CAD_HOLD x 3 px and a drawing change.
+  - The previews' review modelled this (`C/rev_dprev/refute_cadlag1`, `refute_cadlag2`). A steady walk stays inside
+    the picture with the opaque pixels: the boxes are wider than the pixels by up to 15 px (aim 2, records 13-15
+    walking left and 5-7 walking right).
+  - A punch started from a walk right can pass the held picture's right edge: by 1-3 px with 2 ticks, 4-6 px with 3
+    (test13, test14). This is pre-existing (the product, test12).
+  - Check on the MSX2 at runtime first: a punch from a walk right at AX_MAX, and a left walk in camera mode 1 (the
+    roof, floors 20 and 40).
+  - Then bound the next picture with per-record opaque extents and the frame's growth. That can also remove holds the
+    boxes cause today.
+
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.
 - After every merge: G-BUILD and G-LOGIC on the merged tip.
@@ -769,6 +834,10 @@ against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF
 - D1's look can be previewed at once on HEAD: it touches only `bob.asm`.
 - D2 and D3 are previewed after batch 1 merges, so that the user judges them at the new speed.
 - TAG ROMs for the user's preview: the DI tip; the tip with flash-7; with flash-6; with loop-3; with loop-1; and, for the MSX2, with lag-x 64.
+  *Done on batch 1 (lane dprev, `perf2/dprev`):* test10 (flash-6), test11 (flash-7 in game ticks), test12 (batch 1
+  itself, the reference), test13 (loop-3), test14 (loop-1), test15 (lag-x 64), as `-l2`/`-l3` play-test files
+  (`C/dprev/preview`, `NOTES.txt`); the options `FLASH_LOOK`, `CAD_ADAPT` (with `CAD_MAX`, `CAD_HOLD`) and `LAG_X`, every
+  build without them byte-identical; section 3 has the measured numbers.
 - The options the user adopts go into a W-opt worktree (`player.asm`, `bob.asm`) after W2S merges.
 - If W0 finds a flash spike in levels 1-2 above about 20 % of those pictures' time, W2S gets an item for the silhouette toggle's cost (the budget rerun, the plan, the colour rows, the uploads).
 

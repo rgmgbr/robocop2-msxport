@@ -140,7 +140,9 @@ tick_start:
         ld hl,g_tn
         dec (hl)
         jr nz,ml_tk                 ; a late frame: the next tick at once
-ml_tkd: ld hl,fl_pend
+ml_tkd:
+        if FLASH_LOOK != 7          ; (7: bob.asm bob_begin ages the hit flash's look once a tick)
+        ld hl,fl_pend
         ld b,5
         if FLASH_LOOK
 ml_flc: srl (hl)                    ; (held hit flashes: shown now or never; the look's pictures
@@ -150,6 +152,7 @@ ml_flc: ld (hl),0                   ; (held hit flashes: shown now or never)
         endif
         inc hl
         djnz ml_flc
+        endif
         ld a,(jump_pend)            ; the cracked wall moved RoboCop and the camera (mapobj.asm
         or a                        ; act_10): the new view drawn at once
         jr z,ml_ev

@@ -200,6 +200,15 @@ OPTIONS = {
     "CAD_MAX": (2, "most game ticks run for one picture: more are lost (the game slows down, as the original does when busy;"
                    " 2: an animation never skips a step of 2 ticks, about 5 % slower in busy scenes)"),
     "CAD_HOLD": (2, "the same while the V9938 scroll keeps the camera at a page's edge (its next page not built yet)"),
+    "CAD_ADAPT": (0, "N > 0 = a picture that took fewer than N VBLANKs runs at most 2 game ticks, only a slower one up"
+                     " to CAD_MAX (or CAD_HOLD), for the user's choice (docs/PERF2_PLAN.md D2, loop-3: N = 8 with"
+                     " CAD_MAX=3 CAD_HOLD=3, 3 ticks only below 7.5 pictures a second at 60 Hz; msx/player.asm"
+                     " cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone (as always)"),
+    "LAG_X": (32, "pixels the view shown may lag behind the camera in x with the V9938 engine (the MSX2: its scroll"
+                  " builds a page while the camera moves on; the ticks are held beyond it), 32-64, for the user's"
+                  " choice (docs/PERF2_PLAN.md D3: 64); y and the V9958's engine keep 32, and the ticks stop while"
+                  " RoboCop's sprites on the picture shown are within 16 pixels of x 0 or 256, as always"
+                  " (msx/player.asm cam_lag, rc_safe)"),
     "ENEMY_CAP": (1, "N > 0 = at most N enemy slots in use (the original has 5; the user chose 1): 0 = the original, for trace tests"),
     "NO_SCC": (0, "1 = the title music and the sound effects ignore an SCC (test: the OPLL or PSG modes on a KonamiSCC cartridge)"),
     "NO_FM": (0, "1 = the title music ignores an OPLL (test)"),
@@ -256,9 +265,10 @@ OPTIONS = {
                     " between the HUD split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle"
                     " points"),
     "FLASH_LOOK": (0, "the look of an enemy's hit flash, for the user's choice (docs/PERF2_PLAN.md D1; msx/bob.asm"
-                      " fl_due; docs/MSX_ARCHITECTURE.md): 0 = one white picture for each hit (as always); 6 = at"
-                      " most one white picture in 4 per enemy; 7 = an enemy stays white while hit at most 2"
-                      " pictures apart, and turns normal 2 pictures after its last hit; the logic as always"),
+                      " fl_note; docs/MSX_ARCHITECTURE.md): 0 = one white picture for each hit (as always); 6 = at"
+                      " most one white picture in 4 per enemy; 7 = an enemy is white in the game tick of a hit and"
+                      " the 3 ticks after it, every hit starting the 4 ticks again (hits at most 4 ticks apart keep"
+                      " it white; needs CAD_MAX and CAD_HOLD at most 4); the logic as always"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -881,6 +891,18 @@ def main(argv: list[str]) -> int:
         return 2
     if opts["FLASH_LOOK"] not in (0, 6, 7):
         print("FLASH_LOOK must be 0, 6 or 7 (msx/bob.asm)", file=sys.stderr)
+        return 2
+    if not 0 <= opts["CAD_ADAPT"] <= 255 or (opts["CAD_ADAPT"] and max(opts["CAD_MAX"], opts["CAD_HOLD"]) < 3):
+        print("CAD_ADAPT must be 0-255, and needs CAD_MAX or CAD_HOLD above 2 (it keeps 2 ticks a picture below"
+              " its VBLANKs: msx/player.asm cadence)", file=sys.stderr)
+        return 2
+    if not 32 <= opts["LAG_X"] <= 64:
+        print("LAG_X must be 32-64 (msx/player.asm cam_lag: 32 as always)", file=sys.stderr)
+        return 2
+    # (7's white lasts the hit's tick and the 3 after it: a frame of more ticks could skip all four)
+    if opts["FLASH_LOOK"] == 7 and (opts["CAD_MAX"] > 4 or opts["CAD_HOLD"] > 4):
+        print("FLASH_LOOK=7 needs CAD_MAX and CAD_HOLD at most 4 (a hit's 4 white ticks must reach the tick"
+              " shown: msx/bob.asm fl_note)", file=sys.stderr)
         return 2
     if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1, 2) or not 0 <= opts["TAG"] <= 99 \
             or opts["RG_ADJ"] not in (0, 1):
