@@ -55,6 +55,10 @@ gt_hit: inc h
         ld l,a                      ; its tile
         pop de
         ret
+; gt_nop: the same for a cell the caller knows has no patch (map_write's mw_new, right after its own
+; walk of the row found none and before any patch changes): the row is not walked again.
+gt_nop: push de
+        ld d,a
 gt_rom:
         if VAT_ANIM
         ld a,(lv_logic)             ; (level 2: its vats)
@@ -351,7 +355,7 @@ mw_new: ld a,(mw_atr)               ; no patch: its attributes,
         call atr_put
         push bc                     ; nothing more when the ROM map has the same tile
         ld a,d
-        call get_tile               ; (the ROM's)
+        call gt_nop                 ; (the ROM's: get_tile without the walk just done)
         pop bc
         or a
         sbc hl,bc
@@ -608,16 +612,52 @@ fm38_bb:
 
 ; D = row, E = column of a cell whose tile changed (map_write's only calls: a patch's tile changed
 ; or a patch taken): the play-field caches holding it copy it again when they need it (field.asm
-; fb_inval); a map change, counted in mw_gen (level 3's map-write caches). Keeps DE.
+; fb_inval); a map change, counted in mw_gen (level 3's map-write caches). Only a cell inside a cache's
+; window (fb_cache: the window's first column and row at +2, +3) can be held there, so fb_inval runs
+; for those cells alone (a free cache's window too: fb_inval passes a free cache by). Keeps DE.
 fb_invf:
         ld hl,(mw_gen)
         inc hl
         ld (mw_gen),hl
-        push de
+        ld a,e
+        ld hl,fb_cache + 2          ; cache 0
+        sub (hl)
+        cp 4
+        jr nc,fvf_1
+        ld a,d
+        inc hl
+        sub (hl)
+        cp 4
+        jr c,fvf_go
+fvf_1:  ld a,e
+        ld hl,fb_cache + FB_CSZ + 2 ; cache 1
+        sub (hl)
+        cp 4
+        jr nc,fvf_2
+        ld a,d
+        inc hl
+        sub (hl)
+        cp 4
+        jr c,fvf_go
+fvf_2:  ld a,e
+        ld hl,fb_cache + 2 * FB_CSZ + 2  ; cache 2
+        sub (hl)
+        cp 4
+        ret nc
+        ld a,d
+        inc hl
+        sub (hl)
+        cp 4
+        ret nc
+fvf_go: push de
         ld hl,fb_inval
         call field_call
         pop de
         ret
+        if FB_GMAX != 3             ; (an error: the window tests above are the three caches')
+fvf_n:
+fvf_n:
+        endif
 
 ; (isr.asm isr_vblank) -> NZ when the play-field BOBs still have work of a published picture for
 ; the page the published list shows (field.asm: the item being composed or one waiting, for

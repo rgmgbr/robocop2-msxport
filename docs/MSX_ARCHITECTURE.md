@@ -502,8 +502,9 @@ which as sprites were striped, cut or left out.
   that a moving owner refills only the cells that come in (one 16x16 HMMM each, `FB_BURST` in a
   row); the background of an item is then one to four HMMMs. An item of 5 columns takes the
   narrower edge column from the tile cache (the hostage moves 2 px with its animation: 52 px).
-  `map_write` forgets a cell whose tile changed (`fb_inval`). Items without an owner or larger
-  than that take their background tile by tile.
+  `map_write` forgets a cell whose tile changed (`fb_inval`, called only for a cell inside a cache's
+  window: `tiles.asm` `fb_invf`). Items without an owner or larger than that take their background
+  tile by tile.
 - **Never half a change on screen**: the copy onto the page shown starts only where the beam is
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
@@ -923,6 +924,37 @@ which as sprites were striped, cut or left out.
   `rc2_guard`'s tear counts move as they do for builds of the base that change only a few T-states (the
   base with `cam_cells`' rewrite alone, or with the aging's stores alone: 4-6 such pictures in tour3's lifts
   window on the MSX2+, tears up to 9 more or fewer per drive).
+- **The changed cells' window test and no second walk (scroll-2 (b); performance campaign 2's batch 2,
+  2026-11-02)**: `tiles.asm` `fb_invf` (each tile `map_write` changes: a patch's tile, or a patch taken)
+  counts the change in `mw_gen` as before, then tests the cell against the three play-field caches'
+  windows (`fb_cache` +2, +3: a window's first column and row, 4 × 4 cells) and calls `field.asm`
+  `fb_inval` through `field_call` only for a cell inside one; a cell outside every window is held by no
+  cache, so `fb_inval` would change nothing (a free cache's window passes the test too: `fb_inval` skips
+  that cache, as before). `map_write`'s `mw_new` (a cell without a patch, just after its own walk of the
+  row found none) reads the ROM's tile through `get_tile`'s entry `gt_nop`, which does not walk the row's
+  chain again. Counted over `l3_tour3` on the FS-A1FX: `fb_invf` 16.37 calls a tick, none for a cell
+  inside a cache's window, so `fb_inval` 16.37 -> 0 calls a tick; `get_tile` 12.54 -> 9.39 (`mw_new`'s
+  3.11 through `gt_nop`); `l3_park` 2.03 -> 0 and 4.52 -> 3.46. Measured (the CPU's T-states a tick inside
+  the routines, interrupts left out, against the same builds without this item): in `l3_tour3` `hz_update`
+  (the beams' writes) 33,704 -> 26,292 and `update_objects` (the turrets') 24,054 -> 22,452 on the FS-A1FX,
+  33,825 -> 26,286 and 24,135 -> 22,531 on C-BIOS_MSX2; in `l3_park` 3,634 -> 3,030 and 15,588 -> 14,818;
+  71 less in `l3_kill`. With logic-4 and logic-6 above (the m3 runs of the kit's G-SPEED against batch 1's
+  tip, the test drives' teleport stalls left out; ticks a second): `l3_tour3`'s beams, lifts and roof
+  (215-540, 545-1065, 1085-1400) 16.18, 17.04, 15.11 -> 17.33, 17.86, 15.97 on the FS-A1FX (+7.1, +4.8,
+  +5.7 %), 13.88, 15.27, 15.09 -> 14.51, 15.87, 15.94 on C-BIOS_MSX2 (+4.6, +4.0, +5.6 %), 14.04, 15.23,
+  15.00 -> 14.46, 15.88, 16.04 on the Expert; `l2_tour` (20-1590) 23.05 -> 23.23 (FS-A1FX), 19.03 -> 19.16
+  (C-BIOS_MSX2), its end (2080-2350) 21.48 -> 22.25 and 17.24 -> 17.49; every other window of the gate,
+  the turbo R's included, within its timing controls. The fixed area +48 bytes (the test 46, `gt_nop` 2).
+  The plan's part (c), a "last
+  patch found" hint per row in `MP_ROW`'s tail, was not built: a record of every `get_tile` and
+  `map_write` walk with the row's chain at that moment (`l3_tour3` on both VDPs, `l3_park`, `l2_tour`)
+  shows the chains listing a row's patches newest first while the beams, the turrets and the engines go
+  through a row's cells in ascending columns, the order those patches were made, so such a hint holds the
+  cell before the one asked for: 648 of 46,833 checks would hit over tour3 (FS-A1FX), and the hint's code,
+  its T-states counted on the recorded walks, would cost 1,811 a tick more there (2,062 to 2,193 in its
+  beams, lifts and roof windows; 350 in park). A hint of each row's lowest and highest patched column, for `get_tile` alone, would save 280 to
+  1,790 T-states a tick in those windows, for about 58 bytes of the fixed area (estimated) that batches 2
+  and 3 need (`docs/PERF2_PLAN.md` 5.2): not built either.
 - **Palette on screen**: `pf_pal` (RAM) is the play field's palette the VBLANK loads (the HUD
   keeps its own, loaded at the split). It changes as the original's copper colours do: the
   fade (`pal_fade`: every 3-bit component at most the fade level / 4, the original's eight
