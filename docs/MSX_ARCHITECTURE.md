@@ -160,9 +160,9 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   every frame of an animation (summed gain; `robocop.json` "prefer"): 5.2 sprites on average. Per
   composition: a header (sprites, lines, bands, leftmost and rightmost dx, A sprites, most
   sprites on a line at full quality and on one layer, and since 2026-11-02 its bands with B
-  sprites, which `obj_set` copies into `O_BMASK` where it walked the band table, 81 T-states a
-  band: 405 for RoboCop's five; `COMP_HDR` 9, `SPR_COMP_HDR` in the pool's equates, a build with
-  an older conversion stops), the sprites in SAT order (per band, per
+  sprites, which `obj_set` copies into `O_BMASK` in 36 T-states where it walked the band table in
+  58 and 81 a band, 463 for RoboCop's five; `COMP_HDR` 9, `SPR_COMP_HDR` in the pool's equates, a
+  build with an older conversion stops), the sprites in SAT order (per band, per
   box: A, then B), each with its offset, a park bit (B), an A1 bit (A: one colour per line,
   every pixel, shown when its band's OR layer is dropped) and the ids of its pattern, colour row
   and A1 versions; then the **band table** (from the lowest band up: dy, A and B sprites,
@@ -397,6 +397,20 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   taken) runs only when an identity of the tick before found no record (`bf_unm` above 0), since
   otherwise every object with an identity has one; and `bob_begin` clears the categories' heads
   with six word stores (112 T-states a tick, 362 for the loop).
+
+  Measured (2026-11-02). Counted on the FS-A1FX by lane W2S (call counters times the T-states of
+  each event), the plan's bookkeeping, `bob_flush`'s walks, the parking and the band masks take
+  1.98 % of the Z80's time off level 2's tour (0.53, 1.20, 0.19 and 0.06 %) and 1.15 % off Cain's
+  kill drive (0.40, 0.59, 0.10 and 0.06 %); `pc_r`'s walk ran in none of the plans (every one
+  before), `bf_hide`'s in 14-17 % of the flushes, 93 % of the entries took the fast loop. On top
+  of the V9958's scroll bursts (below, "The ring's queued tiles in bursts"; openMSX headless, the
+  `EXTJOY` drive builds, ticks/s): the MSX2+ (FS-A1FX) level 2's end (l2_tour 2080-2350) 21.43 ->
+  22.66, level 2 20-1590 23.19 -> 23.42, the car park 20.75 -> 21.19, level 3's beams, lifts and
+  roof +2.0, +1.3 and +2.2 %, Cain's route +1.2 %; the MSX2 (C-BIOS_MSX2) and the Expert +0.3 to
+  +2.0 % in level 3's start and the car park, Cain's windows within -0.9..+1.2 %; the turbo R -0.2
+  to +1.4 %. Alone, on the V9958 (lane W2S, batch 2), the shorter CPU side published pictures before
+  the play-field composition was done (FB_HOLD pictures on Cain's kill drive 16 -> 39 on the
+  FS-A1FX); with the bursts they stay at 4 there (BASE 18, its timing controls 12-37).
 - **Frame structure** (main loop): wait for the last list's VBLANK; keys, seconds, HUD; after
   ticks: scroll update, `cam_mark`, RoboCop's composition, BOBs to objects, budget; without a
   tick: scroll update, `cam_follow`; then the plan (`spr_plan`: versions, queues, commits; its
@@ -1176,6 +1190,22 @@ which as sprites were striped, cut or left out.
     cells' window first as before. The V9938's engine (`scroll9938.asm`) still issues one command a
     call: its bursts (lane W2C's) raised the pictures held to `FB_HOLD` on the V9938 and wait for item
     7. Fixed area: 25 B (31 in the `VAT_ANIM=1` builds).
+  - Measured (2026-11-02; openMSX headless, the `EXTJOY` drive builds, the gate kit of batch 3 with
+    BASE = `level2` 7752890; ticks/s, BASE -> the bursts alone -> with the sprite engine's items of
+    the same day, above): the MSX2+ (FS-A1FX) Cain's route (kill 130-1400) 12.83 -> 13.38 -> 13.54,
+    the kill floors 13.18 -> 13.72 -> 13.86, the boss route 9.89 -> 10.01 -> 10.03; the turbo R
+    (FS-A1GT) Cain's route 18.47 -> 19.83 -> 19.80, the boss route 16.98 -> 18.70 -> 18.96, the beams
+    (tour3 215-540) 23.97 -> 24.90 -> 24.91, but the roof (tour3 1085-1400) 24.64 -> 24.14 -> 24.14:
+    there, scrolling right at about 25 ticks a second, a burst (a column of 13 tiles, 15-25 ms on the
+    turbo R's VDP) delays the play-field composition of the next picture, which then waits for its
+    BOBs (11-14 frames of 6-9 VBLANKs in ticks 1085-1230, 2 at BASE); yielding to any play-field work
+    (`fb_busy`) recovers it (24.64) but gives back Cain's route (18.79) and the boss route (17.52).
+    The V9938 machines are unchanged. The pictures without game progress go: on the turbo R's Cain's
+    chase (kill from tick 395) 16.1 -> 9.7 pictures a second, the camera now moving 6-7 px every
+    picture (before: still in 39 of 59 picture steps, then 16-px jumps; RoboCop's place on screen x
+    82-92 against 84-127), progress pictures 10.67 -> 10.34 a second over Cain's route. The pictures
+    held to `FB_HOLD` over whole drives: the FS-A1FX kill 18 -> 2, boss 12 -> 3; the FS-A1GT kill 8
+    -> 4, boss 16 -> 6 (with the sprite engine's items 4, 2, 7, 4).
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about
