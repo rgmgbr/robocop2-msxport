@@ -2760,7 +2760,8 @@ which also fired when the VBLANK interrupt's sound player passed the same addres
 
 **flash-1's page path by page state.** `pgprobe.tcl` logs with each page-path use the field engine's pages then
 (`s38_vis_page`, `s38_back_c0`, `fb_bsync`, `s38_phase`, `s38_i`, `s38_flip_wait`, `fb_eng`) and each new build
-target (`fb_bbinit`: the page being built's items still queued, the look flags), and ends with a summary line;
+target (`fb_bbinit`: the page being built's items still queued, the look flags; its breakpoint in `BANK_FRONT2` on
+a build with R3's `fs_sync`, where `fb_bbinit` runs since R3, else in `BANK_FIELD`), and ends with a summary line;
 `pgsum.py` counts the uses as ring (the V9958), shown, back-synced and back-rebuild (lane W2F's review, `rv.tcl`,
 `rvan.py`) and FAILs a use on a V9938 page not shown (`msx/field.asm` `fp_lkok` allows only the page shown).
 

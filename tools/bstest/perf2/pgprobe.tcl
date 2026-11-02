@@ -17,8 +17,9 @@
 # while it is copied again for a new build target (its pixels are not its list's composition): the
 # review of lane W2F's defect class (C/rev_w2f/tools/rv.tcl, rvan.py: flash-1 may take a piece's
 # background only from the page shown, msx/field.asm fp_lkok).
-# The breakpoints on fp_page, fd_copy and fb_bbinit (BANK_FIELD code at A000h) are taken while the
-# cartridge maps BANK_FIELD there (the ROM's "romblocks" debuggable, cen.tcl pf_bp): act_a000's test
+# The breakpoints on fp_page, fd_copy (BANK_FIELD code at A000h) and fb_bbinit (BANK_FIELD's before R3,
+# BANK_FRONT2's since: msx/ending.asm, a build with fs_sync) are taken while the cartridge maps that bank
+# there (the ROM's "romblocks" debuggable, cen.tcl pf_bp): act_a000's test
 # also counted the VBLANK sound player's passes over the same address in its own bank (sound.asm snd_bk
 # writes the bank register without act_a000). The labels are flash-1's (fp_page, fd_copy, fb_lkf0,
 # fb_lkf1, fb_lkq) and the field engine's RAM, read from the build's label file: a build without
@@ -41,7 +42,10 @@ proc pg_setup {dir rom labels drive from n {level 3}} {
 	set bf [pf_lab BANK_FIELD]
 	pf_bp $rom [pf_lab fp_page] pg_hit [list $bf]
 	pf_bp $rom [pf_lab fd_copy] pg_diff [list $bf]
-	pf_bp $rom [pf_lab fb_bbinit] pg_bb [list $bf]
+	# (R3 moved fb_bbinit to BANK_FRONT2 with the sync, fs_sync: there BANK_FIELD's code at its address is another
+	#  routine's)
+	set bb [expr {[pf_lab fs_sync 0] ? [pf_lab BANK_FRONT2] : $bf}]
+	pf_bp $rom [pf_lab fb_bbinit] pg_bb [list $bb]
 }
 proc pg_list {a} {
 	set n [peek $a]
