@@ -1,11 +1,16 @@
-"""The cadence's options for the user's choice (performance campaign 2, docs/PERF2_PLAN.md D2 and D3; nothing
-decided: every build without them is byte-identical): tools/mkrom.py CAD_ADAPT (D2's loop-3: a picture that took
-fewer than CAD_ADAPT VBLANKs runs at most 2 game ticks, a slower one up to CAD_MAX or CAD_HOLD) and LAG_X (D3:
-how far the V9938 engine's view may lag behind the camera in x before the ticks are held). Their values and
-refusals, where their code is (msx/player.asm only), and their rules as the code makes them: the cap cadence
-takes for each VBLANK count, and the lags at which cam_lag holds the ticks with each scroll engine."""
+"""The cadence's options (performance campaign 2, docs/PERF2_PLAN.md D2 and D3): tools/mkrom.py CAD_ADAPT (D2's
+loop-3, CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8, the product's cadence since the user's choice of 2026-11-02: a picture that
+took fewer than CAD_ADAPT VBLANKs runs at most 2 game ticks, a slower one up to CAD_MAX or CAD_HOLD;
+CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0 is the cadence until then) and LAG_X (D3, not decided, default 32: how far the
+V9938 engine's view may lag behind the camera in x before the ticks are held). Their values and refusals, the
+product with them and with the look and cadence until 2026-11-02 (FLASH_LOOK=0, D1's, with the cadence above),
+where their code is (msx/player.asm only), and their rules as the code makes them: the cap cadence takes for each
+VBLANK count, and the lags at which cam_lag holds the ticks with each scroll engine."""
 from __future__ import annotations
 
+import contextlib
+import io
+import re
 import sys
 import tempfile
 import unittest
@@ -62,13 +67,49 @@ def held(lag, lag_x, eng):
 class CadenceOptionTests(unittest.TestCase):
 
     def test_the_options(self):
-        self.assertEqual(mkrom.OPTIONS["CAD_ADAPT"][0], 0)
+        # loop-3 is the product's cadence (the user's choice of 2026-11-02); LAG_X keeps LAG_MAX
+        self.assertEqual([mkrom.OPTIONS[k][0] for k in ("CAD_MAX", "CAD_HOLD", "CAD_ADAPT")], [3, 3, 8])
         self.assertEqual(mkrom.OPTIONS["LAG_X"][0], equ(code("player.asm"), "LAG_MAX"))
         with tempfile.TemporaryDirectory() as t:
             out = str(Path(t) / "x.rom")
-            for opts in (["CAD_ADAPT=8"], ["CAD_ADAPT=256", "CAD_MAX=3"], ["CAD_ADAPT=-1", "CAD_MAX=3"],
-                         ["LAG_X=31"], ["LAG_X=65"], ["LAG_X=0"]):
+            # CAD_ADAPT needs a cap above 2, the default's too: the cadence until 2026-11-02 names CAD_ADAPT=0
+            for opts in (["CAD_ADAPT=8", "CAD_MAX=2", "CAD_HOLD=2"], ["CAD_MAX=2", "CAD_HOLD=2"],
+                         ["CAD_ADAPT=256"], ["CAD_ADAPT=-1"], ["LAG_X=31"], ["LAG_X=65"], ["LAG_X=0"]):
                 self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + opts), 2, opts)
+        # the checks pass for the cadence and look until 2026-11-02, loop-1, and one cap of 2 with the other 3
+        for opts in (["FLASH_LOOK=0", "CAD_MAX=2", "CAD_HOLD=2", "CAD_ADAPT=0"],
+                     ["CAD_MAX=2", "CAD_HOLD=2", "CAD_ADAPT=0"], ["CAD_ADAPT=0"], ["CAD_MAX=2"], ["CAD_HOLD=2"]):
+            with self.assertRaises(FileNotFoundError, msg=opts):      # (past the checks: the level's files)
+                mkrom.main(["mkrom.py", "/nonexistent/level1", "/nonexistent/x.rom"] + opts)
+
+    @unittest.skipUnless((ROOT / "build" / "msx" / "level1.map").exists()
+                         and (ROOT / "build" / "msx" / (mkrom.POOL + ".bin")).exists(), "needs the conversions (make msx)")
+    def test_the_product_and_the_look_and_cadence_until_2026_11_02(self):
+        """The product (flash-7 and loop-3, the defaults) and the build with FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2
+        CAD_ADAPT=0 (the look and cadence until 2026-11-02, the product of before byte for byte) both build; they
+        differ only in the fixed area (flash-7 22 bytes fewer, CAD_ADAPT's block 14 more) and LC1 (flash-7's
+        slot_clear, 5 more), and the rc-edge table's RC_K is 3 against 2."""
+        ends, rck = {}, {}
+        with tempfile.TemporaryDirectory() as t:
+            for name, opts in (("prod", []), ("old", ["FLASH_LOOK=0", "CAD_MAX=2", "CAD_HOLD=2", "CAD_ADAPT=0"])):
+                out = Path(t) / name / "rc2.rom"
+                out.parent.mkdir()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(mkrom.main(["mkrom.py", str(ROOT / "build" / "msx" / "level1"), str(out)] + opts),
+                                     0, name)
+                lab = out.with_suffix(".labels").read_text()
+                ends[name] = dict(re.findall(r"^(\w+_end):\s+equ \$([0-9a-f]+)$", lab, re.M))
+                ends[name]["size"] = len(out.read_bytes())
+                rck[name] = re.search(r"^RC_K: equ (\d+)", (out.parent / "gen" / "rcedge.inc").read_text(), re.M).group(1)
+        a, b = ends["old"], ends["prod"]
+        self.assertEqual(a["size"], b["size"])
+        diff = {k: int(b[k], 16) - int(a[k], 16) for k in ("code_end", "lc1_end", "lc2_end", "l1_end", "lc3_end",
+                                                         "input_end", "front_end", "field_end", "music_end",
+                                                         "puzl_end", "frng_end", "l2_end")}
+        self.assertEqual(diff, {"code_end": -8, "lc1_end": 5, "lc2_end": 0, "l1_end": 0, "lc3_end": 0,
+                                "input_end": 0, "front_end": 0, "field_end": 0, "music_end": 0, "puzl_end": 0,
+                                "frng_end": 0, "l2_end": 0})
+        self.assertEqual((rck["old"], rck["prod"]), ("2", "3"))
 
     def test_where_the_code_is(self):
         uses = [(f.name, l) for f in sorted((ROOT / "msx").glob("*.asm")) for l in code(f.name)

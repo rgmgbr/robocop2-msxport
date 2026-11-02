@@ -197,13 +197,17 @@ OPTIONS = {
     "EXTJOY": (0, "1 = test build driven from openMSX (tools/openmsx_rc2.tcl rc2_drive_trace): input in ext_joy"),
     "LOCKSTEP": (0, "K > 0 = test build: two game ticks every K frames whatever the CPU time (exact display tests)"),
     "TICK_HZ": (25, "game ticks per second: 25 (the PAL original, the default) or 30 (the NTSC release)"),
-    "CAD_MAX": (2, "most game ticks run for one picture: more are lost (the game slows down, as the original does when busy;"
-                   " 2: an animation never skips a step of 2 ticks, about 5 % slower in busy scenes)"),
-    "CAD_HOLD": (2, "the same while the V9938 scroll keeps the camera at a page's edge (its next page not built yet)"),
-    "CAD_ADAPT": (0, "N > 0 = a picture that took fewer than N VBLANKs runs at most 2 game ticks, only a slower one up"
-                     " to CAD_MAX (or CAD_HOLD), for the user's choice (docs/PERF2_PLAN.md D2, loop-3: N = 8 with"
-                     " CAD_MAX=3 CAD_HOLD=3, 3 ticks only below 7.5 pictures a second at 60 Hz; msx/player.asm"
-                     " cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone (as always)"),
+    "CAD_MAX": (3, "most game ticks run for one picture: more are lost (the game slows down, as the original does when"
+                   " busy); 3 with CAD_ADAPT 8 (loop-3, the user's choice of 2026-11-02, docs/PERF2_PLAN.md D2): 3 only"
+                   " for a picture that took 8 VBLANKs or more, the game faster where pictures are slowest, 2 for every"
+                   " faster picture; the cadence until then, at most 2 for every picture (an animation never skips a"
+                   " step of 2 ticks): CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0"),
+    "CAD_HOLD": (3, "the same while the V9938 scroll keeps the camera at a page's edge (its next page not built yet)"),
+    "CAD_ADAPT": (8, "N > 0 = a picture that took fewer than N VBLANKs runs at most 2 game ticks, only a slower one up"
+                     " to CAD_MAX (or CAD_HOLD): 8 with CAD_MAX=3 CAD_HOLD=3 is loop-3, the user's choice of 2026-11-02"
+                     " (docs/PERF2_PLAN.md D2: 3 ticks only below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz;"
+                     " msx/player.asm cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone"
+                     " (CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0: the cadence until 2026-11-02)"),
     "LAG_X": (32, "pixels the view shown may lag behind the camera in x with the V9938 engine (the MSX2: its scroll"
                   " builds a page while the camera moves on; the ticks are held beyond it), 32-64, for the user's"
                   " choice (docs/PERF2_PLAN.md D3: 64); y and the V9958's engine keep 32, and the ticks stop while"
@@ -264,11 +268,13 @@ OPTIONS = {
                     " whether the scroll engines are idle or not (msx/tiles.asm vat_tick) and drawn in the next window"
                     " between the HUD split and the VBLANK (msx/sprites.asm feed_vdp); 0 = only at the engines' idle"
                     " points"),
-    "FLASH_LOOK": (0, "the look of an enemy's hit flash, for the user's choice (docs/PERF2_PLAN.md D1; msx/bob.asm"
-                      " fl_note; docs/MSX_ARCHITECTURE.md): 0 = one white picture for each hit (as always); 6 = at"
-                      " most one white picture in 4 per enemy; 7 = an enemy is white in the game tick of a hit and"
-                      " the 3 ticks after it, every hit starting the 4 ticks again (hits at most 4 ticks apart keep"
-                      " it white; needs CAD_MAX and CAD_HOLD at most 4); the logic as always"),
+    "FLASH_LOOK": (7, "the look of an enemy's hit flash (msx/bob.asm fl_note; docs/MSX_ARCHITECTURE.md): 7 = an"
+                      " enemy is white in the game tick of a hit and the 3 ticks after it, every hit starting the 4"
+                      " ticks again (hits at most 4 ticks apart keep it white; needs CAD_MAX and CAD_HOLD at most 4),"
+                      " the user's choice of 2026-11-02 (docs/PERF2_PLAN.md D1: a steady white while shots come, where"
+                      " white and normal in turn recomposed a standing enemy at every picture); 0 = one white picture"
+                      " for each hit (the look until then); 6 = at most one white picture in 4 per enemy; the logic as"
+                      " always"),
 }
 KEY_BITS = {"u": 0x01, "d": 0x02, "l": 0x04, "r": 0x08, "f": 0x10}   # the joystick byte ($802E)
 
@@ -962,15 +968,16 @@ def main(argv: list[str]) -> int:
         return 2
     if not 0 <= opts["CAD_ADAPT"] <= 255 or (opts["CAD_ADAPT"] and max(opts["CAD_MAX"], opts["CAD_HOLD"]) < 3):
         print("CAD_ADAPT must be 0-255, and needs CAD_MAX or CAD_HOLD above 2 (it keeps 2 ticks a picture below"
-              " its VBLANKs: msx/player.asm cadence)", file=sys.stderr)
+              " its VBLANKs: msx/player.asm cadence; at most 2 ticks for every picture, the cadence until"
+              " 2026-11-02: CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0)", file=sys.stderr)
         return 2
     if not 32 <= opts["LAG_X"] <= 64:
         print("LAG_X must be 32-64 (msx/player.asm cam_lag: 32 as always)", file=sys.stderr)
         return 2
     # (7's white lasts the hit's tick and the 3 after it: a frame of more ticks could skip all four)
     if opts["FLASH_LOOK"] == 7 and (opts["CAD_MAX"] > 4 or opts["CAD_HOLD"] > 4):
-        print("FLASH_LOOK=7 needs CAD_MAX and CAD_HOLD at most 4 (a hit's 4 white ticks must reach the tick"
-              " shown: msx/bob.asm fl_note)", file=sys.stderr)
+        print("FLASH_LOOK=7 (the default) needs CAD_MAX and CAD_HOLD at most 4 (a hit's 4 white ticks must reach"
+              " the tick shown: msx/bob.asm fl_note); more with FLASH_LOOK=0 or 6", file=sys.stderr)
         return 2
     if opts["PZ_LEVEL"] not in (1, 2) or opts["PZ_TEST"] not in (0, 1, 2) or not 0 <= opts["TAG"] <= 99 \
             or opts["RG_ADJ"] not in (0, 1):

@@ -783,8 +783,8 @@ which as sprites were striped, cut or left out.
     any cache frame. `bob.asm` `fb_add` sets the list entry's bit 7 for a `BM_FLASH` record, and
     `fb_wants` keeps it in level 3 only (`fb_fwm` 80h), so levels 1 and 2 keep their sprite
     silhouettes. A play-field frame without a white copy (the lift, the rocket, the smoke, a debris
-    part) shows its normal look. Which pictures take the white look: one per hit, or `FLASH_LOOK`'s
-    (below, "Game logic": "The hit flash's look").
+    part) shows its normal look. Which pictures take the white look: `FLASH_LOOK`'s rule (below, "Game
+    logic": "The hit flash's look"; the product's `7` since 2026-11-02, one picture per hit before).
   - **A look-only change** (performance campaign 2's flash-1, `docs/PERF2_PLAN.md` item 3; `field.asm`
     `fd_lkchk`, `fp_lkok`, `fb_pgbg`): when a page's list and the list wanted differ only in bit 7 of their
     frames (a hit flash on or off: the same BOBs at the same places, in the same order), each piece of the
@@ -869,9 +869,12 @@ which as sprites were striped, cut or left out.
   main-loop frame (`wf_n`) and the game ticks every `CAD_TICK` = 300 / `TICK_HZ` (12 at
   25 Hz). A frame whose work took longer (busy scenes: the logic costs about 74,000 T-states a
   tick, a 60 Hz frame has 59,659) is caught up: the ticks due run in a row (`g_tick`, at most
-  `CAD_MAX` = 2 for one picture (4 until 2026-10-21: catching up skipped animation steps,
-  the walk's among them; 2 costs about 5 % of speed in busy scenes, 92 % in the worst 2 s), `CAD_HOLD` = 2 while the V9938 scroll keeps the camera at a
-  page's edge, none while the view shown is 32 px or more behind the one wanted, or behind at
+  `CAD_MAX` = 3 for one picture, `CAD_HOLD` = 3 while the V9938 scroll keeps the camera at a page's
+  edge, and at most 2 for a picture that took fewer than `CAD_ADAPT` = 8 VBLANKs (loop-3, the
+  user's choice of 2026-11-02, `docs/PERF2_PLAN.md` D2: 3 ticks only below 7.5 pictures a second at
+  60 Hz; below, "The cadence's options"; the cap was 4 until 2026-10-21, when catching up skipped
+  animation steps, the walk's among them, then 2 for every picture until 2026-11-02, about 5 % of
+  speed in busy scenes, 92 % in the worst 2 s), none while the view shown is 32 px or more behind the one wanted, or behind at
   all while RoboCop's next picture could show an opaque pixel outside the picture shown (`cam_lag`,
   `rc_safe`: the scroll catches up first; the bound, rc-edge, below; until 2026-10-23 `rc_safe` left D = FFh on its
   right-edge return and the cadence took that as its cap: every due tick ran there instead of
@@ -889,8 +892,9 @@ which as sprites were striped, cut or left out.
     SAT x 8-255 on the V9958, whose MSK hides 0-7;
   - his place: Q = `O_X` - `p_hotx` + `spr_xadj` (the composition's x without its record's hotspot, in SAT x). The
     view shown moves only towards the one wanted, which carries him away from the edge he walks towards;
-  - the frame's growth: k = min(the ticks due, `RC_K`) ticks (`RC_K` = the larger of `CAD_MAX` and `CAD_HOLD`: 2 in
-    the product, 3 with loop-1 or loop-3), his place moving at most Gr to the right and Gl to the left (`rc_grow`):
+  - the frame's growth: k = min(the ticks due, `RC_K`) ticks (`RC_K` = the larger of `CAD_MAX` and `CAD_HOLD`: 3 in
+    the product since loop-3, 2 with `CAD_MAX=2 CAD_HOLD=2`), his place moving at most Gr to the right and Gl to the
+    left (`rc_grow`):
     his step a tick times k, `RC_VX` = 3 px (`pl_xstep`'s largest; a trolley carries him 2 while he hangs, with
     step 0), in level 1 + `RC_BELT` = 8 (its conveyors carry him 4 px a tick, `mapobj.asm` `act_cv`, and entries
     15 and 16 of its object list are one belt twice; its barriers' push and the vehicle's ride are 4); in level 3
@@ -949,14 +953,18 @@ which as sprites were striped, cut or left out.
   1 of 14,369 pictures. The boxes are only 1 px wider than his pixels for compositions 2, 6, 10, 14 and 74 (0 for 70;
   13-15 px for 22, 26, 30, 169 and 174), and the punch's arm grows 12 px (74 -> 82) or 14 px (14 -> 82) past the
   box's last column within a frame, where the box test left 10 px.
-- **The cadence's options for the user's choice** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md`
-  D2 and D3; nothing decided: every build without them runs as always, byte for byte):
-  - `CAD_ADAPT=n` (default 0): a frame that took fewer than n VBLANKs (`wf_n`) runs at most 2
-    ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 14 bytes of the
-    fixed area). Loop-3 is `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`: 3 ticks a picture only for the
-    pictures of 8 VBLANKs or more (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), where
-    RoboCop's walk advances 1 and 2 drawings alternately; the faster scenes as always. Loop-1 is
-    `CAD_MAX=3 CAD_HOLD=3` alone: 3 whenever a picture is late (no code).
+- **The cadence's options** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md` D2 and D3; loop-3 is the
+  product's cadence since the user's choice of 2026-11-02, `LAG_X` is not decided):
+  - `CAD_ADAPT=n` (default 8 since 2026-11-02, 0 before): a frame that took fewer than n VBLANKs (`wf_n`)
+    runs at most 2 ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 14 bytes
+    of the fixed area; `tools/mkrom.py` refuses it without a cap above 2). Loop-3, the product's cadence,
+    is `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`: 3 ticks a picture only for the pictures of 8 VBLANKs or more
+    (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), where RoboCop's walk advances 1 and 2
+    drawings alternately; the faster pictures take 2 at most, as before (the user rejected 3-4 ticks a
+    picture in level 1 on 2026-10-21, when its pictures were slow, and keeps that rule: level 1 must show
+    no 3-tick picture). The cadence
+    until 2026-11-02 is `CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` (with `FLASH_LOOK=0` the product of before,
+    byte for byte). Loop-1 is `CAD_ADAPT=0` with the caps of 3: 3 whenever a picture is late (no code).
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
     view shown may lag n pixels behind the camera in x before the ticks are held (`cam_lag`, after
     `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next
@@ -1434,11 +1442,11 @@ which as sprites were striped, cut or left out.
   shows its single-layer patterns (they hold every pixel) with one colour row
   (`SPR_SIL_FLASH`: the joint palette's nearest to the background's colour 15;
   `SPR_SIL_BLACK`: its black), chosen per object (`os_mode`, bits 0-1 of `O_EC`). A hit flash
-  drawn in a tick the display skips is held for the tick shown (`fl_pend`), or it would never
-  reach the screen.
-- **The hit flash's look** (`tools/mkrom.py` `FLASH_LOOK`, 2026-11-01; a comparison for the user's
-  choice, `docs/PERF2_PLAN.md` D1: nothing is decided, and every build without the option looks as
-  always, byte for byte). Each hit shows the enemy white for one picture; with hits every 4 ticks
+  drawn in a tick the display skips reaches the tick shown: `FLASH_LOOK` 0 and 6 hold it
+  (`fl_pend` bit 0), the product's 7 keeps the enemy white 4 ticks (below).
+- **The hit flash's look** (`tools/mkrom.py` `FLASH_LOOK`, 2026-11-01; `docs/PERF2_PLAN.md` D1: `7` is
+  the product's look since the user's choice of 2026-11-02, after the previews test10-test12;
+  `FLASH_LOOK=0` builds the look until then). With `0` each hit shows the enemy white for one picture; with hits every 4 ticks
   and 2 ticks a picture, a shot enemy changes look at every picture, and where it stands still (Cain
   on level 3's ground floor) each change recomposes it (`docs/PERF2_PLAN.md` 1.5). The options:
   - `6`: at most one white picture in 4 per enemy. A hit within the 3 pictures after a white one
@@ -1508,7 +1516,7 @@ which as sprites were striped, cut or left out.
   logic about 74,000 T-states a tick, the sprite pipeline about 165,000 per picture, the
   interrupts 16 % of the time). `CAD_MAX=2` traded speed in busy scenes (about 74 %) for
   9.3 pictures then (with five enemies). 2026-10-21 (one enemy, `drive_play`, 38-40 s):
-  `CAD_MAX` 4 100 % speed and 11.7-12.0 pictures a second, `CAD_MAX` 2 (the default since)
+  `CAD_MAX` 4 100 % speed and 11.7-12.0 pictures a second, `CAD_MAX` 2 (the default from then to 2026-11-02)
   94-96 % (92 % in the worst 2 s) and 12.1-12.4 pictures. Lighter scenes run at full speed. Measured with `tools/openmsx_rc2.tcl`
   (`rc2_prof` for the main loop's stages, `rc2_sample_span` for a sampling profile of one
   stretch, `tools/msxprof.py` to name the samples). Done so far: the catch-up cadence, ticks

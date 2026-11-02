@@ -520,6 +520,38 @@ and `pl_pass`); V9938-SYNC `fb_bsq` 074Bh, `fb_sbi` E0FEh and `fb_sdm` E0FFh; TI
 `fb_r` within a call and frees `fb_cl` (E0FCh). rc-edge, field-7 and field-10 take none. Still free: ED0Dh-ED0Fh,
 EDFFh, E0FCh; MP_ROW's tail (0A33h-0AFFh, scroll-2 (c)'s, not built).
 
+### 2.9 The user's D1 and D2 as the product's defaults (2026-11-02)
+
+Measured, from `tools/bstest/variants.sh` (all 61 option sets) and `tools/bstest/l2base.py`'s bank limits, for builds of
+`perf2/wopt`, whose `tools/mkrom.py` defaults are the user's choices of 2026-11-02 (`docs/PERF2_PLAN.md` section 3):
+`FLASH_LOOK` 7 (flash-7) and `CAD_MAX` 3, `CAD_HOLD` 3, `CAD_ADAPT` 8 (loop-3), against `level2` 6cbf71f (batch 3a's code
+with the defaults of before, 0, 2, 2 and 0). The bank map is 2.5's: no block moves. **59 of 61 sets build**, as at
+6cbf71f: `DEMO_ACTORS` 2 and 5 fail (114 B short in the fixed area; 122 at 6cbf71f); every set that built at 3b11042
+builds. Every set moves by the same bytes: **the fixed area +8** (flash-7 frees 22: no held hit and no frame-end loop;
+`CAD_ADAPT`'s block at `cd_cap` takes 14) and **LC1 -5** (flash-7's `slot_clear`); no other bank changes. The build with
+`FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` is 6cbf71f's product byte for byte (`950151ef94e0a653`).
+
+| Bank | Product 6cbf71f | Product, the new defaults | Lowest set 6cbf71f | Lowest set, the new defaults | Least in any set, the new defaults |
+|---|---:|---:|---:|---:|---|
+| fixed area | 285 | **293** | 150 | **158** | 71 (`DEMO_HUD=1`; 155 `VAT_ANIM=1 VAT_TICK=1 CHEAT=1 LV_TEST=2 TAG=7`); `DEMO_ACTORS` 2 and 5 do not build |
+| LC1 | 24 | **19** | 24 | **19** | 19 (148 in the trace builds, 153 before) |
+| LC2 | 4,467 | 4,467 | 4,467 | 4,467 | 4,467 |
+| `BANK_L1` | 378 | 378 | 378 | 378 | 378 |
+| LC3 | 4,291 | 4,291 | 4,291 | 4,291 | 4,258 (`CHEAT=1`) |
+| INPUT | 11 | 11 | 11 | 11 | 11 |
+| FRONT | 1,088 | 1,088 | 690 | 690 | 642 (`DIAG=1 LV_TEST=2` or `3`) |
+| `BANK_FIELD` | 326 | 326 | 326 | 326 | 285 (the `EXTJOY` drive, trace and lock builds) |
+| MUSIC | 1,251 | 1,251 | 1,280 | 1,280 | 0 by the count in the two `DIAG=2` sets, as before |
+| `BANK_PUZL` | 4,483 | 4,483 | 4,483 | 4,483 | 4,483 |
+| `BANK_FRNG` | 264 | 264 | 264 | 264 | 264 |
+| `BANK_L2` | 933 | 933 | 933 | 933 | 28 (`VAT_ANIM=1`, unchanged) |
+| `BANK_FRONT2` | 5,394 | 5,394 | 5,394 | 5,394 | 5,349 (`VAT_ANIM=1 VAT_TICK=1 CHEAT=1 LV_TEST=2 TAG=7`) |
+| `BANK_L3` | 3,151 | 3,151 | 3,151 | 3,151 | 3,151 (3,647 with `VAT_ANIM=1`) |
+| `BANK_L3B` | 2,014 | 2,014 | 2,014 | 2,014 | 2,014 |
+
+The lowest set is `DIAG=1 PZ_TEST=1` and `DIAG=2 PZ_TEST=1` (`p_pzdiag`, `p_pzdiag2`), as in 2.6-2.8. With `LAG_X=64`
+(D3, not decided) the fixed area takes 12 bytes more (2.6). No RAM changes: flash-7 keeps its state in `fl_pend`.
+
 ## 3. What the rest of the game needs
 
 ### 3.1 The plan behind the numbers
