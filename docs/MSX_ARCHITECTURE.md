@@ -674,6 +674,33 @@ which as sprites were striped, cut or left out.
   game slows down, as the original does when its frame takes 3 VBLs) and the display skips
   their pictures (`bob_skip`: their BOBs are not even recorded). The timer's seconds count
   VBLANKs, not frames.
+- **RoboCop at the picture's edge** (rc-edge, measured 2026-11-02 on batch 1's code, `docs/PERF2_PLAN.md`
+  5.3's lane W2K). `rc_safe` tests his sprite boxes (`O_MINDX`, `O_MAXDX`) on the picture already shown,
+  before the frame's ticks; the frame's own steps and drawing change then still move him. On the V9938
+  the columns shown, in his x frame (`O_X`, `pub_spr`'s x: the camera at x 8), are s .. s + 255 with
+  s = ((R#18 & 15) xor 7) - 7 = 8 - (cam_x & 15): 8 .. 263 at the hold moving left, -7 .. 248 moving
+  right; a sprite pixel outside SAT x 0..255 is not shown. A probe (each list put on screen at
+  `iv_take`: its R#18 and RoboCop's `pub_spr` record, his composition's opaque pixels from the ROM's
+  pool through `tools/msxframe.py`; the test drives' teleport stalls left out) ran on C-BIOS_MSX2 and
+  the Expert with three drives: punches (down+fire, left/right released) started from walks right in
+  the building (camera mode 0, where the camera holds him at AX_MAX), 68 a machine, 58-60 of them
+  started with his box's right edge at x 220 or more while the view lagged 9-28 px; and left walks in
+  camera mode 1 (the roof, floors 20 and 40), about 2,190 frames a run, about 1,090 of them lagging.
+  Pictures where an opaque pixel of his lies outside the columns shown:
+  - the product's options: **0** of 14,664 pictures; his opaque pixels came within 3 px of the right
+    edge (the Expert, a punch at a lag of 25 px) and 6 px of the left;
+  - `LAG_X=64`: 0 of 14,556 (4 px right, 6 px left); loop-3 (`CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`): 0
+    of 14,477 (3 px, 6 px);
+  - loop-1 (`CAD_MAX=3 CAD_HOLD=3`): **1** of 14,369, by 3 px: on C-BIOS_MSX2 a 3-tick frame decided
+    with his box's right edge at 238 (rc_safe's limit 239) and the view 28 px behind carried a punch
+    (composition 82, arm to x + 44) to x 207 against the hold's edge at 248; otherwise 1 px right, 4 px
+    left.
+  So the product keeps him whole in these runs: the boxes are wider than his pixels (up to 15 px), which
+  covers a 2-tick frame's 6 px and a punch's longer arm. A 3-tick frame does not always fit: before
+  loop-1 (or loop-3, whose 3-tick frames are the slow pictures') becomes the product's, `rc_safe` must
+  bound the next picture with per-composition opaque extents and the frame's growth (the ticks it
+  allows x the x step, the next composition's extent). Records and scripts: the campaign's
+  `C/w2k/edge` (`edge.tcl`, `edge.py`, `punches.py`, `mkdrives.py`).
 - **The cadence's options for the user's choice** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md`
   D2 and D3; nothing decided: every build without them runs as always, byte for byte):
   - `CAD_ADAPT=n` (default 0): a frame that took fewer than n VBLANKs (`wf_n`) runs at most 2
