@@ -665,8 +665,9 @@ which as sprites were striped, cut or left out.
   `CAD_MAX` = 2 for one picture (4 until 2026-10-21: catching up skipped animation steps,
   the walk's among them; 2 costs about 5 % of speed in busy scenes, 92 % in the worst 2 s), `CAD_HOLD` = 2 while the V9938 scroll keeps the camera at a
   page's edge, none while the view shown is 32 px or more behind the one wanted, or behind at
-  all with RoboCop's sprites within 16 px of the screen's edge (`cam_lag`, `rc_safe`: the scroll
-  catches up first, so he never runs off the screen; until 2026-10-23 `rc_safe` left D = FFh on its
+  all with RoboCop's sprites within 16 px of the screen's edge on the picture shown (`cam_lag`, `rc_safe`:
+  the scroll catches up first; the test comes before the frame's ticks, so that frame's steps and
+  drawing change still move him on, `docs/PERF2_PLAN.md` 5.3's rc-edge; until 2026-10-23 `rc_safe` left D = FFh on its
   right-edge return and the cadence took that as its cap: every due tick ran there instead of
   none, up to 4 a picture, and his sprites reached 7-9 px past the right edge in 1-4 lists of
   each busy coverage window; fixed: never above 2, 0 lists beyond); a longer delay is lost and only then the
@@ -684,10 +685,12 @@ which as sprites were striped, cut or left out.
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
     view shown may lag n pixels behind the camera in x before the ticks are held (`cam_lag`, after
     `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next
-    page, RoboCop may run up to n - 1 pixels ahead of the scrolled view, and the view catches up in
-    page steps; `rc_safe` (unchanged) still holds the ticks while his sprites are within 16 px of a
-    screen's side (measured: they come within 12 px of the right side, 13 without the option, after
-    the frame's own steps). y keeps 32, and so does the V9958's ring (`fb_eng` 0: the MSX2+ and the
+    page, RoboCop may run ahead of the scrolled view by up to n - 1 pixels when the cadence decides,
+    plus that frame's own steps (measured: 70 px with n = 64, 37 with 32), and the view catches up in
+    page steps; `rc_safe` (unchanged) still holds the ticks while his sprite boxes are within 16 px of
+    x 0 or 256 on the picture shown (measured: they come within 12 px of x 256, 13 without the option;
+    at the V9938's hold R#18 insets the picture, which then ends at x 248: 5 px, 6 without). y keeps
+    32, and so does the V9958's ring (`fb_eng` 0: the MSX2+ and the
     turbo R take the default's path, a few T-states longer). D = 0 when the ticks are held, as the
     cadence needs: n - 32 is below 256.
   - Measured on batch 1 (2026-11-01, `docs/PERF2_PLAN.md` D2 and D3, ticks/s): loop-3 MSX2 / MSX2+
@@ -695,8 +698,8 @@ which as sprites were striped, cut or left out.
     17.59 / 12.50 -> 17.80 / 22.77 -> 22.93; loop-1 9.73 / 15.76 / 20.41 and 18.44 / 18.46 / 24.30;
     both at fewer pictures with progress where they act, the longest gaps between pictures up to
     about 85 ms longer. `LAG_X=64`: the MSX2's Cain's route 8.81 -> 10.44 (+18.4 %), the boss route
-    7.29 -> 8.53, the Expert the same; the view lags up to 70 px (37 without), RoboCop's sprites
-    within 39 px of the left side (64 without) and 12 of the right (13).
+    7.29 -> 8.53, the Expert the same; the view lags up to 70 px (37 without), RoboCop's sprite boxes
+    within 39 px of x 0 (64 without) and 12 of x 256 (13).
 - **Ported**: `main_loop` in its order: palette effects (`$F878`), `frame_keys` (`$F76C`),
   `player_move` (`$AFF8`), the collisions and pickups (`$FA7C`), the level's hazards (`$9150`:
   level 1's electric beams), `activate_objects` (`$9C06`), the special objects (`$8B32`: lifts,
@@ -1073,8 +1076,10 @@ which as sprites were striped, cut or left out.
     picture), Cain's look changes 87 times with `0` (44 white pictures, white and normal in turn),
     44 times with `6` (22 white pictures) and once with `7`, on all three machines (white from the
     first hit on: the turbo R shows him white in 320 of its 426 pictures there). With `7` each single
-    hit is white exactly 4 ticks (the boss route's 27, `l2_barrel`'s 9, each machine); level 2's
-    pairs of hits 4-6 ticks apart show 4 white pictures, or white, white, normal, white, white. The
+    hit is white exactly 4 ticks (the boss route's 27, `l2_barrel`'s 9, each machine). Level 2's
+    pairs of hits 4-6 ticks apart show, in the pictures with progress, 4 white pictures or white,
+    white, normal, white, white on the MSX2; 4-5 white or W W N W W on the MSX2+; 6-7 white or
+    W W W N W W W on the turbo R. The
     rule holds at every tick of the 27 runs (kill, boss, `l2_barrel`; looks 0, 6, 7; three
     machines). Without hits (Cain's route without fire, tour3, `l2_tour`) `6` and `7` run within -1.5
     to +0.7 % of `0`, the timing scatter. The first `7`, counted in pictures, measured before

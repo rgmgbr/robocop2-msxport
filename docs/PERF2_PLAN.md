@@ -559,12 +559,12 @@ shot enemy alternates white and normal every picture. The Amiga shows white 1 fr
     runs): the rule holds in every run (flash-7: at every tick, shown and skipped). On the ground floor Cain's look
     changes 87 times with 0, 44 with 6 and once with 7 on all three machines (white from the first hit on). With 7 each
     single hit is white exactly 4 ticks (boss 27 hits, l2_barrel 9, each machine). No enemy shows two looks in a picture
-    on the ground floor or l2_barrel. On the boss route the only mixed pictures are the kinds batch 1's look shows too:
-    Cain's muzzle flash (`$41358`, which `c22_fl` draws with `bob_draw`, draw_bob `$AB08`: its own colours in every
-    look; 0: 3 / 15 / 12 pictures on the MSX2 / MSX2+ / turbo R, 7: 31 / 16 / 26) and the first picture of a white
-    stretch while his 32 x 40 sprite part's white version still loads (0: 49 / 0 / 7, 7: 32 / 0 / 4); plus, with 7
-    only, one end-of-stretch picture on the MSX2 and one on the turbo R (the play-field parts normal, the sprite part
-    still white).
+    on the ground floor or l2_barrel. On the boss route the mixed pictures are Cain's muzzle flash (`$41358`, which
+    `c22_fl` draws with `bob_draw`, draw_bob `$AB08`: its own colours in every look; 13 / 15 / 13 pictures on the MSX2 /
+    MSX2+ / turbo R with 0, 14 / 8 / 7 with 6, 71 / 16 / 37 with 7) and, with 7 only, one end-of-stretch picture on the
+    MSX2 and one on the turbo R (the play-field parts normal, the 32 x 40 sprite part still white). No picture starts a
+    white stretch with a part still normal, in any look. (Each picture's sprite objects are matched with the `obj_key`
+    of its list's own tick, gfr - 1: `bob_flush` keys the list built after that tick.)
   - The contact sheets of a burst on the ground floor (16 pictures from tick 1600, looks 0, 6, 7, three machines):
     `C/dprev/sheets/burst_*.png`.
 
@@ -616,9 +616,13 @@ C/a_loop's prototype relaxed x on every machine; on the MSX2+ the x lag reaches 
 - What the player sees: while the V9938 scroll is late, RoboCop may run ahead of the scrolled view, the view catches up
   in page steps, and enemies may act near the edge. Measured (`C/dprev/lx.tcl`, from tick 130, kill and boss): the
   view lags at most 37 px with batch 1 (held at 32-39 px in about 53 % of the MSX2's frames on Cain's route) and at most
-  70 px with 64 (held at 64-71 px in about 45 %); RoboCop's sprites come within 39 px of the left side (64 with batch 1)
-  and 12 px of the right side (13 with batch 1): `rc_safe`, unchanged, holds the ticks within 16 px of a side. The
-  frames without a tick on the MSX2: Cain's route 1,723 -> 1,385, boss 1,101 -> 856.
+  70 px with 64 (held at 64-71 px in about 45 %): `cam_lag` tests the lag before the frame's ticks, so a frame allowed
+  at 63 px adds its own steps. RoboCop's sprite boxes come within 39 px of x 0 (64 with batch 1) and 12 px of x 256
+  (13 with batch 1). While the V9938 holds the camera, R#18 insets the picture (moving right it ends at x 248), so
+  his right edge came within 5 px of the picture's edge (6 with batch 1). `rc_safe`, unchanged, holds the ticks while
+  his boxes are within 16 px of x 0 / 256 on the picture already shown, before the frame's ticks run; one frame's steps
+  and drawing change can take him past that (5.3's rc-edge). The frames without a tick on the MSX2: Cain's route
+  1,723 -> 1,385, boss 1,101 -> 856.
 - Cost: 12 B (fixed area).
 
   | Scene | MSX2 | Expert | MSX2+ |
@@ -783,6 +787,7 @@ Serial chains:
 | 1 | W1F field | field-1 (level 3); field-2 with R1; FC-UPLOAD; field-1 (levels 1-2) | `tools/msxsprites.py`, `tools/bstest/fieldcheck.py`, `tools/msxframe.py`, `msx/field.asm`, `msx/ending.asm`, `msx/cold.asm`, `tests/` | W0 step 1 |
 | 1 | W1L logic | logic-1; logic-2 | `msx/tiles.asm`, `special.asm`, `level3.asm`, `level3obj.asm`, `msx.inc` (its rows), `tools/mkrom.py` with the table generator, `tests/` | W0 step 1 |
 | 1 | W1S sprites | spr-6; spr-1; spr-4 | `msx/sprites.asm`, `lvshared.asm`, `msx.inc` (its rows), the trampoline, `tests/` | W0 step 1 |
+| 2 | W2K kit, edges | the kit's recalibration (HANDOFF "batch 1" open issues); rc-edge | `tools/bstest/perf2/*`, `tools/bstest/fieldcheck.py`, `msx/player.asm` (`rc_safe`), `tests/` | batch 1 |
 | 2 | W2F flash | R2; flash-1 | `msx/field.asm`, `ending.asm`, the engines' callers, `msx.inc` | W1F |
 | 2 | W2C scroll | scroll-1 | `msx/scroll9938.asm`, `scroll9958.asm`, `tiles.asm` (the `fm38_bb` hook) | W1L, W1S |
 | 2 | W2L logic | logic-6; logic-4; scroll-2 (b, c) | `mapobj.asm`, `special.asm`, `plmove.asm`, `hits.asm`, `tiles.asm` (`fb_invf`, `map_write`, `get_tile`), `tools/cellmasks.py`, `tests/` | W1L, W1S |
@@ -797,6 +802,28 @@ Serial chains:
 field-1's levels 1-2 commit was dropped inside W1F. The gates on the merged tip, the speed table (HEAD
 against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign
 2, batch 1"; the free bytes: `docs/ROM_BUDGET.md` 2.5.
+
+**Batch 2's lane W2K (added after batch 1 and the previews' review).**
+- The kit's recalibration: the open issues in HANDOFF "Performance campaign 2, batch 1". They cover:
+  - the gates against timing controls, leaving out teleport ticks and records past a drive's end;
+  - `holds.py` judged per drive;
+  - `fieldcheck`'s redraw-queue addresses;
+  - LOCKSTEP for level 3 on the MSX2;
+  - `lvshared_check`'s tail copies;
+  - the census' `bu_lvl`.
+- rc-edge: `rc_safe` (player.asm) tests RoboCop's sprite boxes on the picture already shown, 16 px from x 0 / 256,
+  before the frame's ticks run.
+  - The V9938's hold insets the picture by R#18: 8 px on the left moving left, 7 px on the right moving right.
+  - One frame then adds CAD_HOLD x 3 px and a drawing change.
+  - The previews' review modelled this (`C/rev_dprev/refute_cadlag1`, `refute_cadlag2`). A steady walk stays inside
+    the picture with the opaque pixels: the boxes are wider than the pixels by up to 15 px (aim 2, records 13-15
+    walking left and 5-7 walking right).
+  - A punch started from a walk right can pass the held picture's right edge: by 1-3 px with 2 ticks, 4-6 px with 3
+    (test13, test14). This is pre-existing (the product, test12).
+  - Check on the MSX2 at runtime first: a punch from a walk right at AX_MAX, and a left walk in camera mode 1 (the
+    roof, floors 20 and 40).
+  - Then bound the next picture with per-record opaque extents and the frame's growth. That can also remove holds the
+    boxes cause today.
 
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.

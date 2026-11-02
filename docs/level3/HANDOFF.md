@@ -1702,7 +1702,8 @@ second, HEAD -> **batch 1** (the change in ticks/s).
    about 185 B.
 6. **D1's numbers**: flash-7 as specified does not give the turbo R a steady white (23.5 pictures/s, 58 changes);
    `../PERF2_PLAN.md` D1 now carries the measured numbers and the tick-counted hold (`C/wd1/exp`, not committed).
-   The previews are Wd1's test10 (flash-6) and test11 (flash-7) files in `C/wd1/preview`.
+   The previews were Wd1's test10 (flash-6) and test11 (flash-7) files in `C/wd1/preview`, superseded by the
+   previews of D1-D3 below (the same names; Wd1's ROMs deleted).
 7. **LOCKSTEP=24** is too short for level 3 on the MSX2 (late frames at boss 225 and kill 990, as at HEAD): the
    V9938 records are judged up to their first late frame.
 8. **`tools/bstest/build.sh`'s refusal** compares the unresolved path: a worktree whose `build/` links to the main
@@ -1724,7 +1725,9 @@ L3 loop-3, L1 loop-1, LX lag-x), `N/<set>/speed` and `N/<set>/logic` the runs an
 | `5e80982` | D1: `FLASH_LOOK` 7 counted in game ticks (white in a hit's tick and the 3 after it, every hit starting them again); 6 unchanged |
 | `e2c2f72` | D2: `CAD_ADAPT` (loop-3 = `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`; loop-1 = `CAD_MAX=3 CAD_HOLD=3`, the CAD_HOLD C/a_loop measured with) |
 | `8bdc458` | D3: `LAG_X` (the V9938 engine's lag in x; the V9958's ring keeps 32) |
-| this one | `../PERF2_PLAN.md` D1-D3 with the measured numbers, `../ROM_BUDGET.md` 2.6, `../MSX_ARCHITECTURE.md`, this entry |
+| `4dbe821` | `../PERF2_PLAN.md` D1-D3 with the measured numbers, `../ROM_BUDGET.md` 2.6, `../MSX_ARCHITECTURE.md`, this entry |
+| `a32f5b4` | the previews' review: `tools/bstest/build.sh` compares OUT's folders with `build/msx` by inode (`build/MSX` was not refused on the Mac's case-insensitive volume), with a test |
+| this one | the previews' review: the look's mixed pictures recounted (`lkan2.py` now matches each picture with its list's own tick's `obj_key`), the view's lag and RoboCop's distance from the picture's edge with `LAG_X`, level 2's flash-7 pattern per machine, open issues 3-4 and 5.3's lane W2K |
 
 The previews (`C/dprev/preview`, each built twice to the same bytes, 2 MiB, 12 known warnings; test9's play-test options
 `TAG=N LV_TEST=2|3 CHEAT=1 INVULN=1` plus the option):
@@ -1761,25 +1764,34 @@ The previews (`C/dprev/preview`, each built twice to the same bytes, 2 MiB, 12 k
   FS-A1GT; `C/dprev/lkan2.py`, Wd1's `lkan.py` with flash-7's rule at every tick): the rule holds in all 27 runs; the
   ground floor's look changes 87 / 44 / 1 (looks 0 / 6 / 7) on each machine; with 7 every single hit is white exactly 4
   ticks (boss 27, l2_barrel 9, each machine); no picture with two looks of an enemy on the ground floor or l2_barrel; on
-  the boss route only Cain's muzzle flash (drawn with `bob_draw`) and the first picture of a white stretch whose
-  32 x 40 sprite part still loads its white version (both with look 0 too), and with 7 one end-of-stretch picture on the
-  MSX2 and one on the turbo R (`C/dprev/N/an_kill_ground.txt`, `an_boss.txt`, `an_l2b.txt`). Contact sheets of a burst
-  (16 pictures from tick 1600 at the HUD split): `C/dprev/sheets/burst_m2.png`, `burst_fx.png`, `burst_tr.png`,
-  `burst_all.png`, looked at: 0 white and normal in turn, 6 one white in 4, 7 white in all 16 on every machine, Cain whole.
+  the boss route only Cain's muzzle flash (drawn with `bob_draw`; with looks 0 and 6 too) and, with 7, one
+  end-of-stretch picture on the MSX2 and one on the turbo R (the play-field parts normal, the 32 x 40 sprite part still
+  white); no picture starts a white stretch with a part normal. Each picture's sprite objects are matched with the
+  `obj_key` of its list's own tick, gfr - 1 (`C/dprev/N/an_kill_ground.txt`, `an_boss.txt`, `an_l2b.txt`, made with
+  that matching). Contact sheets of a burst (16 pictures from tick 1600 at the HUD split): `C/dprev/sheets/burst_m2.png`,
+  `burst_fx.png`, `burst_tr.png`, `burst_all.png`, looked at: 0 white and normal in turn, 6 one white in 4, 7 white in
+  all 16 on every machine, Cain whole.
 - **D3 on the V9958**: unchanged by construction (`fb_eng` 0 takes the default's return); measured: the MSX2+'s windows
   within -3.8..+0.6 % (the timing scatter), and its x lag at most 37 px with and without the option (`C/dprev/lx.tcl`).
 - **The previews** (`C/dprev/pv.tcl`, Wd1's with RoboCop's place logged): on a fresh Gradiente_Expert20_64K each file
-  starts and shows TEST 10-15 at its briefing (`C/dprev/png/tags.png`, looked at); every `-l3` reaches Cain (in slot 0
-  at tick 114, hit from tick 114 on, 431-441 hits in 700 ticks); every `-l2` plays (RoboCop walks from x 352 to 802 in
-  300 ticks, 420 ticks run). The D1 previews (test10, test11, with test12) once on the FS-A1GT: the same.
+  starts and shows TEST 10-15 at its briefing (`C/dprev/png/tags.png`, looked at); every `-l3` reaches Cain (`pv.tcl`
+  moves RoboCop to x 300 at tick 30 and to the roof, x 900 y 112, at tick 45; Cain in slot 0 at tick 114, hit in 107-110
+  of 700 ticks from tick 114 on, each hit noted by his 4 flash-aware parts); every `-l2` plays (RoboCop walks from x 352
+  to 802 in 300 ticks, 420 ticks run). The D1 previews (test10, test11, with test12) once on the FS-A1GT: the same.
 
 ### Open issues
 
 1. **Cain's muzzle flash** keeps its colours while Cain is white (`level3obj.asm` `c22_fl` draws it with `bob_draw`,
-   draw_bob `$AB08`, not a flash-aware call): with flash-7's longer white stretches it shows more often (31 pictures on
-   the MSX2's boss route, 3 with look 0). The user may ask for it white too.
-2. **The first picture of a white stretch** can show Cain's play-field parts white and his 32 x 40 sprite part normal
-   while its white version loads (pre-existing: 49 pictures on the MSX2's boss route with look 0, 32 with 7), and the
-   last one the reverse (with 7: one picture on the MSX2 and one on the turbo R).
-3. **loop-3 on the MSX2+** takes 3 ticks in 75-93 % of the pictures with ticks in Cain's scenes (most take 8 VBLANKs or
-   more there): loop-3 and loop-1 look almost the same on the MSX2+ with Cain; they differ on the MSX2 and the turbo R.
+   draw_bob `$AB08`, not a flash-aware call): with flash-7's longer white stretches it shows more often (boss route,
+   look 7 against 0: MSX2 71 / 13 pictures, MSX2+ 16 / 15, turbo R 37 / 13). The user may ask for it white too.
+2. **The last picture of a white stretch** with look 7 (once on the MSX2's and once on the turbo R's boss route): Cain's
+   play-field parts normal while his 32 x 40 sprite part is still white (the sprite engine shows a new version only once
+   its patterns are loaded). Not seen with looks 0 or 6; no stretch starts with a part normal.
+3. **loop-3 and loop-1 differ little with Cain on the MSX2 and the MSX2+.** The pictures with 3 ticks among those
+   with ticks, loop-3 against loop-1:
+   - MSX2: 23.5 / 28.9 % on Cain's route, 69.6 / 88.4 % on the ground floor, 42.3 / 44.1 % on the boss route;
+   - MSX2+: 81.1-92.7 against 86.4-95.4 % (most pictures there take 8 VBLANKs or more).
+   Only the turbo R separates them clearly: 3.5 / 0 / 8.9 against 31.9 / 14.4 / 49.2 %.
+4. **`rc_safe`'s edge** (`../PERF2_PLAN.md` 5.3's rc-edge, lane W2K): it tests RoboCop's sprite boxes on the picture
+   already shown, before the frame's ticks. A punch started from a walk right could pass the held V9938 picture's right
+   edge by 1-3 px (4-6 px with 3-tick frames), in the review's model; pre-existing. A runtime check comes first.
