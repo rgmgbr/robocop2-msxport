@@ -95,11 +95,12 @@ class HudRuntimeTests(unittest.TestCase):
 
 class GameLogicToolTests(unittest.TestCase):
     def test_joystick_script_entries(self):
+        # each entry: the frames before it with no input, then its frames with its bits (0 ends)
         inc = mkrom.input_inc("70:40:r,115:3:uf")
-        self.assertIn("        dw 70, 40\n        db 0x08", inc)
-        self.assertIn("        dw 115, 3\n        db 0x11", inc)
+        self.assertIn("        dw 70\n        db 0x00\n        dw 40\n        db 0x08\n"
+                      "        dw 5\n        db 0x00\n        dw 3\n        db 0x11\n        dw 0\n", inc)
         self.assertTrue(inc.rstrip().endswith("dw 0xFFFF"))
-        self.assertEqual(mkrom.input_inc("").count("dw"), 1)
+        self.assertEqual(mkrom.input_inc("").count("dw"), 2)         # (the script's end and no teleport)
 
     def test_cell_masks_from_the_routines_windows(self):
         import struct
@@ -417,7 +418,10 @@ class GameLogicToolTests(unittest.TestCase):
 
 @unittest.skipUnless(SPRITES.with_suffix(".bin").exists(), "sprite data not built (make msx)")
 class SpriteDataTests(unittest.TestCase):
-    """The composition format msx/sprites.asm reads (FORMAT in tools/msxsprites.py)."""
+    """The composition format msx/sprites.asm reads (FORMAT in tools/msxsprites.py): the header
+    (SPR_COMP_HDR bytes since 2026-11-02, the 9th the band mask), the 12-byte sprites, the 4-byte
+    bands. The bands' own rules (never sharing a line, the counts, the stored mask) are
+    tests/test_sprite_pool.py's; the older column/rank format these tests once read is gone."""
 
     @classmethod
     def setUpClass(cls):
@@ -429,6 +433,7 @@ class SpriteDataTests(unittest.TestCase):
                 k, v = line.split(": equ ")
                 inc[k] = int(v.split()[0], 0)
         cls.inc = inc
+        hdr = inc.get("SPR_COMP_HDR", 8)
         cls.comps = {}
         cls.robocop = set()                             # compositions of RoboCop (the rest: BOBs)
         nrc = inc["SPR_RECORDS"] * 4 + inc["SPR_RC_ARMS"]   # record x aim, then the arm poses
@@ -442,77 +447,20 @@ class SpriteDataTests(unittest.TestCase):
                 cls.robocop.add(o)
             if o in cls.comps:
                 continue
-            nspr, nlines, ncols, mindx, maxdx, n_a, mfull, mone = struct.unpack_from("<BBBbbBBB", cls.data, o)
-            recs = [struct.unpack_from("<BbBBHHHH", cls.data, o + 8 + 12 * i) for i in range(nspr)]
-            p = o + 8 + 12 * nspr
-            ranks = []
-            for _ in range(ncols):
-                bit, gain, nb = cls.data[p], cls.data[p + 1], cls.data[p + 2]
-                ranks.append((bit, list(cls.data[p + 3:p + 3 + nb]), gain))
-                p += 3 + nb
-            maxk = list(cls.data[p:p + ncols + 1])
-            p += ncols + 1
-            cls.comps[o] = (nspr, nlines, ncols, mindx, maxdx, recs, (mfull, mone, maxk), ranks, p - o, n_a)
+            nspr, nlines, nb, mindx, maxdx, n_a = struct.unpack_from("<BBBbbB", cls.data, o)
+            sprites = [struct.unpack_from("<bbBBHHHH", cls.data, o + hdr + 12 * i) for i in range(nspr)]
+            cls.comps[o] = (nspr, nlines, nb, mindx, maxdx, n_a, sprites, hdr + 12 * nspr + 4 * nb)
 
     def test_compositions_fit_their_bank_and_the_limits(self):
-        for o, (nspr, nlines, ncols, *_, size, n_a) in self.comps.items():
+        for o, (nspr, nlines, nb, mindx, maxdx, n_a, sprites, size) in self.comps.items():
             self.assertEqual(o // 0x2000, (o + size - 1) // 0x2000)
             self.assertLessEqual(nspr, 32)              # an entry page holds 32 entries
             self.assertLessEqual(nlines, self.inc["SPR_MAX_LINES"])
-            self.assertLessEqual(ncols, 8)              # the drop mask has 8 bits
+            self.assertLessEqual(nb, 8)                 # the band mask has 8 bits
+            self.assertEqual((mindx, maxdx), (min(s[1] for s in sprites), max(s[1] for s in sprites)))
             if o in self.robocop:
                 self.assertLessEqual(nspr, self.inc["SPR_MAX"])
                 self.assertLessEqual(n_a, self.inc["SPR_RC_ONE"])
-
-    def test_records_bits_ids_and_sat_order(self):
-        npat = (self.inc["SPR_COL_BANK"] - self.inc["SPR_PAT_BANK"]) * 256
-        for nspr, nlines, ncols, mindx, maxdx, recs, *_ in self.comps.values():  # noqa: B007
-            cols_seen, layer = [], {}
-            for dy, dx, pbit, abit, pat, col, pat1, col1 in recs:
-                self.assertTrue((pbit == 0) != (abit == 0))
-                bit = pbit | abit
-                self.assertEqual(bin(bit).count("1"), 1)
-                self.assertLess(bit, 1 << ncols)
-                self.assertLessEqual(dy + 16, nlines)
-                self.assertLess(pat, npat)
-                if pbit:
-                    self.assertEqual((pat1, col1), (0xFFFF, 0xFFFF))
-                else:
-                    self.assertLess(pat1, npat)
-                # SAT order: columns contiguous, A spans before B spans in each column
-                if not cols_seen or cols_seen[-1] != bit:
-                    self.assertNotIn(bit, cols_seen)
-                    cols_seen.append(bit)
-                elif layer[bit] and not pbit:
-                    self.fail("A span after a B span in the same column")
-                layer[bit] = bool(pbit)
-            self.assertEqual((mindx, maxdx), (min(r[1] for r in recs), max(r[1] for r in recs)))
-
-    def test_line_counts_and_rank_list(self):
-        for nspr, nlines, ncols, _, _, recs, (mfull, mone, maxk), ranks, _, n_a in self.comps.values():
-            want, want1 = [0] * nlines, [0] * nlines
-            for r in recs:
-                for line in range(r[0], r[0] + 16):
-                    want[line] += 1
-                    want1[line] += not r[2]
-            self.assertEqual((mfull, mone), (max(want), max(want1)))
-            for k in range(ncols + 1):                     # maxima after dropping each rank prefix
-                dropped = sum(bit for bit, _, _ in ranks[:k])
-                cnt = [0] * nlines
-                for r in recs:
-                    if not r[2] & dropped:
-                        for line in range(r[0], r[0] + 16):
-                            cnt[line] += 1
-                self.assertEqual(maxk[k], max(cnt))
-            self.assertEqual((maxk[0], maxk[-1]), (mfull, mone))
-            self.assertEqual(n_a, sum(1 for r in recs if not r[2]))
-            self.assertLessEqual(mfull, 8)
-            self.assertEqual(sorted(bit for bit, _, _ in ranks), [1 << k for k in range(ncols)])
-            gains = [g for _, _, g in ranks]
-            self.assertEqual(gains, sorted(gains))         # cheapest OR layer first
-            self.assertLess(max(gains), 255)               # FFh means "no candidate" at run time
-            for bit, dys, _ in ranks:
-                self.assertEqual(dys, [r[0] for r in recs if r[2] == bit])
 
 
 @unittest.skipUnless(HAVE_DISKS, "ADFs missing from amiga/")
