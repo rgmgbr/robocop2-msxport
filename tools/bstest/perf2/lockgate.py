@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""lockgate.py BASE NEW [--partial]: G-LOCK, the LOCKSTEP=24 display records of two builds (performance
+"""lockgate.py BASE NEW [--partial]: G-LOCK, the LOCKSTEP display records of two builds (performance
 campaign 2's kit, docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4): every record BASE holds (gates.tcl
 pf_lock_jobs: DIR/<run>_<tag>.txt with its .over) compared with NEW's by tools/dispcmp.py's rules (per list,
 the SAT, each shown entry's colour row and pattern, what the list records as shown; it stops where the
 displayed cameras differ). A record NEW lacks FAILs (--partial: listed, not judged).
 
-Under LOCKSTEP=24 a frame of two ticks starts every 24 VBLANKs whatever the CPU time; a frame that takes
+Under LOCKSTEP=K a frame of two ticks starts every K VBLANKs whatever the CPU time; a frame that takes
 longer starts late (its .over file: "late N at GAME_FRAMES") and the record is exact only before it. The
 lists from the first late frame of either run on are compared and reported but not judged (HEAD's level-3
-records on the MSX2 have one: boss at game frame 225, kill at 990). FAIL when a judged list differs, or
-when NEW has fewer lists. Exit 0 only when nothing FAILs.
+records on the MSX2 at K = 24 had one: boss at game frame 225, kill at 990; level 3's lock build is K = 48
+since batch 2, gate.sh builds, docs/HARNESS.md 12.2: BASE's and its timing controls' records complete).
+FAIL when a judged list differs, or when NEW has fewer lists. Exit 0 only when nothing FAILs.
 """
 import os
 import sys

@@ -42,7 +42,13 @@ kinds of columns seen.
 sprites_l3_field.inc) as its ROM holds them (tools/msxframe.py FieldLooks: its static atlas, the smoke in
 level 1's dynamic frames, its frame cache's frames, sprites_l3_fc.bin); a list entry's frame with bit 7
 is that frame's white copy (a hit flash, msx/bob.asm fb_add; its normal look when it has none), judged
-as the frame itself is (one picture ahead allowed, never behind or torn); LEVEL_PREFIX build/msx/level3."""
+as the frame itself is (one picture ahead allowed, never behind or torn); LEVEL_PREFIX build/msx/level3.
+
+The redraw queue (msx/tiles.asm rq_add, rd_pop: RD_Q, rd_head, rd_tail, rd_lost at 1000h-1088h since the
+map caches moved it, outside the record's RAM): a picture with differences prints its entries waiting
+("qn") and the requests lost ("lost") from RECDIR/holds.txt's fifth and sixth columns, which
+tools/bstest/perf2/gates.tcl pf_fd_setup reads at each record where the build's label file puts them;
+"qn ? lost ?" for records without them (never read from a fixed address)."""
 import json
 import struct
 import sys
@@ -277,6 +283,13 @@ def main():
     vat_hist, vat_age, vat_older, vat_recs, vat_cols = {}, {}, 0, 0, set()
     vat_mcols = set()                           # (the vat columns seen at the map's own tile)
     vat_last = {}                               # (each column seen: the look it showed last)
+    queue = {}                                  # (per record: the redraw queue's entries waiting, its lost
+    hp = d / "holds.txt"                        #  requests: holds.txt, read at the labels' addresses)
+    if hp.exists():
+        for line in hp.read_text().splitlines():
+            f = line.split()
+            if len(f) >= 6:
+                queue[f[0]] = (f[4], f[5])
     prev_low = None
     sheet, total_bad, pics_bad = [], 0, 0
     hist = []                                   # the last VOLATILE_N records' patch maps
@@ -527,7 +540,8 @@ def main():
         total_bad += bad
         pics_bad += bad > 0
         if bad:
-            print(f"{p.stem}: {bad} pixels differ; list {lst} qn {low[0x0890 - 0x600]} lost {low[0x069C - 0x600]} "
+            qn, ql = queue.get(p.stem, ("?", "?"))
+            print(f"{p.stem}: {bad} pixels differ; list {lst} qn {qn} lost {ql} "
                   f"cells {sorted(badcells.items())[:6]}")
             # (one line a kind of difference, for tools/bstest/l2base.py field: "CLASS picture kind
             #  [key] px=N"; the hostage tear's key names its BOBs, tear_key)

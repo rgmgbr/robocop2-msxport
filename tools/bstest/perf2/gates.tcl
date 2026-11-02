@@ -1,7 +1,9 @@
 # gates.tcl (tools/bstest/perf2): the standard jobs of docs/PERF2_PLAN.md 5.4's gates, for hz_chain, on the
 # builds of "sh tools/bstest/perf2/gate.sh builds R" (R/l3/cap3.rom EXTJOY=1 LV_TEST=3, R/l2/cap2.rom
-# EXTJOY=1 LV_TEST=2, R/l1/ext.rom EXTJOY=1, R/L/l<k>/lock.rom with LOCKSTEP=24, R/T: hz.sh's trace builds).
-# HEAD's records of every job are W0's baselines (C/w0/base). The verdicts: gate.sh (shell side).
+# EXTJOY=1 LV_TEST=2, R/l1/ext.rom EXTJOY=1, R/L/l<k>/lock.rom with LOCKSTEP=24, level 3's 48, R/T: hz.sh's
+# trace builds).
+# The baselines: batch 1's W0's HEAD records; batch 2's BASE with its timing controls (docs/HARNESS.md 12.2).
+# The verdicts: gate.sh (shell side).
 #
 #   pf_speed_jobs DIR R ?TAGS? ?DRIVES?   G-SPEED and G-HOLD: one m3 lean run per drive and machine:
 #                                         DIR/<drive>_<tag>_*.txt (win.py, holds.py)
@@ -9,7 +11,7 @@
 #                                         every picture: DIR/<win>_<tag>/ (fieldsum.py)
 #   pf_guard_jobs DIR R ?TAGS? ?DRIVES?   G-GUARD: rc2_guard (tears counted), patcheck, sprlines and
 #                                         satcheck over a whole drive: DIR/<drive>_<tag>.txt
-#   pf_lock_jobs DIR R ?TAGS?             G-LOCK: rc2_disp_rom on the LOCKSTEP=24 builds:
+#   pf_lock_jobs DIR R ?TAGS?             G-LOCK: rc2_disp_rom on the LOCKSTEP builds (24, level 3's 48):
 #                                         DIR/<run>_<tag>.txt (+ .over) (tools/dispcmp.py)
 #   pf_map_jobs DIR R ?TAGS?              G-MAP: cnt.tcl's map dumps every 100 ticks: DIR/<drive>_<tag>_map.txt
 #   pf_logic_jobs DIR R                   G-LOGIC: hz_l3_jobs, hz_l2_jobs (with the turbo R) and level 1's
@@ -94,9 +96,13 @@ proc pf_field_jobs {dir R {tags ""} {levels {1 2 3}} {only ""}} {
 	return $jobs
 }
 
-# l2b_fd_setup's records, and DIR/holds.txt: per record "jNNN_fNNNN fb_hold tick_n" (fb_hold as the picture
-# on screen was taken at isr.asm iv_take: FB_HOLD = shown with its play-field BOBs not all composed, the
-# class G-HOLD judges), DIR/level.txt (the level for fieldcheck.py)
+# l2b_fd_setup's records, and DIR/holds.txt: per record "jNNN_fNNNN fb_hold tick gf qn lost" (fb_hold as the
+# picture on screen was taken at isr.asm iv_take: FB_HOLD = shown with its play-field BOBs not all composed,
+# the class G-HOLD judges; tick: the game frame then; gf: the game frame at the record; qn, lost: the redraw
+# queue at the record, its entries waiting and its lost requests, read where the build's label file puts
+# rd_head, rd_tail, rd_lost and RD_Q_SIZE: msx/tiles.asm rq_add, rd_pop), DIR/level.txt ("level N from F n N
+# drive FILE rows R tele T1,T2.. rom ROM": the level for fieldcheck.py, the drive's rows and teleports, "-"
+# for none, for fieldsum.py's records past the drive's end and teleport spans)
 proc pf_fd_setup {dir rom labels drive from n level} {
 	l2b_fd_setup $dir $rom $labels $drive $from $n
 	catch {debug probe remove_bp $::l2b_fd_bp}
@@ -106,17 +112,38 @@ proc pf_fd_setup {dir rom labels drive from n level} {
 	set ::pf_fd_log {}
 	set ::pf_fd_written 0
 	set ::pf_fd_fbh [rc2_label $labels fb_hold]
+	set ::pf_fd_rqh [rc2_label $labels rd_head]
+	set ::pf_fd_rqt [rc2_label $labels rd_tail]
+	set ::pf_fd_rql [rc2_label $labels rd_lost]
+	set ::pf_fd_rqm [expr {2 * [rc2_label $labels RD_Q_SIZE] - 1}]
 	debug set_bp [rc2_label $labels iv_take] {} {set ::pf_fd_hold [peek $::pf_fd_fbh]; set ::pf_fd_htick [rc2_w 0xCEE0]}
+	set tele {}
+	foreach t $::rd_tele { lappend tele [lindex $t 0] }
+	if {![llength $tele]} { set tele - }
 	set f [open [file join $dir level.txt] w]
-	catch {puts $f "level $level from $from n $n rom $rom"}
+	catch {puts $f "level $level from $from n $n drive [file tail $drive] rows [pf_drive_rows $drive] tele [join $tele ,] rom $rom"}
 	close $f
+}
+
+# the rows a drive file is judged over: the gate's (::pf_drives: kill's 1861 end with the level's end) for
+# a drive the gates run whole, else its input rows (the drive file's first line, two hex digits a row)
+proc pf_drive_rows {drive} {
+	foreach {d spec} [array get ::pf_drives] {
+		if {[lindex $spec 1] eq [file tail $drive]} { return [lindex $spec 2] }
+	}
+	set f [open $drive r]
+	set n 0
+	catch { set n [expr {[string length [string trim [gets $f]]] / 2}] }
+	close $f
+	return $n
 }
 
 proc pf_fd_hit {} {
 	set k $::l2b_fd_k
 	l2b_fd_hit
 	if {$::l2b_fd_k != $k} {
-		lappend ::pf_fd_log "[format j%03d_f%04d [expr {$k / 60 + 1}] [expr {$k % 60}]] $::pf_fd_hold $::pf_fd_htick [rc2_w 0xCEE0]"
+		set qn [expr {(([peek $::pf_fd_rqt] - [peek $::pf_fd_rqh]) & $::pf_fd_rqm) / 2}]
+		lappend ::pf_fd_log "[format j%03d_f%04d [expr {$k / 60 + 1}] [expr {$k % 60}]] $::pf_fd_hold $::pf_fd_htick [rc2_w 0xCEE0] $qn [peek $::pf_fd_rql]"
 	}
 }
 
@@ -178,7 +205,7 @@ proc pf_guard_done {} {
 	return [hz_l2_start_done]
 }
 
-# ----- G-LOCK: the LOCKSTEP=24 display records (rc2_disp_rom), both VDPs
+# ----- G-LOCK: the LOCKSTEP display records (rc2_disp_rom), both VDPs (L/l3: LOCKSTEP=48, gate.sh builds)
 
 # name, build, drive, lists
 set ::pf_lock_runs {

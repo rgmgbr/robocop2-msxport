@@ -6,7 +6,10 @@
 #   F hex   ln_cnt at ft_lines (every object's lines)                           (line phase only)
 #   O hex   obj_tab (16 x 32 bytes) at ft_lines                                  (line phase only)
 # Times are emulated seconds (machine_info time); -1 when the phase did not run. Compare two censuses with
-# vercmp.py (records equal but their times; the budget's T-states per run).
+# vercmp.py (records equal but their times; the budget's T-states per run). A run is timed from the budget's
+# call in sprites_tick to the instruction after it: with msx/sprites.asm's bu_lvl (the budget with the level's
+# logic bank at A000h, since docs/PERF2_PLAN.md item 12) from bu_lvl's entry to the instruction after
+# sprites_tick's "call bu_lvl", its own cost (about 163 T: the bank switch there and back) included.
 #
 #   cen_jobs DIR ROM LABELS DRIVE N ?TAGS?     DIR/cen_<drive>_<tag>.txt (+ _trace.txt: the drive's trace)
 #
@@ -46,7 +49,16 @@ proc cen_setup {out rom labels drive n} {
 	set ::cen_vl $::cen_a(VIEW_LINES)
 	set ::cen_on 0
 	set ::h7_rf [open $out w]
-	pf_bp $rom $::cen_a(budget) cen_b0 [cen_banks budget]
+	# (the run's start: bu_lvl's entry when the build has it, else the budget's; its end: the instruction
+	#  after sprites_tick's call of the same)
+	set ::cen_bu [pf_lab bu_lvl 0]
+	if {$::cen_bu} {
+		pf_bp $rom $::cen_bu cen_b0
+		set ::cen_call $::cen_bu
+	} else {
+		pf_bp $rom $::cen_a(budget) cen_b0 [cen_banks budget]
+		set ::cen_call $::cen_a(budget)
+	}
 	pf_bp $rom $::cen_a(ln_fill) {set ::cen_t1 [machine_info time]} [cen_banks ln_fill]
 	# the instruction after ln_fill's "call ln_rc" (CDh, ln_rc), found in the ROM file
 	set lf $::cen_a(ln_fill)
@@ -65,7 +77,7 @@ proc cen_setup {out rom labels drive n} {
 	pf_bp $rom [expr {$lf + $i + 3}] cen_rc $lb
 	pf_bp $rom $::cen_a(ft_lines) cen_fl [cen_banks ft_lines]
 	pf_bp $rom $::cen_a(bg_tot) {set ::cen_t3 [machine_info time]} [cen_banks bg_tot]
-	# the budget's end: the instruction after sprites_tick's "call budget"
+	# the budget's end: the instruction after sprites_tick's "call bu_lvl" ("call budget" without bu_lvl)
 	set st $::cen_a(sprites_tick)
 	set sb [cen_banks sprites_tick]
 	set rf [open $rom rb]
@@ -75,8 +87,8 @@ proc cen_setup {out rom labels drive n} {
 		set blk [read $rf 64]
 	}
 	close $rf
-	set i [string first [binary format cs 0xCD $::cen_a(budget)] $blk]
-	if {$i < 0} { error "cen: no call budget in sprites_tick" }
+	set i [string first [binary format cs 0xCD $::cen_call] $blk]
+	if {$i < 0} { error "cen: no call [expr {$::cen_bu ? {bu_lvl} : {budget}}] in sprites_tick" }
 	pf_bp $rom [expr {$st + $i + 3}] cen_end $sb
 	pf_bp $rom $::cen_a(fl_hit) {incr ::cen_c(lhit)} [cen_banks fl_hit]
 	pf_bp $rom $::cen_a(ft_give) cen_give [cen_banks ft_give]

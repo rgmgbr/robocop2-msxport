@@ -145,9 +145,12 @@ class GameLogicToolTests(unittest.TestCase):
                                    "t3_l2:     call walker2                ; (t3's own)",
                                    "        ld hl,t3_gfx_l2", "        ld de,0x5E", "        jr t3_l2",
                                    "        cp SW_N_l2", ""])
-        labels = "t3:\tequ $a0f0\nt3_l2:\tequ $a0f0\n"
+        labels = "t3:\tequ $a0f0\nt3_l2:\tequ $a0f0\nt3_l3:\tequ $a0f0\n"
         self.assertEqual(mkrom.lvshared_check(src, labels), [])
         self.assertEqual(len(mkrom.lvshared_check(src, labels.replace("t3_l2:\tequ $a0f0", "t3_l2:\tequ $a0f2"))), 1)
+        # a copy that is not there fails: a level bank without it would leave the shared code's jump into
+        # another bank's code
+        self.assertEqual(len(mkrom.lvshared_check(src, labels.replace("t3_l3:\tequ $a0f0\n", ""))), 1)
 
     def test_lvshared_copy_without_its_last_section(self):
         # VAT_ANIM=1 builds: the other levels' copies end before the sprite budget's per-give and per-run
@@ -165,6 +168,14 @@ class GameLogicToolTests(unittest.TestCase):
         self.assertTrue(whole.startswith(cut.rstrip("\n") + "\n\n" + mkrom.LVS_TAIL))     # (the rest as it was)
         with self.assertRaises(ValueError):
             mkrom.lvshared_copy("t3:     ret\n", "l2", set(), tail=False)
+        # lvshared_check: with the last section (tail) every label needs its copies, without it the last
+        # section's labels none
+        labels = "t3:\tequ $a0f0\nt3_l2:\tequ $a0f0\nt3_l3:\tequ $a0f0\nft_give:\tequ $a0f4\n"
+        self.assertEqual(mkrom.lvshared_check(src, labels, tail=False), [])
+        self.assertEqual(len(mkrom.lvshared_check(src, labels)), 2)
+        both = labels + "ft_give_l2:\tequ $a0f4\nft_give_l3:\tequ $a0f4\n"
+        self.assertEqual(mkrom.lvshared_check(src, both), [])
+        self.assertEqual(len(mkrom.lvshared_check(src, both, tail=False)), 2)
         # the repository's msx/lvshared.asm: the section is there once, and it is the last one
         lvs = (ROOT / "msx" / "lvshared.asm").read_text()
         self.assertEqual(lvs.count("\n" + mkrom.LVS_TAIL), 1)
