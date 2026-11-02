@@ -1,7 +1,7 @@
-"""The hit flash's look, tools/mkrom.py FLASH_LOOK (performance campaign 2, docs/PERF2_PLAN.md D1: a comparison
-for the user's choice, nothing decided): 0 the look as always (every build without the option), 6 at most one
-white picture in 4 per enemy, 7 an enemy white in the game tick of a hit and the 3 ticks after it, every hit
-starting the 4 ticks again. The option's values, the places its code may take (msx/bob.asm, the frame end in
+"""The hit flash's look, tools/mkrom.py FLASH_LOOK (performance campaign 2, docs/PERF2_PLAN.md D1): 7, the product's
+look since the user's choice of 2026-11-02, an enemy white in the game tick of a hit and the 3 ticks after it, every
+hit starting the 4 ticks again; 0 the look until then (one white picture for each hit), 6 at most one white picture
+in 4 per enemy. The option's values, the places its code may take (msx/bob.asm, the frame end in
 msx/rc2.asm, the slot's reset in msx/objects.asm), and the rules as the code's own constants make them:
 fl_pend's byte per enemy slot; 6: bit 0 a hit held from a skipped tick, bits 1-4 shifted right once a picture
 shown (rc2.asm's frame end); 7: bits 0-3 the white ticks to come, shifted right at every game tick's start
@@ -129,14 +129,20 @@ def shown7(hits, frames):
 class FlashLookTests(unittest.TestCase):
 
     def test_the_option(self):
-        self.assertEqual(mkrom.OPTIONS["FLASH_LOOK"][0], 0)
+        self.assertEqual(mkrom.OPTIONS["FLASH_LOOK"][0], 7)
         with tempfile.TemporaryDirectory() as t:
             out = str(Path(t) / "x.rom")
             for v in ("1", "5", "8"):
                 self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out, f"FLASH_LOOK={v}"]), 2, v)
-            # 7's 4 white ticks must reach the tick shown: at most 4 ticks a picture
-            for o in ("CAD_MAX=5", "CAD_HOLD=5"):
-                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out, "FLASH_LOOK=7", o]), 2, o)
+            # 7's 4 white ticks must reach the tick shown: at most 4 ticks a picture, with the default look too
+            for o in (["CAD_MAX=5"], ["CAD_HOLD=5"], ["FLASH_LOOK=7", "CAD_MAX=5"], ["FLASH_LOOK=7", "CAD_HOLD=5"]):
+                self.assertEqual(mkrom.main(["mkrom.py", "build/msx/level1", out] + o), 2, o)
+        # the checks pass for the look until 2026-11-02 (0) and 6, with up to 4 ticks a picture for 7, and more
+        # without it
+        for o in (["FLASH_LOOK=0"], ["FLASH_LOOK=6"], ["CAD_MAX=4"], ["CAD_MAX=4", "CAD_HOLD=4"],
+                  ["FLASH_LOOK=0", "CAD_MAX=5"], ["FLASH_LOOK=6", "CAD_HOLD=5"]):
+            with self.assertRaises(FileNotFoundError, msg=o):         # (past the checks: the level's files)
+                mkrom.main(["mkrom.py", "/nonexistent/level1", "/nonexistent/x.rom"] + o)
 
     def test_where_the_code_is(self):
         uses = []

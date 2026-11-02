@@ -48,7 +48,8 @@ Agent "plan", 2026-11-01. Base: `level2` at 3b11042 (HEAD 4f8fcb4 differs only i
 - **It does not reach 25 ticks/s with Cain on a Z80.**
   - With CAD_MAX 2 that needs an 80-ms frame. The MSX2+'s frame is 250 ms today.
   - The set makes the frame 1.4-1.5x shorter, where 3.1x is needed.
-- **The rest is the user's decision** (section 3; measured on batch 1, previews test10-test15):
+- **The rest is the user's decision** (section 3; measured on batch 1, previews test10-test15; on 2026-11-02 the user
+  chose flash-7 and loop-3, now the product's defaults, and asked for the lag tolerance to be measured again):
   - **The cadence cap** (loop-3 or loop-1): MSX2+ Cain's route 12.89 -> 15.77 or 15.76 ticks/s, the boss route 9.73 ->
     12.77 or 12.98, at fewer pictures with progress; loop-1 also the turbo R's Cain's route 18.35 -> 20.41.
   - **The flash's look.** flash-7, counted in game ticks, gives a steady white during a burst on every machine: the
@@ -588,13 +589,24 @@ These are not in section 4's numbers. Reopen one only with its check.
 D4-D6's numbers are ticks/s / progress pictures/s, on top of the full decision-identical set (realized estimate;
 `C/plan/combined_plan.txt`). D1-D3 are measured on batch 1, and the user's previews built (below).
 
+**The user's answers (2026-11-02, after playing test10-test15):**
+- **D1: flash-7**, the product's look since (`tools/mkrom.py` `FLASH_LOOK` default 7).
+- **D2: loop-3**, the product's cadence since (`CAD_MAX` 3, `CAD_HOLD` 3, `CAD_ADAPT` 8). The rule of 2026-10-21
+  stands: level 1 shows no picture of 3 ticks (`player.asm` `cd_cap` keeps it at 2 a picture: without that test its
+  coverage drives showed 3-tick pictures where its pictures take 8 VBLANKs or more).
+- `FLASH_LOOK=0 CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` builds the look and cadence of before (the product of `level2`
+  6cbf71f, byte for byte).
+- **D3: pending.** The user asked for `LAG_X=64` to be measured again on the current version (batch 3a with flash-7
+  and loop-3) before choosing; `LAG_X` stays 32.
+
 **Measured on batch 1** (D1-D3; lane dprev, 2026-11-01): openMSX headless, emulated time, the `EXTJOY` drive builds
 with the product's options plus the option (`C/dprev/R`), one m3 lean run per drive and machine (`C/dprev/N/<set>/speed`)
 against batch 1's (`C/integ/N/speed`); MSX2 = C-BIOS_MSX2, Expert = Gradiente_Expert20_64K, MSX2+ = Panasonic_FS-A1FX,
 turbo R = Panasonic_FS-A1GT. Each cell: ticks/s / pictures/s / progress pictures/s, batch 1 -> **option** (the change in
 ticks/s). The user's previews: test10-test15 (`C/dprev/preview/NOTES.txt`).
 
-**D1. The hit flash's look: the complaint.** Batch 1 shows one white picture for each hit. With hits every 4 ticks, the
+**D1. The hit flash's look: the complaint.** *Decided by the user on 2026-11-02: flash-7.* Batch 1 shows one white
+picture for each hit. With hits every 4 ticks, the
 shot enemy alternates white and normal every picture. The Amiga shows white 1 frame in 4 at 25 Hz.
 - **Keep it** (`FLASH_LOOK` 0, test12).
 - **flash-7: a steady white during a burst** (`FLASH_LOOK=7`, test11). An enemy is white in the game tick of a hit and
@@ -635,8 +647,9 @@ shot enemy alternates white and normal every picture. The Amiga shows white 1 fr
   - The contact sheets of a burst on the ground floor (16 pictures from tick 1600, looks 0, 6, 7, three machines):
     `C/dprev/sheets/burst_*.png`.
 
-**D2. Ticks per picture when pictures are slow.** Today CAD_MAX is 2. On 2026-10-21 the user rejected 3-4 ticks a
-picture in level 1, when the walk's next step also loaded late.
+**D2. Ticks per picture when pictures are slow.** *Decided by the user on 2026-11-02: loop-3, with level 1 kept
+without 3-tick pictures.* Until then CAD_MAX was 2. On 2026-10-21 the user rejected 3-4 ticks a picture in level 1,
+when the walk's next step also loaded late.
 - **Keep 2** (test12).
 - **loop-3: 3 ticks a picture, only when a picture takes 8 VBLANKs or more** (below 7.5 pictures/s at 60 Hz;
   `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`, test13). Faster scenes look exactly as today.
@@ -676,7 +689,8 @@ picture in level 1, when the walk's next step also loaded late.
   - Progress pictures drop 15-22 %.
   - The longest gaps reach 417-484 ms.
 
-**D3. MSX2 only: how far the view may lag behind the camera** (`LAG_X=64`, test15). With the V9938 engine (`fb_eng` 1:
+**D3. MSX2 only: how far the view may lag behind the camera** (`LAG_X=64`, test15). *Pending: the user asked on
+2026-11-02 for it to be measured again on the current version first.* With the V9938 engine (`fb_eng` 1:
 an MSX2, or `FORCE_V9938`) x may lag 64 px instead of 32 before the ticks are held; y stays at 32. The V9958's ring keeps
 32 (`fb_eng` 0: the MSX2+ and the turbo R take the default's return, so their cadence decides as without the option).
 C/a_loop's prototype relaxed x on every machine; on the MSX2+ the x lag reaches 32-37 px in 10-12 frames of Cain's route.
