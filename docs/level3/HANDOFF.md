@@ -1708,3 +1708,78 @@ second, HEAD -> **batch 1** (the change in ticks/s).
 8. **`tools/bstest/build.sh`'s refusal** compares the unresolved path: a worktree whose `build/` links to the main
    checkout's can write into its `build/msx` (three lanes' `make test` did, the stubs removed at once). Use a real
    `build/msx` in worktrees (as here) until `refuse()` compares the resolved folder.
+
+## Performance campaign 2: the previews of D1-D3 (2026-11-01)
+
+The user's previews of `../PERF2_PLAN.md` section 3's D1-D3 on batch 1 (lane dprev, branch `perf2/dprev` from
+`a431d23`). `C` is the campaign's folder; the lane's records are in `C/dprev`: `R/<set>` the builds (F0 batch 1, F6, F7,
+L3 loop-3, L1 loop-1, LX lag-x), `N/<set>/speed` and `N/<set>/logic` the runs and verdicts, `N/look` the look records,
+`N/an_*.txt` their analyses, `sheets/` the contact sheets, `preview/` the ROMs and `NOTES.txt` for the user, `NOTES.txt`.
+
+### What was done
+
+| Commit | Item |
+|---|---|
+| `e953c36` | `tools/bstest/build.sh` refuses an OUT in the folder `build/msx` resolves to (batch 1's open issue 8), with a test |
+| `5e80982` | D1: `FLASH_LOOK` 7 counted in game ticks (white in a hit's tick and the 3 after it, every hit starting them again); 6 unchanged |
+| `e2c2f72` | D2: `CAD_ADAPT` (loop-3 = `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`; loop-1 = `CAD_MAX=3 CAD_HOLD=3`, the CAD_HOLD C/a_loop measured with) |
+| `8bdc458` | D3: `LAG_X` (the V9938 engine's lag in x; the V9958's ring keeps 32) |
+| this one | `../PERF2_PLAN.md` D1-D3 with the measured numbers, `../ROM_BUDGET.md` 2.6, `../MSX_ARCHITECTURE.md`, this entry |
+
+The previews (`C/dprev/preview`, each built twice to the same bytes, 2 MiB, 12 known warnings; test9's play-test options
+`TAG=N LV_TEST=2|3 CHEAT=1 INVULN=1` plus the option):
+
+| File | Option | SHA-256 |
+|---|---|---|
+| `ROBOCOP2_v0.1.3-test10-flash6-l2.ROM` | `FLASH_LOOK=6` | `e15e1dc5786f227b826b59350b4084b92fc11681a30f4440c76ef098e1fa6369` |
+| `ROBOCOP2_v0.1.3-test10-flash6-l3.ROM` | `FLASH_LOOK=6` | `aa9ef3254e95deab0fcf4a6e9ecd5c5ea2db2d82acaf86c282269baebc35e32a` |
+| `ROBOCOP2_v0.1.3-test11-flash7-l2.ROM` | `FLASH_LOOK=7` | `0c7101ccad1f2a7de4d73daa0ec02001a9a8091c6e596525444aa93ccaedf576` |
+| `ROBOCOP2_v0.1.3-test11-flash7-l3.ROM` | `FLASH_LOOK=7` | `c4fa86a6d61719dae3b9a7de55ffe62ab9bc4a47a266ea0b4ef4bcc10faf01fa` |
+| `ROBOCOP2_v0.1.3-test12-batch1-l2.ROM` | none (the reference) | `1a947789bb9b6a0fd9a09c316049b34d7be2d54b9f712dab6b354eed2376bd04` |
+| `ROBOCOP2_v0.1.3-test12-batch1-l3.ROM` | none (the reference) | `731e673793c66da3c19836b7dd31a8bbbd176cdc70f78c2f68ebb3e00d9d0d70` |
+| `ROBOCOP2_v0.1.3-test13-loop3-l3.ROM` | `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8` | `c3c307a2be733336f6fa98336d0155fe24342a23480e832427765f5ce0be2445` |
+| `ROBOCOP2_v0.1.3-test14-loop1-l2.ROM` | `CAD_MAX=3 CAD_HOLD=3` | `e052d8cde06b2c969a75b9782364223bdb59d0e490d1ff3ef1b5f4ccf7de7e42` |
+| `ROBOCOP2_v0.1.3-test14-loop1-l3.ROM` | `CAD_MAX=3 CAD_HOLD=3` | `8211a3cd8a34fdc0e22a907bd4e13fa02b78ee1dce89dc06e5bc85fcd2a786b6` |
+| `ROBOCOP2_v0.1.3-test15-lagx64-l3.ROM` | `LAG_X=64` | `78ca73fc775f3788584aefa2d212fe685e2f659f2417205ae70d24aee77e9256` |
+
+### Checks (exact commands; `K` = `tools/bstest/perf2`, `B1` = `C/integ/N/speed`)
+
+- **The defaults are byte-identical** to `a431d23`'s: the product (`sh tools/bstest/build.sh OUT`, `ccda223a7a560986`),
+  `sh K/gate.sh builds` (16 ROMs) and `sh tools/bstest/variants.sh` (61 of 61 sets), each compared with `cmp` against the
+  same builds of `a431d23` (`C/dprev/base`, themselves equal to the integration's `C/integ/R` and `var`). `FLASH_LOOK=6`'s 14
+  drive, trace and product builds are byte-identical to `a431d23`'s with `FLASH_LOOK=6`. All 61 sets also build with each
+  option added (`C/dprev/var`).
+- **`make test`** in the worktree (a real `build/msx`): 400 tests, the 4 known `tests/test_tools.py` failures only; the
+  main checkout's `build/msx` untouched.
+- **G-LOGIC: PASS for each option** (`REPO=<worktree> sh K/gate.sh logic C/dprev/N/<set> C/dprev/R/<set>`, after
+  `pf_logic_jobs` on each set's trace builds): `FLASH_LOOK=7`, loop-3, loop-1, `LAG_X=64`: level 3's 16 traces, level 2's
+  23, level 1's cov1, cov0, cov0_tr: 0 frames differ, the lost counters 0 in all 42 (`C/dprev/N/<set>/gate_logic.txt`).
+- **G-SPEED against batch 1** (`python3 -I K/win.py --gate B1 C/dprev/N/<set>/speed --partial`): PASS for flash-6,
+  loop-3, loop-1 and lag-x; flash-7 FAIL in 1 window, kill_fx 130-1400 -1.02 % (Cain's route without a hit: the timing
+  scatter of a code shift). Every number: `../PERF2_PLAN.md` section 3.
+- **D1's look** (Wd1's `lk.tcl` on kill 1770 rows, boss 1401, l2_barrel 901; looks 0, 6, 7; C-BIOS_MSX2, FS-A1FX,
+  FS-A1GT; `C/dprev/lkan2.py`, Wd1's `lkan.py` with flash-7's rule at every tick): the rule holds in all 27 runs; the
+  ground floor's look changes 87 / 44 / 1 (looks 0 / 6 / 7) on each machine; with 7 every single hit is white exactly 4
+  ticks (boss 27, l2_barrel 9, each machine); no picture with two looks of an enemy on the ground floor or l2_barrel; on
+  the boss route only Cain's muzzle flash (drawn with `bob_draw`) and the first picture of a white stretch whose
+  32 x 40 sprite part still loads its white version (both with look 0 too), and with 7 one end-of-stretch picture on the
+  MSX2 and one on the turbo R (`C/dprev/N/an_kill_ground.txt`, `an_boss.txt`, `an_l2b.txt`). Contact sheets of a burst
+  (16 pictures from tick 1600 at the HUD split): `C/dprev/sheets/burst_m2.png`, `burst_fx.png`, `burst_tr.png`,
+  `burst_all.png`, looked at: 0 white and normal in turn, 6 one white in 4, 7 white in all 16 on every machine, Cain whole.
+- **D3 on the V9958**: unchanged by construction (`fb_eng` 0 takes the default's return); measured: the MSX2+'s windows
+  within -3.8..+0.6 % (the timing scatter), and its x lag at most 37 px with and without the option (`C/dprev/lx.tcl`).
+- **The previews** (`C/dprev/pv.tcl`, Wd1's with RoboCop's place logged): on a fresh Gradiente_Expert20_64K each file
+  starts and shows TEST 10-15 at its briefing (`C/dprev/png/tags.png`, looked at); every `-l3` reaches Cain (in slot 0
+  at tick 114, hit from tick 114 on, 431-441 hits in 700 ticks); every `-l2` plays (RoboCop walks from x 352 to 802 in
+  300 ticks, 420 ticks run). The D1 previews (test10, test11, with test12) once on the FS-A1GT: the same.
+
+### Open issues
+
+1. **Cain's muzzle flash** keeps its colours while Cain is white (`level3obj.asm` `c22_fl` draws it with `bob_draw`,
+   draw_bob `$AB08`, not a flash-aware call): with flash-7's longer white stretches it shows more often (31 pictures on
+   the MSX2's boss route, 3 with look 0). The user may ask for it white too.
+2. **The first picture of a white stretch** can show Cain's play-field parts white and his 32 x 40 sprite part normal
+   while its white version loads (pre-existing: 49 pictures on the MSX2's boss route with look 0, 32 with 7), and the
+   last one the reverse (with 7: one picture on the MSX2 and one on the turbo R).
+3. **loop-3 on the MSX2+** takes 3 ticks in 75-93 % of the pictures with ticks in Cain's scenes (most take 8 VBLANKs or
+   more there): loop-3 and loop-1 look almost the same on the MSX2+ with Cain; they differ on the MSX2 and the turbo R.

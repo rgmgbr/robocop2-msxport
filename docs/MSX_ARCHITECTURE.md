@@ -684,10 +684,19 @@ which as sprites were striped, cut or left out.
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
     view shown may lag n pixels behind the camera in x before the ticks are held (`cam_lag`, after
     `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next
-    page, RoboCop may run up to n - 1 pixels ahead of the scrolled view, never closer than 16 to the
-    screen's side (`rc_safe`, unchanged), and the view catches up in page steps. y keeps 32, and so
-    does the V9958's ring (`fb_eng` 0: the MSX2+ and the turbo R take the default's path, a few
-    T-states longer). D = 0 when the ticks are held, as the cadence needs: n - 32 is below 256.
+    page, RoboCop may run up to n - 1 pixels ahead of the scrolled view, and the view catches up in
+    page steps; `rc_safe` (unchanged) still holds the ticks while his sprites are within 16 px of a
+    screen's side (measured: they come within 12 px of the right side, 13 without the option, after
+    the frame's own steps). y keeps 32, and so does the V9958's ring (`fb_eng` 0: the MSX2+ and the
+    turbo R take the default's path, a few T-states longer). D = 0 when the ticks are held, as the
+    cadence needs: n - 32 is below 256.
+  - Measured on batch 1 (2026-11-01, `docs/PERF2_PLAN.md` D2 and D3, ticks/s): loop-3 MSX2 / MSX2+
+    / turbo R Cain's route 8.81 -> 9.68 / 12.89 -> 15.77 / 18.35 -> 18.58, the ground floor 12.52 ->
+    17.59 / 12.50 -> 17.80 / 22.77 -> 22.93; loop-1 9.73 / 15.76 / 20.41 and 18.44 / 18.46 / 24.30;
+    both at fewer pictures with progress where they act, the longest gaps between pictures up to
+    about 85 ms longer. `LAG_X=64`: the MSX2's Cain's route 8.81 -> 10.44 (+18.4 %), the boss route
+    7.29 -> 8.53, the Expert the same; the view lags up to 70 px (37 without), RoboCop's sprites
+    within 39 px of the left side (64 without) and 12 of the right (13).
 - **Ported**: `main_loop` in its order: palette effects (`$F878`), `frame_keys` (`$F76C`),
   `player_move` (`$AFF8`), the collisions and pickups (`$FA7C`), the level's hazards (`$9150`:
   level 1's electric beams), `activate_objects` (`$9C06`), the special objects (`$8B32`: lifts,
@@ -1046,30 +1055,31 @@ which as sprites were striped, cut or left out.
     enemies' silhouettes (Cain's 32 x 40 part). Not changed: the blinks a type draws itself by the
     frame counter (`bob_flashd` or `bob_black` called directly: level 1's type 25, level 2's type 2),
     which are not hit flashes; Cain's hit-look frames of his 32 x 40 part (`$16D9`, the logic).
-  - **Measured** (2026-11-01, on `a75405c`, before performance campaign 2's batch 1, with the first
-    `7`, counted in pictures; openMSX headless, EXTJOY drive builds with the product's options;
-    ticks/s / pictures/s / pictures with progress per second; MSX2 C-BIOS_MSX2, MSX2+ Panasonic
-    FS-A1FX, turbo R Panasonic FS-A1GT):
+  - **Measured** (2026-11-01, on performance campaign 2's batch 1, `7` counted in game ticks; openMSX
+    headless, EXTJOY drive builds with the product's options; ticks/s / pictures/s / pictures with
+    progress per second; MSX2 C-BIOS_MSX2, MSX2+ Panasonic FS-A1FX, turbo R Panasonic FS-A1GT;
+    `docs/PERF2_PLAN.md` D1):
 
     | Window | Look | MSX2 | MSX2+ | turbo R |
     |---|---|---|---|---|
-    | Ground floor, Cain shot 44 times (`l3_kill` 1500-1765) | 0 | 10.18 / 5.53 / 5.34 | 10.06 / 5.43 / 5.20 | 19.54 / 14.01 / 10.99 |
-    | | 6 | 12.72 / 7.10 / 6.67 | 12.09 / 6.66 / 6.39 | 20.05 / 26.86 / 14.68 |
-    | | 7 (pictures) | 16.54 / 9.36 / 8.68 | 15.40 / 8.37 / 8.02 | 19.40 / 23.50 / 13.33 |
-    | Cain's route firing (`l3_boss` 130-1400) | 0 | 6.12 / 9.67 / 3.76 | 8.07 / 4.27 / 4.07 | 13.87 / 10.42 / 7.63 |
-    | | 6 | 6.25 / 9.77 / 3.85 | 8.11 / 4.23 / 4.09 | 14.17 / 10.39 / 7.80 |
-    | | 7 (pictures) | 6.21 / 9.88 / 3.82 | 8.12 / 4.23 / 4.08 | 14.20 / 10.69 / 7.78 |
+    | Ground floor, Cain shot 44 times (`l3_kill` 1500-1765) | 0 | 12.52 / 6.99 / 6.47 | 12.50 / 6.84 / 6.51 | 22.77 / 17.53 / 13.06 |
+    | | 6 | 14.58 / 8.42 / 7.70 | 13.93 / 7.62 / 7.25 | 23.39 / 28.24 / 17.12 |
+    | | 7 | 18.26 / 9.92 / 9.65 | 16.71 / 9.46 / 8.89 | 23.88 / 38.38 / 21.35 |
+    | Cain's route firing (`l3_boss` 130-1400) | 0 | 7.29 / 10.81 / 4.49 | 9.73 / 5.05 / 4.88 | 17.02 / 13.20 / 9.41 |
+    | | 6 | 7.41 / 10.87 / 4.50 | 9.76 / 5.14 / 4.92 | 17.02 / 13.39 / 9.49 |
+    | | 7 | 7.57 / 10.95 / 4.64 | 10.12 / 5.25 / 5.10 | 17.42 / 13.74 / 9.82 |
 
     On the ground floor's pictures (the shown page's list and the published sprites at every
     picture), Cain's look changes 87 times with `0` (44 white pictures, white and normal in turn),
-    44 times with `6` (22 white pictures, at most one in any 4 with progress) and once with the first
-    `7` on the MSX2 and the MSX2+ (white from the first hit on). The turbo R, at about 1.5 ticks a
-    picture, sees Cain's hits 3-4 pictures apart: with the first `7` he still changed 58 times (white
-    2 pictures, then normal 1-2). Level 2 (`l2_barrel`, 13 hits in pairs 4-6 ticks apart): `0` white,
-    normal, white; `6` one white picture a pair; the first `7` four white pictures, or white, white,
-    normal, white, white;
-    its speed within the builds' own timing scatter. Without hits (Cain's route, `l3_kill`
-    130-1400) the three builds run within 1 %.
+    44 times with `6` (22 white pictures) and once with `7`, on all three machines (white from the
+    first hit on: the turbo R shows him white in 320 of its 426 pictures there). With `7` each single
+    hit is white exactly 4 ticks (the boss route's 27, `l2_barrel`'s 9, each machine); level 2's
+    pairs of hits 4-6 ticks apart show 4 white pictures, or white, white, normal, white, white. The
+    rule holds at every tick of the 27 runs (kill, boss, `l2_barrel`; looks 0, 6, 7; three
+    machines). Without hits (Cain's route without fire, tour3, `l2_tour`) `6` and `7` run within -1.5
+    to +0.7 % of `0`, the timing scatter. The first `7`, counted in pictures, measured before
+    batch 1: the ground floor 16.54 / 15.40 / 19.40 ticks/s, the turbo R at 23.50 pictures/s with 58
+    look changes there.
 - **Speed (2026-10-20, 25 Hz)**: about 23 ticks per second and 7.2-7.5 pictures in the busiest
   scene of level 1 (the start, five enemies), 8.2 pictures walking (the CPU is the limit: the
   logic about 74,000 T-states a tick, the sprite pipeline about 165,000 per picture, the

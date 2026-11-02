@@ -398,6 +398,27 @@ RAM: 63 B more in use: logic-1's caches (F170h-F190h, ECFBh-ED08h, EDF0h-EDFBh: 
 (ED0Ch), spr-4's `ft_orn` (EDFCh-EDFEh); still free there: ED09h-ED0Bh (flash-1's, `docs/PERF2_PLAN.md`
 5.2), ED0Dh-ED0Fh and EDFFh.
 
+### 2.6 Performance campaign 2: the user's options D1-D3 (2026-11-01)
+
+M, from `tools/bstest/l2base.py` on all 61 `tools/bstest/variants.sh` sets built with each option added (lane dprev,
+`perf2/dprev`, on batch 1: `C/dprev/var`). Every build without the options is byte-identical to batch 1's (the 61
+sets, the product, the gate builds), so 2.5's numbers stand; the options are not in the product. They change only the
+fixed area and, for `FLASH_LOOK`, LC1 (`objects.asm` `slot_clear`); every other bank as in 2.5.
+
+| Option (the preview) | Fixed area: product | Lowest set (`p_pzdiag`, `p_pzdiag2`) | Least in any set (`DEMO_ACTORS` 2 and 5) | LC1 (product / trace builds) |
+|---|---:|---:|---:|---:|
+| none (batch 1) | 483 | 348 | 76 | 24 / 153 |
+| `FLASH_LOOK=6` (flash-6, test10) | 477 (-6) | 342 | 70 | 19 / 148 |
+| `FLASH_LOOK=7` (flash-7 in game ticks, test11) | 505 (+22) | 370 | 98 | 19 / 148 |
+| `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8` (loop-3, test13) | 469 (-14) | 334 | 62 | 24 / 153 |
+| `CAD_MAX=3 CAD_HOLD=3` (loop-1, test14) | 483 (0) | 348 | 76 | 24 / 153 |
+| `LAG_X=64` (lag-x, test15) | 471 (-12) | 336 | 64 | 24 / 153 |
+
+- flash-7 frees 22 bytes: no held hit and no frame-end loop (`bob_begin` ages the look once a tick instead); the first
+  flash-7, counted in pictures, cost 2.
+- The three groups together (`FLASH_LOOK=7 CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8 LAG_X=64`, built for this count only): the
+  product 479 B free (-4), the lowest set 344.
+
 ## 3. What the rest of the game needs
 
 ### 3.1 The plan behind the numbers
