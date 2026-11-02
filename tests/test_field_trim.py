@@ -93,6 +93,29 @@ def fc_layout(pool: Path) -> tuple[list[int], list[int], bytes]:
     return list(fc[:ent]), [fc[ent + 4 * c + 3] for c in range(inc["FC_N"])], fc[plc:plc + 3 * inc["FC_PLACES"]]
 
 
+def check_white_masks(case: unittest.TestCase, pool: Path) -> None:
+    """Every level-3 frame: its white copy's pixels at the places of its normal pixels, each in colour 9
+    (a frame without a white copy draws its normal look for both)."""
+    d = drawings(pool, 3)
+    n = 0
+    for (fid, white), px in d.items():
+        if not white:
+            continue
+        norm = d[(fid, 0)]
+        case.assertEqual({(x, y) for x, y, _ in px}, {(x, y) for x, y, _ in norm}, fid)
+        if px != norm:
+            n += 1
+            case.assertEqual({v for _, _, v in px}, {9}, fid)
+    case.assertEqual(n, 55)                                             # (the white copies)
+
+
+@unittest.skipUnless(HAVE_NUMPY and (BUILD / "msx/sprites_l3.json").exists(), "numpy or make msx's pool missing")
+class WhiteMaskTests(unittest.TestCase):
+    def test_the_conversions_white_copies(self):
+        """build/msx's conversion (make msx): flash-1's exactness rests on it."""
+        check_white_masks(self, BUILD / "msx" / "sprites")
+
+
 @unittest.skipUnless(HAVE_NUMPY, "numpy missing: run with the project's venv")
 class TrimTests(unittest.TestCase):
     """tools/msxsprites.py field_trim on made-up frames."""
@@ -198,6 +221,12 @@ class ConversionTests(unittest.TestCase):
         self.assertLess(fb, fa)
         for c in self.json(self.cut, 3)["fc"]:                          # (each cache frame as drawn: its box)
             self.assertEqual(c["w"] % 2, 0)
+
+    def test_every_white_copy_has_its_frames_mask(self):
+        """flash-1 (docs/PERF2_PLAN.md item 3) draws a look-only change over the page's pixels: a white copy
+        must cover exactly its frame's pixels, all in colour 9 (level 3's grey: the Amiga's colour 15)."""
+        for pool in (self.cut, self.whole):
+            check_white_masks(self, pool)
 
     def test_the_atlases_and_the_rest_unchanged(self):
         for name in ("sprites.bin", "sprites.inc", "sprites_fdyn.bin", "sprites_l1_field.bin", "sprites_l2_field.bin",

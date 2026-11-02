@@ -62,6 +62,12 @@ fld_l3: db FIELD_LATE_l3, FIELD_DYN0_l3, FIELD_DYN1_l3
 ; BOBs too, as they were when copied: once the copy is done, everywhere a BOB may have been
 ; (fb_bb) and every BOB wanted is composed on that page before it may be shown (fb_sync,
 ; fb_bsync).
+; A look-only change (level 3's hit flash on or off: the lists equal but for bit 7 of the frames,
+; fd_lkchk) takes each piece's background from the page itself (FP_PAGE, performance campaign 2's
+; flash-1): a white copy has its frame's opaque pixels (its mask), so the page's pixels with every BOB
+; of the list drawn over them again give the new picture exactly. Only while the page's pixels are
+; its list's composition but for looks (fb_lkf0 / fb_lkf1: set where nothing is queued or composed,
+; cleared by any other change queued, fq_go) and no cell is waiting to be drawn there (fp_lkok).
 
 FB_CY:      equ 112                     ; page 3 lines 112-175: the caches (x 0-191), the scratch
 FB_SX:      equ 192                     ;   (x 192-255)
@@ -73,7 +79,12 @@ FP_BG:      equ 2                       ;   the background from the cache,
 FP_TILE:    equ 3                       ;   the background from the tiles,
 FP_BOB:     equ 4                       ;   the BOBs,
 FP_COPY:    equ 5                       ;   the copy onto the page,
-FP_WAIT:    equ 6                       ;   the copy waiting for the blank
+FP_WAIT:    equ 6                       ;   the copy waiting for the blank,
+FP_PAGE:    equ 7                       ;   the background from the page (a look-only change)
+        if fb_lkf1 - fb_lkf0 - 1
+fb_lkf_err:                             ; (an error: fq_go clears both pages' flags with one word)
+fb_lkf_err:
+        endif
 FB_BURST:   equ 16                      ; 16 x 16 copies in a row in one call (each next one set up
                                         ; while the one before runs, which takes about as long:
                                         ; vdp_cmd waits for it; a piece's 4 x 4 cells at most)
@@ -115,6 +126,9 @@ fbi_fc: ld (hl),a                   ; (no place of the frame cache holds a frame
         ld (fb_stg),a
         ld (fb_rdy),a
         ld (fb_shc),a
+        ld (fb_lkf0),a              ; (nothing known of the pages' pixels; no look-only diff)
+        ld (fb_lkf1),a
+        ld (fb_lkq),a
         ld a,FB_SX
         ld (fb_sbx),a
         ld a,0xFF
@@ -390,6 +404,7 @@ fd_go:  ld a,(hl)
 fd_unk: ld (fb_dcnt),a
         inc hl
         ld (fb_dptr),hl
+        call fd_lkchk               ; (a look-only change: fb_lkq, while its items are queued)
         ld a,(fb_dcnt)              ; each BOB drawn that is not wanted: where it was
         or a
         jr z,fd_want
@@ -424,6 +439,8 @@ fd_wlp: push bc
         pop bc
         djnz fd_wlp
 fd_copy:
+        xor a
+        ld (fb_lkq),a               ; (what fq_go queues from now on is not look-only)
         ld a,(fb_dpg)               ; the page's list = fb_want, its box fb_want's
         and 1
         push af
@@ -434,6 +451,42 @@ fd_copy:
         ldir
         pop af
         jp fbx_set
+
+; (fb_diff, flash-1) The page's list (fb_dptr: its entries, its count before them) against fb_want ->
+; fb_lkq 1 when they hold the same entries in the same order but for bit 7 of their frames (level 3's
+; hit flash: a white copy or its frame, the same pixels' mask), else 0. (A list FFh, unknown, never
+; has fb_wn's count; equal lists do not come here: fb_diff returns first.)
+fd_lkchk:
+        xor a
+        ld (fb_lkq),a
+        ld a,(fb_wn)
+        or a
+        ret z
+        ld hl,(fb_dptr)
+        dec hl
+        cp (hl)
+        ret nz
+        inc hl
+        ld b,a
+        ld de,fb_want
+fdk_e:  ld a,(de)                   ; the frame: but for bit 7
+        xor (hl)
+        and 0x7F
+        ret nz
+        ld c,FB_ENT - 1
+fdk_b:  inc hl                      ; x, y, owner: the same
+        inc de
+        ld a,(de)
+        cp (hl)
+        ret nz
+        dec c
+        jr nz,fdk_b
+        inc hl
+        inc de
+        djnz fdk_e
+        ld a,1
+        ld (fb_lkq),a
+        ret
 
 ; IX = an entry: its rectangle and owner into the queue for fb_diff's page. Keeps IX.
 fb_qent:
@@ -711,7 +764,13 @@ fb_queue:
         pop ix
         ret
 fq_go:  ld c,a
-        ld a,(fb_tick)
+        ld a,(fb_lkq)               ; (flash-1) a change that is not look-only: the pages' pixels are
+        or a                        ; not their lists' composition but for looks any more (fb_lkf0,
+        jr nz,fq_lk                 ; fb_lkf1: both, as merges and the V9938's sync take both)
+        ld h,a
+        ld l,a
+        ld (fb_lkf0),hl
+fq_lk:  ld a,(fb_tick)
         ld (fb_stp),a
         ld hl,(fb_r)                ; x0 >= 0
         bit 7,h
@@ -1009,6 +1068,9 @@ fb_step:
         jr z,fb_step                ; (queued: taken now)
         xor a
         ld (fb_busy),a
+        inc a                       ; (nothing queued or composed: each page's pixels are its list's
+        ld (fb_lkf0),a              ;  composition, flash-1's fp_lkok)
+        ld (fb_lkf1),a
         ret
 fwk_ph: ld a,(fb_ph)
         dec a
@@ -1021,7 +1083,9 @@ fwk_ph: ld a,(fb_ph)
         jp z,fb_bobs
         dec a
         jp z,fb_copy
-        jp fb_wait
+        dec a
+        jp z,fb_wait
+        jp fb_pgbg                  ; (FP_PAGE)
 
 ; The queue's first item into fb_cur, clipped to what its page keeps (a marker: the V9938's page
 ; being built holds the BOBs now), its page's list as the BOBs it shows (fb_sn) -> Z with its
@@ -1310,8 +1374,9 @@ fwi_c:  call fb_c16
         ret
 
 ; The piece from fb_px: up to 64 x 64 (the scratch) of fb_cur, its cells (fb_cc) and the source of
-; its background: the owner's cache when the piece is the whole item and has at most 4 rows and 4
-; columns of cells (5: the narrower edge column from the tiles, fb_slc), else the tiles.
+; its background: its page when the change is look-only (fp_lkok: flash-1), else the owner's cache
+; when the piece is the whole item and has at most 4 rows and 4 columns of cells (5: the narrower edge
+; column from the tiles, fb_slc), else the tiles.
 fb_piece:
         xor a
         ld (fb_cpi),a
@@ -1354,6 +1419,8 @@ fp_y:   ld (fb_pe + 2),hl
         ld (fb_cc + 3),a
         call vat_inbox              ; (level 2's drawn vats, VAT_ANIM=1: a piece over a vat cell takes
         jp nz,fp_tiles              ;  its background from the tiles, which follow its column's look)
+        call fp_lkok                ; (a look-only change: from the page)
+        jp z,fp_page
         ld hl,(fb_cur + 1)          ; an owner's?
         ld a,h
         and l
@@ -1426,6 +1493,83 @@ fp_ph:  ld (fb_ph),a
         ld a,(fb_cc)
         ld (fb_ci + 1),a
         ret
+
+; (fb_piece, flash-1) -> Z when the piece may take its background from its page: fb_cur not a marker,
+; its page's pixels its list's composition but for looks (fb_lkf0 / fb_lkf1 1: what is queued since
+; the field engine last had nothing to do changes looks only), no cell waiting to be drawn on the
+; pages (the redraw queue empty; the V9958: no ring column or row queued, which its window takes in
+; before they are drawn; the V9938: no row pending, which fb_inwin's rows already count) and the piece
+; inside its page's window. The page's pixels with every BOB of fb_sn drawn over them are then the
+; new picture: each BOB of the list covers the same pixels in both looks (a white copy has its
+; frame's mask), and fb_sn holds the same BOBs in the same order as the list the pixels show.
+fp_lkok:
+        ld a,(fb_cur)
+        bit 7,a
+        ret nz                      ; (a marker)
+        ld hl,fb_lkf0
+        rra
+        jr nc,fpk_p
+        inc hl
+fpk_p:  ld a,(hl)
+        dec a
+        ret nz
+        ld a,(rd_head)
+        ld hl,rd_tail
+        cp (hl)
+        ret nz
+        ld a,(fb_eng)
+        or a
+        jr nz,fpk_38
+        ld a,(q_col)
+        ld hl,q_row
+        and (hl)
+        jr fpk_q
+fpk_38: ld a,(s38_rq)
+fpk_q:  inc a                       ; (FFh: none)
+        ret nz
+        call fb_inwin
+        sbc a,a                     ; (C: inside -> Z)
+        inc a
+        ret
+fp_page:
+        call fcp_sp                 ; the piece's parts, as its copy's
+        xor a
+        ld (fb_ci),a
+        ld a,FP_PAGE
+        ld (fb_ph),a
+        ret
+
+; Phase FP_PAGE (flash-1): the piece's background from its page into the scratch, part by part as its
+; copy will go back (fb_pcmd's HMMM with its source and destination swapped); then the BOBs.
+fb_pgbg:
+        ld a,(fb_ci)
+        cp 4
+        jr nc,fpg_dn
+        inc a
+        ld (fb_ci),a
+        dec a
+        call fb_part
+        jr nc,fb_pgbg               ; (empty)
+        ld hl,fb_cmd
+        call fb_pcmd
+        ld hl,fb_cmd                ; SX, SY <-> DX, DY
+        ld de,fb_cmd + 4
+        ld b,4
+fpg_sw: ld a,(de)
+        ld c,(hl)
+        ld (hl),a
+        ld a,c
+        ld (de),a
+        inc hl
+        inc de
+        djnz fpg_sw
+        ld a,FB_HMMM
+        jp fb_issue
+fpg_dn: ld a,FP_BOB
+        ld (fb_ph),a
+        ld a,(fb_sn)
+        ld (fb_ci),a
+        jp fb_bobs
 
 ; The cache of fb_cur's owner (else a free one, else the one used least recently) for the piece:
 ; fb_cgi, its window moved over the piece's cells (the cells that come into it not held).

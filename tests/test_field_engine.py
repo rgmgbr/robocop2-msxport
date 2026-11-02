@@ -204,5 +204,135 @@ class EngineSetupTests(unittest.TestCase):
         self.assertEqual(body[k:k + 4], ["di", "ld hl,fb_init", "call field_call", "ei"])   # (engines_jump)
 
 
+FB_ENT = 7
+
+
+def fd_lkchk(want: list[bytes], page: list[bytes] | None) -> int:
+    """msx/field.asm fd_lkchk as the Z80 runs it: fb_want's entries, the page's list (None: count FFh,
+    unknown) -> fb_lkq."""
+    wn = len(want)
+    if wn == 0:                                     # ld a,(fb_wn) / or a / ret z
+        return 0
+    if page is None or len(page) != wn:             # dec hl / cp (hl) / ret nz
+        return 0
+    w, p = b"".join(want), b"".join(page)
+    i = 0
+    for _ in range(wn):                             # fdk_e .. djnz fdk_e
+        if (w[i] ^ p[i]) & 0x7F:                    # xor (hl) / and 0x7F / ret nz
+            return 0
+        for _ in range(FB_ENT - 1):                 # fdk_b: inc hl / inc de / cp (hl) / ret nz
+            i += 1
+            if w[i] != p[i]:
+                return 0
+        i += 1
+    return 1
+
+
+def look_only(want: list[bytes], page: list[bytes] | None) -> bool:
+    """The rule: the same BOBs in the same order, their frames equal but for bit 7 (a hit flash's look)."""
+    return (page is not None and 0 < len(want) == len(page)
+            and all(a[0] & 0x7F == b[0] & 0x7F and a[1:] == b[1:] for a, b in zip(want, page)))
+
+
+class LookOnlyTests(unittest.TestCase):
+    """flash-1 (docs/PERF2_PLAN.md item 3): a look-only change takes each piece's background from its page
+    (msx/field.asm fd_lkchk, the flags fb_lkf0 / fb_lkf1 / fb_lkq, fp_lkok, FP_PAGE's fb_pgbg)."""
+
+    def test_fd_lkchk_is_the_routine_modelled(self):
+        self.assertEqual(code("field.asm", "fd_lkchk", "fb_qent"),
+                         ["xor a", "ld (fb_lkq),a", "ld a,(fb_wn)", "or a", "ret z", "ld hl,(fb_dptr)", "dec hl",
+                          "cp (hl)", "ret nz", "inc hl", "ld b,a", "ld de,fb_want", "ld a,(de)", "xor (hl)",
+                          "and 0x7F", "ret nz", "ld c,FB_ENT - 1", "inc hl", "inc de", "ld a,(de)", "cp (hl)", "ret nz",
+                          "dec c", "jr nz,fdk_b", "inc hl", "inc de", "djnz fdk_e", "ld a,1", "ld (fb_lkq),a", "ret"])
+
+    def test_fd_lkchk_finds_look_only_changes_only(self):
+        import random
+        rng = random.Random(7)
+        n = hits = 0
+        for _ in range(20000):
+            want = [bytes([rng.choice((0x98, 0xA3, 0x18, 0x23))] + [rng.randrange(256) for _ in range(6)])
+                    for _ in range(rng.randrange(0, 9))]
+            page = [bytearray(e) for e in want]
+            for e in page:                          # (some looks, sometimes another byte or BOB)
+                if rng.random() < 0.5:
+                    e[0] ^= 0x80
+                if rng.random() < 0.05:
+                    e[rng.randrange(7)] ^= 1 << rng.randrange(7)
+            page = [bytes(e) for e in page]
+            if rng.random() < 0.05:
+                page = page[:-1] if page else [want[0] if want else bytes(7)]
+            if rng.random() < 0.03:
+                page = None
+            if page == want:                        # (fb_diff returns before: nothing changes)
+                continue
+            n += 1
+            hits += fd_lkchk(want, page)
+            self.assertEqual(fd_lkchk(want, page), int(look_only(want, page)), (want, page))
+        self.assertGreater(hits, 1000)
+        self.assertGreater(n - hits, 1000)
+
+    def test_the_flags_rules(self):
+        diff = code("field.asm", "fb_diff", "fd_copy")
+        k = diff.index("ld (fb_dptr),hl")
+        self.assertEqual(diff[k + 1], "call fd_lkchk")              # (fb_dptr set, before any item is queued)
+        self.assertLess(k, diff.index("call nz,fb_qent"))
+        self.assertEqual(code("field.asm", "fd_copy", "fd_lkchk")[:2], ["xor a", "ld (fb_lkq),a"])
+        self.assertEqual(code("field.asm", "fq_go", "fq_x1")[:8],
+                         ["ld c,a", "ld a,(fb_lkq)", "or a", "jr nz,fq_lk", "ld h,a", "ld l,a", "ld (fb_lkf0),hl",
+                          "ld a,(fb_tick)"])
+        step = code("field.asm", "fb_step", "fwk_ph")
+        self.assertEqual(step[-7:], ["jr z,fb_step", "xor a", "ld (fb_busy),a", "inc a", "ld (fb_lkf0),a",
+                                     "ld (fb_lkf1),a", "ret"])        # (nothing queued, composed or to sync)
+        init = code("field.asm", "fb_init", "fb_frame")
+        z = init.index("xor a")
+        for f in ("fb_lkf0", "fb_lkf1", "fb_lkq"):
+            self.assertIn(f"ld ({f}),a", init[z:init.index("ld a,FB_SX")])
+        # fq_go is the queue's only way in (fb_queue's) but for fb_sync's marker (fq_new, which composes
+        # nothing): outside fq_go's own code no jump into it
+        field = (ROOT / "msx" / "field.asm").read_text()
+        own = field[field.index("\nfq_go:"):field.index("\nfq_fits:")]
+        rest = field.replace(own, "")
+        calls = re.findall(r"^\s+(?:call|jp|jr)\s+(?:\w+,)?(fq_go|fq_add|fq_new|fq_mrg|fq_lk)\b", rest, re.M)
+        self.assertEqual(sorted(calls), ["fq_go", "fq_new"])
+        self.assertIn("call fq_go", code("field.asm", "fb_queue", "fq_go"))
+        self.assertIn("call fq_new", code("field.asm", "fb_sync", "fb_bbcell"))
+
+    def test_the_ram(self):
+        inc = (ROOT / "msx" / "msx.inc").read_text()
+        eq = {m[1]: int(m[2], 16) for m in re.finditer(r"^(\w+):\s+equ 0x([0-9A-Fa-f]+)", inc, re.M)}
+        self.assertEqual((eq["fb_lkf0"], eq["fb_lkf1"], eq["fb_lkq"]), (0xED09, 0xED0A, 0xED0B))
+        self.assertEqual([k for k, v in eq.items() if 0xED09 <= v <= 0xED0B], ["fb_lkf0", "fb_lkf1", "fb_lkq"])
+        bm_n = int(re.search(r"^BM_N:\s+equ (\d+)", inc, re.M)[1])
+        self.assertLessEqual(eq["bm_gen"] + 2 * bm_n, 0xED09)      # (the beams' words end before them)
+        self.assertEqual(eq["sb_end"], 0xED0C)
+
+    def test_fp_lkok_and_its_rule(self):
+        self.assertEqual(code("field.asm", "fp_lkok", "fp_page"),
+                         ["ld a,(fb_cur)", "bit 7,a", "ret nz", "ld hl,fb_lkf0", "rra", "jr nc,fpk_p", "inc hl",
+                          "ld a,(hl)", "dec a", "ret nz", "ld a,(rd_head)", "ld hl,rd_tail", "cp (hl)", "ret nz",
+                          "ld a,(fb_eng)", "or a", "jr nz,fpk_38", "ld a,(q_col)", "ld hl,q_row", "and (hl)",
+                          "jr fpk_q", "ld a,(s38_rq)", "inc a", "ret nz", "call fb_inwin", "sbc a,a", "inc a", "ret"])
+        piece = code("field.asm", "fb_piece", "fp_lkok")
+        k = piece.index("call fp_lkok")
+        self.assertEqual(piece[k - 2:k + 3], ["call vat_inbox", "jp nz,fp_tiles", "call fp_lkok", "jp z,fp_page",
+                                              "ld hl,(fb_cur + 1)"])
+        self.assertLess(piece.index("ld (fb_cc + 3),a"), k)          # (fb_px .. fb_pe, the cells: set)
+        self.assertEqual(code("field.asm", "fp_page", "fb_pgbg"),
+                         ["call fcp_sp", "xor a", "ld (fb_ci),a", "ld a,FP_PAGE", "ld (fb_ph),a", "ret"])
+
+    def test_the_page_phase(self):
+        self.assertRegex((ROOT / "msx" / "field.asm").read_text(), r"\nFP_WAIT:\s+equ 6\b.*\nFP_PAGE:\s+equ 7\b")
+        self.assertEqual(code("field.asm", "fwk_ph", "fb_next")[-3:], ["dec a", "jp z,fb_wait", "jp fb_pgbg"])
+        body = code("field.asm", "fb_pgbg", "fb_cfind")
+        k = body.index("call fb_pcmd")
+        self.assertEqual(body[k - 1:k + 15], ["ld hl,fb_cmd", "call fb_pcmd", "ld hl,fb_cmd", "ld de,fb_cmd + 4",
+                                              "ld b,4", "ld a,(de)", "ld c,(hl)", "ld (hl),a", "ld a,c", "ld (de),a",
+                                              "inc hl", "inc de", "djnz fpg_sw", "ld a,FB_HMMM", "jp fb_issue",
+                                              "ld a,FP_BOB"])
+        self.assertEqual(body[:8], ["ld a,(fb_ci)", "cp 4", "jr nc,fpg_dn", "inc a", "ld (fb_ci),a", "dec a",
+                                    "call fb_part", "jr nc,fb_pgbg"])
+        self.assertEqual(body[-4:], ["ld (fb_ph),a", "ld a,(fb_sn)", "ld (fb_ci),a", "jp fb_bobs"])
+
+
 if __name__ == "__main__":
     unittest.main()

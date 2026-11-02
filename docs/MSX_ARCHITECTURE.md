@@ -642,6 +642,27 @@ which as sprites were striped, cut or left out.
     silhouettes. A play-field frame without a white copy (the lift, the rocket, the smoke, a debris
     part) shows its normal look. Which pictures take the white look: one per hit, or `FLASH_LOOK`'s
     (below, "Game logic": "The hit flash's look").
+  - **A look-only change** (performance campaign 2's flash-1, `docs/PERF2_PLAN.md` item 3; `field.asm`
+    `fd_lkchk`, `fp_lkok`, `fb_pgbg`): when a page's list and the list wanted differ only in bit 7 of their
+    frames (a hit flash on or off: the same BOBs at the same places, in the same order), each piece of the
+    items this queues takes its background from the page itself instead of a cache or the tiles: one HMMM
+    a part of the piece (its copy's parts: the V9958 ring's x 256 and y 256, a V9938 page's y 256) from
+    the page into the scratch (phase `FP_PAGE`), then every BOB of the list over it as always, then the
+    copy back. That is exact because each white copy covers exactly its frame's pixels (all 55, in colour
+    9: `tests/test_field_trim.py`, `tools/bstest/perf2/whitechk.py`): the BOBs drawn again over the old
+    picture give the new one pixel for pixel, whichever look each had. The engine takes it only
+    - while the page's pixels are its list's composition but for looks: `fb_lkf0` / `fb_lkf1`
+      (ED09h-ED0Ah) are set where the field engine has nothing queued, composed or to sync (`fb_step`'s
+      idle point) and cleared by any change queued that is not look-only (`fq_go`; `fb_lkq`, ED0Bh, tells
+      it while `fb_diff` queues a look-only one), so a cell, a merge with another change, a V9938 sync or
+      a redo clears both;
+    - while no cell waits to be drawn: the redraw queue empty, and no V9958 ring column or row queued or
+      V9938 row pending (`s38_rq`), whose cells the windows count before they are drawn;
+    - for a piece inside its page's window (`fb_inwin`), not a marker.
+    - Every other piece takes its background as before. A lost look-only change (`fb_lost`) keeps the
+      rule true: the page's pixels then differ from its list in looks only. Levels 1 and 2 never take it:
+      their lists have no bit 7 (their silhouettes are sprites, `fb_fwm` 0). It costs 211 bytes of
+      `BANK_FIELD` and 3 of RAM (the room from R2, "Code" below).
   - **Bullets into the play field**: in level 3 (`fb_fwm`) `bob_flush` sends an enemy bullet whose
     frame is a play-field frame to the play field: the debris of `death_cain`, `death_truck` and
     `death_w21`, and the rocket (bullet 11h, 48 x 16).
