@@ -706,6 +706,16 @@ which as sprites were striped, cut or left out.
   A000h around it, `act_a000` put back, 8000h as it is), and it calls `fb_init` and `vat_init` through
   `field_call`. It runs at a level's start (`lv_go`), a restart or a continue (`level_restart`) and the
   cracked wall's jump (`engines_jump`), never in a frame's work.
+  Since performance campaign 2's R3 (`docs/PERF2_PLAN.md` 5.2: its room went to batch 3's field items) the
+  field's own set-up (`fb_init`, from the set-up above directly, from the front end's text screens through
+  `f2_call`), a V9938 build's start (`fb_bbinit`, from `scroll9938.asm` `s38_target` through `f2_call`) and its
+  sync (`fs_sync`) run there too: 313 bytes of `BANK_FRONT2`. `BANK_FIELD` keeps the level's tables' copy
+  (`fb_fldcp`: `lv_fld` points into this bank), the sync's gate (`fb_sync`: on the V9938, a build's copy done and
+  its page not synced, the only time it maps `BANK_FRONT2`) and `fb_queuec` (`fb_queue` with the page in C:
+  `field_call` takes A and HL, so the code in `BANK_FRONT2` passes its arguments in BC, DE and RAM, and keeps
+  its own copies of `fb_dnp`, `fb_lsz` and `fbx_set`). `BANK_FIELD` gains 256 bytes (the product 186 -> 442 free,
+  the drive builds 145 -> 401); the V9938's frames map `BANK_FRONT2` once a build (a bank more in their set
+  only then, a speed target on page-cache devices).
 
 ## Game logic (`msx/player.asm` and the logic modules)
 

@@ -2,8 +2,10 @@
 ; field by the VDP, in all 16 colours, like the Amiga's blitter (docs/MSX_ARCHITECTURE.md
 ; "Play-field BOBs"). Bank BANK_FIELD at A000h around its calls (rc2.asm field_call); the scroll
 ; engines' set-up, which runs once a level, is in the front end's second bank since performance
-; campaign 2's R2 (ending.asm engines_init, engines_jump: rc2.asm f2_call). The code here calls
-; only fixed code: get_tile puts the A000h window's bank back, the tile cache maps 8000h only.
+; campaign 2's R2 (ending.asm engines_init, engines_jump: rc2.asm f2_call), and so are the field's
+; own set-up and the V9938 builds' start and sync since its R3 (ending.asm fb_init, fb_bbinit,
+; fs_sync). The code here calls only fixed code and, through f2_call, that bank's: get_tile puts the
+; A000h window's bank back, the tile cache maps 8000h only.
 
         include "sprites_l1_field.inc"  ; FIELD_N, FIELD_Y0, field_tab (tools/msxsprites.py --pool)
         include "field_l2.inc"      ; level 2's: FIELD_LATE_l2, field_tab_l2 ... (tools/mkrom.py)
@@ -93,56 +95,15 @@ FB_STEPS:   equ 3                       ; steps of the work in one fb_work call 
 FB_FLDN:    equ fb_fcb + 1 - fb_flate   ; a level's play-field tables (lv_fld: fld_l1 ...)
 FC_MAX:     equ 8                       ; the frame cache's places at most (an overlap mask a byte)
 
-; At a level's start (engines_init): the pages hold no BOB, no cache holds anything, the dynamic
-; slot and the frame cache no frame, nothing to do; the level's play-field frames' tables (lv_fld:
-; fld_l1, fld_l2, fld_l3).
-fb_init:
+; (ending.asm fb_init, at a level's start, through field_call) The level's play-field frames' tables
+; (lv_fld: fld_l1, fld_l2, fld_l3, which this bank holds) into fb_flate ... fb_fcb. The rest of the
+; set-up runs in BANK_FRONT2 since performance campaign 2's R3 (docs/PERF2_PLAN.md 5.2: its room went
+; to the field engine's work).
+fb_fldcp:
         ld hl,(lv_fld)
         ld de,fb_flate
         ld bc,FB_FLDN
         ldir
-        ld hl,fc_res
-        ld b,FC_MAX
-        ld a,0xFF
-fbi_fc: ld (hl),a                   ; (no place of the frame cache holds a frame)
-        inc hl
-        djnz fbi_fc
-        xor a
-        ld (dyn_res),a
-        ld (dyn_res + 1),a
-        ld (fb_dsn),a
-        ld (fb_wn),a
-        ld (fb_dn0),a
-        ld (fb_dn1),a
-        ld (fb_qn),a
-        ld (fb_bbn),a
-        ld (fb_ph),a
-        ld (fb_busy),a
-        ld (fb_n),a
-        ld (fb_cq),a
-        ld (fb_lost),a
-        ld (fb_hold),a
-        ld (fb_vok),a
-        ld (fb_qlk),a
-        ld (fb_stg),a
-        ld (fb_rdy),a
-        ld (fb_shc),a
-        ld (fb_lkf0),a              ; (nothing known of the pages' pixels; no look-only diff)
-        ld (fb_lkf1),a
-        ld (fb_lkq),a
-        ld a,FB_SX
-        ld (fb_sbx),a
-        ld a,0xFF
-        ld (fb_bsync),a
-        ld (fb_vlast),a
-        ld hl,fb_cache
-        ld de,FB_CSZ - 1
-        ld b,FB_GMAX
-fi_c:   ld (hl),a                   ; (owner FFFFh: free)
-        inc hl
-        ld (hl),a
-        add hl,de
-        djnz fi_c
         ret
 
 ; Once a picture (main loop, before the sprites' frame): what each page must show now.
@@ -704,47 +665,11 @@ fu_3:   ld hl,(fb_r + 6)            ; y1
         ld (ix+7),h
         ret
 
-; (scroll9938.asm s38_target) A V9938 build begins: the displayed page's work under way (the item
-; being composed and those waiting) is where its copy may bring something its list does not show;
-; the rest the copy brings as it is, the BOBs with it, in their place (they were composed again in
-; full until 2026-10-21: one build's items held the page shown's for ~12 pictures). Called when the
-; target is set, before the build draws anything (fb_bbcell adds its cells from then on).
-fb_bbinit:
-        call vat_bbinit             ; (level 2's vats: the looks its copy brings)
-        xor a
-        ld (fb_bbn),a
-        ld a,(fb_ph)
-        or a
-        jr z,fbi_q0
-        ld hl,fb_cur
-        call fbi_one
-fbi_q0: ld a,(fb_qn)
-        or a
-        ret z
-        ld b,a
-        ld hl,fb_q
-fbi_ql: push bc
-        push hl
-        call fbi_one
-        pop hl
-        ld de,FB_QSZ
-        add hl,de
-        pop bc
-        djnz fbi_ql
-        ret
-
-; HL = an item: its rectangle into fb_bb when it is the displayed page's.
-fbi_one:
-        ld a,(s38_vis_page)
-        cp (hl)
-        ret nz
-        inc hl
-        inc hl
-        inc hl
-        ld de,fb_r
-        ld bc,8
-        ldir
-        jp fb_bbadd
+; (A V9938 build's start, fb_bbinit, and its sync, fs_sync: ending.asm, BANK_FRONT2, since performance
+; campaign 2's R3.) (ending.asm through field_call) C = page (or a marker | 80h): fb_queue.
+fb_queuec:
+        ld a,c
+        ; (falls through)
 
 ; A = page (or a marker | 80h), fb_r = a rectangle, fb_own = its owner (FFFFh: none): into the
 ; queue, clipped to the map, stamped with the picture being prepared (fb_tick: on the page shown
@@ -3581,69 +3506,29 @@ fsh_n:  or 1
 fsh_x:  pop hl
         ret
 
-; V9938, nothing queued: once the page being built has its copy, where it may show something else
-; than the BOBs wanted (fb_bb: the displayed page's changes since the build began, the cells drawn
-; on it meeting a BOB: fb_bbcell) is composed on it, then a marker lets it be shown (fb_bsync) ->
-; Z when queued.
+; V9938, nothing queued: once the page being built has its copy and is not synced yet, its sync
+; (ending.asm fs_sync: BANK_FRONT2 through f2_call since performance campaign 2's R3, the bank it adds
+; to the V9938's frames only when a build's copy is done) -> Z when it queued items (taken now).
 fb_sync:
         ld a,(fb_eng)
         or a
-        jp z,fs_no
-        ld a,(s38_back_c0)
-        cp 0xFF
-        jp z,fs_no
-        ld hl,fb_bsync
-        cp (hl)
-        jp z,fs_no
+        jr z,fsy_no                 ; (the V9958's ring)
         ld a,(s38_phase)
         or a
-        jp z,fs_no
+        jr z,fsy_no                 ; (the build's new column)
         ld a,(s38_i)
         cp VIEW_ROWS
-        jp nz,fs_no
-        ld a,(s38_vis_page)
-        xor 1
-        ld (fb_dpg),a
-        ld hl,0xFFFF                ; (no owner)
-        ld (fb_own),hl
-        ld a,(fb_bbn)               ; where the copy may have brought something else
-        or a
-        jr z,fs_m
-        ld b,a
-        ld hl,fb_bb
-fs_bl:  push bc
-        ld de,fb_r
-        ld bc,8
-        ldir
-        push hl
-        ld a,(fb_dpg)
-        call fb_queue
-        pop hl
-        pop bc
-        djnz fs_bl
-fs_m:   ld a,(fb_dpg)               ; its list: fb_want, its box
-        call fb_dnp
-        ex de,hl
-        ld hl,fb_wn
-        call fb_lsz
-        ldir
-        ld a,(fb_dpg)
-        call fbx_set
-        ld a,(fb_qn)                ; the marker (its build target), last
-        cp FB_QMAX
-        jr nc,fs_full
+        jr nz,fsy_no                ; (its copy)
         ld a,(s38_back_c0)
-        ld (fb_r),a
-        ld a,(fb_dpg)
-        or 0x80
-        ld c,a
-        call fq_new
-        xor a
+        ld hl,fb_bsync
+        cp (hl)
+        jr z,fsy_no                 ; (synced: the flip may come; or no page being built)
+        ld hl,fs_sync
+        call f2_call
+        ld a,l
+        or a
         ret
-fs_full:
-        xor a                       ; (no room for the marker: the next call adds it)
-        ret
-fs_no:  or 1
+fsy_no: or 1
         ret
 
 ; (tiles.asm fb_mark38) D = row, E = column of a tile drawn on the V9938's page being built before

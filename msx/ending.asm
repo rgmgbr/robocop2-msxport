@@ -3,8 +3,10 @@
 ; scores (high_score_entry $12082: hs_entry; the table hs_tab0, hs_tab1 in RAM, msx.inc), with
 ; FRONT's text screens' pieces (fs_step, fs_char, fs_tick, fs_list, ff_bits) and their scripts here
 ; (ending.inc, tools/msxtext.py); the play-field atlas's upload at power-on and at a level's start
-; (field_upload); and the scroll engines' set-up (engines_init, engines_jump: from the main loop's
-; code through rc2.asm f2_call). Every routine it calls puts the A000h window back (act_a000).
+; (field_upload); the scroll engines' set-up (engines_init, engines_jump: from the main loop's code
+; through rc2.asm f2_call); and the play-field BOBs' set-up and the V9938 builds' start and sync
+; (fb_init, fb_bbinit, fs_sync: performance campaign 2's R3). Every routine it calls puts the A000h
+; window back (act_a000).
 
 ; At the power-on (frontx.asm ci_hook): the high scores' table from its defaults ($11FF6 in the
 ; Amiga's code, kept until the power goes: IAN 100000 ... PAUL 7500).
@@ -469,8 +471,7 @@ etg_all:
         ret
 et_open:
         call snd_stop               ; ($10768: $FE14)
-        ld hl,fb_init
-        call field_call             ; (no play-field BOB holds a list now)
+        call fb_init                ; (no play-field BOB holds a list now)
         ld hl,pf_pal
         ld bc,32
         xor a
@@ -647,15 +648,14 @@ fu_nl:  pop hl
 ; field.asm's bank, whose room went to the field engine; through rc2.asm f2_call: this bank at
 ; A000h, 8000h as the caller left it). It runs once at a level's start (rc2.asm lv_go), at a
 ; restart or a continue (level_restart) and at the cracked wall's jump (engines_jump), never in a
-; frame's work; field.asm's fb_init and vat_init through field_call. -----
+; frame's work; field.asm's vat_init through field_call, fb_init here (R3, below). -----
 
 ; The scroll engine of the VDP found (vdp_id; FORCE_V9938) on the camera's view, the split, the
 ; sprite engine.
 engines_init:
         ld hl,vat_init
         call field_call             ; (level 2's vats: none drawn yet)
-        ld hl,fb_init
-        call field_call             ; (first: the set-up's tiles ask it, tiles.asm fb_mark)
+        call fb_init                ; (first: the set-up's tiles ask it, tiles.asm fb_mark)
         ld a,(vdp_id)
         cp 2
         jr nz,init38
@@ -703,8 +703,7 @@ ej_vbl: ld a,(tick)
         jr z,ej_vbl
         call pl_view                ; v_x, v_y (cam_x, cam_y) on the new camera
         di                          ; (the interrupts start the play field's copies)
-        ld hl,fb_init
-        call field_call
+        call fb_init
         ei
         ld hl,vat_init
         call field_call             ; (level 2's vats: the whole view drawn again)
@@ -817,3 +816,194 @@ s38i_col:
         cp b
         jr nz,s38i_row
         jp s38_publish
+
+
+; ----- the play-field BOBs' code that runs once a level, or once a V9938 build (performance campaign
+; 2's R3, docs/PERF2_PLAN.md 5.2: from field.asm's bank, whose room went to the field engine's work).
+; Reached through rc2.asm f2_call (BANK_FRONT2 at A000h around it, act_a000 put back); it reaches
+; field.asm's routines through field_call (their arguments in BC, DE and RAM: field_call takes A and
+; HL), and keeps its own copies of the small ones that take them (fs_dnp, fs_lsz, fs_bxs). -----
+
+; At a level's start (engines_init, engines_jump), and before the front end's text screens (front.asm
+; through f2_call, et_open): the pages hold no BOB, no cache holds anything, the dynamic slot and the
+; frame cache no frame, nothing to do; the level's play-field frames' tables (field.asm fb_fldcp:
+; lv_fld's fld_l1, fld_l2, fld_l3 are in BANK_FIELD).
+fb_init:
+        ld hl,fb_fldcp
+        call field_call
+        ld hl,fc_res
+        ld b,FC_MAX
+        ld a,0xFF
+fbi_fc: ld (hl),a                   ; (no place of the frame cache holds a frame)
+        inc hl
+        djnz fbi_fc
+        xor a
+        ld (dyn_res),a
+        ld (dyn_res + 1),a
+        ld (fb_dsn),a
+        ld (fb_wn),a
+        ld (fb_dn0),a
+        ld (fb_dn1),a
+        ld (fb_qn),a
+        ld (fb_bbn),a
+        ld (fb_ph),a
+        ld (fb_busy),a
+        ld (fb_n),a
+        ld (fb_cq),a
+        ld (fb_lost),a
+        ld (fb_hold),a
+        ld (fb_vok),a
+        ld (fb_qlk),a
+        ld (fb_stg),a
+        ld (fb_rdy),a
+        ld (fb_shc),a
+        ld (fb_lkf0),a              ; (nothing known of the pages' pixels; no look-only diff)
+        ld (fb_lkf1),a
+        ld (fb_lkq),a
+        ld a,FB_SX
+        ld (fb_sbx),a
+        ld a,0xFF
+        ld (fb_bsync),a
+        ld (fb_vlast),a
+        ld hl,fb_cache
+        ld de,FB_CSZ - 1
+        ld b,FB_GMAX
+fi_c:   ld (hl),a                   ; (owner FFFFh: free)
+        inc hl
+        ld (hl),a
+        add hl,de
+        djnz fi_c
+        ret
+
+; (scroll9938.asm s38_target through f2_call) A V9938 build begins: the displayed page's work under
+; way (the item being composed and those waiting) is where its copy may bring something its list does
+; not show; the rest the copy brings as it is, the BOBs with it, in their place (they were composed
+; again in full until 2026-10-21: one build's items held the page shown's for ~12 pictures). Called
+; when the target is set, before the build draws anything (field.asm fb_bbcell adds its cells from
+; then on).
+fb_bbinit:
+        if VAT_ANIM
+        ld hl,vat_bbinit
+        call field_call             ; (level 2's vats: the looks its copy brings)
+        endif
+        xor a
+        ld (fb_bbn),a
+        ld a,(fb_ph)
+        or a
+        jr z,fbi_q0
+        ld hl,fb_cur
+        call fbi_one
+fbi_q0: ld a,(fb_qn)
+        or a
+        ret z
+        ld b,a
+        ld hl,fb_q
+fbi_ql: push bc
+        push hl
+        call fbi_one
+        pop hl
+        ld de,FB_QSZ
+        add hl,de
+        pop bc
+        djnz fbi_ql
+        ret
+
+; HL = an item: its rectangle into fb_bb when it is the displayed page's.
+fbi_one:
+        ld a,(s38_vis_page)
+        cp (hl)
+        ret nz
+        inc hl
+        inc hl
+        inc hl
+        ld de,fb_r
+        ld bc,8
+        ldir
+        ld hl,fb_bbadd
+        jp field_call
+
+; (field.asm fb_sync through f2_call: the V9938, nothing queued, the build's copy done, the page being
+; built not synced) Where it may show something else than the BOBs wanted (fb_bb: the displayed page's
+; changes since the build began, the cells drawn on it meeting a BOB: fb_bbcell) is composed on it,
+; then a marker lets it be shown (fb_bsync) -> L 0 when queued, 1 when not.
+fs_sync:
+        ld l,1
+        ld a,(s38_back_c0)
+        cp 0xFF
+        ret z
+        ld a,(s38_vis_page)
+        xor 1
+        ld (fb_dpg),a
+        ld hl,0xFFFF                ; (no owner)
+        ld (fb_own),hl
+        ld a,(fb_bbn)               ; where the copy may have brought something else
+        or a
+        jr z,fs_m
+        ld b,a
+        ld hl,fb_bb
+fs_bl:  push bc
+        ld de,fb_r
+        ld bc,8
+        ldir
+        push hl
+        ld a,(fb_dpg)
+        ld c,a
+        ld hl,fb_queuec
+        call field_call
+        pop hl
+        pop bc
+        djnz fs_bl
+fs_m:   ld a,(fb_dpg)               ; its list: fb_want, its box
+        call fs_dnp
+        ex de,hl
+        ld hl,fb_wn
+        call fs_lsz
+        ldir
+        ld a,(fb_dpg)
+        call fs_bxs
+        ld l,0
+        ld a,(fb_qn)                ; the marker (its build target), last
+        cp FB_QMAX
+        ret nc                      ; (no room for the marker: the next call adds it)
+        ld a,(s38_back_c0)
+        ld (fb_r),a
+        ld a,(fb_dpg)
+        or 0x80
+        ld c,a
+        ld hl,fq_new
+        call field_call
+        ld l,0
+        ret
+
+; (field.asm fb_dnp's copy) A = page (0/1) -> HL = its list (count, then the entries). Keeps BC, DE.
+fs_dnp: or a
+        ld hl,fb_dn0
+        ret z
+        ld hl,fb_dn1
+        ret
+
+; (field.asm fb_lsz's copy) HL = a list -> BC = its bytes: the count, then FB_ENT an entry (a count
+; FFh, unknown: the count only). Keeps DE, HL.
+fs_lsz: ld a,(hl)
+        cp FB_MAX + 1
+        jr c,fsl_n
+        xor a
+fsl_n:  ld c,a
+        add a,a
+        add a,a
+        add a,a
+        sub c                       ; * FB_ENT (7)
+        inc a
+        ld c,a
+        ld b,0
+        ret
+
+; (field.asm fbx_set's copy) A = page (0/1): its list's box = fb_want's (fb_wbx).
+fs_bxs: ld hl,fb_wbx
+        ld de,fb_pbx0
+        or a
+        jr z,fsb_c
+        ld de,fb_pbx1
+fsb_c:  ld bc,8
+        ldir
+        ret

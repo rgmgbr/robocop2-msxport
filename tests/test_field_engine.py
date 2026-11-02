@@ -195,13 +195,82 @@ class EngineSetupTests(unittest.TestCase):
 
     def test_the_field_routines_it_runs_through_field_call(self):
         body = code("ending.asm", "engines_init", "s38_init") + code("ending.asm", "s38_init", "s38i_row")
-        for label in ("fb_init", "vat_init"):
-            self.assertNotIn("call " + label, body)
-        pairs = [(body[k], body[k + 1]) for k, l in enumerate(body) if l in ("ld hl,fb_init", "ld hl,vat_init")]
-        self.assertEqual(len(pairs), 4)
+        self.assertNotIn("call vat_init", body)
+        pairs = [(body[k], body[k + 1]) for k, l in enumerate(body) if l == "ld hl,vat_init"]
+        self.assertEqual(len(pairs), 2)
         self.assertTrue(all(b == "call field_call" for _, b in pairs), pairs)
+        self.assertEqual(body.count("call fb_init"), 2)         # (R3: fb_init is in this bank, below)
+        self.assertNotIn("ld hl,fb_init", body)
         k = body.index("di")
-        self.assertEqual(body[k:k + 4], ["di", "ld hl,fb_init", "call field_call", "ei"])   # (engines_jump)
+        self.assertEqual(body[k:k + 3], ["di", "call fb_init", "ei"])                      # (engines_jump)
+
+
+
+class RelocationR3Tests(unittest.TestCase):
+    """R3 (docs/PERF2_PLAN.md 5.2): the field's set-up and the V9938 builds' start and sync in BANK_FRONT2
+    (ending.asm), behind the fixed area's f2_call; BANK_FIELD keeps the level's tables' copy (fb_fldcp: lv_fld
+    points into it), the sync's gate (fb_sync) and the queue's way in with the page in C (fb_queuec)."""
+    MOVED = ("fb_init", "fb_bbinit", "fbi_one", "fs_sync", "fs_dnp", "fs_lsz", "fs_bxs")
+    KEPT = ("fb_fldcp", "fb_sync", "fb_queuec", "fb_bbadd", "fb_bbcell", "fq_new", "fb_queue")
+
+    def test_where_they_are(self):
+        field = (ROOT / "msx" / "field.asm").read_text()
+        ending = (ROOT / "msx" / "ending.asm").read_text()
+        for label in self.MOVED:
+            self.assertIsNone(re.search(rf"^{label}:", field, re.M), label)
+            self.assertIsNotNone(re.search(rf"^{label}:", ending, re.M), label)
+        for label in self.KEPT:
+            self.assertIsNotNone(re.search(rf"^{label}:", field, re.M), label)
+            self.assertIsNone(re.search(rf"^{label}:", ending, re.M), label)
+
+    def test_the_callers_reach_front2(self):
+        # from the fixed area and the front end through f2_call; inside BANK_FRONT2 directly
+        for path, label, n in (("scroll9938.asm", "fb_bbinit", 1), ("front.asm", "fb_init", 2)):
+            lines = code_lines(path)
+            calls = [lines[k + 1] for k, l in enumerate(lines) if l == "ld hl," + label]
+            self.assertEqual(calls, ["call f2_call"] * n, (path, label))
+        for path in ("rc2.asm", "cold.asm", "front.asm", "frontx.asm", "isr.asm", "tiles.asm", "scroll9938.asm",
+                     "scroll9958.asm", "vats.asm", "field.asm", "sprites.asm", "bob.asm"):
+            for l in code_lines(path):
+                for label in self.MOVED:
+                    self.assertIsNone(re.fullmatch(rf"(call|jp|jr)( \w+,)? ?{label}", l), (path, l))
+        field = code("field.asm", "fb_sync", "fsy_no")
+        self.assertEqual(field[-5:], ["ld hl,fs_sync", "call f2_call", "ld a,l", "or a", "ret"])
+
+    def test_front2_reaches_the_field_through_field_call(self):
+        field_labels = set(re.findall(r"^(\w+):", (ROOT / "msx" / "field.asm").read_text(), re.M))
+        ending = code_lines("ending.asm")
+        k = ending.index("fb_init:")
+        sect = ending[k:]
+        for i, l in enumerate(sect):
+            m = re.fullmatch(r"(?:call|jp|jr)\s+(?:\w+,)?\s*(\w+)", l)
+            if m:
+                self.assertNotIn(m.group(1), field_labels, l)       # (BANK_FIELD is not mapped here)
+            m = re.fullmatch(r"ld hl,(\w+)", l)
+            if m and m.group(1) in field_labels and m.group(1) not in ("fb_dn0", "fb_dn1"):
+                self.assertIn(sect[i + 1], ("call field_call", "jp field_call"), (l, sect[i + 1]))
+
+    def test_the_copies_are_the_field_routines(self):
+        def body(path, a, b, rename):
+            out = code(path, a, b)
+            for x, y in rename:
+                out = [re.sub(rf"\b{x}\b", y, l) for l in out]
+            return out
+        self.assertEqual(body("ending.asm", "fs_dnp", "fs_lsz", []), code("field.asm", "fb_dnp", "fb_rect"))
+        self.assertEqual(body("ending.asm", "fs_lsz", "fs_bxs", [("fsl_n", "fls_n")]),
+                         code("field.asm", "fb_lsz", "fb_dnp"))
+        want = code("field.asm", "fbx_set", "fb_lsz")
+        lines = (ROOT / "msx" / "ending.asm").read_text().splitlines()
+        i = next(k for k, l in enumerate(lines) if l.startswith("fs_bxs:"))
+        got = [re.sub(r"\s+", " ", re.sub(r"^\w+:", "", l.split(";")[0]).strip()) for l in lines[i:]]
+        got = [re.sub(r"\bfsb_c\b", "fxs_c", l) for l in got if l][:len(want)]
+        self.assertEqual(got, want)
+
+    def test_fb_init_is_the_set_up(self):
+        init = code("ending.asm", "fb_init", "fb_bbinit")
+        self.assertEqual(init[:2], ["ld hl,fb_fldcp", "call field_call"])
+        self.assertEqual(code("field.asm", "fb_fldcp", "fb_frame"),
+                         ["ld hl,(lv_fld)", "ld de,fb_flate", "ld bc,FB_FLDN", "ldir", "ret"])
 
 
 FB_ENT = 7
@@ -283,19 +352,23 @@ class LookOnlyTests(unittest.TestCase):
         step = code("field.asm", "fb_step", "fwk_ph")
         self.assertEqual(step[-7:], ["jr z,fb_step", "xor a", "ld (fb_busy),a", "inc a", "ld (fb_lkf0),a",
                                      "ld (fb_lkf1),a", "ret"])        # (nothing queued, composed or to sync)
-        init = code("field.asm", "fb_init", "fb_frame")
+        init = code("ending.asm", "fb_init", "fb_bbinit")          # (BANK_FRONT2 since R3)
         z = init.index("xor a")
         for f in ("fb_lkf0", "fb_lkf1", "fb_lkq"):
             self.assertIn(f"ld ({f}),a", init[z:init.index("ld a,FB_SX")])
-        # fq_go is the queue's only way in (fb_queue's) but for fb_sync's marker (fq_new, which composes
-        # nothing): outside fq_go's own code no jump into it
+        # fq_go is the queue's only way in (fb_queue's) but for the sync's marker (fq_new, which composes
+        # nothing; ending.asm fs_sync through field_call since R3): outside fq_go's own code no jump into it
         field = (ROOT / "msx" / "field.asm").read_text()
         own = field[field.index("\nfq_go:"):field.index("\nfq_fits:")]
         rest = field.replace(own, "")
         calls = re.findall(r"^\s+(?:call|jp|jr)\s+(?:\w+,)?(fq_go|fq_add|fq_new|fq_mrg|fq_lk)\b", rest, re.M)
-        self.assertEqual(sorted(calls), ["fq_go", "fq_new"])
+        self.assertEqual(sorted(calls), ["fq_go"])
         self.assertIn("call fq_go", code("field.asm", "fb_queue", "fq_go"))
-        self.assertIn("call fq_new", code("field.asm", "fb_sync", "fb_bbcell"))
+        ending = code_lines("ending.asm")
+        news = [ending[k + 1] for k, l in enumerate(ending) if l == "ld hl,fq_new"]
+        self.assertEqual(news, ["call field_call"])
+        self.assertIsNone(re.search(r"^\s+(?:call|jp|jr)\s+(?:\w+,)?(fq_go|fq_add|fq_new|fq_mrg|fq_lk)\b",
+                                    (ROOT / "msx" / "ending.asm").read_text(), re.M))
 
     def test_the_ram(self):
         inc = (ROOT / "msx" / "msx.inc").read_text()

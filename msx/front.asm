@@ -173,7 +173,7 @@ fof_d:  dec hl
 front_stats:
         call snd_stop               ; ($10768: $FE14)
         ld hl,fb_init
-        call field_call             ; (no play-field BOB holds a list now)
+        call f2_call                ; (no play-field BOB holds a list now: ending.asm)
         ld hl,pf_pal
         ld bc,32
         xor a
@@ -643,7 +643,7 @@ fe_text:
         push hl
         call snd_stop               ; ($10768: $FE14)
         ld hl,fb_init
-        call field_call             ; (no play-field BOB holds a list now)
+        call f2_call                ; (no play-field BOB holds a list now: ending.asm)
         ld hl,pf_pal
         ld bc,32
         xor a

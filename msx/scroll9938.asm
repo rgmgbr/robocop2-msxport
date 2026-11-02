@@ -260,8 +260,8 @@ s38t_bd:
         dec a
         ld (s38_r0),a
         push bc
-        ld hl,fb_bbinit             ; (field.asm: where its copy may bring something else than the
-        call field_call             ; BOBs wanted, before it draws anything)
+        ld hl,fb_bbinit             ; (ending.asm: where its copy may bring something else than the
+        call f2_call                ; BOBs wanted, before it draws anything)
         pop bc
         ret
 
