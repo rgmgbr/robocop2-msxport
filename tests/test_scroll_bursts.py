@@ -2,8 +2,8 @@
 its column and row queues' tiles in a row while msx/tiles.asm sc_stop allows (sw_next), each tile set up while the one
 before is copied. The loops as built, the stop rule's decision on every state it reads (in VAT_ANIM=0 and VAT_ANIM=1 builds;
 the changed cells' window first between the HUD split and the VBLANK),
-fb_pend's exits (the carry sc_stop returns), every tile of a burst waiting for the one before, and the V9938's engine
-(msx/scroll9938.asm) still issuing one command a call. Stdlib only."""
+fb_pend's exits (the carry sc_stop returns), every tile of a burst waiting for the one before, and the stop rule taken by
+the V9958's engine alone (msx/scroll9938.asm never calls it). Stdlib only."""
 from __future__ import annotations
 
 import itertools
@@ -100,17 +100,17 @@ class BurstTests(unittest.TestCase):
         self.assertEqual(work[work.index("call vat_win") + 1:work.index("call vat_win") + 3],
                          ["ret nz", "ld a,(q_col)"])                  # (the vats' window before the queues)
 
-    def test_the_v9938_engine_one_command_a_call(self):
-        """The V9938's engine is not scroll-1's: s38_work issues at most one command a call (its pending row's
-        step, a changed cell, a tile of the new column or a copy chunk), and nothing in it calls sc_stop."""
-        src = (ROOT / "msx" / "scroll9938.asm").read_text()
-        self.assertNotIn("sc_stop", src)
-        work = code("scroll9938.asm", "s38_work", "s38_rburst")
-        k = work.index("ld a,(s38_rq)")
-        self.assertEqual(work[k:k + 3], ["ld a,(s38_rq)", "cp 0xFF", "jp nz,s38_row_step"])
-        k = work.index("call s38_col_tile")
-        self.assertEqual(work[k:k + 6], ["call s38_col_tile", "ld hl,s38_i", "inc (hl)", "ld a,(hl)", "cp VIEW_ROWS",
-                                         "ret c"])
+    def test_only_the_v9958_engine_takes_its_stop_rule(self):
+        """sc_stop is the V9958 engine's rule: between the HUD split and the VBLANK it draws the ring's changed
+        cells (scroll9958.asm sw_redraw), so only scroll9958.asm's sw_next calls it, never the V9938's engine
+        (msx/scroll9938.asm: its own work and its own column burst, the V9938's part of the same item, which
+        this test leaves to that engine's tests; until 2026-11-02 it asserted the V9938's one command a call,
+        which that part changes)."""
+        self.assertNotIn("sc_stop", (ROOT / "msx" / "scroll9938.asm").read_text())
+        call = re.compile(r"(?m)^[^;]*\b(call|jp|jr)\b[^;]*\bsc_stop\b")
+        callers = sorted(p.name for p in (ROOT / "msx").glob("*.asm") if call.search(p.read_text()))
+        self.assertEqual(callers, ["scroll9958.asm"])
+        self.assertEqual(len(call.findall((ROOT / "msx" / "scroll9958.asm").read_text())), 1)
 
     def test_the_stop_rule(self):
         """Between the HUD split and the VBLANK (split_armed 0) the changed cells' window first (sw_redraw), whatever

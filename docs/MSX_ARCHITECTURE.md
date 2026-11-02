@@ -1189,9 +1189,10 @@ which as sprites were striped, cut or left out.
     would keep busy; the V9938's shifted copy shrinks to one slot for it). `sc_stop` lives in
     `tiles.asm` beside the vats' other hooks: the scroll engines' files hold no `VAT_ANIM` block.
   - Only when the tiles go out changes: the same cells by the same rules (`draw_kept`), the changed
-    cells' window first as before. The V9938's engine (`scroll9938.asm`) still issues one command a
-    call: its bursts (lane W2C's) raised the pictures held to `FB_HOLD` on the V9938 and wait for item
-    7. Fixed area: 25 B (31 in the `VAT_ANIM=1` builds).
+    cells' window first as before. The V9938's engine (`scroll9938.asm`) never takes this rule (it
+    draws the ring's cells: `tests/test_scroll_bursts.py`): its bursts (lane W2C's) raised the pictures
+    held to `FB_HOLD` on the V9938 and wait for item 7, with a rule of their own; until then it issues
+    one command a call. Fixed area: 25 B (31 in the `VAT_ANIM=1` builds).
   - Measured (2026-11-02; openMSX headless, the `EXTJOY` drive builds, the gate kit of batch 3 with
     BASE = `level2` 7752890; ticks/s, BASE -> the bursts alone -> with the sprite engine's items of
     the same day, above): the MSX2+ (FS-A1FX) Cain's route (kill 130-1400) 12.83 -> 13.38 -> 13.54,
