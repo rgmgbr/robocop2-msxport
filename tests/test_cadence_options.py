@@ -96,7 +96,7 @@ class CadenceOptionTests(unittest.TestCase):
 
     def test_cam38(self):
         # CAM38 (the MSX2's camera, for the user's choice): 0 by default (every build without it byte-identical), its
-        # code only under 'if CAM38' blocks, and 1 (lock) else refused
+        # code only under 'if CAM38' blocks, and 1 (lock) or 2 (pace) else refused
         self.assertEqual(mkrom.OPTIONS["CAM38"][0], 0)
         for name in ("player.asm", "scroll9938.asm", "ending.asm"):
             lines = code(name)

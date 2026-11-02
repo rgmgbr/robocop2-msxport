@@ -174,6 +174,10 @@ s38u_hold:
 s38u_hset:
         ld (cam_x),hl
 s38u_target:
+        if CAM38 == 2
+        ld hl,s38_pace              ; (CAM38 2: the view paced by the last page's build, ending.asm)
+        call f2_call
+        endif
         ld a,(s38_flip_wait)
         or a
         call z,s38_target           ; (not while the old page is still on screen)

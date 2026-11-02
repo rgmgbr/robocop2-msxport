@@ -212,7 +212,8 @@ OPTIONS = {
     "CAM38": (0, "the camera on the V9938 (the MSX2), for the user's choice: 0 = as always (the view held at a page's"
                  " edge while the next page is built, then a 16 px step at the flip); 1 = lock: the ticks wait while the"
                  " view lags 4 px or more behind the game's in x, and the view catches up at most 4 px a picture faster"
-                 " than the game's (msx/ending.asm s38_glide, cam_lock); the V9958 as always"),
+                 " than the game's; 2 = pace: 1, and while the next page is not built the view crosses the page shown no"
+                 " faster than the last page was built (msx/ending.asm s38_glide, s38_pace, cam_lock); the V9958 as always"),
     "ENEMY_CAP": (1, "N > 0 = at most N enemy slots in use (the original has 5; the user chose 1): 0 = the original, for trace tests"),
     "NO_SCC": (0, "1 = the title music and the sound effects ignore an SCC (test: the OPLL or PSG modes on a KonamiSCC cartridge)"),
     "NO_FM": (0, "1 = the title music ignores an OPLL (test)"),
@@ -968,8 +969,8 @@ def main(argv: list[str]) -> int:
         print("CAD_ADAPT must be 0-255, and needs CAD_MAX or CAD_HOLD above 2 (it keeps 2 ticks a picture below"
               " its VBLANKs: msx/player.asm cadence)", file=sys.stderr)
         return 2
-    if opts["CAM38"] not in (0, 1):
-        print("CAM38 must be 0 or 1 (msx/ending.asm s38_glide)", file=sys.stderr)
+    if opts["CAM38"] not in (0, 1, 2):
+        print("CAM38 must be 0, 1 or 2 (msx/ending.asm s38_glide)", file=sys.stderr)
         return 2
     if not 32 <= opts["LAG_X"] <= 64:
         print("LAG_X must be 32-64 (msx/player.asm cam_lag: 32 as always)", file=sys.stderr)
