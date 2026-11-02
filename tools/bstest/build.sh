@@ -35,11 +35,18 @@ refuse() {
     "$ROOT"/build/msx/*) echo "build.sh: OUT must not be in build/msx (the user picks ROMs there)" >&2; exit 2 ;;
   esac
   # (also the folder build/msx resolves to: a tree whose build/ or build/msx links to another
-  # checkout's, as a git worktree's may, would write into that checkout's build/msx)
-  if MSX="$(cd "$ROOT/build/msx" 2>/dev/null && pwd -P)"; then
-    case "$1" in
-      "$MSX"/*) echo "build.sh: OUT must not be in build/msx (the user picks ROMs there; here $MSX)" >&2; exit 2 ;;
-    esac
+  # checkout's, as a git worktree's may, would write into that checkout's build/msx; and any other
+  # spelling of it, build/MSX on a case-insensitive volume: each existing folder of OUT is compared
+  # with build/msx by inode)
+  if [ -d "$ROOT/build/msx" ]; then
+    d="$(dirname "$1")"
+    while :; do
+      if [ "$d" -ef "$ROOT/build/msx" ]; then
+        echo "build.sh: OUT must not be in build/msx (the user picks ROMs there; here $d)" >&2; exit 2
+      fi
+      case "$d" in /|.) break ;; esac
+      d="$(dirname "$d")"
+    done
   fi
 }
 OUT="$(abspath "$OUT")"
