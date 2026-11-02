@@ -1,8 +1,8 @@
 ; Hardware scroll on the V9958 (MSX2+): 512x256 ring with SP2 (pages 0+1).
 ; World column c -> x = (c*16) & 511 (page = bit 8); row r -> y = (r*16) & 255.
 ; Keeps columns [cx-1, cx+17] and rows [cy-1, cy+12] drawn; the column/row about to enter
-; is queued one step ahead and drawn one tile per scroll_work call while the VDP is idle;
-; then the cells the game changed (tiles.asm rd_queue).
+; is queued one step ahead and drawn by scroll_work, its tiles in a row once the VDP is idle
+; (tiles.asm sc_stop); then the cells the game changed (tiles.asm rd_queue).
 
 ; draw_kept: A = row, E = column (world) of a queued column or row: draw_tile when the cell is still in
 ; the kept area ([prev_cy-1, prev_cy+12] x [prev_cx-1, prev_cx+17], as swr_one's changed cells), else
@@ -185,8 +185,12 @@ su_vset:
 su_work:
         jp scroll_work
 
-; Draws one queued tile if the VDP is idle (column first, then row; draw_kept: none the camera has
-; left since it was queued); between the HUD split and the VBLANK the cells the game changed come first.
+; If the VDP is idle: the queued tiles in a row (column first, then row; draw_kept: none the camera
+; has left since it was queued), each set up while the one before is copied (draw_tile waits for
+; it), until the queues are empty (then the idle work: sw_idle) or tiles.asm sc_stop says no after
+; a tile; between the HUD split and the VBLANK the cells the game changed come first. (Until
+; 2026-11-02 one tile a call, the next at the next idle point: a column took 393 ms of Cain's chase
+; on the MSX2+.)
 scroll_work:
         call vdp_busy
         ret nz
@@ -213,7 +217,11 @@ sw_cq:  ld a,(q_col)
         ld a,0xFF
         ld (q_col),a
 sw_col: pop af
-        jp draw_kept
+        call draw_kept
+sw_next:
+        call sc_stop                ; the queues' next tile at once (draw_tile waits for this one)
+        jr nc,sw_cq                 ; unless sc_stop says no; with none left, the idle work
+        ret
 sw_row: ld a,(q_row)
         cp 0xFF
         jr z,sw_idle
@@ -225,12 +233,13 @@ sw_row: ld a,(q_row)
         ld a,(q_row_end)
         cp b
         ld a,(q_row)
-        jp nz,draw_kept
+        jr nz,sw_rdo
         ld b,a
         ld a,0xFF
         ld (q_row),a
         ld a,b
-        jp draw_kept
+sw_rdo: call draw_kept
+        jr sw_next
 
 ; No column or row to draw: the changed cells, and with none waiting either nothing to do until
 ; the next update or a changed cell sets iw_more again.

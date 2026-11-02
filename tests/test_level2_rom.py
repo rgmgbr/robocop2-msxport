@@ -341,7 +341,11 @@ class VatAnimTests(unittest.TestCase):
         self.assertIn("vat_dst:", field[:k])
         self.assertEqual(field[k + 1:], ["vat_inbox:", "xor a", "ret", "vat_bbinit:", "ret"])   # VAT_ANIM=0's stubs
         self.assertIn("ld hl,vat_run", tiles[tiles.index("vat_win:"):])
-        self.assertEqual([l for l in tiles[tiles.index("else"):] if l], ["else", "vat_win:", "vat_idle:", "xor a", "ret"])
+        rest = [l for l in tiles[tiles.index("else"):] if l]
+        self.assertEqual(rest[:5], ["else", "vat_win:", "vat_idle:", "xor a", "ret"])
+        # (then the V9958 scroll bursts' stop rule, sc_stop: a vat column waiting for the blank stops a burst, docs/
+        # PERF2_PLAN.md item 6, tests/test_scroll_bursts.py)
+        self.assertEqual(rest[5:], ["ld a,(vat_fr + VF_RDY)", "or a", "scf", "ret nz"])
         self.assertEqual(if_blocks("level2.asm", "VAT_ANIM"), ['include "vats.asm"'])
         # (not the display: the sprite budget's per-give and per-run code is then in level 1's bank only, level
         # 2's having no room, tools/mkrom.py lvshared_copy's tail; the budget maps that bank instead)
@@ -378,8 +382,10 @@ class RingQueueTests(unittest.TestCase):
     def test_the_queues_draw_through_draw_kept(self):
         src = (ROOT / "msx" / "scroll9958.asm").read_text()
         code = [l.split(";")[0].strip() for l in src.splitlines()]
-        self.assertEqual([c for c in code if c.startswith(("jp draw_", "jp nz,draw_"))],
-                         ["jp draw_kept", "jp nz,draw_kept", "jp draw_kept"])
+        # (since scroll-1 on the V9958, docs/PERF2_PLAN.md item 6: the column's and the row's tiles in a row, each
+        # draw followed by the burst's test, sw_next: tests/test_scroll_bursts.py)
+        self.assertEqual([c for c in code if re.match(r"(\w+:\s*)?(jp|call) (n?z,|n?c,)?draw_", c)],
+                         ["call draw_kept", "sw_rdo: call draw_kept"])
         kept = routine("scroll9958.asm", "draw_kept", "draw_tile:")
         self.assertEqual(kept, ["draw_kept:", "ld c,a", "ld a,(prev_cy)", "dec a", "ld b,a", "ld a,c", "sub b",
                                 "cp VIEW_ROWS", "ret nc", "ld a,(prev_cx)", "dec a", "ld b,a", "ld a,e", "sub b",

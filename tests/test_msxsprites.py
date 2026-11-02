@@ -106,7 +106,7 @@ class FormatTests(unittest.TestCase):
         data = pad(area) + pad(b"".join(pats.items)) + pad(b"".join(cols.items))
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "p.bin").write_bytes(data)
-            (Path(d) / "p.inc").write_text(f"SPR_PAT_BANK: equ {len(pad(area)) // ms.BANK}\n"
+            (Path(d) / "p.inc").write_text(f"SPR_COMP_HDR: equ {ms.COMP_HDR}\nSPR_PAT_BANK: equ {len(pad(area)) // ms.BANK}\n"
                                            f"SPR_COL_BANK: equ {(len(pad(area)) + len(pad(b''.join(pats.items)))) // ms.BANK}\n"
                                            "SPR_BOB_INDEX_L2: equ 0x8003\nSPR_BOB_INDEX: equ SPR_BOB_INDEX_L2\n")
             sd = ms.SpriteData(Path(d) / "p.bin", Path(d) / "p.inc")
@@ -115,6 +115,8 @@ class FormatTests(unittest.TestCase):
         self.assertEqual(o, where[2])
         rec = sd.record(o)
         self.assertEqual(rec["header"][:2], (len(sprites), nlines))
+        self.assertEqual(rec["bmask"], sum({s[2] for s in sprites}))   # (the bands with B sprites: their park bits)
+        self.assertEqual(rec["bmask"], sum(1 << k for k, (_, _, nbb, _) in enumerate(rec["bands"]) if nbb))
         self.assertEqual(len(rec["layout"]), len(lay))
         for (ya, ba), (yb, bb) in zip(lay, rec["layout"]):
             self.assertEqual(ya, yb)

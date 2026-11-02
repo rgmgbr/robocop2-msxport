@@ -23,6 +23,7 @@ def load(pre: Path):
     js = json.loads(pre.with_suffix(".json").read_text())
     eq = {m.group(1): int(m.group(2), 0) for m in re.finditer(r"^(\w+): equ (\S+)", inc, re.M)}
     p0, c0 = eq["SPR_PAT_BANK"] * BANK, eq["SPR_COL_BANK"] * BANK
+    h = eq.get("SPR_COMP_HDR", 8)                       # (a composition's header: 9 bytes since 2026-11-02)
     pat = lambda i: data[p0 + 32 * i:p0 + 32 * i + 32] if i != 0xFFFF else b""  # noqa: E731
     col = lambda i: data[c0 + 16 * i:c0 + 16 * i + 16] if i != 0xFFFF else b""  # noqa: E731
     n_rc = len(js["rc_index"])
@@ -35,12 +36,12 @@ def load(pre: Path):
         items = [bytes(data[w:w + 8])]
         ps, cs = set(), set()
         for s in range(nspr):
-            y, x, pb, ab, p, c, p1, c1 = struct.unpack_from("<bbBBHHHH", data, w + 8 + 12 * s)
+            y, x, pb, ab, p, c, p1, c1 = struct.unpack_from("<bbBBHHHH", data, w + h + 12 * s)
             items.append((y, x, pb, ab, pat(p), col(c), pat(p1), col(c1)))
             ps |= {pat(p), pat(p1)} - {b""}
             cs |= {col(c), col(c1)} - {b""}
-        items.append(bytes(data[w + 8 + 12 * nspr:w + 8 + 12 * nspr + 4 * nb]))
-        recs.append({"key": tuple(items), "size": 8 + 12 * nspr + 4 * nb, "where": w, "pats": ps, "cols": cs})
+        items.append(bytes(data[w + h + 12 * nspr:w + h + 12 * nspr + 4 * nb]))
+        recs.append({"key": tuple(items), "size": h + 12 * nspr + 4 * nb, "where": w, "pats": ps, "cols": cs})
     pats = {pat(i) for i in range(js["patterns"])}
     cols = {col(i) for i in range(js["colour_rows"])}
     return js, recs, n_rc, pats, cols

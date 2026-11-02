@@ -57,7 +57,7 @@ O_EC:       equ 5                   ; 80h: its sprites use the early clock; bits
                                     ; version record)
 O_X:        equ 6                   ; 2 bytes: screen x of the composition's top-left
 O_Y:        equ 8                   ; 2 bytes: screen y
-O_NSPR:     equ 10                  ; composition header (COMP_HDR bytes): sprites,
+O_NSPR:     equ 10                  ; composition header (its first COMP_HDR - 1 bytes): sprites,
 O_NLINES:   equ 11                  ;   lines covered,
 O_NBANDS:   equ 12                  ;   bands,
 O_MINDX:    equ 13                  ;   leftmost and rightmost sprite dx,
@@ -76,7 +76,7 @@ O_TIER:     equ 25                  ; budget: 3 RoboCop (never touched), 2 the s
 O_GONE:     equ 26                  ;   sprites its dropped bands remove,
 O_OUT:      equ 27                  ;   1: left out this tick,
 O_HOLD:     equ 28                  ;   a character's bands dropped for good (the total's last resort)
-O_BMASK:    equ 30                  ; its bands that have B sprites
+O_BMASK:    equ 30                  ; its bands that have B sprites (the header's last byte)
 LAY_SIZE:   equ 16                  ; version record (disp: shown; pend: being prepared):
 V_ON:       equ 0                   ;   80h: present,
 V_BANK:     equ 1                   ;   bank, composition (2), dropped columns, early clock and
@@ -110,8 +110,12 @@ BUD_MAX:    equ SAT_MAX - 2         ; the budget's total: entries 0-1 stay the s
 RC_HOLD:    equ 120                 ; VBLANKs RoboCop's largest recent sprite count holds (budget)
 RC_RUN:     equ 2                   ; RoboCop's first SAT entry
 PARK_LINE:  equ 200                 ; screen line of parked sprites (HUD: sprites off there)
-COMP_HDR:   equ 8                   ; composition: nspr, nlines, nbands, min dx, max dx, A sprites,
-                                    ; most sprites on a line, the same on one layer
+COMP_HDR:   equ 9                   ; composition: nspr, nlines, nbands, min dx, max dx, A sprites,
+                                    ; most sprites on a line, the same on one layer (as O_NSPR..
+                                    ; O_MONE), its bands with B sprites (O_BMASK; 2026-11-02)
+        if SPR_COMP_HDR != COMP_HDR
+COMP_HDR:                           ; (an error: the sprite pool's format is another one: make msx)
+        endif
 REC_SIZE:   equ 12                  ; sprite record: dy, dx, park bit, A1 bit, 4 words
 BAND_SIZE:  equ 4                   ; band table entry: dy, A sprites, B sprites, gain
 UP_TOTAL:   equ 400                 ; work per frame (units of about 100 T-states) that the HUD,
@@ -331,8 +335,11 @@ os_idx: add hl,de
         ld a,e
         add a,O_NSPR
         ld e,a                      ; (an obj_tab entry does not cross a 256-byte boundary)
-        ld bc,COMP_HDR
-        ldir                        ; the header; HL = first sprite record
+        ld bc,COMP_HDR - 1
+        ldir                        ; the header,
+        ld a,(hl)
+        ld (ix+O_BMASK),a           ; its bands with B sprites (the converter's, where a walk of the
+        inc hl                      ; band table took 81 T-states a band); HL = first sprite record
         ld a,(ix+O_NSPR)
         ld e,a
         add a,a
@@ -342,28 +349,11 @@ os_idx: add hl,de
         ex de,hl
         add hl,hl
         add hl,hl                   ; *12
-        add hl,de                   ; rank list
-        ld d,0
+        add hl,de
         ld (ix+O_BANDT),l           ; its band table, after the records
         ld (ix+O_BANDT+1),h
         ld a,1
         ld (bu_dirty),a             ; (the budget looks at the composition)
-        ld b,(ix+O_NBANDS)
-        ld c,0
-        ld e,1
-os_bm:  inc hl                      ; the bands with B sprites
-        inc hl
-        ld a,(hl)
-        or a
-        jr z,os_bn
-        ld a,c
-        or e
-        ld c,a
-os_bn:  inc hl
-        inc hl
-        sla e
-        djnz os_bm
-        ld (ix+O_BMASK),c
         set 7,(ix+O_FLAGS)
         call fl_on                  ; (the plan's look visits it: pl_fl)
 os_mode_set:
@@ -1687,6 +1677,7 @@ spr_plan:
         ld ix,obj_tab
         ld iy,disp
         xor a
+        ld (pl_n),a                 ; (none with work yet)
 pc_lp:  ld (pl_obj),a
         ld hl,pl_vis + 1
         srl (hl)
@@ -1696,7 +1687,7 @@ pc_lp:  ld (pl_obj),a
         ld a,(hl)
         inc hl
         or (hl)
-        jr z,pc_end                 ; (none left to visit)
+        jp z,pc_end                 ; (none left to visit)
         jr pc_skip
 pc_vis: ld c,0                      ; (pl_st: 0 no work, 1 the first list, 2 the second)
         ld a,(ix+O_OUT)
@@ -1750,7 +1741,10 @@ pc_st:  ld a,(pl_obj)
         ld a,c
         or a
         jr z,pc_gs
-        ld a,2
+        ld (hl),2
+        ld hl,pl_n                  ; (one more with work: pl_put counts them down)
+        inc (hl)
+        jr pc_skip
 pc_gs:  ld (hl),a
 pc_skip:
         ld de,OBJ_SIZE
@@ -1774,7 +1768,10 @@ pc_o:   ld a,(hl)
         pop hl
         inc hl
         jr pc_o
-pc_r:   ld hl,pl_st + 1             ; (pl_st does not cross a 256-byte boundary)
+pc_r:   ld a,(pl_n)                 ; (every object with work in its list already: the walk below
+        or a                        ;  takes 644 T-states, the MSX's M1 waits counted)
+        jr z,pc_rx
+        ld hl,pl_st + 1             ; (pl_st does not cross a 256-byte boundary)
         ld b,SPARK_OBJ - 1
 pc_rl:  ld a,(hl)
         or a
@@ -1788,7 +1785,7 @@ pc_rl:  ld a,(hl)
         pop bc
 pc_rn:  inc l
         djnz pc_rl
-        ld hl,(pl_pa)
+pc_rx:  ld hl,(pl_pa)
         ld (hl),0xFF                ; (the lists' ends)
         ld hl,(pl_pb)
         ld (hl),0xFF
@@ -1996,11 +1993,13 @@ pl_put: ld c,a
         ld h,pl_st / 256
         ld a,(hl)
         ld (hl),0
+        or a
+        ret z                       ; (none)
+        ld hl,pl_n                  ; (one fewer with work and no list: pc_r)
+        dec (hl)
         dec a
         ld hl,pl_pa
         jr z,pp_l
-        dec a
-        ret nz                      ; (none)
         ld hl,pl_pb
 pp_l:   ld e,(hl)
         inc hl
@@ -2408,35 +2407,39 @@ pend_build:
         xor 1
 pb_p0:  pop iy
         ld (iy+V_PAGE),a
-        ld a,(ix+O_BANK)
-        ld (iy+V_BANK),a
-        ld a,(ix+O_COMP)
-        ld (iy+V_COMP),a
-        ld a,(ix+O_COMP+1)
-        ld (iy+V_COMP+1),a
-        ld a,(ix+O_DROP)
-        ld (iy+V_DROP),a
+        push ix                     ; (LDI: an obj_tab entry and a version record each within a
+        pop hl                      ;  256-byte page)
+        inc l
+        push iy
+        pop de
+        inc e
+        ldi                         ; O_BANK .. O_EC -> V_BANK .. V_EC
+        ldi
+        ldi
+        ldi
+        ldi
+        ld bc,O_KIND - (O_EC + 1)
+        add hl,bc
+        inc e
+        inc e
+        ldi                         ; O_KIND, O_ID -> V_KIND, V_ID
+        ldi
+        ldi
+        ld bc,O_MINDX - (O_ID + 2)
+        add hl,bc
+        inc e
+        ldi                         ; O_MINDX, O_MAXDX -> V_MINDX, V_MAXDX
+        ldi
+        ld a,(ix+O_NLINES)
+        ld (iy+V_LINES),a
+        ld a,(ix+O_TOPU)
+        ld (iy+V_TOPU),a
         ld a,(ix+O_EC)
-        ld (iy+V_EC),a
         and 0x80
         ld (lb_ec),a
         ld a,(ix+O_EC)
         and 3
         ld (lb_mode),a
-        ld a,(ix+O_KIND)
-        ld (iy+V_KIND),a
-        ld a,(ix+O_ID)
-        ld (iy+V_ID),a
-        ld a,(ix+O_ID+1)
-        ld (iy+V_ID+1),a
-        ld a,(ix+O_MINDX)
-        ld (iy+V_MINDX),a
-        ld a,(ix+O_MAXDX)
-        ld (iy+V_MAXDX),a
-        ld a,(ix+O_NLINES)
-        ld (iy+V_LINES),a
-        ld a,(ix+O_TOPU)
-        ld (iy+V_TOPU),a
         xor a
         ld (iy+V_N),a
         ld (pl_unl),a
@@ -2449,7 +2452,58 @@ pb_p0:  pop iy
         ld d,h
         ld e,0                      ; DE = its first entry
         pop hl
-        ld c,(iy+V_DROP)
+        ld a,(lb_mode)
+        or (iy+V_DROP)
+        jr nz,pb_gen                ; (dropped bands or a silhouette: the general loop)
+        ld a,(lb_ec)
+        ld c,a                      ; C = the early clock's bit
+; The usual version (nothing dropped, no silhouette: RoboCop's always): every record an entry,
+; without the general loop's park and A1 tests, silhouette test and record push (576 T-states an
+; entry against 692, the MSX's M1 waits counted; 2026-11-02).
+pf_lp:  ld a,(hl)
+        ld (de),a                   ; dy
+        inc hl
+        inc e
+        ld a,(hl)
+        ld (de),a                   ; dx
+        inc e
+        inc hl
+        inc hl
+        inc hl
+        call slot_for               ; (HL = the pattern id)
+        jp c,pb_nos
+        add a,a
+        add a,a
+        ld (de),a                   ; pattern number
+        inc e
+        rrca
+        rrca
+        ld (de),a                   ; slot
+        inc e
+        ld a,(hl)
+        ld (de),a
+        inc hl
+        inc e
+        ld a,(hl)
+        ld (de),a                   ; pattern id
+        inc hl
+        inc e
+        ld a,(hl)
+        ld (de),a
+        inc hl
+        inc e
+        ld a,c
+        or (hl)
+        ld (de),a                   ; colour id | 8000h (early clock)
+        inc e
+        ld a,l
+        add a,REC_SIZE - 7
+        ld l,a
+        jr nc,pf_n
+        inc h
+pf_n:   djnz pf_lp
+        jr pb_end
+pb_gen: ld c,(iy+V_DROP)
 pb_lp:  push hl
         ld a,(hl)
         ld (de),a                   ; dy (the entry counts only if the sprite is kept)
@@ -2512,7 +2566,7 @@ pb_nx:  ld a,l
         jr nc,pb_n
         inc h
 pb_n:   djnz pb_lp
-        ld a,e                      ; its entries: 8 bytes each from 0
+pb_end: ld a,e                      ; its entries: 8 bytes each from 0
         rrca
         rrca
         rrca
@@ -2538,7 +2592,7 @@ pb_s1:  ld (de),a
         jr pb_cd
 pb_none:
         pop hl                      ; no slot: what it took goes (E: past the last whole entry's
-        ld a,e                      ; first byte)
+pb_nos: ld a,e                      ; first byte)
         rrca
         rrca
         rrca
@@ -3183,7 +3237,9 @@ pcr_adr:
 
 ; ----- SAT -----
 
-; Every entry of the SAT being built (sat_nb) parked.
+; Every entry of the SAT being built (sat_nb) parked but RoboCop's run when he shows a version:
+; sb_object writes each of its entries (or sb_parkall parks them), so parking them first only cost
+; 42 T-states an entry (2026-11-02). The parked y: 216 would end the table, 215 then.
 sat_park:
         ld a,(cam_y)
         add a,PARK_LINE - 1
@@ -3191,9 +3247,25 @@ sat_park:
         jr nz,sk_y
         dec a
 sk_y:   ld (sb_parky),a
+        ld c,a
         ld hl,(sat_nb)
-        ld b,SAT_MAX
-sk_lp:  ld (hl),a                   ; (y only: x and pattern do not matter there)
+        ld a,(disp + V_ON)          ; (RoboCop's disp record: object 0)
+        or a
+        jr z,sk_n                   ; (he shows nothing: no run of his)
+        ld a,(disp + V_N)
+sk_n:   ld e,a                      ; E = his run's entries
+        ld b,RC_RUN
+        call sk_lp                  ; the entries before it (the spark's)
+        ld a,e
+        add a,RC_RUN
+        add a,a
+        add a,a
+        ld l,a                      ; past his run
+        ld a,SAT_MAX - RC_RUN
+        sub e
+        ret z
+        ld b,a
+sk_lp:  ld (hl),c                   ; (y only: x and pattern do not matter there)
         inc l
         inc l
         inc l
@@ -3532,8 +3604,18 @@ sbh_set:
         ld (sb_dy),a
         jp sbo_go
 
-; An object wholly off the play area: its entries stay parked; its pub_cur record keeps its y.
+; An object wholly off the play area: its entries parked (sat_park parks every entry but RoboCop's
+; run; a BOB's are parked once more, the same y); its pub_cur record keeps its y.
 sb_parkall:
+        ld hl,(sb_de0)              ; its first SAT entry
+        ld b,(iy+V_N)
+        ld a,(sb_parky)
+sbp_lp: ld (hl),a
+        inc l
+        inc l
+        inc l
+        inc l
+        djnz sbp_lp
         if EXTJOY
         ld hl,(sb_pub)
         ld de,6

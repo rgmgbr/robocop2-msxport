@@ -15,6 +15,8 @@ BANK = 0x2000
 pre = Path(sys.argv[1])
 data = pre.with_suffix(".bin").read_bytes()
 js = json.loads(pre.with_suffix(".json").read_text())
+inc = pre.with_suffix(".inc").read_text() if pre.with_suffix(".inc").exists() else ""
+HDR = 9 if "SPR_COMP_HDR: equ 9" in inc else 8      # (a composition's header: 9 bytes since 2026-11-02)
 n_rc = len(js["rc_index"])
 ids = {(b["addr"], b["w"], b["h"]): i for i, b in enumerate(js["bobs"])}
 
@@ -26,7 +28,7 @@ def sprites(addr: int, w: int, h: int) -> list[tuple[int, int, bool]]:
     at = b * BANK + o
     out = []
     for s in range(data[at]):
-        dy, dx, pb, ab, p, c, p1, c1 = struct.unpack_from("<bbBBHHHH", data, at + 8 + 12 * s)
+        dy, dx, pb, ab, p, c, p1, c1 = struct.unpack_from("<bbBBHHHH", data, at + HDR + 12 * s)
         out.append((dy, dx, p1 == 0xFFFF))
     return out
 

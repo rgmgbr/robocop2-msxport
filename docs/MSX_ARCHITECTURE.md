@@ -159,7 +159,12 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   never has to change; the user's choice), the boxes that keep their OR layer being the same in
   every frame of an animation (summed gain; `robocop.json` "prefer"): 5.2 sprites on average. Per
   composition: a header (sprites, lines, bands, leftmost and rightmost dx, A sprites, most
-  sprites on a line at full quality and on one layer), the sprites in SAT order (per band, per
+  sprites on a line at full quality and on one layer, and since 2026-11-02 its bands with B
+  sprites, which `obj_set` copies into `O_BMASK` in 36 T-states where it walked the band table in
+  58 and 81 a band, 463 for RoboCop's five; `COMP_HDR` 9, `SPR_COMP_HDR` in the pool's equates, a
+  build with an older conversion stops; the tools take the size from there, `tools/msxsprites.py`
+  `SpriteData.hdr`, and `tests/test_sprite_pool.py` refuses a reader in `tools/` or `docs/` that
+  adds a literal 8), the sprites in SAT order (per band, per
   box: A, then B), each with its offset, a park bit (B), an A1 bit (A: one colour per line,
   every pixel, shown when its band's OR layer is dropped) and the ids of its pattern, colour row
   and A1 versions; then the **band table** (from the lowest band up: dy, A and B sprites,
@@ -223,6 +228,17 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   zone (`pr_clear`); dropped instead, an enemy's legs vanished for up to 10 pictures whenever
   his next frame took more sprites. His zone is worked out again once his new version is shown
   (`rc_zone`): the entries only the old one took serve the BOBs in that plan already.
+
+  The plan's bookkeeping (2026-11-02, the same versions, slots and runs; T-states counted with
+  the MSX's wait state on every M1): a version with nothing dropped and no silhouette (RoboCop's
+  always, most BOBs') is built by a record loop without the general one's park and A1 tests,
+  silhouette test and record push (`pend_build` `pf_lp`: 576 T-states an entry, 692 in the
+  general loop), and the head of every version is copied with LDIs (478 T-states, 653 before);
+  and the look counts the objects it gives work (`pl_n`), so that its last pass over `pl_st`
+  (`pc_r`, the objects the budget's order missed: 644 T-states) runs only while one is left. (A
+  commit that keeps its run marking or freeing only the entries its size gained or lost, 27
+  T-states an entry, was left out: 45 bytes of the fixed area for 0.06 % of the Z80's time on
+  level 2's tour and 0.07 % on Cain's kill drive, counted on the FS-A1FX.)
 - **Parts of one character** (the BOB objects of one owner and category, `obj_key`: an enemy's
   legs, torso and arm) always show versions prepared in one plan, so of one tick, and change
   together: shown one by one, a walking enemy's torso stood on legs of another tick for 7–17
@@ -285,6 +301,13 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   the code for objects alternating between frames was still there, a second half of the pair
   and the interrupt writing their y's, though the budget never set `mux_on` since the user's
   rule of decision 11: removed, 190 bytes of the fixed area; `pk_mux` and `sat_due` stay 0.)
+  The parking (2026-11-02, the same SAT bytes; T-states with the M1 waits): `sat_park` parks
+  every entry but RoboCop's run when he shows a version, since `sb_object` writes each of its
+  entries (or `sb_parkall`, which now parks the object's run itself, parks them): 42 T-states an
+  entry, 456 a SAT with his 14 entries. The entry loop (`sbo_lp`, 148 T-states an entry) and
+  `pc_rows`' unchanged rows (100 T-states an entry) stay as they are: a register for the x base
+  saves nothing once the alternate set's EXX is paid, and skipping the pools' bank write or
+  comparing a row as one word costs as many T-states as it saves.
 - **Y = 216** ends the sprite table: when one of an object's sprites would land on it, the
   whole object moves by the smallest offset (−1, +1, −2, …), never a single part. Objects
   wholly above or below the play area have their entries parked (their 8-bit SAT y would
@@ -366,6 +389,30 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   muzzle flash, drawn before the legs, has an owner of its own (`level2obj.asm` `l2_flash`, as
   RoboCop's has), so that the legs keep their part. Level 1's frames all have 0 there: its
   objects decide as before.
+
+  `bob_flush`'s fixed walks (2026-11-02, the same objects and identities; T-states with the M1
+  waits): an object a record takes is marked with the flush's stamp (`bf_gen`, 1-255, in
+  `bf_claim`; the bytes are cleared only when the stamps start again), not by a 16-byte clear
+  each flush (483 T-states); the objects with an identity are counted where one is given or
+  taken (`bf_idn`: `bf_key`, `bf_hide`), not walked each flush (876 T-states); the walk that
+  hides the objects left without a record (`bf_hide`, 1,680-1,790 T-states with 3-5 objects
+  taken) runs only when an identity of the tick before found no record (`bf_unm` above 0), since
+  otherwise every object with an identity has one; and `bob_begin` clears the categories' heads
+  with six word stores (112 T-states a tick, 362 for the loop).
+
+  Measured (2026-11-02). Counted on the FS-A1FX by lane W2S (call counters times the T-states of
+  each event), the plan's bookkeeping, `bob_flush`'s walks, the parking and the band masks take
+  1.98 % of the Z80's time off level 2's tour (0.53, 1.20, 0.19 and 0.06 %) and 1.15 % off Cain's
+  kill drive (0.40, 0.59, 0.10 and 0.06 %); `pc_r`'s walk ran in none of the plans (every one
+  before), `bf_hide`'s in 14-17 % of the flushes, 93 % of the entries took the fast loop. On top
+  of the V9958's scroll bursts (below, "The ring's queued tiles in bursts"; openMSX headless, the
+  `EXTJOY` drive builds, ticks/s): the MSX2+ (FS-A1FX) level 2's end (l2_tour 2080-2350) 21.43 ->
+  22.66, level 2 20-1590 23.19 -> 23.42, the car park 20.75 -> 21.19, level 3's beams, lifts and
+  roof +2.0, +1.3 and +2.2 %, Cain's route +1.2 %; the MSX2 (C-BIOS_MSX2) and the Expert +0.3 to
+  +2.0 % in level 3's start and the car park, Cain's windows within -0.9..+1.2 %; the turbo R -0.2
+  to +1.4 %. Alone, on the V9958 (lane W2S, batch 2), the shorter CPU side published pictures before
+  the play-field composition was done (FB_HOLD pictures on Cain's kill drive 16 -> 39 on the
+  FS-A1FX); with the bursts they stay at 4 there (BASE 18, its timing controls 12-37).
 - **Frame structure** (main loop): wait for the last list's VBLANK; keys, seconds, HUD; after
   ticks: scroll update, `cam_mark`, RoboCop's composition, BOBs to objects, budget; without a
   tick: scroll update, `cam_follow`; then the plan (`spr_plan`: versions, queues, commits; its
@@ -1136,7 +1183,8 @@ which as sprites were striped, cut or left out.
   `dt_prep` now keeps the row in C. Found by recording the 64 KiB ring and rendering it; the
   compatibility runs before had only checked that the game ran.
 - **The ring's queues draw only kept cells (fixed 2026-10-31)**: a queued column (a horizontal step)
-  and a queued row (a vertical step) are drawn a tile per `scroll_work` call, the column first; a
+  and a queued row (a vertical step) are drawn by `scroll_work`, the column first (a tile a call
+  until 2026-11-02, below); a
   row can wait while the camera runs on and queues column after column (and a column while rows
   are queued), and a cell the camera has left shares its ring slot with a cell on the screen 32
   columns or 16 rows away. Drawn late, it showed the far cell's tile there until the slot was drawn
@@ -1146,6 +1194,46 @@ which as sprites were striped, cut or left out.
   game frame 2385, the product's caps: a row queued at column 64 drew columns 80-81 over 48-49
   when the camera had reached column 47, 45 pictures with two stale cells); the faster pictures had
   let the camera run 17 columns while the row waited.
+- **The ring's queued tiles in bursts (scroll-1 on the V9958, `docs/PERF2_PLAN.md` item 6, 2026-11-02)**:
+  `scroll_work` starts only with the VDP idle (from `idle_work` after the play-field BOBs' work, and
+  from `feed_vdp`). It issued one tile a call, and the next one waited for the next idle point: in
+  Cain's chase a new column took 393 ms on the MSX2+ and 308 ms on the turbo R (measured on 3b11042).
+  Now the column and row queues go out tile after tile in one call (`sw_next`), each tile set up
+  while the one before is copied (`draw_tile` waits for it), until the queues are empty (then the
+  idle work, `sw_idle`) or `tiles.asm` `sc_stop` says no after a tile. Between the HUD split and the
+  VBLANK `sc_stop` first runs the changed cells' window (`sw_redraw`, as at `scroll_work`'s start):
+  without it a burst kept that window busy, and on the turbo R a beam's row of 12 cells on the boss
+  route (from game frame 600) waited 1.36 s on average for its redraw, against 0.58 s without the
+  bursts and 0.57 s with the window. It stops the burst when:
+  - a play-field copy waits for the blank (`fb_cq` 1 or 3: the split interrupt starts it only with
+    the VDP idle);
+  - the play-field BOBs have work of a published picture (`fb_pend`: the VBLANK holds that picture
+    for them, `FB_HOLD` VBLANKs at most);
+  - in `VAT_ANIM=1` builds, a vat column waits for the blank (`vat_fr`'s `VF_RDY`: `vat_win` draws it
+    at the engine's next call, in the window between the HUD split and the VBLANK, which a burst
+    would keep busy; the V9938's shifted copy shrinks to one slot for it). `sc_stop` lives in
+    `tiles.asm` beside the vats' other hooks: the scroll engines' files hold no `VAT_ANIM` block.
+  - Only when the tiles go out changes: the same cells by the same rules (`draw_kept`), the changed
+    cells' window first as before. The V9938's engine (`scroll9938.asm`) never takes this rule (it
+    draws the ring's cells: `tests/test_scroll_bursts.py`): its bursts (lane W2C's) raised the pictures
+    held to `FB_HOLD` on the V9938 and wait for item 7, with a rule of their own; until then it issues
+    one command a call. Fixed area: 25 B (31 in the `VAT_ANIM=1` builds).
+  - Measured (2026-11-02; openMSX headless, the `EXTJOY` drive builds, the gate kit of batch 3 with
+    BASE = `level2` 7752890; ticks/s, BASE -> the bursts alone -> with the sprite engine's items of
+    the same day, above): the MSX2+ (FS-A1FX) Cain's route (kill 130-1400) 12.83 -> 13.38 -> 13.54,
+    the kill floors 13.18 -> 13.72 -> 13.86, the boss route 9.89 -> 10.01 -> 10.03; the turbo R
+    (FS-A1GT) Cain's route 18.47 -> 19.83 -> 19.80, the boss route 16.98 -> 18.70 -> 18.96, the beams
+    (tour3 215-540) 23.97 -> 24.90 -> 24.91, but the roof (tour3 1085-1400) 24.64 -> 24.14 -> 24.14:
+    there, scrolling right at about 25 ticks a second, a burst (a column of 13 tiles, 15-25 ms on the
+    turbo R's VDP) delays the play-field composition of the next picture, which then waits for its
+    BOBs (11-14 frames of 6-9 VBLANKs in ticks 1085-1230, 2 at BASE); yielding to any play-field work
+    (`fb_busy`) recovers it (24.64) but gives back Cain's route (18.79) and the boss route (17.52).
+    The V9938 machines are unchanged. The pictures without game progress go: on the turbo R's Cain's
+    chase (kill from tick 395) 16.1 -> 9.7 pictures a second, the camera now moving 6-7 px every
+    picture (before: still in 39 of 59 picture steps, then 16-px jumps; RoboCop's place on screen x
+    82-92 against 84-127), progress pictures 10.67 -> 10.34 a second over Cain's route. The pictures
+    held to `FB_HOLD` over whole drives: the FS-A1FX kill 18 -> 2, boss 12 -> 3; the FS-A1GT kill 8
+    -> 4, boss 16 -> 6 (with the sprite engine's items 4, 2, 7, 4).
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about

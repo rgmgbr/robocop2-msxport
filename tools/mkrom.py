@@ -385,9 +385,10 @@ def pool_extent(blob: bytes, inc: dict[str, int], index: int, fid: int) -> tuple
     o = index - 0x8000 + 3 * fid
     c = blob[o] * BANK + (blob[o + 1] | blob[o + 2] << 8)
     pat0 = inc["SPR_PAT_BANK"] * BANK
+    hdr = inc.get("SPR_COMP_HDR", 8)                    # (a composition's header: 9 bytes since 2026-11-02)
     xs, ys = [], []
     for k in range(blob[c]):
-        dy, dx, _pb, _ab, q0, _c0, q1, _c1 = struct.unpack_from("<bbBBHHHH", blob, c + 8 + 12 * k)
+        dy, dx, _pb, _ab, q0, _c0, q1, _c1 = struct.unpack_from("<bbBBHHHH", blob, c + hdr + 12 * k)
         for q in (q0, q1):
             if q == 0xFFFF:
                 continue
