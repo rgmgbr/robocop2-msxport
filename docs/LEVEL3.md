@@ -166,7 +166,8 @@ main code (`update_objects`, the lifts, the bullets, the explosions, the pickups
     first lit frame it runs in (its cells then show the off looks, or a look of another period),
     with that frame's `$B32` (random & 6 on top, (random + x + 2n) & 1Eh below, as the original),
     and keeps it until its off looks; a record entering the window in a lit period draws it at
-    once. Nothing of the logic changes: `$B32` is only read, the damage test runs every frame, and
+    once. A turbo R (`cpu_tr`, its R800 on) keeps the original's look drawn every lit frame (the
+    user's choice of 2026-11-02: it costs the turbo R nothing). Nothing of the logic changes: `$B32` is only read, the damage test runs every frame, and
     all 44 words (8 top, 16 + 16 below, the 4 off ones) have the attributes 0 (w & 7Fh: the only
     map bits the logic reads, `logic.asm` `map_atr`), their tiles display only [V: `tt_l3.inc`;
     G-LOGIC's 16 traces 0 differ]. No other writer changes the beams' 80 cells (`tools/mapcells.py`

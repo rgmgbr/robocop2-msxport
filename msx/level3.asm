@@ -210,7 +210,8 @@ l3i_spe:
 ; the top in reach. (BEAM_ANIM=0, the product: the user's choice of 2026-11-02, the lit look held,
 ; lt2_hold: drawn once a lit period, with the random of the first lit frame the record runs in, then
 ; kept until the off looks; the logic and $B32 as always: every beam word's attributes are 0, the
-; tiles display only. BEAM_ANIM=1: drawn every lit frame, as the original.)
+; tiles display only. A turbo R (cpu_tr) keeps the original's flicker, which costs it nothing.
+; BEAM_ANIM=1: drawn every lit frame on every machine, as the original.)
 lt2:    ld a,(g_frame)
         and 0x20
         jp nz,lt2_off
@@ -391,6 +392,12 @@ lt2_om: ld a,(mc_cur)
 ; writes and l3_init clear the stamp. Out: Z = held (nothing to write); else A = the stamp (a new one
 ; with this frame's random: the first lit frame the record runs in a period).
 lt2_hold:
+        ld a,(cpu_tr)               ; (a turbo R, its R800 on: the original's flicker, drawn every lit
+        or a                        ;  frame; it costs nothing there: the user's choice of 2026-11-02)
+        jr z,lth_z80
+        ld a,(AM + 0x0B32)          ; (NZ from cpu_tr: this frame's random, as BEAM_ANIM=1)
+        ret
+lth_z80:
         call lt2_st                 ; HL = its stamp
         ld a,(g_frame)
         and 0xC0
