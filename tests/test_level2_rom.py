@@ -397,8 +397,8 @@ class RingQueueTests(unittest.TestCase):
 class DamageTests(unittest.TestCase):
     """DAMAGE_X 2 (the user's choice of 2026-10-31) and the missiles' own damage in every build: enemy
     bullet types 1 and 2 (40h) and level 2's drone (18h) never multiplied, nor Cain's shots 9 and 0Ah
-    (2026-11-01), nor touching any enemy (2026-11-02: the original's 1); the other bullets and the drip
-    times DAMAGE_X."""
+    (2026-11-01), nor touching any enemy nor level 2's acid drip (2026-11-02: the original's); the other
+    bullets times DAMAGE_X."""
 
     def test_the_default(self):
         self.assertEqual(mkrom.OPTIONS["DAMAGE_X"][0], 2)
@@ -438,8 +438,9 @@ class DamageTests(unittest.TestCase):
             for l in f.read_text().splitlines():
                 if "DAMAGE_X" in l.split(";")[0]:
                     uses.append((f.name, l.split(";")[0].strip()))
-        self.assertEqual(uses, [("hits.asm", "if DAMAGE_X > 1"), ("hits.asm", "if DAMAGE_X > 2"),
-                                ("level2obj.asm", "ld de,0 - 0x0A * DAMAGE_X")])             # (the drip)
+        self.assertEqual(uses, [("hits.asm", "if DAMAGE_X > 1"), ("hits.asm", "if DAMAGE_X > 2")])
+        code = [l.split(";")[0].strip() for l in (ROOT / "msx" / "level2obj.asm").read_text().splitlines()]
+        self.assertIn("ld de,0 - 0x0A", code)                                           # (the drip: the original's)
 
 
 class CheatTests(unittest.TestCase):
