@@ -673,6 +673,14 @@ which as sprites were striped, cut or left out.
   game slows down, as the original does when its frame takes 3 VBLs) and the display skips
   their pictures (`bob_skip`: their BOBs are not even recorded). The timer's seconds count
   VBLANKs, not frames.
+- **The cadence's options for the user's choice** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md`
+  D2; nothing decided: every build without them runs as always, byte for byte):
+  - `CAD_ADAPT=n` (default 0): a frame that took fewer than n VBLANKs (`wf_n`) runs at most 2
+    ticks, only a slower one up to `CAD_MAX` or `CAD_HOLD` (the cap at `cd_cap`; 14 bytes of the
+    fixed area). Loop-3 is `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`: 3 ticks a picture only for the
+    pictures of 8 VBLANKs or more (below 7.5 pictures a second at 60 Hz, 6.25 at 50 Hz), where
+    RoboCop's walk advances 1 and 2 drawings alternately; the faster scenes as always. Loop-1 is
+    `CAD_MAX=3 CAD_HOLD=3` alone: 3 whenever a picture is late (no code).
 - **Ported**: `main_loop` in its order: palette effects (`$F878`), `frame_keys` (`$F76C`),
   `player_move` (`$AFF8`), the collisions and pickups (`$FA7C`), the level's hazards (`$9150`:
   level 1's electric beams), `activate_objects` (`$9C06`), the special objects (`$8B32`: lifts,

@@ -200,6 +200,10 @@ OPTIONS = {
     "CAD_MAX": (2, "most game ticks run for one picture: more are lost (the game slows down, as the original does when busy;"
                    " 2: an animation never skips a step of 2 ticks, about 5 % slower in busy scenes)"),
     "CAD_HOLD": (2, "the same while the V9938 scroll keeps the camera at a page's edge (its next page not built yet)"),
+    "CAD_ADAPT": (0, "N > 0 = a picture that took fewer than N VBLANKs runs at most 2 game ticks, only a slower one up"
+                     " to CAD_MAX (or CAD_HOLD), for the user's choice (docs/PERF2_PLAN.md D2, loop-3: N = 8 with"
+                     " CAD_MAX=3 CAD_HOLD=3, 3 ticks only below 7.5 pictures a second at 60 Hz; msx/player.asm"
+                     " cadence); needs CAD_MAX or CAD_HOLD above 2; 0 = CAD_MAX and CAD_HOLD alone (as always)"),
     "ENEMY_CAP": (1, "N > 0 = at most N enemy slots in use (the original has 5; the user chose 1): 0 = the original, for trace tests"),
     "NO_SCC": (0, "1 = the title music and the sound effects ignore an SCC (test: the OPLL or PSG modes on a KonamiSCC cartridge)"),
     "NO_FM": (0, "1 = the title music ignores an OPLL (test)"),
@@ -882,6 +886,10 @@ def main(argv: list[str]) -> int:
         return 2
     if opts["FLASH_LOOK"] not in (0, 6, 7):
         print("FLASH_LOOK must be 0, 6 or 7 (msx/bob.asm)", file=sys.stderr)
+        return 2
+    if not 0 <= opts["CAD_ADAPT"] <= 255 or (opts["CAD_ADAPT"] and max(opts["CAD_MAX"], opts["CAD_HOLD"]) < 3):
+        print("CAD_ADAPT must be 0-255, and needs CAD_MAX or CAD_HOLD above 2 (it keeps 2 ticks a picture below"
+              " its VBLANKs: msx/player.asm cadence)", file=sys.stderr)
         return 2
     # (7's white lasts the hit's tick and the 3 after it: a frame of more ticks could skip all four)
     if opts["FLASH_LOOK"] == 7 and (opts["CAD_MAX"] > 4 or opts["CAD_HOLD"] > 4):
