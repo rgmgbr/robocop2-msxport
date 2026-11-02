@@ -817,6 +817,33 @@ class ShellTests(unittest.TestCase):
         r = run(["sh", BST / "build.sh", self.tmp / "x.bin"], env=self.env)
         self.assertEqual(r.returncode, 2)
 
+    def test_build_refuses_the_build_msx_a_link_leads_to(self):
+        # a copy of build.sh in a made-up tree whose build/ (then only build/msx) links to another
+        # checkout's: an OUT in either path resolves into that build/msx and is refused, nothing written
+        main = self.tmp / "main" / "build" / "msx"
+        main.mkdir(parents=True)
+        tree = self.tmp / "tree"
+        (tree / "tools" / "bstest").mkdir(parents=True)
+        shutil.copy(BST / "build.sh", tree / "tools" / "bstest" / "build.sh")
+        (tree / "build").symlink_to(main.parent)
+        for link in ("build", "build/msx"):
+            if link == "build/msx":
+                (tree / "build").unlink()
+                (tree / "build").mkdir()
+                (tree / "build" / "msx").symlink_to(main)
+            for out, cwd in ((tree / "build" / "msx" / "bstest_refused.rom", tree),
+                             (tree / "build" / "msx" / "bstest_refused_dir" / "x.rom", tree),
+                             (Path("build/msx/bstest_refused.rom"), tree), (main / "bstest_refused.rom", tree)):
+                r = run(["sh", tree / "tools" / "bstest" / "build.sh", out], env=self.env, cwd=cwd)
+                self.assertEqual(r.returncode, 2, f"{link} {out}: {r.stdout}{r.stderr}")
+                self.assertIn("must not be in build/msx", r.stderr)
+            self.assertEqual(self.calls(), [])
+            self.assertEqual(list(main.iterdir()), [])
+        # (the copy builds elsewhere: the refusal is not a broken script)
+        r = run(["sh", tree / "tools" / "bstest" / "build.sh", self.tmp / "o" / "x.rom"], env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.calls()), 1)
+
     def test_hz_sh_builds_the_suite(self):
         r = run(["sh", BST / "hz.sh", "builds", self.tmp / "R"], env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

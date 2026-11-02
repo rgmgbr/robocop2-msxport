@@ -52,7 +52,7 @@ The harness has two sides:
 
 | File | Side | What it does |
 |---|---|---|
-| `build.sh OUT.rom [NAME=VALUE ...]` | shell | `tools/mkrom.py` into `OUT.rom`, then checks: mkrom's exit status, no "error" in `OUT.log`, a ROM written by this build, and no z80asm message in `OUT.labels` other than the 12 known "expression fully enclosed in parenthesis" warnings. `LEVEL=` another conversion; `SRC=` another source tree (5.3); `KNOWN_WARNINGS=` another count. Refuses `build/msx` and any OUT not ending in `.rom`/`.ROM` |
+| `build.sh OUT.rom [NAME=VALUE ...]` | shell | `tools/mkrom.py` into `OUT.rom`, then checks: mkrom's exit status, no "error" in `OUT.log`, a ROM written by this build, and no z80asm message in `OUT.labels` other than the 12 known "expression fully enclosed in parenthesis" warnings. `LEVEL=` another conversion; `SRC=` another source tree (5.3); `KNOWN_WARNINGS=` another count. Refuses `build/msx`, also the folder it resolves to (a tree whose `build/` or `build/msx` links to another checkout's), and any OUT not ending in `.rom`/`.ROM` |
 | `hz.sh` | shell | `trace DIR` (the regression's build), `compare DIR [LABELS]` (the regression's verdict), `product DIR` (a product build), `fresh DIR A B` (two title records), `builds R` (the suite's six builds); level 2 (5.22): `l2builds R` (its six trace builds), `compare --fields FIELDS DIR R [--refs REFS] [JOB[:ROWS] ...]` (its drives' traces) |
 | `load.tcl` | Tcl | sources the Tcl files below in order (`hz.tcl` first) |
 | `hz.tcl` | Tcl | `hz_chain` (the job runner), `hz_regress`, `hz_fresh`, `hz_bonus`; level 2 (5.22): `hz_l2` / `hz_l2_jobs` (its 20 drive jobs), `hz_l2_still_jobs` (its start on the three machines) |
