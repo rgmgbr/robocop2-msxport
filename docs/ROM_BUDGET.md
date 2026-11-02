@@ -24,6 +24,9 @@ The numbers of 2.4 are mkrom's and the label files' for builds of 56e8f56; later
 are cut to their opaque boxes: its frame cache takes **11 banks instead of 14**, so the image uses **160 of its
 256 banks** (`BANK_L3` 158, `BANK_L3B` 159). The free bytes of every code bank moved: section 2.5.
 
+**Update, 2026-11-02 (performance campaign 2, batch 2, branch `perf2/batch2`).** No bank moves; the fixed area has
+426 B free in the product and 291 in the lowest set, `BANK_FIELD` 186 (145 in the drive builds): section 2.7.
+
 Sources:
 - eight area reports of the same day (level 2, level 3, sprites, bonus stages, pictures, music,
   code, hardware);
@@ -418,6 +421,54 @@ fixed area and, for `FLASH_LOOK`, LC1 (`objects.asm` `slot_clear`); every other 
   flash-7, counted in pictures, cost 2.
 - The three groups together (`FLASH_LOOK=7 CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8 LAG_X=64`, built for this count only): the
   product 479 B free (-4), the lowest set 344.
+
+### 2.7 Performance campaign 2, batch 2 (2026-11-02)
+
+M, from `tools/bstest/variants.sh` (all 61 option sets) and `tools/bstest/l2base.py`'s bank limits, for builds of the
+merged branch `perf2/batch2` (W2L's logic-4, logic-6 and scroll-2 (b); W2F's R2 and flash-1) against `level2` 27ed66d
+(batch 1's code; `docs/PERF2_PLAN.md`, `docs/level3/HANDOFF.md` "Performance campaign 2, batch 2"). The bank map is
+2.5's: no block moves, no bank is added (2 MiB, 160 of 256 banks). **All 61 sets build**: `DEMO_ACTORS` 2 and 5 keep
+19 B of the fixed area.
+
+| Bank | Product batch 1 | Product batch 2 | Lowest set batch 1 | Lowest set batch 2 | Least in any set, batch 2 |
+|---|---:|---:|---:|---:|---|
+| fixed area | 483 | **426** | 348 | **291** | 19 (`DEMO_ACTORS` 2 and 5); 291 of the 58 sets that built at 3b11042 |
+| LC1 | 24 | 24 | 24 | 24 | 24 (153 in the trace builds) |
+| LC2 | 4,827 | **4,467** | 4,827 | 4,467 | 4,467 |
+| `BANK_L1` | 378 | 378 | 378 | 378 | 378 |
+| LC3 | 4,785 | **4,745** | 4,785 | 4,745 | 4,712 (`CHEAT=1`) |
+| INPUT | 11 | 11 | 11 | 11 | 11 |
+| FRONT | 1,105 | 1,105 | 707 | 707 | 659 (`DIAG=1 LV_TEST=2` or `3`) |
+| `BANK_FIELD` | 112 | **186** | 112 | 186 | 145 (the `EXTJOY` drive, trace and lock builds; 71 before) |
+| MUSIC | 1,251 | 1,251 | 1,280 | 1,280 | 0 by the count in the two `DIAG=2` sets, as before |
+| `BANK_PUZL` | 4,483 | 4,483 | 4,483 | 4,483 | 4,483 |
+| `BANK_FRNG` | 264 | 264 | 264 | 264 | 264 |
+| `BANK_L2` | 933 | 933 | 933 | 933 | 28 (`VAT_ANIM=1`, unchanged) |
+| `BANK_FRONT2` | 6,894 | **6,576** | 6,894 | 6,576 | 6,553 (`TAG` builds; 6,574 with `FORCE_V9938`) |
+| `BANK_L3` | 3,151 | 3,151 | 3,151 | 3,151 | 3,151 (3,647 with `VAT_ANIM=1`) |
+| `BANK_L3B` | 2,014 | 2,014 | 2,014 | 2,014 | 2,014 |
+
+Every set moved by the same amount in each bank (but `FORCE_V9938`'s two more bytes of R2):
+- **The fixed area -57**: scroll-2 (b) 48 (`fb_invf`'s window test 46, `gt_nop` 2; logic-4 and logic-6 none: `pl_hits`
+  is byte-neutral), R2's trampoline `f2_call` 9.
+- **LC2 -360**: logic-4 (`activate_objects`' y-cell masks, 208 B in `gen/objmasks.inc`, with `ao_ykey` and the loop).
+- **LC3 -40**: logic-6 (`pl_lift` from the last filled entry).
+- **`BANK_FIELD` +74** (+76 with `FORCE_V9938`): R2 +306 (+308), flash-1 -211, its review's fix -21.
+- **`BANK_FRONT2` -318** (-320 with `FORCE_V9938`): R2's `engines_init`, `engines_jump`, `scroll_init` and `s38_init`
+  (306 B) and their two `field_call`s (12 B).
+
+The user's options on batch 2 (product / lowest set; LC1): none 426 / 291 (24); `FLASH_LOOK=6` 420 / 285 (19);
+`FLASH_LOOK=7` 448 / 313 (19); loop-3 (`CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`) 412 / 277; loop-1 (`CAD_MAX=3 CAD_HOLD=3`)
+426 / 291; `LAG_X=64` 414 / 279: each option's cost as in 2.6.
+
+RAM: flash-1's `fb_lkf0`, `fb_lkf1`, `fb_lkq` take ED09h-ED0Bh (5.2's assignment); logic-4's `ao_ykc` is `ao_cand`'s own
+61st byte (CBFCh, `AO_MAX` 59). Still free: ED0Dh-ED0Fh and EDFFh; MP_ROW's tail (0A33h-0AFFh, assigned to scroll-2 (c),
+which was not built).
+
+Not merged (`docs/level3/HANDOFF.md` "Performance campaign 2, batch 2"), measured on their own branches against batch 1:
+W2S's spr-7, spr-2, spr-3, spr-8 take the fixed area -158 more and FRONT -17; W2C's scroll-1 with its review's fix -70.
+On top of batch 2 both together would leave the product about 198 B of fixed area and the lowest set about 63
+(estimated: the sum of the lanes' measured changes; `DEMO_ACTORS` 2 and 5 would fail again).
 
 ## 3. What the rest of the game needs
 

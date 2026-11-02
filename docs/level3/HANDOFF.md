@@ -1795,3 +1795,211 @@ The previews (`C/dprev/preview`, each built twice to the same bytes, 2 MiB, 12 k
 4. **`rc_safe`'s edge** (`../PERF2_PLAN.md` 5.3's rc-edge, lane W2K): it tests RoboCop's sprite boxes on the picture
    already shown, before the frame's ticks. A punch started from a walk right could pass the held V9938 picture's right
    edge by 1-3 px (4-6 px with 3-tick frames), in the review's model; pre-existing. A runtime check comes first.
+
+## Performance campaign 2, batch 2 (2026-11-02)
+
+The plan: `../PERF2_PLAN.md` (batch 2 of its 5.3, the gates of its 5.4). Branch `perf2/batch2`, from `level2` 27ed66d
+(batch 1's code: every build without the D1-D3 options is byte-identical to `a431d23`'s). `C` is the campaign's folder;
+the integration's records are in `C/integ2`: `R` the gate builds of the merged tip, `N` its runs and verdicts
+(`gate_*.txt`), `RX`/`NX` the bisect's builds and runs, `NY`, `NY2` and `CELL` the boss route's extra windows and a cell's
+trace, `var`, `opt` and `optlow` the option sets, `png` the stills and their contact sheets, `preview` the play-test
+files, `t1` the first merge (with W2S) and its records, `NOTES.txt`. The kit, the baselines and the rules are lane W2K's:
+`K` = `tools/bstest/perf2` of `perf2/w2k` (0fa8d90: the recalibration 62422f3 with its review's fix bf9a268; its worktree
+`C/wt/w2k`), `B` = `C/w2k/base` (BASE's records and those of its timing controls ct1, +16 T a game tick; ct2, +32 T a
+picture; ct3, +12 T a budget run), the rules in that branch's `../HARNESS.md` 12.2. Emulator: two private headless
+sessions under the campaign's semaphore (`C/integ2/sess.sh`), at most two openMSX at once.
+
+### What was merged
+
+| Lane | Items (`../PERF2_PLAN.md` section 2) | Commits | Merge |
+|---|---|---|---|
+| W2L | logic-4 and logic-6 (item 17); scroll-2 part (b) with `gt_nop` (item 10) | `571fa1e`, `6481541` | `98ee396` |
+| W2F | R2 and flash-1 (item 3), with its review's fix (the V9938's page path for the page shown only) | `208e30c`, `5b2d4df`, `8a09e7a` (docs), `4f9dc14` | `7c1a0c4` |
+
+- No conflict. The worktree's `build/msx` is the main checkout's (an rsync without ROMs and notes), equal to it in every
+  file: neither merged lane changes a converter (the merged tree's pool conversion, `C/integ2/conv.sh`, gives the same 32
+  files).
+- **Not merged** (each merges onto this tip without conflict, `git merge-tree`):
+  - **W2K** (the kit's recalibration; rc-edge): its review's verdict was "blocked", on rc-edge only (below). The kit
+    (tools, tests, docs: no ROM byte) judged every gate of this batch from its branch.
+  - **W2C** (scroll-1, item 6): review "blocked". With its review's fix (`5c879b6`) it fails G-HOLD on the V9938
+    (`kill_m2` 4 -> 11, `kill_ex` 3 -> 9) and G-SPEED on tour3's lifts (-2.9 % on the MSX2, -3.0 % on the Expert); on the
+    V9958 every gate passes. Parked for batch 3's W3V, as `../PERF2_PLAN.md` 5.3 prescribes.
+  - **W2S** (spr-7, spr-2, spr-3, spr-8, item 16): review "ok"; merged second (`c0bd51d`), then **dropped**: the merged
+    tip failed G-HOLD. The bisect over the merges and the tip's own timing controls (`C/integ2/NX/*/gate_hold.txt`; FB_HOLD
+    pictures over the whole drive, BASE and its controls 16-27 on `kill_fx` and 10-14 on `boss_tr`, FAIL above 38 and 18):
+
+    | Build | `kill_fx` | `boss_tr` |
+    |---|---:|---:|
+    | W2L (`98ee396`) | 23 | 11 |
+    | W2L + W2S (`c0bd51d`) | 31 | 14 |
+    | W2L + W2F (this tip) | 18 | 16 |
+    | W2L + W2S + W2F | **40** | **19** |
+    | the same + ct1 / ct2 / ct3 | 24 / 35 / 33 | 21 / 14 / 19 |
+
+    W2S's lane alone had failed G-HOLD on `kill_fx` (39; its tip with the three timing shifts 29, 32, 26): every build
+    with W2S lies at 24-40 there, against 16-27 without it. No small fix lies in W2S's files (a shorter CPU side reaches
+    the publish before the V9958's play-field composition). W2S carries the smaller gain (level 2's end +3.7 % on the
+    MSX2+, nothing in Cain's windows), flash-1 the larger (the ground floor +7.5-8.3 % on the Z80 machines), so the
+    branch was rebuilt without W2S: reset to `98ee396`, W2F merged again (`7c1a0c4`). `perf2/w2s` stays at `9e35d53`.
+- The first merge (`t1`, with W2S: product 268 B of fixed area, `DEMO_ACTORS` 2 and 5 failing) passed every other gate.
+
+### The speed: batch 1 (27ed66d) against batch 2
+
+Measured: openMSX 21 headless, emulated time, the `EXTJOY` drive builds with the product's options (`gate.sh builds`:
+`l3/cap3`, `l2/cap2`, `l1/ext`), 60 Hz machines (MSX2 = C-BIOS_MSX2, Expert = Gradiente_Expert20_64K, MSX2+ =
+Panasonic_FS-A1FX, turbo R = Panasonic_FS-A1GT), one m3 lean run per drive and machine. Both sides are counted with W2K's
+`win.py` (`B/speed`, `N/speed`; `--table`, `C/integ2/speedtab.md`): the drives' teleport stalls are left out, so the
+park and tour3 windows read higher than in batch 1's table above, which counted them. Each cell: ticks/s / pictures/s /
+pictures with game progress per second, batch 1 -> **batch 2** (the change in ticks/s).
+
+| Scene | MSX2 | Expert | MSX2+ | turbo R |
+|---|---|---|---|---|
+| Cain's route, no fire (kill 130-1400) | 8.81 / 18.0 / 5.99 -> **8.81** / 18.2 / 6.02 (-0.0 %) | 8.87 / 18.1 / 6.02 -> **8.84** / 18.4 / 6.03 (-0.3 %) | 12.89 / 7.4 / 6.73 -> **12.83** / 7.5 / 6.71 (-0.5 %) | 18.35 / 15.6 / 10.49 -> **18.47** / 15.8 / 10.67 (+0.7 %) |
+| Kill floors (kill 300-1500) | 9.24 / 18.0 / 6.36 -> **9.23** / 18.3 / 6.37 (-0.1 %) | 9.30 / 18.0 / 6.37 -> **9.26** / 18.3 / 6.37 (-0.4 %) | 13.21 / 8.8 / 7.20 -> **13.18** / 8.8 / 7.18 (-0.2 %) | 18.63 / 17.1 / 10.98 -> **18.84** / 17.4 / 11.18 (+1.1 %) |
+| Ground floor, Cain shot (kill 1500-1765) | 12.52 / 7.0 / 6.47 -> **13.56** / 7.6 / 7.12 (+8.3 %) | 12.52 / 6.9 / 6.62 -> **13.46** / 7.6 / 7.11 (+7.5 %) | 12.50 / 6.8 / 6.51 -> **13.50** / 7.4 / 7.08 (+8.0 %) | 22.77 / 17.5 / 13.06 -> **22.96** / 17.1 / 13.17 (+0.9 %) |
+| Cain's route firing (boss 130-1400) | 7.29 / 10.8 / 4.49 -> **7.41** / 10.9 / 4.54 (+1.7 %) | 7.34 / 10.7 / 4.49 -> **7.37** / 10.9 / 4.54 (+0.4 %) | 9.73 / 5.0 / 4.88 -> **9.89** / 5.2 / 5.01 (+1.6 %) | 17.02 / 13.2 / 9.41 -> **16.98** / 13.5 / 9.37 (-0.3 %) |
+| Level 3's street (tour3 40-210) | 14.98 / 20.7 / 10.75 -> **15.04** / 20.1 / 10.71 (+0.4 %) | 15.04 / 20.5 / 10.44 -> **14.88** / 20.3 / 10.59 (-1.1 %) | 20.07 / 15.0 / 13.57 -> **19.91** / 15.0 / 13.59 (-0.8 %) | 23.47 / 33.5 / 17.67 -> **23.47** / 34.0 / 17.67 (-0.0 %) |
+| The beams (tour3 215-540) | 13.88 / 18.0 / 8.99 -> **14.43** / 20.3 / 9.62 (+4.0 %) | 14.04 / 18.0 / 8.97 -> **14.54** / 19.8 / 9.65 (+3.6 %) | 16.18 / 9.1 / 8.62 -> **17.36** / 9.8 / 9.68 (+7.2 %) | 24.21 / 40.5 / 21.34 -> **23.97** / 41.1 / 22.25 (-1.0 %) |
+| The lifts (tour3 545-1065) | 15.27 / 8.9 / 8.52 -> **15.85** / 9.4 / 9.09 (+3.8 %) | 15.23 / 8.9 / 8.68 -> **15.80** / 9.4 / 9.16 (+3.7 %) | 17.04 / 10.1 / 9.58 -> **17.90** / 10.4 / 10.13 (+5.1 %) | 24.96 / 37.7 / 22.10 -> **24.90** / 39.7 / 22.29 (-0.2 %) |
+| The roof (tour3 1085-1400) | 15.09 / 13.4 / 8.81 -> **15.85** / 13.6 / 9.31 (+5.1 %) | 15.00 / 13.2 / 8.67 -> **15.97** / 13.9 / 9.48 (+6.4 %) | 15.11 / 8.2 / 7.82 -> **16.07** / 8.9 / 8.52 (+6.4 %) | 24.74 / 41.9 / 22.62 -> **24.64** / 43.2 / 22.77 (-0.4 %) |
+| The car park (park 40-1200) | 19.09 / 17.7 / 12.09 -> **19.22** / 18.0 / 12.07 (+0.7 %) | 19.06 / 17.5 / 12.04 -> **19.12** / 17.8 / 12.21 (+0.3 %) | 20.88 / 14.2 / 11.67 -> **20.79** / 14.4 / 11.81 (-0.5 %) | 24.91 / 51.3 / 24.54 -> **24.91** / 51.4 / 24.52 (+0.0 %) |
+| Level 2 (l2_tour 20-1590) | 19.03 / 19.6 / 12.47 -> **19.09** / 20.0 / 12.57 (+0.3 %) | 19.02 / 20.0 / 12.66 -> **19.07** / 20.0 / 12.57 (+0.3 %) | 23.05 / 17.4 / 15.53 -> **23.12** / 17.8 / 15.69 (+0.3 %) | 24.87 / 42.3 / 24.28 -> **24.89** / 42.2 / 24.35 (+0.1 %) |
+| Level 2's end (l2_tour 2080-2350) | 17.24 / 18.8 / 12.00 -> **17.52** / 19.7 / 11.94 (+1.6 %) | 17.27 / 19.1 / 12.41 -> **17.68** / 19.5 / 11.98 (+2.4 %) | 21.48 / 11.7 / 11.62 -> **21.65** / 12.5 / 12.43 (+0.8 %) | 24.97 / 50.1 / 24.60 -> **24.97** / 50.0 / 24.41 (+0.0 %) |
+| Level 1's play (drive_play 40-1450) | 24.96 / 26.7 / 21.69 -> **24.96** / 27.4 / 21.54 (+0.0 %) | 24.96 / 26.6 / 21.67 -> **24.96** / 27.3 / 21.54 (+0.0 %) | 24.96 / 26.1 / 21.67 -> **24.96** / 26.6 / 21.76 (-0.0 %) | 24.97 / 58.6 / 24.97 -> **24.97** / 58.6 / 24.97 (+0.0 %) |
+
+- The ground floor with Cain shot gains +7.5 to +8.3 % on the Z80 machines (flash-1: a look-only change's pieces take
+  their background from the page, one HMMM a part, instead of composing it from tiles: 49 tile HMMMs a flash picture in
+  `../PERF2_PLAN.md` 1.5), +0.9 % on the turbo R.
+- Level 3's start (the beams, the lifts, the roof) gains +3.6 to +7.2 % on the Z80 machines (scroll-2 (b): the beams' and
+  turrets' map writes call `fb_inval` only for a cell inside a field cache's window, which none was on tour3); the turbo R
+  -1.0..0.0 %, within its controls.
+- Cain's route and the kill floors stay as they were (-0.5..+1.1 %), the boss route +0.4..+1.7 %, level 2 +0.1..+2.4 %
+  (logic-4 and logic-6); level 1 stays at 25 ticks/s, its pictures 26.7 -> 27.4 a second on the MSX2.
+- The ground floor's window has two trajectories (W2C's review: about 12.0 or 13.5 ticks/s on the V9938 machines from
+  tick 1600 on): here all three Z80 machines took the faster one; the first merge (with W2S) read the Expert at 12.79.
+- FB_HOLD pictures over the 16 whole drives: 75 -> 73.
+
+### Checks (exact commands; `K`, `B` as above, `W` = `C/wt/integ2`, `N` = `C/integ2/N`, `R` = `C/integ2/R`)
+
+- **The runs**: `sh K/gate.sh builds R W` (9 gate builds OK, 12 known warnings each), the product (`sh
+  tools/bstest/build.sh C/integ2/prod/rc2.rom`, `5441f5e736a36f8a`), the look builds (`R/F6`, `R/F7`: `l3/cap3` with
+  `FLASH_LOOK` 6 and 7), the census builds (`R/cen/new3` `EXTJOY=1 LOCKSTEP=48 LV_TEST=3`, `new2` `LOCKSTEP=24
+  LV_TEST=2`, from `C/integ2/cen_src` with `sprites.asm`'s eight `pub_cur` blocks off, as W2S's). In the private sessions
+  (`K/load.tcl` with `::pf_repo` W; batch 1's `w1f.tcl`, `w1s.tcl`; dprev's `lk.tcl`, `pv.tcl`; W2F's `w2f.tcl`; its
+  review's `rv.tcl`): chain a (`C/integ2/chains/a.tcl`, 75 jobs: `pf_gate_jobs N R {speed guard lock map}`, `cen_jobs`
+  on kill and l2_tour on both VDPs, `w1f_vram_jobs N/vram R $::pf_m4 {boss kill}`, `w1f_atlas_jobs N/atlas R $::pf_m3`,
+  `w1s_sk_jobs` on kill from game frame 300 and l2_tour from 20 for 120 s on both VDPs, `hz_l2_objs_jobs N/objs R/T
+  {tour}`, `lk_jobs N/look R 3 l3_kill.drive 1770 {6 7} {m2 C-BIOS_MSX2}`), chain b (126: `w2f_pg_jobs N/field R
+  $::pf_m3` on level 3's seven windows, `pf_field_jobs N/field R $::pf_m3 {1 2}`, five more boss windows with the
+  page-path probe, `pf_logic_jobs N/logic R`, `rv_job` on whole kill and boss drives on the MSX2, the Expert and the
+  MSX2+, `hz_l2_still_setup` on `l3/cap3`: kill 14 and boss 8 game frames on four machines), chain c (6: `l2b_st_setup`
+  on the product on four machines, `pv_job` on each preview). Every job finished (`N/a.done`, `b.done`, `c.done`). The
+  verdicts: `REPO=W sh K/gate.sh speed|hold|guard|lock|map B N`, `REPO=W sh K/gate.sh logic N R`, `python3 -I
+  K/fieldsum.py run N/field --root W --check C/wt/w2k/tools/bstest/fieldcheck.py --jobs 6` then `python3 -I
+  K/fieldsum.py gate B/field N/field`, `sh C/integ2/verdicts2.sh` (the census against W2S's BASE records
+  `C/w2s/N/cenbase`, made with this kit; the sprite checks and objcmp against W2S's BASE records `C/w2s/N/sk_base`,
+  `objs_base`; the looks; the start).
+- **G-BUILD: PASS.** `sh tools/bstest/variants.sh C/integ2/var`: **61 of 61** option sets build (`python3 -I
+  C/integ2/tools/banktab.py W C/integ/var C/integ2/var`: every set moves by the same bytes in each bank, `../ROM_BUDGET.md`
+  2.7). The product builds with each of the user's options (`C/integ2/opt.sh`: `FLASH_LOOK=6`, `FLASH_LOOK=7`,
+  `CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`, `CAD_MAX=3 CAD_HOLD=3`, `LAG_X=64`), and so does the lowest set (`optlow.sh`).
+  `make test` in the worktree: 416 tests, the 4 known `tests/test_tools.py` failures only; the main checkout's `build/msx`
+  untouched (`find -newer`: nothing).
+- **G-LOGIC: PASS.** Level 3's 16 traces, level 2's 23, level 1's cov1 (4,401 rows), cov0 and cov0_tr (1,400 each): 0
+  frames differ; the lost counters (mp, atr, rd, fb) 0 in all 42.
+- **G-MAP: PASS.** tour3 (15 dumps) and park (13) on C-BIOS_MSX2 and the FS-A1FX: 0 bytes differ.
+- **G-LOCK: PASS**, with the census. `lockgate.py`: 0 lists differ in all 8 records, every list judged (l1cov0 2,998 x
+  2, l2tour 1,296 x 2, kill 896 x 2, boss 676 x 2: the V9938's displayed cameras no longer part on kill). The census
+  (`vercmp.py`): kill on both VDPs 3,361 records (878 budget runs), l2_tour 2,898 and 3,021 (906): **0 differing
+  records**; budget T-states a run unchanged (kill 44,722 -> 44,722 and 46,739 -> 46,745, l2_tour 22,853 -> 22,862 and
+  27,265 -> 27,261).
+- **The sprite checks** (`w1s_sk_jobs`): `sprvram` 0, `satcheck` 0, `patcheck` 0 bad (18,786-45,423 entries) in all 4
+  runs; frames with a line above 8 (new / BASE): kill_m2 0 / 0, l2tour_m2 1,094 / 1,097, l2tour_fx 835 / 824, kill_fx
+  271 / 190: 8 / 8 at Cain's death (game frames 1780-1782, line 97, 9 sprites) and the rest at game frame 1861, the
+  level's end screen (line 71, 15 sprites), which the faster run shows longer within its 120 s. **objcmp** (level 2's
+  tour against the bench): the same classes as BASE, no "extra", no "no frame"; exact BOBs MSX2 5,558 in 3,533 lists
+  (BASE 5,356 / 3,490), MSX2+ 3,566 / 1,858 (3,543 / 1,836), turbo R 10,371 / 4,423 (10,463 / 4,440); the MSX2+'s 38 more
+  "missing" are 26 at game frame 2411, held for 233 lists by the drive's teleport at 2410 (268 frames with a missing BOB
+  against BASE's 264).
+- **G-VRAM: PASS.** Whole boss and kill drives with `too_fast_vram_access real`: **0** too-fast accesses on C-BIOS_MSX2,
+  the Expert, the FS-A1FX and the FS-A1GT; 5,088 frame-cache uploads, every place equal to the ROM's frame after its upload
+  (`python3 -I C/integ/tools/vramchk.py fc`; 9.15-9.27 us a byte on the V9938 machines, 9.85-9.99 on the MSX2+, 11.04-11.36
+  on the turbo R). The atlas after each upload path (level 1's power-on, level 2's and level 3's starts, level 3's
+  continue: R2's moved set-up code runs on each): 0 frames differ in 12 dumps on three machines.
+- **G-SPEED: PASS** in all 48 windows (the closest: tour3_ex 40-210 -1.10 % against a floor of -4.7 %; kill_fx 130-1400
+  12.83 against 12.55).
+- **G-HOLD: PASS** in all 16 runs (`boss_tr` 12 -> 16, FAIL above 18; `kill_fx` 16 -> 18; the others at or below BASE's
+  reference).
+- **G-GUARD: PASS.** Tears over the six runs 715 -> 726 (boss_m2 6 -> 8, boss_fx 112 -> 115, boss_tr 112 -> 127, kill_m2
+  121 -> 119, kill_fx 221 -> 227, kill_tr 143 -> 130), each within its controls. WARN on two timing counters: boss_fx
+  `cmd` 646 (reference 641-642), boss_tr `reg` 5 (2-4). `patcheck` 0 bad.
+- **G-FIELD: PASS** in all 63 windows. WARN: boss110_tr hostage-tear 7 (reference 2-5, FAIL above 8), kill300_tr
+  hostage-tear 3 (1, FAIL above 4), boss300_m2 other 1 (0). Over all windows hostage-tear pictures 11 -> 19 and "other" 0
+  -> 1 (FB_HOLD's apart); tour545_m2's stale beam cells after the drive's teleports 62 -> 40, tour545_fx 5 -> 0.
+  **flash-1's page path** (`pg.txt`, `rv.tcl`, `C/rev_w2f/tools/rvan.py`): whole drives kill 332 pieces on each of the
+  MSX2, the Expert and the MSX2+, boss 101 / 106 / 17, every one on the V9938 on the page shown (0 on the page being
+  built, 0 with the page beside synced); in the gate's windows kill1560 302 / 300 / 312 (MSX2 / MSX2+ / turbo R),
+  boss110 19 / 11 / 0, boss300 33 / 11 / 0; in the boss route's scrolling windows boss500 51 and boss1200 97 on the MSX2,
+  boss1000 75 / 17 / 4. Those windows against BASE (`C/w2f/N/gx/base`) and, on the MSX2, its controls (`C/rev_w2f/N/gxc`):
+  boss1000 and boss1200 within; boss500_m2 "other" 1 -> 7: cell (20, 158) at the screen's right edge shown with its old
+  tile at game frames 596-600 while the redraw queue drains a beam's 13 cells, queued at once at game frame 594 (the cell
+  drawn at 610: `C/integ2/CELL`). BASE's window ends at game frame 594 (it is slower). The same span recorded from game
+  frame 580 (`C/integ2/NY2`, 900 records): BASE 114 such pictures on the MSX2 and 89 on the Expert (its controls 67-133),
+  this tip 96 (and 9 at FB_HOLD) and 78 (its controls 67-122): a pre-existing class (open issue 4), not this batch's.
+- **The looks** (`lk.tcl`, `lkan2.py`, kill's ground floor on the MSX2): `FLASH_LOOK=6` 0 against the rule, 44 look
+  changes, 15.30 ticks/s (batch 1 14.58); `FLASH_LOOK=7` 0 against the rule, 1 change, 18.28 (18.26); no picture with two
+  looks.
+- **G-PROD: PASS.** The product from the title on fresh machines (`l2b_st_setup`, 40 s of level 1 under `rc2_guard`,
+  `patcheck`, `sprlines`, `satcheck`): C-BIOS_MSX2, the Expert, the FS-A1FX and the FS-A1GT: reg, pal, cmd, cpu, vbl and
+  tear 0, 27,536-31,505 patterns checked, 0 bad, 0 lines above 8, 0 SATs bad, lost 0 (`l2base.py start`: PASS x 4). The
+  matrix (`sh C/omsem.sh 1 python3 -I tools/msxmatrix.py C/integ2/prod/rc2.rom --labels ... --home <msx-ai>/.openmsx-home
+  --jobs 1`): **10 of 10 set-ups PASS**; 8 lines equal to BASE's product's, cbios50 and megaram_psg one tick more in the
+  sampled interval (170->346, 165->340). Cain's fight: 88 stills (kill: 14 game frames from the roof to his death and the
+  end count; boss: 8; four machines) rendered with `tools/msxframe.py ... --level 3 --field` (venv; `C/integ2/tools/
+  stills.sh`): 82 exact; 6 with 2-42 px (132 in all): 4 with sprite pixels as in batch 1's stills (msxframe's object order,
+  OR layers dropped; boss_fx 300 the same 21 px as batch 1's) and the end count's message on the MSX2 and the MSX2+ at game
+  frame 1790 (42 and 33 px: one letter of "CAIN DESTROYED" being written as the snapshot was taken; msxframe compares the
+  text `hud.asm` has recorded). The contact sheets (`C/integ2/png/sheet_kill_*.png`, `sheet_boss_*.png`) looked at: Cain
+  whole in every picture, his white copies and normal look whole, the death's explosions and parts, no torn, stale, cut or
+  misplaced piece.
+- **The previews** (below): each started from the BIOS on a fresh Gradiente_Expert20_64K (`pv.tcl`): the briefing shows
+  TEST 16 (`C/integ2/png/pv_l2_s.png`, `pv_l3_s.png`, looked at); `-l3` reaches Cain (in slot 0 at tick 114, hit from tick
+  114 on), `-l2` plays (RoboCop walks from x 352 to 802 in 300 ticks).
+
+The play-test files (`C/integ2/preview`; built twice to the same bytes; 2 MiB; 12 known warnings; `TAG=16 LV_TEST=2|3
+CHEAT=1 INVULN=1`):
+
+| File | SHA-256 |
+|---|---|
+| `ROBOCOP2_v0.1.3-test16-batch2-l2.ROM` | `8e085837efe73b45510811013d4b39ffff15af8ac4dc6b9ea70371e6400ee396` |
+| `ROBOCOP2_v0.1.3-test16-batch2-l3.ROM` | `faddf50e20b9714be584cb1638884d0ba61fb8c574c23628ef2dc6920c371f04` |
+
+### Open issues
+
+1. **W2S (item 16) waits for the V9958's picture pipeline.** Its CPU savings (2.04 % of the Z80's time in level 2, 1.22 %
+   on Cain's kill drive, counted) raise the FB_HOLD pictures on the MSX2+ (`kill_fx` 24-40 against 16-27) and, with W2F,
+   on the turbo R (`boss_tr` 14-21 against 10-14). W2C's V9958 bursts took those two runs to 1 and 3 on their own branch,
+   so W2S could merge with them (or after W3V); or the main thread accepts the shift.
+2. **W2C (item 6) waits for W3V** (G-HOLD on the V9938, tour3's lifts on the V9938). Its own suggestion stands as an
+   option: the V9958 bursts alone now, the V9938's later.
+3. **W2K is not merged.** Its kit's recalibration (62422f3, bf9a268) judged this batch from its branch; merging those two
+   commits (tools, tests, docs) brings `K` into the repository. **rc-edge**: over the drives the product's options cut no
+   picture of RoboCop on the V9938 (0 of 14,664; `LAG_X=64` 0 of 14,556; loop-3 0 of 14,477; loop-1 1 of 14,369, by 3 px);
+   its review forced the modelled case on C-BIOS_MSX2 and the Expert (a punch started on the last tick of a 2-tick frame
+   at `AX_MAX`, the view held 30 px behind): 1 of 21 punches cut by 2 px for 7 pictures (0.12 s), at BASE too. `rc_safe`
+   needs the bound of `../PERF2_PLAN.md` 5.3 (per-composition opaque extents, the frame's growth, a composition started
+   within the frame) for the product's 2-tick frames: its own lane (fixed-area bytes; the MSX2's speed in the building).
+4. **The V9938's redraw queue in play.** A beam's row of cells changed at once waits behind the queue, one cell a tick or
+   so: the boss route from game frame 594, row 20's cells shown with their old tiles in 114 of 900 pictures on the MSX2 at
+   BASE (89 on the Expert), 96 and 78 here. Batch 1's open issue 2 is this class, which is not limited to teleports. No
+   G-FIELD window covers it (boss300 ends at game frame 389 on the MSX2, 552 on the turbo R): add one from game frame
+   580 to the gate. Scroll-1 (W2C), flash-3 or W3V territory.
+5. **`BANK_FIELD`**: 145 B free in the drive builds (186 in the product). Batch 3 needs about 335 B: R3 must free about
+   190 B.
+6. **The fixed area**: the product 426 B, the lowest set 291, `DEMO_ACTORS` 2 and 5 19 B. W2S and W2C together would
+   leave the product about 198 and the lowest set about 63 (`../ROM_BUDGET.md` 2.7).
+7. **The ground floor's window** (kill 1500-1765) has two trajectories on the V9938 machines; G-SPEED's 4 % floor there
+   cannot judge a change smaller than their gap (W2C's review). Read its ticks/s with the trajectory named.
+8. **The end count's message** caught mid-letter in two stills: a snapshot's timing against `hud.asm`'s record, which
+   msxframe does not leave out as it does a pending HUD job.

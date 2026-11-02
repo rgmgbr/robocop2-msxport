@@ -206,6 +206,11 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
    - **Gate.** `eqtiles.py` as a unit test, then G-LOGIC, G-FIELD, G-HOLD and G-SPEED.
 
 3. **flash-1: a look-only change (white on or off) takes each piece's background from the page itself.** Effort M.
+   - **Status (batch 2, 2026-11-02).** **Done**, `5b2d4df` with R2 `208e30c` and its review's fix `4f9dc14` (the V9938's
+     page path for the page shown only, while the page beside it is not synced; lane W2F, merged into `perf2/batch2` by
+     `7c1a0c4`). The ground floor 12.52 -> 13.56 / 13.46 / 13.50 ticks/s (MSX2 / Expert / MSX2+, +7.5 to +8.3 %), the
+     turbo R 22.77 -> 22.96; page-path pieces over whole drives: kill 332 on each Z80 machine, boss 101 / 106 / 17 (MSX2 /
+     Expert / MSX2+), on the V9938 every one on the page shown. `BANK_FIELD`: R2 +306, flash-1 -211, the fix -21.
    - **Prototype.** `C/a_flash/src_p12b/`; `C/v_rules/p12b_field.diff` (`field.asm` against HEAD); `C/a_flash/tools/mkproto.py`, `whitechk.py`, `pgprobe.tcl`, `fl.tcl`, `flcmp.py`.
    - **Gain (M, on HEAD), on the ground floor.**
 
@@ -281,6 +286,11 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
    - **Gate.** As logic-1, plus a unit test that the generated tables equal OTILE's lookup of the original words.
 
 6. **scroll-1: the scroll engines' queued tiles go out in bursts that yield to the field engine.** Effort S.
+   - **Status (batch 2, 2026-11-02).** **Parked** for batch 3's W3V (this item's condition): lane W2C's `7a935b5` with its
+     review's fix `5c879b6` (a changed cell handed to the BOBs waits for the build's copy; `perf2/w2c`) fails G-HOLD on the
+     V9938 (kill: MSX2 4 -> 11, Expert 3 -> 9 FB_HOLD pictures) and G-SPEED on tour3's lifts (-2.9 / -3.0 %). On the V9958
+     every gate passes: FB_HOLD kill_fx 16 -> 1, boss_tr 12 -> 3; kill_tr +8.2 %, boss_tr +10.0 %; the turbo R's scroll on a
+     recording is not worse (looked at). The plan's flip rule and a `cam_held`-gated column were measured and fail too.
    - **Prototype.** `C/a_scroll/B/pQ2.diff`. Drop its `cam_cells` part: logic-1's version is the campaign's.
    - **Gain (M, on HEAD).**
      - MSX2: Cain's route +5.4 %, boss +6.3 %, tour3 +5.4 %, level 2 +5.8 % (horizontal windows +5-20 %).
@@ -355,6 +365,12 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
    - **Gate.** G-FIELD (the torn and old classes) on boss and kill on the three machines, then G-GUARD (beam crossings), G-HOLD and G-SPEED.
 
 10. **scroll-2, parts (b) and (c) only: a window filter for changed cells, and a per-row patch hint.** Effort M. Parts (a), (d) and (e) are logic-1/2's.
+    - **Status (batch 2, 2026-11-02).** Part (b) **done**, `6481541` (lane W2L, merged into `perf2/batch2` by `98ee396`),
+      with `gt_nop` (`mw_new` does not walk the row it just walked): tour3's map writes -9,013 T a tick on the MSX2+, its
+      beams, lifts and roof +3.6 to +7.2 % on the Z80 machines; no changed cell was inside a field cache's window in any
+      recorded drive (0 of 22,916 on tour3). Part (c) **not built**: the recorded access stream gives the hint 648 hits in
+      46,833 checks on tour3 and +1,811 T a tick (a row's patches are walked in the order they were made); MP_ROW's tail
+      stays free. Fixed area +48 B.
     - **Gain (E), on top of logic-1/2.**
       - tour3 on the MSX2+: +3-6 % (the whole drive +3.5 %).
       - The MSX2: +1-3 %.
@@ -446,6 +462,12 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
     - **Gate.** G-FIELD (the hold and order classes), then G-LOCK, G-LOGIC and G-SPEED (kill and l2_tour).
 
 16. **spr-7, spr-2, spr-3 and spr-8: small sprite-engine items.** Effort M each.
+    - **Status (batch 2, 2026-11-02).** Implemented by lane W2S (`eb5181a` spr-7, `f60dd40` spr-2, `85ffeb1` spr-3,
+      `d16f6c7` spr-8, `9e35d53` docs; `perf2/w2s`, review ok), **dropped at the integration**: with it the merged tip
+      failed G-HOLD (FB_HOLD pictures kill_fx 16 -> 40, boss_tr 12 -> 19; W2S alone 39 on kill_fx; every build with it
+      24-40 there against 16-27), and no small fix lies in its files. Its gain, counted: 2.04 % of the Z80's time in
+      level 2, 1.22 % on Cain's kill drive; level 2's end +3.7 % on the MSX2+, nothing in Cain's windows. It waits for the
+      V9958's picture pipeline (scroll-1's V9958 bursts or W3V). Fixed area -158 B, FRONT -17.
     - **Gains (E).**
       - spr-7 (the plan): +1-1.4 % on the MSX2+.
       - spr-2 (`bob_flush`'s loops): +1 % in level 2, +0.3-0.5 % in level 3.
@@ -466,6 +488,10 @@ The gate names (G-...) are defined in 5.4. Effort: S = small, M = medium, L = la
       - G-SPEED.
 
 17. **logic-4 and logic-6: level 2's per-tick overheads.** Effort M + S.
+    - **Status (batch 2, 2026-11-02).** **Done**, `571fa1e` (lane W2L, merged into `perf2/batch2` by `98ee396`): T-states a
+      tick in the four routines -1,943 on l2_tour and -1,619 on kill (the FS-A1FX); level 2 +0.3 % (20-1590) and +0.8 to
+      +2.4 % at its end on the Z80 machines. The masks in LC2 (-360 B), not in the level banks; `pl_lift` from the last
+      filled entry (LC3 -40); `sp_update`'s trolley-first head test measured as a loss and left out.
     - **Gain (E).** Level 2 on the MSX2+: +1.2 % from logic-4 and +0.9-1.4 % from logic-6. Level 3: +0.2-0.3 %.
     - **Where.**
       - `mapobj.asm` `ao_lp` uses y-cell masks made by `tools/cellmasks.py`: L1 104 B, L2 78 B and L3 26 B in their banks.
@@ -805,6 +831,15 @@ field-1's levels 1-2 commit was dropped inside W1F. The gates on the merged tip,
 against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign
 2, batch 1"; the free bytes: `docs/ROM_BUDGET.md` 2.5.
 
+**Batch 2: done (2026-11-02).** Merged into `perf2/batch2` (from `level2` 27ed66d): W2L (logic-4 and logic-6,
+scroll-2 (b); merge `98ee396`) and W2F (R2 and flash-1 with its review's fix; merge `7c1a0c4`). Not merged: W2K (its
+review blocked on rc-edge; its kit judged the batch from `perf2/w2k`), W2C (scroll-1, parked for W3V) and W2S (spr-7,
+spr-2, spr-3, spr-8: merged, then dropped for G-HOLD on the V9958, the merged tip's FB_HOLD pictures kill_fx 16 -> 40 and
+boss_tr 12 -> 19). Every gate passes on the tip; the gates, the speed table (batch 1 against batch 2 per scene and
+machine) and the open issues: `docs/level3/HANDOFF.md`, "Performance campaign 2, batch 2"; the free bytes:
+`docs/ROM_BUDGET.md` 2.7. The ground floor with Cain shot gains +7.5 to +8.3 % on the Z80 machines, level 3's start +3.6
+to +7.2 %; Cain's route stays as batch 1 left it.
+
 **Batch 2's lane W2K (added after batch 1 and the previews' review).**
 - The kit's recalibration: the open issues in HANDOFF "Performance campaign 2, batch 1". They cover:
   - the gates against timing controls, leaving out teleport ticks and records past a drive's end;
@@ -826,6 +861,15 @@ against batch 1 per scene and machine) and the open issues: `docs/level3/HANDOFF
     roof, floors 20 and 40).
   - Then bound the next picture with per-record opaque extents and the frame's growth. That can also remove holds the
     boxes cause today.
+- *Outcome (2026-11-02).* The kit's recalibration: `62422f3` with its review's fix `bf9a268` (`perf2/w2k`; batch 2's gates
+  were judged with it, `C/w2k/base` its baselines; not merged with the lane). rc-edge: measured, `rc_safe` unchanged. Over
+  the drives (punches from walks right at AX_MAX, left walks in camera mode 1; C-BIOS_MSX2, the Expert) the product's
+  options cut no picture of RoboCop (0 of 14,664; LAG_X=64 0 of 14,556; loop-3 0 of 14,477); loop-1 cut one punch by 3 px
+  (1 of 14,369). The lane's review forced the modelled case (a punch started on the last tick of a 2-tick frame, the view
+  held 30 px behind): 1 of 21 punches cut by 2 px for 7 pictures (0.12 s), at BASE too (the boxes of compositions 2, 6,
+  10, 14 and 74 are only 1 px wider than his opaque pixels). The bound above, for the product's 2-tick frames as well,
+  needs its own lane (fixed-area bytes; the MSX2's speed in the building); the doc's correction is on `perf2/w2k`
+  (`0fa8d90`).
 
 **Integration gates.**
 - When W2F and W2C have both merged: G-FIELD with page-path counts on scrolling windows, on both VDPs, and G-HOLD.
