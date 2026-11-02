@@ -737,8 +737,11 @@ which as sprites were striped, cut or left out.
     the product, 3 with loop-1 or loop-3), his place moving at most Gr to the right and Gl to the left (`rc_grow`):
     his step a tick times k, `RC_VX` = 3 px (`pl_xstep`'s largest; a trolley carries him 2 while he hangs, with
     step 0), in level 1 + `RC_BELT` = 8 (its conveyors carry him 4 px a tick, `mapobj.asm` `act_cv`, and entries
-    15 and 16 of its object list are one belt twice; its barriers' push and the vehicle's ride are 4); and a
-    mount's snap (`rc_snap`, once): an entry of the lifts table within `RC_SNAPD` = 32 px
+    15 and 16 of its object list are one belt twice; its barriers' push and the vehicle's ride are 4); in level 3
+    + `RC_PUSH` = 8 a tick on a side for each type-21 walker within `RC_PUSHD` = 96 px (`level3obj.asm`
+    `obj_push`: it pushes him the way it faces, and once it stands it faces him: to the right when it faces right
+    or he is right of it, to the left when it faces left or he is left of it; its steps reach 11 px every other
+    tick, `t21_step`); and a mount's snap (`rc_snap`, once): an entry of the lifts table within `RC_SNAPD` = 32 px
     of his x, a trolley's (level 2, 10h wide: `special.asm` `sp_trolley` puts his x at its left once he hangs:
     up to 15 px left, the landing tick's step 2) he does not hang on yet, 4 right and 20 left, or the vehicle's
     (level 1, 36h wide: `sp_vehicle` puts it at its left + 12h once he rides: up to 18 px right, 35 left) he did
@@ -754,8 +757,7 @@ which as sprites were striped, cut or left out.
     the walk's 50). The table: -1 .. 54 for every state but the punch right (6: its records 22-24 reach 65), the
     punch left (7: -12) and state 9 (55);
   - the test: Q + Gr + R <= 255 and Q - Gl + L >= 0 (V9938) or 8 (V9958), else no tick this frame (D = 0);
-    a state outside the table holds too, and so does a growth of 256 px or more. Not covered: level 3's type-21
-    walker, which pushes him 8 px a tick (`level3obj.asm` `obj_push`).
+    a state outside the table holds too, and so does a growth of 256 px or more.
   Measured (C-BIOS_MSX2 and the Expert, `EXTJOY` drive builds of `level2` 7752890 with and without rc-edge; the
   campaign's `C/w3k/edge`):
   - the forced punch (`force5.tcl`, lane W2K's review's probe made denser): at every frame the cadence let run while

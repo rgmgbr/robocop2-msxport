@@ -696,13 +696,18 @@ pl_cellof:
 RC_BELT:    equ 8                   ; level 1's conveyors carry him 4 px a tick (mapobj.asm act_cv; entries 15 and 16
                                     ; of its object list are one belt twice: 8); its barriers' push (act_1c) and the
                                     ; vehicle's ride (sp_vehicle) are 4
+RC_PUSH:    equ 8                   ; level 3's type 21 pushes him 8 px a tick (level3obj.asm obj_push): the way it
+                                    ; faces, and once it stands away from it (t21_st turns it to face him)
+RC_PUSHD:   equ 96                  ; ... a walker whose x is within this of his: its push zones (his x - its x
+                                    ; 28..43 facing right, -20..-5 facing left) and the frame's moves (his 3 px a
+                                    ; tick, its steps of up to 11 px every other tick: t21_step)
 RC_SNAPD:   equ 32                  ; a mount's entry within this of his x: its snap (rc_snap)
 
 ; -> C when the view shown is the one the game wants (no lag: at the map's ends he may walk to its
 ; edge), when RoboCop is not shown, or when his next picture keeps every opaque pixel on the columns
 ; the VDP shows whatever the frame's ticks do: within k = min(B, RC_K) ticks his place moves at most
-; Gr to the right and Gl to the left (rc_grow: his steps, level 1's conveyors, a mount's snap) and his
-; drawing reaches at most his state's rc_reach columns (gen/rcedge.inc,
+; Gr to the right and Gl to the left (rc_grow: his steps, level 1's conveyors, level 3's type-21
+; walkers, a mount's snap) and his drawing reaches at most his state's rc_reach columns (gen/rcedge.inc,
 ; tools/mkrom.py rcedge: from the sprite pool's pixels, the compositions of his state's records and those
 ; any state starts with, against O_X - p_hotx), against SAT x 0-255 (the V9938's R#18 moves the sprites
 ; with the picture: spr_xadj) or 8-255 (the V9958's MSK hides 0-7). NC with D = 0 (the cadence's tick
@@ -799,14 +804,21 @@ rcb_nd: ld d,0
         ret
 
 ; B = k ticks -> C = Gr, B = Gl, NC: his place's largest move to the right and to the left within them: his step
-; a tick (rc_step) times k, and a mount's snap that way (rc_snap); C when either reaches 256 px.
+; a tick (rc_step) and the pushes that way (rc_push), times k, and a mount's snap that way (rc_snap); C when
+; either reaches 256 px.
 rc_grow:
         call rc_snap                ; D = the snap right, E = left
         push de
+        call rc_push                ; D = the pushes a tick right, E = left (keeps BC)
         call rc_step                ; A = the step a tick (keeps BC, DE, HL)
-        call rc_mulk                ; HL = the step x k
-        ld d,h
-        ld e,l                      ; DE = the left one
+        ld c,a
+        add a,e
+        call rc_mulk                ; HL = (the step + the pushes left) x k
+        push hl
+        ld a,c
+        add a,d
+        call rc_mulk                ; HL = (the step + the pushes right) x k
+        pop de                      ; DE = the left one
         pop bc                      ; B = the snap right, C = left
         ld a,b
         call rc_adda                ; HL = Gr
@@ -852,6 +864,66 @@ rc_step:
         ld a,RC_VX + RC_BELT
         ret z                       ; (level 1)
         ld a,RC_VX
+        ret
+
+; -> D = the pushes his x may take to the right in a tick, E = to the left: in level 3, RC_PUSH for each type-21
+; walker (the enemy slots, objects.asm) whose x is within RC_PUSHD of his: to the right when it faces right or
+; he is right of it, to the left when it faces left or he is left of it. Keeps BC, IX.
+rc_push:
+        ld de,0
+        ld a,(AG + 0x8050)
+        cp 2
+        ret nz                      ; (levels 1 and 2)
+        push bc
+        push ix
+        ld ix,OBJ_SLOTS
+        ld b,(OBJ_END - OBJ_SLOTS) / 4
+rpu_lp: ld a,(ix+OS_TYPE)
+        cp 21
+        jr nz,rpu_n
+        push de
+        ld e,(ix+OS_X)
+        ld d,(ix+OS_X+1)
+        ld hl,(p_x)
+        or a
+        sbc hl,de                   ; his x - its x
+        ld de,RC_PUSHD
+        add hl,de                   ; (within RC_PUSHD: 1 .. 2 RC_PUSHD - 1)
+        pop de
+        ld a,h
+        or a
+        jr nz,rpu_n
+        ld a,l
+        or a
+        jr z,rpu_n
+        cp 2 * RC_PUSHD
+        jr nc,rpu_n
+        ld c,a                      ; C = his x - its x + RC_PUSHD
+        ld a,(ix+OS_FACE)
+        or a
+        jr z,rpu_r                  ; (facing right)
+        ld a,c
+        cp RC_PUSHD
+        jr c,rpu_l                  ; (facing left, he left of it: to the left only)
+rpu_r:  ld a,d
+        add a,RC_PUSH
+        ld d,a                      ; (to the right)
+        ld a,(ix+OS_FACE)
+        or a
+        jr nz,rpu_l                 ; (facing left: to the left as well)
+        ld a,c
+        cp RC_PUSHD
+        jr nc,rpu_n                 ; (facing right, he right of it: to the right only)
+rpu_l:  ld a,e
+        add a,RC_PUSH
+        ld e,a                      ; (to the left)
+rpu_n:  push de
+        ld de,4
+        add ix,de                   ; (the next slot)
+        pop de
+        djnz rpu_lp
+        pop ix
+        pop bc
         ret
 
 ; -> D = a mount's snap of his x to the right within the frame, E = to the left (none: 0, 0), for an entry of

@@ -131,6 +131,13 @@ class RcMoversTests(unittest.TestCase):
         self.assertIn("ld (p_x),hl                 ; ($15D0 = D0)", self.special)    # (the trolley: his x its left)
         self.assertRegex(self.special, r"spv_ride:\n\s+ld hl,\(sp_x\)\n\s+ld de,0x12\n")  # (the vehicle: left + 12h)
 
+    def test_the_push(self):
+        l3 = (ROOT / "msx" / "level3obj.asm").read_text()
+        push = l3[l3.index("obj_push:"):l3.index("ld (p_x),hl", l3.index("obj_push:"))]
+        steps = [abs(int(v, 0)) for v in re.findall(r"ld bc,(-?\d+)", push)]
+        self.assertTrue(steps)
+        self.assertLessEqual(max(steps), asm_equ(self.plmove, "RC_PUSH"))
+
     @unittest.skipUnless((ROOT / "build" / "ram" / "level1_full.bin").exists(), "level 1's RAM image missing (make ram)")
     def test_the_conveyors(self):
         # mapobj.asm act_cv carries him 4 px a tick per conveyor entry he stands on; entries at one place add up
