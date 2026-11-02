@@ -1111,7 +1111,8 @@ which as sprites were striped, cut or left out.
   `dt_prep` now keeps the row in C. Found by recording the 64 KiB ring and rendering it; the
   compatibility runs before had only checked that the game ran.
 - **The ring's queues draw only kept cells (fixed 2026-10-31)**: a queued column (a horizontal step)
-  and a queued row (a vertical step) are drawn a tile per `scroll_work` call, the column first; a
+  and a queued row (a vertical step) are drawn by `scroll_work`, the column first (a tile a call
+  until 2026-11-02, below); a
   row can wait while the camera runs on and queues column after column (and a column while rows
   are queued), and a cell the camera has left shares its ring slot with a cell on the screen 32
   columns or 16 rows away. Drawn late, it showed the far cell's tile there until the slot was drawn
@@ -1121,6 +1122,25 @@ which as sprites were striped, cut or left out.
   game frame 2385, the product's caps: a row queued at column 64 drew columns 80-81 over 48-49
   when the camera had reached column 47, 45 pictures with two stale cells); the faster pictures had
   let the camera run 17 columns while the row waited.
+- **The ring's queued tiles in bursts (scroll-1 on the V9958, `docs/PERF2_PLAN.md` item 6, 2026-11-02)**:
+  `scroll_work` starts only with the VDP idle (from `idle_work` after the play-field BOBs' work, and
+  from `feed_vdp`). It issued one tile a call, and the next one waited for the next idle point: in
+  Cain's chase a new column took 393 ms on the MSX2+ and 308 ms on the turbo R (measured on 3b11042).
+  Now the column and row queues go out tile after tile in one call (`sw_next`), each tile set up
+  while the one before is copied (`draw_tile` waits for it), until the queues are empty (then the
+  idle work, `sw_idle`) or `tiles.asm` `sc_stop` says no after a tile:
+  - a play-field copy waits for the blank (`fb_cq` 1 or 3: the split interrupt starts it only with
+    the VDP idle);
+  - the play-field BOBs have work of a published picture (`fb_pend`: the VBLANK holds that picture
+    for them, `FB_HOLD` VBLANKs at most);
+  - in `VAT_ANIM=1` builds, a vat column waits for the blank (`vat_fr`'s `VF_RDY`: `vat_win` draws it
+    at the engine's next call, in the window between the HUD split and the VBLANK, which a burst
+    would keep busy; the V9938's shifted copy shrinks to one slot for it). `sc_stop` lives in
+    `tiles.asm` beside the vats' other hooks: the scroll engines' files hold no `VAT_ANIM` block.
+  - Only when the tiles go out changes: the same cells by the same rules (`draw_kept`), the changed
+    cells' window first as before. The V9938's engine (`scroll9938.asm`) still issues one command a
+    call: its bursts (lane W2C's) raised the pictures held to `FB_HOLD` on the V9938 and wait for item
+    7. Fixed area: 18 B (24 in the `VAT_ANIM=1` builds).
 - **Changed cells** (map patches queued by `tiles.asm` `rd_queue`, 64 requests): redrawn on the
   page shown (the V9938's first phase; the V9958's ring is always shown); a cell the beam
   crosses during its copy shows half old, half new for one picture (a 16x16 HMMM takes about
