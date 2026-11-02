@@ -469,6 +469,12 @@ def main(argv: list[str]) -> int:
             bad.append(f"a writer changes type 36's shafts: {sorted(every & shafts)[:8]}")
         print(f"mapcells: level 3: type 36's shafts: {len(found)} cells of 2D00h, as SHAFTS_L3, no writer's")
         beams = sum(1 for name in cells if name.startswith("beam "))
+        mine = set().union(*(cs for name, cs in cells.items() if name.startswith("beam ")))
+        theirs = set().union(*(cs for name, cs in cells.items() if not name.startswith("beam ")))
+        if mine & theirs:
+            bad.append(f"a beam's cells another writer changes too (msx/level3.asm lt2_hold keeps a lit look "
+                       f"without writing it again): {sorted(mine & theirs)[:8]}")
+        print(f"mapcells: level 3: the beams' {len(mine)} cells, no other writer's (lt2_hold)")
         if beams > BM_N:
             bad.append(f"{beams} beam records, msx/msx.inc BM_N {BM_N} (level3.asm lt2_off's bm_gen entries)")
         direct = l3_columns(img, tabs)

@@ -161,6 +161,23 @@ main code (`update_objects`, the lifts, the bullets, the explosions, the pickups
     rows − 1): the palette flash `$10074`, **energy − 0Ch** a frame (level 1's − 10h), effect 22h;
   - r + 2 rows written in all.
   - Cells: 4 × (4 × 2) + 3 × (8 × 2) = **80**, all map patches.
+  - **The port's held look** (`BEAM_ANIM=0`, the product: the user's choice of 2026-11-02, the
+    beams' redraws cost the game's speed): a record draws its lit look once a lit period, on the
+    first lit frame it runs in (its cells then show the off looks, or a look of another period),
+    with that frame's `$B32` (random & 6 on top, (random + x + 2n) & 1Eh below, as the original),
+    and keeps it until its off looks; a record entering the window in a lit period draws it at
+    once. A turbo R (`cpu_tr`, its R800 on) keeps the original's look drawn every lit frame (the
+    user's choice of 2026-11-02: it costs the turbo R nothing). Nothing of the logic changes: `$B32` is only read, the damage test runs every frame, and
+    all 44 words (8 top, 16 + 16 below, the 4 off ones) have the attributes 0 (w & 7Fh: the only
+    map bits the logic reads, `logic.asm` `map_atr`), their tiles display only [V: `tt_l3.inc`;
+    G-LOGIC's 16 traces 0 differ]. No other writer changes the beams' 80 cells (`tools/mapcells.py`
+    checks), so nothing writes them again while lit (the same look again only if a map write was
+    ever lost, the off looks' cache's rule); the off looks' writes and `l3_init` (every start: the
+    level's, a death's, a continue's) clear its stamp (`lb_st`, `msx/level3.asm` `lt2_hold`).
+    Measured (tour3 on C-BIOS_MSX2, the user's options): the beams' map words 514 -> 128 a game
+    second; tour3's beam windows 215-540, 545-1065, 1085-1400 +10-15 % ticks/s on the MSX2,
+    +11-18 % on the FS-A1FX, the turbo R at its cap (within 1 %). `BEAM_ANIM=1`: drawn every lit frame, as the
+    original (BASE's product byte for byte).
 - **The turrets** (types 40, 41, 42) write two blocks of 2 × 3 map words every frame they run: a
   flashing panel at x − A0h (41: − 70h; `$EAA6`, looks `$EAE2`) and the turret one row lower and 10
   (41: 7) columns to the right (`$EA50`/`$EBB8`, looks `$EA6A`/`$EBD2`): 36 cells. Beside the beams

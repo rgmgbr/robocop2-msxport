@@ -989,6 +989,8 @@ tc_ent0:    equ 0xF179              ; 4 x 6: turret entries 0-3 (type 40's panel
 tc_ent4:    equ 0xEDF0              ; 2 x 6: entries 4-5 (type 42's)
 bm_gen:     equ 0xECFB              ; BM_N x 2: per beam record mw_gen after its off looks' writes
 BM_N:       equ 7                   ; level 3's beam records it holds (tools/mapcells.py checks)
+lb_st:      equ 0xC5F7              ; BM_N: per beam record its lit look's stamp (BEAM_ANIM=0: level3.asm
+                                    ;   lt2_hold; C5F7h-C5FDh, free before)
 sb_end:     equ 0xED0C              ; sprites_frame: 1 + the highest object wanted after the plan
                                     ;   (fl_last): rows_sync and sat_build stop there (ED0Ch: in the
                                     ;   ECFBh-ED0Fh fc_lines leaves, docs/PERF2_PLAN.md 5.2)
@@ -1107,7 +1109,7 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
-; step; C5F7h-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
+; step; C5F7h-C5FDh lb_st since 2026-11-02; C5FEh-C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
 ; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont), EDFFh,
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; E0FEh-E0FFh and 074Bh: the
 ; V9938's sync, fb_sbi, fb_sdm, fb_bsq, since performance campaign 2's V9938-SYNC; ECF0h-ED0Fh:
