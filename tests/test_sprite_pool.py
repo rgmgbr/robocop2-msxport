@@ -1,8 +1,10 @@
 """What msx/sprites.asm's budget takes for granted in the global sprite pool (build/msx/sprites.bin, the
 composition format of tools/msxsprites.py FORMAT, as the engine reads it: obj_set, ln_ver, ln_obj), and
-the band mask each composition's header holds for obj_set (O_BMASK, docs/PERF2_PLAN.md item 16, spr-8)."""
+the band mask each composition's header holds for obj_set (O_BMASK, docs/PERF2_PLAN.md item 16, spr-8),
+and that no tool reads a composition with the header size of before spr-8."""
 from __future__ import annotations
 
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -118,6 +120,26 @@ class BandMaskTests(unittest.TestCase):
                 parks |= d[o + COMP_HDR + 12 * s + 2]               # (a B sprite's park bit: its band's)
             self.assertEqual(mask, parks, f"{name} (composition at {o:#x})")
             self.assertLess(mask, 1 << nbands, f"{name} (composition at {o:#x})")
+
+
+class HeaderSizeTests(unittest.TestCase):
+    """Since spr-8 (2026-11-02) a composition's header is the pool's SPR_COMP_HDR bytes (9: the band mask after
+    the eight before it). A tool that reads a composition's sprite records or band table takes that size from
+    the pool (tools/msxsprites.py SpriteData.hdr, the .inc's SPR_COMP_HDR), never a literal 8: a reader written
+    against the older format ("o + 8 + 12 * i") takes every record a byte early, and its build stops (an index
+    past the pattern pool) or, worse, its tables come out wrong. A source check (no conversion needed): a tool
+    with such a reader that comes in from another branch fails here, before its first build."""
+
+    def test_no_tool_reads_a_composition_with_8_header_bytes(self):
+        lit = re.compile(r"\+\s*8\s*\+\s*12\s*\*")         # (the header, then the 12-byte sprite records)
+        bad = []
+        for top in ("tools", "docs"):
+            for path in sorted((ROOT / top).rglob("*.py")):
+                for n, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+                    if lit.search(line.split("#")[0]):
+                        bad.append(f"{path.relative_to(ROOT)}:{n}: {line.strip()}")
+        self.assertEqual(bad, [], "a composition read with the 8-byte header of before spr-8: take the pool's "
+                                  "SPR_COMP_HDR (tools/msxsprites.py SpriteData.hdr)")
 
 
 if __name__ == "__main__":
