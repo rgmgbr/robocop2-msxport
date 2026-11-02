@@ -508,7 +508,13 @@ which as sprites were striped, cut or left out.
   100 T-states a cell. Hand counts (the same rules for both): about 1,530 T-states of set-up a cell, the
   first of a row in a call about 500 more (its lines and `gt_row`), instead of about 2,160 (field-2's
   burst; its own count said 2,240). `tests/test_field_engine.py` reads every cell of every level's map
-  as `get_tile` reads it and as the burst does. Until then every command waited
+  as `get_tile` reads it and as the burst does. On Cain's drives 24-30 % of the burst's cells lie in rows
+  with patches (the beams' and turrets' map writes: `get_tile`'s way), about 4-5 cells a row set-up. Measured
+  on top of field-7 (2026-11-02, as field-7's): Cain's route 9.03 -> 9.21 (+2.0 %) on the MSX2, 9.07 -> 9.12
+  (+0.6 %) on the Expert, 13.18 -> 13.55 (+2.8 %) on the MSX2+, 18.68 -> 18.82 (+0.7 %) on the turbo R; with
+  field-10, the three against batch 2: Cain's route +3.6 / +3.7 / +5.8 / +1.9 %, the kill floors (300-1500)
+  +4.0 / +3.9 / +5.6 / +2.2 %, the boss route +2.8 / +3.5 / +5.1 / +2.0 % (MSX2, Expert, MSX2+, turbo R).
+  Until then every command waited
   for an idle point of the main loop (one a call, 8-10 ms apart in the busy windows, 23-33 ms
   for one in ten): an item of 5-6 commands took 65-75 ms from queue to page.
 - **Background caches**: three 64x64 blocks (page 3 x 0, 64, 128) each hold the tiles of a
@@ -524,7 +530,9 @@ which as sprites were striped, cut or left out.
   cell of the piece, about 350 T-states a cell held. Measured on level 2's tour (FS-A1FX, 2,654 ticks):
   841 pieces filled, 675 of them with every cell held (7,476 of the 9,630 cells tested), 500 with the
   whole window held; the exact test of the piece's cells did not fit `BANK_FIELD` (about 40 bytes) for
-  the 175 others. Level 1's play (`drive_play`) fills none.
+  the 175 others. Level 1's play (`drive_play`) fills none. Level 2's tour (l2_tour 20-1590) with it, against
+  the build before it: 19.04 -> 19.41 ticks/s on the MSX2, 19.16 -> 19.19 on the Expert, 23.17 -> 23.34 on the
+  MSX2+ (one run each: within the timing's scatter).
 - **Never half a change on screen**: the copy onto the page shown starts only where the beam is
   off the play area: the HUD split interrupt starts it when the VDP is idle (`isr_fbgo`), the
   VBLANK interrupt too when it keeps ahead of the beam from there (`fb_vok`), the main loop in
@@ -556,6 +564,11 @@ which as sprites were striped, cut or left out.
   edge -15 .. 127 px from the piece's corner); the scratch's single pieces stay 64 x 64.
   `tests/test_field_engine.py` models the staging of every item size a window allows against the 64 x 64
   pieces (the pieces cover the item, fit their places, and the bands' copies are the old ones).
+  Measured (2026-11-02, openMSX headless, the EXTJOY drive builds against batch 2's, one run each; every VDP
+  command recorded on the FS-A1FX): on Cain's route (kill 130-1400) tile copies 16.55 -> 15.09 and LMMMs
+  2.69 -> 1.76 a game tick (28.4 -> 25.0 and 4.6 -> 2.9 a picture), the copies onto the page the same;
+  ticks/s 8.81 -> 9.03 (+2.5 %) on the MSX2, 8.84 -> 9.07 (+2.7 %) on the Expert, 12.83 -> 13.18 (+2.7 %) on
+  the MSX2+, 18.47 -> 18.68 (+1.2 %) on the turbo R; the boss route +1.9 / +2.7 / +4.7 / +1.5 %.
   All of an owner's BOBs change in one item (items of one owner always merge). `cmd_lock` keeps
   the interrupts off the command registers while the main program writes them.
 - **With the sprites**: every item carries the picture it belongs to (`fb_tick`, counted by

@@ -1235,12 +1235,13 @@ fb_cmd:     equ 0xE0CC              ; the VDP command being prepared (R#32-R#46)
 fb_cur:     equ 0xE0DB              ; the item being composed (fb_q's layout),
 fb_px:      equ 0xE0E7              ;   the piece's corner (2 + 2),
 fb_pe:      equ 0xE0EB              ;   its other corner (2 + 2),
-fb_r:       equ 0xE0EF              ; a rectangle in the map: x0, y0, x1, y1 (2 bytes each)
+fb_r:       equ 0xE0EF              ; a rectangle in the map: x0, y0, x1, y1 (2 bytes each); fb_tiles' row
+                                    ;   within a call: its tiles at 8000h (2), the tile's first line
 fb_ph:      equ 0xE0F7              ; the phase (0 none, field.asm FP_FILL .. FP_WAIT),
 fb_ci:      equ 0xE0F8              ;   its cell (row, column), part or BOB index
 fb_dpg:     equ 0xE0FA              ; fb_diff's page (| 40h: the hidden one)
 fb_rw:      equ 0xE0FB              ; a cell: row,
-fb_cl:      equ 0xE0FC              ;   column
+fb_cl:      equ 0xE0FC              ;   column (free since TILE-LOOKUP: fb_tiles keeps it in B)
 fb_cq:      equ 0xE0FD              ; 1, 3 (its last part): fb_cmd holds a copy for the page shown
                                     ;   (the interrupts start it: 2, 4)
 fb_n:       equ 0x1F9C              ; the tick's play-field BOBs (bob.asm fb_add): how many,
