@@ -19,9 +19,9 @@ LEVELS3 = np.array([0, 36, 73, 109, 146, 182, 219, 255], float)
 LEVELS2 = np.array([0, 85, 170, 255], float)
 
 
-def main() -> int:
-    src, out = Path(sys.argv[1]), Path(sys.argv[2])
-    im = Image.open(src).convert("RGB")
+def to_sc8(im: Image.Image) -> tuple[np.ndarray, np.ndarray]:
+    """An RGB picture 320 pixels wide -> (its SCREEN 8 codes, H x 256, and their RGB preview):
+    resized to 256 x its height, Floyd-Steinberg on the fixed palette (tools/msxphoto.py too)."""
     w, h = im.size
     im = im.resize((256, h), Image.LANCZOS)
     a = np.array(im, float)
@@ -42,6 +42,13 @@ def main() -> int:
                 xx, yy = x + dx, y + dy
                 if 0 <= xx < W and yy < H:
                     a[yy, xx] += err * k
+    return code, prev
+
+
+def main() -> int:
+    src, out = Path(sys.argv[1]), Path(sys.argv[2])
+    code, prev = to_sc8(Image.open(src).convert("RGB"))
+    H, W = code.shape
     out.parent.mkdir(parents=True, exist_ok=True)
     out.with_suffix(".sc8").write_bytes(code.tobytes())
     Image.fromarray(prev).save(out.with_suffix(".png"))

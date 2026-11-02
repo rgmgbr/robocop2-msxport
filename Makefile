@@ -114,6 +114,9 @@ msx: extract pics $(BUILD)/ram/level1_full.bin $(BUILD)/ram/level2_full.bin $(BU
 	$(VPYTHON) -I tools/msxpic.py $(BUILD)/png/PIC9_11.png $(BUILD)/msx/gameover
 	$(PYTHON) -I tools/msxtext.py $(BUILD)/ram/level1_full.bin $(BUILD)/msx/text.inc \
 		$(BUILD)/msx/title.sc8 $(BUILD)/msx/title_credit.sc8 $(BUILD)/msx/gameover.sc8 $(BUILD)/msx/gameover_text.sc8
+# the movie stills PIC1-PIC7 and PICF as SCREEN 8 pictures packed with ZX0 (photos.bin, photos.json; PHOTOS=1
+# builds), with their contact sheet (photos_sheet.png, the game over picture beside them)
+	$(VPYTHON) -I tools/msxphoto.py $(X)/files $(BUILD)/msx
 	$(VPYTHON) -I tools/msxsound.py --out $(BUILD)/msx/sound.inc --budget 7680
 	$(VPYTHON) -I tools/msxvoice.py $(BUILD)/msx
 	$(VPYTHON) -I tools/msxscc.py --out $(BUILD)/msx

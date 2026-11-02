@@ -49,6 +49,13 @@ high scores").
   lasts the original's calls. The continue ($11590, txt_cont: $11FD2 after the game over) is the
   original's bytes. Their play areas (text_l2_brief.sc5, text_l3_brief.sc5, text_cont.sc5, each
   with its preview .png) are the references for the port's screens.
+- Level 1's briefing ($11108: load_level0 $82EC after the title, and restart_level0 $8352 when the
+  lives are 2 at a level-1 restart; msx/photo.asm l1_brief runs it with fe_text), into brief1.inc
+  next to OUT.inc (text.inc keeps its bytes: tools/mkrom.py L1BRIEF=0 builds leave it out): its
+  particle title has two lines ("THE RIVER ROUGE" / "COMPLEX"), each typed in the 8 x 8 font at the
+  column and row whose cells are centred nearest that line's stroke text (its leading spaces only
+  place it), then the wait and positions that make up the particle part's calls, then the
+  original's lines, waits and end (485 calls). Its play area: text_l1_brief.sc5 (.png).
 - The game completed and the high scores (docs/ENDING.md; msx/ending.asm, BANK_FRONT2), into
   ending.inc next to OUT.inc (text.inc keeps its bytes): the ending's text screen ($112C5 through
   $10762 from level_load_3 $86DE, txt_end: its particle title WELL DONE typed as the briefings', 341
@@ -142,6 +149,8 @@ RG_RESULTS = ((16, 0, 1), (15, 0, 1), (13, 2, 1), (25, 0, 0), (0, 0, 2))
 # after the game over): label, address, the calls up to the end (particle writer's run included)
 BRIEF = (("txt_l2_brief", 0x110F0, 393), ("txt_l3_brief", 0x110B4, 411))
 CONT = (("txt_cont", 0x11590, 304),)
+BRIEF1 = (("txt_l1_brief", 0x11108, 485),)   # level 1's ($11108: load_level0 $82EC, restart_level0 $8352),
+                                    # its particle title two lines (brief_port_lines)
 BRIEF_SHIFT = 32                    # the port's x = the bitplane's x - 32 (fs_char 8c - 16, $116CA 16 + 8c)
 TEXT_ROWS = range(-8, 9)            # rows inside the play area above the TAG line (row 10), a row free between
 # The ending (docs/ENDING.md): level_load_3 $86DE's text screen ($112C5 through $10762: its particle
@@ -465,6 +474,68 @@ def particle_title(ram: bytes, start: int) -> tuple[bytes, int, tuple[int, int, 
             (min(xs) - BRIEF_SHIFT, max(xs) - BRIEF_SHIFT, min(ys), max(ys)))
 
 
+def particle_lines(ram: bytes, start: int) -> tuple[list[tuple[bytes, tuple[int, int, int, int]]], int]:
+    """A briefing's particle title of one or more lines as rc2front.py's model of the particle writer
+    runs it: per line its characters without the leading spaces (they only place it) and the box (x0,
+    x1, y0, y1) of the stroke text it leaves (the port's x, the bitplane's lines; the lines' boxes
+    are the runs of lines that hold stroke pixels, in order), and the calls of its set-up and run."""
+    it = rc2front.Interpreter(ram)
+    elements, end = it.run(start, stop_at=start + 5)
+    assert end == start + 5 and [e.get("cmd") for e in elements] == [4, 3], f"${start:05X}: no particle title first"
+    parts = rc2front.decode_particle_text(ram, rc2front.u32(ram, rc2front.PARTICLE_SETUPS + ram[start + 2] + 4))[0]
+    ops = [e["op"] for e in parts if e["op"] != "poke"]
+    assert ops[0] == "line" and ops[-1] == "end" and all(o == ("newline" if k % 2 else "line")
+                                                           for k, o in enumerate(ops[:-1])), f"${start:05X}: {ops}"
+    texts = [e for e in parts if e["op"] == "line"]
+    rows = []
+    for y in range(rc2front.LINES):
+        xs = []
+        for b in range(rc2front.PLANE):
+            v = 0
+            for p in range(4):
+                v |= it.scr.peek(y * rc2front.LINE + p * rc2front.PLANE + b)
+            xs += [8 * b + k for k in range(8) if v & 0x80 >> k]
+        rows.append(xs)
+    boxes, y = [], 0
+    while y < len(rows):
+        if not rows[y]:
+            y += 1
+            continue
+        y0 = y
+        while y < len(rows) and rows[y]:
+            y += 1
+        xs = [x for r in rows[y0:y] for x in r]
+        boxes.append((min(xs) - BRIEF_SHIFT, max(xs) - BRIEF_SHIFT, y0, y - 1))
+    assert len(boxes) == len(texts), f"${start:05X}: {len(boxes)} runs of stroke lines for {len(texts)} lines"
+    out = []
+    for line, box in zip(texts, boxes):
+        chars = line["raw"].lstrip(" ").encode("latin-1")
+        assert decode(chars) == line["text"].lstrip(" "), f"${start:05X}: {line['text']!r}: a glyph the 8 x 8 font lacks"
+        out.append((chars, box))
+    return out, sum(e["calls"] for e in elements)
+
+
+def brief_port_lines(ram: bytes, start: int) -> bytes:
+    """brief_port for a particle title of several lines (level 1's): each line typed in the 8 x 8
+    font at the column and row whose cells' centre is nearest its stroke text's (the lower at a
+    tie), then a wait and repeated positions (1 call each) up to the particle part's calls; then the
+    original's lines, waits and end."""
+    script = brief_script(ram, start)
+    lines, calls = particle_lines(ram, start)
+    title = b""
+    for chars, (x0, x1, y0, y1) in lines:
+        n = len(chars)
+        col = min(range(2, 35 - n), key=lambda c: (abs(2 * (8 * c - 16) + 8 * n - 1 - x0 - x1), c))
+        row = min(TEXT_ROWS, key=lambda r: (abs(2 * (67 + 8 * r) + 7 - y0 - y1), r))
+        title += bytes((0, col, row & 0xFF)) + chars
+    typed = fs_run(title + b"\xff\x07")[1]
+    wait, extra = divmod(calls - typed, 4)
+    assert 0 <= wait <= 255, f"${start:05X}: {calls} calls for {typed} elements"
+    title += (bytes((0xFF, 2, wait)) if wait else b"") + title[:3] * extra
+    assert fs_run(title + b"\xff\x07")[1] == calls, f"${start:05X}: the title's calls"
+    return title + script[5:]
+
+
 def brief_port(ram: bytes, start: int) -> bytes:
     """The port's copy of a briefing: its particle title typed in the 8 x 8 font where the stroke
     text is (the column and the row whose cells' centre is nearest the stroke text's, the lower at
@@ -523,8 +594,9 @@ def brief_scripts(ram: bytes, table: tuple = BRIEF) -> list[tuple[str, int, byte
         elements, end = rc2front.Interpreter(ram).run(start)
         assert end - start == len(brief_script(ram, start)), f"{label}: the original's end"
         assert sum(e["calls"] for e in elements) == calls, f"{label}: the original's calls"
-        script = brief_port(ram, start)
-        check_text(label, script, calls)
+        script = (brief_port_lines if table is BRIEF1 else brief_port)(ram, start)
+        check_text(label, script, calls, HISC_ROWS if table is BRIEF1 else TEXT_ROWS)  # (level 1's last
+                                    # line at row 9, the original's, right above the TAG line)
         out.append((label, start, script))
     return out
 
@@ -787,6 +859,13 @@ def main(argv: list[str]) -> int:
     end, hisc = brief_scripts(ram, END), hisc_scripts(ram)
     out.write_text(level_inc(ram) + bonus_inc(bonus) + range_inc(rg, names) + brief_inc(brief))
     (out.parent / "ending.inc").write_text(end_inc(ram, end, hisc))
+    brief1 = brief_scripts(ram, BRIEF1)
+    (out.parent / "brief1.inc").write_text(
+        "; generated by tools/msxtext.py: level 1's briefing ($11108: load_level0 $82EC, restart_level0 $8352\n"
+        "; with the lives at 2) for msx/photo.asm l1_brief (fe_text); L1BRIEF=1 builds only\n"
+        + "".join(f"{label}:{' ' * (35 - len(label))}; ${start:05X}, its particle title's two lines typed: "
+                  f"{fs_run(script)[0]} elements, {fs_run(script)[1]} calls\n" + db_lines(script)
+                  for label, start, script in brief1))
     print(f"{out}: {rc2front.BITMAP_GLYPHS} glyphs, statistics script {len(stats_script(ram))} bytes")
     glyphs = [glyph_sc5(ram, g) for g in range(rc2front.BITMAP_GLYPHS)]
     pal = grade_pal(msx_palette(ram))
@@ -806,11 +885,12 @@ def main(argv: list[str]) -> int:
           + f", txt_rg_rate {len(names)} bytes, the time out txt_bs_time; their play areas in "
           + f"{out.parent / 'text_rg_*.sc5'} (.png): the intro, the time out, the result for "
           + ", ".join(f"{c}/{d}/{m} ({RG_NAME_TEXT[rg_rating(c, d, m)].rstrip('. ')})" for c, d, m in RG_RESULTS))
-    for label, _, script in brief:
+    for label, _, script in brief + brief1:
         write_sc5(out.parent / (label.replace("txt_", "text_") + ".sc5"), fs_render(glyphs, script), pal)
     print(f"{out}: the briefings and the continue, " + ", ".join(f"{label} {len(s)} bytes ({fs_run(s)[1]} calls)"
-                                                               for label, _, s in brief)
-          + f"; their play areas in {out.parent / 'text_l?_brief.sc5'} and {out.parent / 'text_cont.sc5'} (.png)")
+                                                               for label, _, s in brief + brief1)
+          + f"; their play areas in {out.parent / 'text_l?_brief.sc5'} and {out.parent / 'text_cont.sc5'} (.png); "
+          + f"level 1's in {out.parent / 'brief1.inc'}")
     head, table = hs_defaults(ram)
     write_sc5(out.parent / "text_end.sc5", fs_render(glyphs, end[0][2]), pal)
     write_sc5(out.parent / "text_hisc.sc5", hisc_area(glyphs, hisc[0][2], b" " + bytes([HS_MARK]) + b" " * 7), pal)
