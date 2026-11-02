@@ -104,5 +104,54 @@ class RcEdgeTests(unittest.TestCase):
         self.assertTrue(all(-128 <= int(v) <= 127 for row in rows for v in row))
 
 
+def asm_equ(text: str, name: str) -> int:
+    m = re.search(rf"^{name}:\s+equ\s+(\S+)", text, re.M)
+    if not m:
+        raise AssertionError(f"no {name}")
+    return int(m.group(1), 0)
+
+
+class RcMoversTests(unittest.TestCase):
+    """rc_bound's growth covers the logic's other moves of his x within a tick (msx/plmove.asm rc_step, rc_snap): the
+    constants against the code that moves him and against the levels' data."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.plmove = (ROOT / "msx" / "plmove.asm").read_text()
+        cls.special = (ROOT / "msx" / "special.asm").read_text()
+
+    def test_the_mounts_entries(self):
+        # special.asm's entries of the lifts table (sp_entry's width): the trolley's and the vehicle's snap his x,
+        # the lift's moves him in y only; rc_snap tells them apart by these widths
+        widths = {int(w, 0) for w in re.findall(r"ld hl,(0x[0-9A-Fa-f]+)\n\s+call sp_entry", self.special)}
+        self.assertEqual(widths, {0x10, 0x30, 0x36})
+        body = self.plmove[self.plmove.index("rc_snap:"):]
+        self.assertIn("cp 0x10", body)
+        self.assertIn("cp 0x36", body)
+        self.assertIn("ld (p_x),hl                 ; ($15D0 = D0)", self.special)    # (the trolley: his x its left)
+        self.assertRegex(self.special, r"spv_ride:\n\s+ld hl,\(sp_x\)\n\s+ld de,0x12\n")  # (the vehicle: left + 12h)
+
+    @unittest.skipUnless((ROOT / "build" / "ram" / "level1_full.bin").exists(), "level 1's RAM image missing (make ram)")
+    def test_the_conveyors(self):
+        # mapobj.asm act_cv carries him 4 px a tick per conveyor entry he stands on; entries at one place add up
+        mo = (ROOT / "msx" / "mapobj.asm").read_text()
+        cv = mo[mo.index("act_cv:"):mo.index("acv_ph:")]
+        carry = max(abs(int(v, 0)) for v in re.findall(r"ld de,(-?\d+)\n", cv[cv.index("ld (snd_b2d),a"):]))
+        self.assertEqual(carry, 4)
+        import mapcells
+        import struct
+        img = (ROOT / "build" / "ram" / "level1_full.bin").read_bytes()
+        tabs = {r["label"]: r for r in mapcells.parse(ROOT / "analysis" / "amiga_tables.tsv")}
+        types, a = tabs["obj_types"]["addr"], tabs["objl_l1"]["addr"]
+        at = {}
+        while struct.unpack_from(">h", img, a)[0] >= 0:
+            t, _look, _hits, _value, x, y = mapcells.words(img, a, 6)
+            if mapcells.words(img, types + 0x8A + (t & 0xFF), 1)[0] & 0xFF in (0x14, 0x18):
+                at[(x, y)] = at.get((x, y), 0) + 1
+            a += 12
+        self.assertTrue(at)
+        self.assertLessEqual(carry * max(at.values()), asm_equ(self.plmove, "RC_BELT"))
+
+
 if __name__ == "__main__":
     unittest.main()

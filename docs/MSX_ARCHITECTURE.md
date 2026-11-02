@@ -734,8 +734,18 @@ which as sprites were striped, cut or left out.
   - his place: Q = `O_X` - `p_hotx` + `spr_xadj` (the composition's x without its record's hotspot, in SAT x). The
     view shown moves only towards the one wanted, which carries him away from the edge he walks towards;
   - the frame's growth: k = min(the ticks due, `RC_K`) ticks (`RC_K` = the larger of `CAD_MAX` and `CAD_HOLD`: 2 in
-    the product, 3 with loop-1 or loop-3), his place moving at most `RC_VX` = 3 px a tick (`pl_xstep`'s largest; a
-    trolley carries him 2 while he hangs, with step 0), and his drawing reaching his state's `rc_reach` columns
+    the product, 3 with loop-1 or loop-3), his place moving at most Gr to the right and Gl to the left (`rc_grow`):
+    his step a tick times k, `RC_VX` = 3 px (`pl_xstep`'s largest; a trolley carries him 2 while he hangs, with
+    step 0), in level 1 + `RC_BELT` = 8 (its conveyors carry him 4 px a tick, `mapobj.asm` `act_cv`, and entries
+    15 and 16 of its object list are one belt twice; its barriers' push and the vehicle's ride are 4); and a
+    mount's snap (`rc_snap`, once): an entry of the lifts table within `RC_SNAPD` = 32 px
+    of his x, a trolley's (level 2, 10h wide: `special.asm` `sp_trolley` puts his x at its left once he hangs:
+    up to 15 px left, the landing tick's step 2) he does not hang on yet, 4 right and 20 left, or the vehicle's
+    (level 1, 36h wide: `sp_vehicle` puts it at its left + 12h once he rides: up to 18 px right, 35 left) he did
+    not ride at the last tick ($16D8), 20 and 40; lifts (30h) move him in y only. (Review of lane W3K, 2026-11-02:
+    in `l2_tour` a trolley grab moved him 18 px left in one frame while the view lagged 28-30 px, where 3k
+    allowed 6; there he was on the right side; the same grab on the left side would have left his pixels past
+    the left edge.) His drawing reaches his state's `rc_reach` columns
     (`gen/rcedge.inc`, `tools/mkrom.py` `rcedge`, from the sprite pool's pixels through `tools/msxsprites.py`
     `SpriteData.opaque_x`): per state (`p_state`) the leftmost and rightmost opaque column, with the record's
     hotspot, of every composition of its records (the four aims; the start-of-level arm poses with record 16) and of
@@ -743,9 +753,9 @@ which as sprites were striped, cut or left out.
     at 0, and the record is counter / 2, `pl_frame`: the punch's composition 82, record 20, reaches 54 against
     the walk's 50). The table: -1 .. 54 for every state but the punch right (6: its records 22-24 reach 65), the
     punch left (7: -12) and state 9 (55);
-  - the test: Q + 3k + R <= 255 and Q - 3k + L >= 0 (V9938) or 8 (V9958), else no tick this frame (D = 0);
-    a state outside the table holds too. Not covered: a type-21 object's push (level 3, `level3obj.asm` `obj_push`,
-    8 px in one tick).
+  - the test: Q + Gr + R <= 255 and Q - Gl + L >= 0 (V9938) or 8 (V9958), else no tick this frame (D = 0);
+    a state outside the table holds too, and so does a growth of 256 px or more. Not covered: level 3's type-21
+    walker, which pushes him 8 px a tick (`level3obj.asm` `obj_push`).
   Measured (C-BIOS_MSX2 and the Expert, `EXTJOY` drive builds of `level2` 7752890 with and without rc-edge; the
   campaign's `C/w3k/edge`):
   - the forced punch (`force5.tcl`, lane W2K's review's probe made denser): at every frame the cadence let run while
@@ -753,9 +763,11 @@ which as sprites were striped, cut or left out.
     frame's first tick (the punch on its second, the last of a 2-tick frame), 14 ticks or more apart, on lane
     W2K's three edge drives: rc-edge 60 / 65 forced punches (the Expert / C-BIOS_MSX2) with the product's options,
     71 / 70 with loop-1, 67 / 67 with loop-3: **0 cut** in 41,246 pictures, his opaque pixels at least 7 px inside
-    the right edge and 4 px inside the left; the slack at the forced frames was 7-12 px (the bound itself keeps
-    2 px over a punch started on the frame's last tick after full walk steps: his place 3 (k - 1) + 1, the bound
-    3k).
+    the right edge and 4 px inside the left; the slack at the forced frames was 7-12 px. The bound is exact for a
+    punch started on the frame's last tick after full walk steps: that tick still takes the walk's step
+    (`pm_step` runs before the state changes; states 6/7 never step, `pm_afb2`), so his place moves 3k and
+    composition 82 reaches R = 54: 0 px to spare (the review's forced inputs reached it with loop-3 on the
+    Expert, `edge_punch`, tick 352: his opaque pixels up to the right edge, none past it).
     With loop-1 and loop-3 the punch also on a 3-tick frame's third tick (`force6.tcl`: 154 of 272 forced
     punches on 3-tick frames): 70 / 69 forced punches with loop-1, 67 / 66 with loop-3, **0 cut** in 26,937
     pictures, 4 px inside at the closest. BASE's `rc_safe` cut none in these probes either (its box test held
