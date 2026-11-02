@@ -211,9 +211,9 @@ OPTIONS = {
                      " in every level (CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0: the cadence until 2026-11-02)"),
     "LAG_X": (32, "pixels the view shown may lag behind the camera in x with the V9938 engine (the MSX2: its scroll"
                   " builds a page while the camera moves on; the ticks are held beyond it), 32-64, for the user's"
-                  " choice (docs/PERF2_PLAN.md D3: 64); y and the V9958's engine keep 32, and the ticks stop while"
-                  " RoboCop's sprites on the picture shown are within 16 pixels of x 0 or 256, as always"
-                  " (msx/player.asm cam_lag, rc_safe)"),
+                  " choice (docs/PERF2_PLAN.md D3: 64, not decided); y and the V9958's engine keep 32, and the ticks"
+                  " stop while RoboCop's next picture could show an opaque pixel past the picture's edge, as always"
+                  " (msx/player.asm cam_lag, rc_safe; rc-edge)"),
     "ENEMY_CAP": (1, "N > 0 = at most N enemy slots in use (the original has 5; the user chose 1): 0 = the original, for trace tests"),
     "NO_SCC": (0, "1 = the title music and the sound effects ignore an SCC (test: the OPLL or PSG modes on a KonamiSCC cartridge)"),
     "NO_FM": (0, "1 = the title music ignores an OPLL (test)"),

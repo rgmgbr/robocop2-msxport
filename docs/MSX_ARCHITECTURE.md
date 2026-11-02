@@ -966,7 +966,8 @@ which as sprites were striped, cut or left out.
     and kept that rule with loop-3. Without the test, level 1's coverage drives showed 3-tick pictures
     wherever its pictures take 8 VBLANKs or more (measured 2026-11-02: `drive_cov1` 552 / 553 / 586 of its
     2,036-2,046 pictures with ticks on C-BIOS_MSX2 / the Expert / the FS-A1FX, 1 on the FS-A1GT, most from
-    tick 2,100 on; `drive_cov0` 242 / 243 / 273 / 1; its normal play `drive_play` none). The cadence
+    tick 2,100 on; `drive_cov0` 241 / 242 / 272 / 1; its normal play `drive_play` none; with the test none in
+    any of the three, on the four machines). The cadence
     until 2026-11-02 is `CAD_MAX=2 CAD_HOLD=2 CAD_ADAPT=0` (with `FLASH_LOOK=0` the product of before,
     byte for byte). Loop-1 is `CAD_ADAPT=0` with the caps of 3: 3 whenever a picture is late (no code).
   - `LAG_X=n` (32-64, default 32): with the V9938 engine (`fb_eng` 1: an MSX2, or `FORCE_V9938`) the
