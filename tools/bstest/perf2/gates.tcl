@@ -63,6 +63,7 @@ set ::pf_field_wins {
 	kill1560  3 l3/cap3 l3_kill.drive 1560 900
 	boss110   3 l3/cap3 l3_boss.drive  110 900
 	boss300   3 l3/cap3 l3_boss.drive  300 900
+	boss580   3 l3/cap3 l3_boss.drive  580 900
 	park40    3 l3/cap3 l3_park.drive   40 900
 	tour545   3 l3/cap3 l3_tour3.drive 545 900
 	l2t1      2 l2/cap2 l2_tour.drive    1 300
@@ -252,7 +253,11 @@ proc pf_map_jobs {dir R {tags ""} {drives ""}} {
 # (level 1's three traces through hz_l2_drive, as levels 2 and 3's: the same rc2_drive_rom trace, plus the
 #  lost counters at every tick_start, appended to DIR/l1/lost.txt when the job ends: gate.sh logic wants
 #  mp, atr, rd and fb 0 there too)
-proc pf_logic_jobs {dir R} {
+# The continue's traces (l3_cont3, l3_cont3_fx, l3_cont3_tr) come last, l3_cont3 (C-BIOS_MSX2) the very
+# last: openMSX 21 has crashed (SIGSEGV) on the machine switch after l3_cont3's job (batch 1, W2L and W2S
+# of batch 2), so no switch follows it in the chain. Start nothing after this chain in the same session
+# (end the session, or re-run a crashed job in a fresh one); ONLY: the jobs' names to keep (e.g. {l3_cont3}).
+proc pf_logic_jobs {dir R {only ""}} {
 	set jobs [concat [hz_l3_jobs "$dir/l3" "$R/T" tr] [hz_l2_jobs "$dir/l2" "$R/T" tr]]
 	file mkdir "$dir/l1"
 	set rom "$R/T/trace/rc2_ext5.rom"
@@ -262,7 +267,25 @@ proc pf_logic_jobs {dir R} {
 		lappend jobs [list $j $m [list hz_l2_drive $rom $lab "$dir/l1/$j.txt" $n [file join $::pf_emu $drv]] \
 			"\$::rc2_trace_done && \[hz_l2_lost {$lost}\]" 900]
 	}
-	return $jobs
+	set head {}
+	set tail {}
+	foreach j $jobs {
+		if {[string match l3_cont3* [lindex $j 0]]} { lappend tail $j } else { lappend head $j }
+	}
+	set tail [lsort -command pf_cont3_last $tail]
+	set out {}
+	foreach j [concat $head $tail] {
+		if {$only eq "" || [lsearch -exact $only [lindex $j 0]] >= 0} { lappend out $j }
+	}
+	return $out
+}
+
+# (l3_cont3 after its V9958 twins)
+proc pf_cont3_last {a b} {
+	set ka [expr {[lindex $a 0] eq "l3_cont3"}]
+	set kb [expr {[lindex $b 0] eq "l3_cont3"}]
+	if {$ka != $kb} { return [expr {$ka - $kb}] }
+	return [string compare [lindex $a 0] [lindex $b 0]]
 }
 
 # ----- every gate's jobs in one chain
@@ -271,6 +294,8 @@ proc pf_logic_jobs {dir R} {
 # builds R, the records into W/<gate> (G-HOLD reads W/speed); then "gate.sh all BASE W R"
 proc pf_gate_jobs {w R {gates {speed field guard lock map logic}}} {
 	set jobs {}
+	# (logic last whatever order GATES names: its l3_cont3 job ends the chain, pf_logic_jobs)
+	if {[lsearch -exact $gates logic] >= 0} { set gates [concat [lsearch -all -inline -not -exact $gates logic] logic] }
 	foreach g $gates {
 		switch -- $g {
 			speed { set jobs [concat $jobs [pf_speed_jobs "$w/speed" $R]] }

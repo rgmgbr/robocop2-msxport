@@ -716,57 +716,83 @@ which as sprites were striped, cut or left out.
   `CAD_MAX` = 2 for one picture (4 until 2026-10-21: catching up skipped animation steps,
   the walk's among them; 2 costs about 5 % of speed in busy scenes, 92 % in the worst 2 s), `CAD_HOLD` = 2 while the V9938 scroll keeps the camera at a
   page's edge, none while the view shown is 32 px or more behind the one wanted, or behind at
-  all with RoboCop's sprites within 16 px of the screen's edge on the picture shown (`cam_lag`, `rc_safe`:
-  the scroll catches up first; the test comes before the frame's ticks, so that frame's steps and
-  drawing change still move him on, `docs/PERF2_PLAN.md` 5.3's rc-edge; until 2026-10-23 `rc_safe` left D = FFh on its
+  all while RoboCop's next picture could show an opaque pixel outside the picture shown (`cam_lag`,
+  `rc_safe`: the scroll catches up first; the bound, rc-edge, below; until 2026-10-23 `rc_safe` left D = FFh on its
   right-edge return and the cadence took that as its cap: every due tick ran there instead of
   none, up to 4 a picture, and his sprites reached 7-9 px past the right edge in 1-4 lists of
   each busy coverage window; fixed: never above 2, 0 lists beyond); a longer delay is lost and only then the
   game slows down, as the original does when its frame takes 3 VBLs) and the display skips
   their pictures (`bob_skip`: their BOBs are not even recorded). The timer's seconds count
   VBLANKs, not frames.
-- **RoboCop at the picture's edge** (rc-edge, measured 2026-11-02 on batch 1's code, `docs/PERF2_PLAN.md`
-  5.3's lane W2K). `rc_safe` tests his sprite boxes (`O_MINDX`, `O_MAXDX`) on the picture already shown,
-  before the frame's ticks; the frame's own steps and drawing change then still move him. On the V9938
-  the columns shown, in his x frame (`O_X`, `pub_spr`'s x: the camera at x 8), are s .. s + 255 with
-  s = ((R#18 & 15) xor 7) - 7 = 8 - (cam_x & 15): 8 .. 263 at the hold moving left, -7 .. 248 moving
-  right; a sprite pixel outside SAT x 0..255 is not shown. A probe (each list put on screen at
-  `iv_take`: its R#18 and RoboCop's `pub_spr` record, his composition's opaque pixels from the ROM's
-  pool through `tools/msxframe.py`; the test drives' teleport stalls left out) ran on C-BIOS_MSX2 and
-  the Expert with three drives: punches (down+fire, left/right released) started from walks right in
-  the building (camera mode 0, where the camera holds him at AX_MAX), 68 a machine, 58-60 of them
-  started with his box's right edge at x 220 or more while the view lagged 9-28 px; and left walks in
-  camera mode 1 (the roof, floors 20 and 40), about 2,190 frames a run, about 1,090 of them lagging.
-  Pictures where an opaque pixel of his lies outside the columns shown:
-  - the product's options: **0** of 14,664 pictures; his opaque pixels came within 3 px of the right
-    edge (the Expert, a punch at a lag of 25 px) and 6 px of the left;
-  - `LAG_X=64`: 0 of 14,556 (4 px right, 6 px left); loop-3 (`CAD_MAX=3 CAD_HOLD=3 CAD_ADAPT=8`): 0
-    of 14,477 (3 px, 6 px);
-  - loop-1 (`CAD_MAX=3 CAD_HOLD=3`): **1** of 14,369, by 3 px: on C-BIOS_MSX2 a 3-tick frame decided
-    with his box's right edge at 238 (rc_safe's limit 239) and the view 28 px behind carried a punch
-    (composition 82, arm to x + 44) to x 207 against the hold's edge at 248; otherwise 1 px right, 4 px
-    left. The game acts on a tick's joystick byte one tick later: that punch started on the frame's
-    second tick, after two walk steps, and the third tick did not move him. A 2-tick frame reaches the
-    same picture.
-  In the product's runs only two punches started on the last tick of a 2-tick frame decided near
-  rc_safe's limit (a box ending at 234-239 with the view 26-31 px behind). Both came from composition 74
-  with the box ending at 236, 3 px short of the limit, and stayed 4 px inside. Forcing the case at the
-  limit cut the product's picture. The review's probe `C/rev_w2k/edge/force.tcl` puts down+fire on such
-  a frame's first tick; 21 forced punches ran on C-BIOS_MSX2 and the Expert with the product's options
-  (`l3/cap3`):
-  - on the Expert, a frame decided at the limit (composition 74 at x 182, its box ending at 239, the
-    view 30 px behind) put the punch (composition 82) at x 206, its opaque pixels at 211..250, against
-    the hold's edge at 248: **2 px cut in 7 pictures in a row**, until the next page flip;
-  - of the other 20, seven came within 0-2 px of that edge and 13 stayed 4-13 px inside.
-  The header boxes are only 1 px wider than his opaque pixels for compositions 2, 6, 10, 14 and 74 (0
-  for 70; 13-15 px only for 22, 26, 30, 169 and 174). In these frames his opaque right edge grew 12 px
-  (74 -> 82) and 14 px (14 -> 82, loop-1) past the box's last column: two steps of 3 px and the punch's
-  arm with its hotspot's shift. rc_safe leaves only 10 px (its limit 239 against the hold's last column
-  248). So `rc_safe` must bound the next picture with per-composition opaque extents and the frame's
-  growth, the product's 2-tick frames included and not only loop-1 or loop-3: the ticks it allows x
-  the x step, plus the reach of a composition that can start within them (the punch). Records and
-  scripts: the campaign's `C/w2k/edge` (`edge.tcl`, `edge.py`, `punches.py`, `mkdrives.py`) and
-  `C/rev_w2k/edge` (`force.tcl`, `f2.tcl`, records `N2`).
+- **RoboCop at the picture's edge** (rc-edge, `docs/PERF2_PLAN.md` 5.3; batch 3, lane W3K). While the view shown lags
+  (v_x is not cam_x) the cadence runs the frame's ticks only when his next picture keeps every opaque pixel on the
+  columns the VDP shows, whatever those ticks do (`rc_safe`, in the fixed area, maps `BANK_LC3` at 8000h for
+  `plmove.asm` `rc_bound` and puts the bank there back; 17 bytes where its box test took 66):
+  - the columns: SAT x 0-255 on the V9938, whose R#18 moves the sprites with the picture (`spr_xadj` = f - 8; in his
+    x frame `O_X` the columns s .. s + 255, s = 8 - f: 8 .. 263 at the hold moving left, -7 .. 248 moving right);
+    SAT x 8-255 on the V9958, whose MSK hides 0-7;
+  - his place: Q = `O_X` - `p_hotx` + `spr_xadj` (the composition's x without its record's hotspot, in SAT x). The
+    view shown moves only towards the one wanted, which carries him away from the edge he walks towards;
+  - the frame's growth: k = min(the ticks due, `RC_K`) ticks (`RC_K` = the larger of `CAD_MAX` and `CAD_HOLD`: 2 in
+    the product, 3 with loop-1 or loop-3), his place moving at most Gr to the right and Gl to the left (`rc_grow`):
+    his step a tick times k, `RC_VX` = 3 px (`pl_xstep`'s largest; a trolley carries him 2 while he hangs, with
+    step 0), in level 1 + `RC_BELT` = 8 (its conveyors carry him 4 px a tick, `mapobj.asm` `act_cv`, and entries
+    15 and 16 of its object list are one belt twice; its barriers' push and the vehicle's ride are 4); in level 3
+    + `RC_PUSH` = 8 a tick on a side for each type-21 walker within `RC_PUSHD` = 96 px (`level3obj.asm`
+    `obj_push`: it pushes him the way it faces, and once it stands it faces him: to the right when it faces right
+    or he is right of it, to the left when it faces left or he is left of it; its steps reach 11 px every other
+    tick, `t21_step`); and a mount's snap (`rc_snap`, once): an entry of the lifts table within `RC_SNAPD` = 32 px
+    of his x, a trolley's (level 2, 10h wide: `special.asm` `sp_trolley` puts his x at its left once he hangs:
+    up to 15 px left, the landing tick's step 2) he does not hang on yet, 4 right and 20 left, or the vehicle's
+    (level 1, 36h wide: `sp_vehicle` puts it at its left + 12h once he rides: up to 18 px right, 35 left) he did
+    not ride at the last tick ($16D8), 20 and 40; lifts (30h) move him in y only. (Review of lane W3K, 2026-11-02:
+    in `l2_tour` a trolley grab moved him 18 px left in one frame while the view lagged 28-30 px, where 3k
+    allowed 6; there he was on the right side; the same grab on the left side would have left his pixels past
+    the left edge.) His drawing reaches his state's `rc_reach` columns
+    (`gen/rcedge.inc`, `tools/mkrom.py` `rcedge`, from the sprite pool's pixels through `tools/msxsprites.py`
+    `SpriteData.opaque_x`): per state (`p_state`) the leftmost and rightmost opaque column, with the record's
+    hotspot, of every composition of its records (the four aims; the start-of-level arm poses with record 16) and of
+    the records any state starts with within k ticks (an input or an event enters a state with the animation counter
+    at 0, and the record is counter / 2, `pl_frame`: the punch's composition 82, record 20, reaches 54 against
+    the walk's 50). The table: -1 .. 54 for every state but the punch right (6: its records 22-24 reach 65), the
+    punch left (7: -12) and state 9 (55);
+  - the test: Q + Gr + R <= 255 and Q - Gl + L >= 0 (V9938) or 8 (V9958), else no tick this frame (D = 0);
+    a state outside the table holds too, and so does a growth of 256 px or more.
+  Measured (C-BIOS_MSX2 and the Expert, `EXTJOY` drive builds of `level2` 7752890 with and without rc-edge; the
+  campaign's `C/w3k/edge`):
+  - the forced punch (`force5.tcl`, lane W2K's review's probe made denser): at every frame the cadence let run while
+    the view lagged with RoboCop walking right (or left) and the bound's slack 12 px or less, down+fire from the
+    frame's first tick (the punch on its second, the last of a 2-tick frame), 14 ticks or more apart, on lane
+    W2K's three edge drives: rc-edge 60 / 65 forced punches (the Expert / C-BIOS_MSX2) with the product's options,
+    71 / 70 with loop-1, 67 / 67 with loop-3: **0 cut** in 41,246 pictures, his opaque pixels at least 7 px inside
+    the right edge and 4 px inside the left; the slack at the forced frames was 7-12 px. The bound is exact for a
+    punch started on the frame's last tick after full walk steps: that tick still takes the walk's step
+    (`pm_step` runs before the state changes; states 6/7 never step, `pm_afb2`), so his place moves 3k and
+    composition 82 reaches R = 54: 0 px to spare (the review's forced inputs reached it with loop-3 on the
+    Expert, `edge_punch`, tick 352: his opaque pixels up to the right edge, none past it).
+    With loop-1 and loop-3 the punch also on a 3-tick frame's third tick (`force6.tcl`: 154 of 272 forced
+    punches on 3-tick frames): 70 / 69 forced punches with loop-1, 67 / 66 with loop-3, **0 cut** in 26,937
+    pictures, 4 px inside at the closest. BASE's `rc_safe` cut none in these probes either (its box test held
+    these frames as well; the review's 2 px case needs composition 74 at its limit with the view 26-31 px behind);
+  - over whole drives (lane W2K's edge drives: punches started from walks right at `AX_MAX`, left walks in camera
+    mode 1; and level 3's kill, boss, tour3 and park drives), every picture shown with RoboCop's opaque pixels
+    against the columns of its R#18: **0 cut** of 14,183-14,840 pictures a machine with the product's options,
+    loop-1, loop-3 and `LAG_X=64`; the closest opaque pixel 0-2 px inside the right edge, 3-6 px inside the left;
+  - the frames held (no tick though ticks were due), product options, BASE -> rc-edge: by `rc_safe` kill 11 -> 11
+    (MSX2) and 12 -> 12 (Expert), boss 0 -> 0 and 0 -> 9, tour3 134 -> 68 and 131 -> 63 (its box test held where
+    his pixels were far inside: the aiming walk's boxes are 13-15 px wider than his pixels); by `cam_lag` (the view
+    32 px or more behind) kill 1604 -> 1581 and 1610 -> 1569, boss 1299 -> 1312 and 1311 -> 1296, tour3 1303 -> 1349
+    and 1302 -> 1355;
+  - G-SPEED against BASE and its controls: every window within its floor; tour3 on C-BIOS_MSX2 / the Expert 215-540
+    +4.3 / +3.6 %, 1085-1400 +3.7 / +3.3 % (fewer holds), 40-210 -3.0 / -1.4 % (a short window, its floor 4 %).
+  Before (batch 1's code, lane W2K, `C/w2k/edge`, `C/rev_w2k/edge`): `rc_safe` tested his sprite boxes (`O_MINDX`,
+  `O_MAXDX`) 16 px from x 0 and 256 on the picture already shown; the frame's steps and drawing change then still
+  moved him. A punch started on the last tick of a 2-tick frame decided at its limit (composition 74, box ending at
+  239, the view 30 px behind) put composition 82's opaque pixels at 211..250 against the hold's edge at 248: 2 px
+  cut for 7 pictures (the Expert, the product's options; 1 of 21 forced punches), and loop-1 cut a punch by 3 px in
+  1 of 14,369 pictures. The boxes are only 1 px wider than his pixels for compositions 2, 6, 10, 14 and 74 (0 for 70;
+  13-15 px for 22, 26, 30, 169 and 174), and the punch's arm grows 12 px (74 -> 82) or 14 px (14 -> 82) past the
+  box's last column within a frame, where the box test left 10 px.
 - **The cadence's options for the user's choice** (`tools/mkrom.py`, 2026-11-01, `docs/PERF2_PLAN.md`
   D2 and D3; nothing decided: every build without them runs as always, byte for byte):
   - `CAD_ADAPT=n` (default 0): a frame that took fewer than n VBLANKs (`wf_n`) runs at most 2
@@ -780,9 +806,8 @@ which as sprites were striped, cut or left out.
     `cl_abs`'s test of 32: 12 bytes of the fixed area). While the V9938's scroll builds its next
     page, RoboCop may run ahead of the scrolled view by up to n - 1 pixels when the cadence decides,
     plus that frame's own steps (measured: 70 px with n = 64, 37 with 32), and the view catches up in
-    page steps; `rc_safe` (unchanged) still holds the ticks while his sprite boxes are within 16 px of
-    x 0 or 256 on the picture shown (measured: they come within 12 px of x 256, 13 without the option;
-    at the V9938's hold R#18 insets the picture, which then ends at x 248: 5 px, 6 without). y keeps
+    page steps; `rc_safe` holds the ticks while his next picture could reach past the columns shown
+    (rc-edge, above: 0 cut pictures with the option over the edge drives and level 3's drives). y keeps
     32, and so does the V9958's ring (`fb_eng` 0: the MSX2+ and the
     turbo R take the default's path, a few T-states longer). D = 0 when the ticks are held, as the
     cadence needs: n - 32 is below 256.

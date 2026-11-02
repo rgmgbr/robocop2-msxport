@@ -113,7 +113,10 @@ import struct
 import sys
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:                     # (tools/mkrom.py reads the pool's opaque columns without it:
+    np = None                           #  SpriteData.opaque_x; everything else here needs numpy)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import player  # noqa: E402
@@ -1480,6 +1483,28 @@ class SpriteData:
             lay[-1][1].append({"x": dx, "full": full.astype(np.uint8), "fallback": fb.astype(np.uint8)})
         return {"header": (nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1), "sprites": sprites, "bands": bands,
                 "layout": lay}
+
+    def opaque_x(self, o: int) -> tuple[int, int] | None:
+        """The composition at o: its leftmost and rightmost opaque column against its x (a sprite object's
+        O_X), as record()'s full looks show it: a sprite's pixel is opaque where its pattern bit is set on a
+        line whose colour is not 0, an A sprite's with the B sprite after it (the CC pair) at the A's dx;
+        None for a composition without one. Without numpy (tools/mkrom.py's rc-edge table)."""
+        d = self.data
+        nspr = d[o]
+        pat0, col0 = self.inc["SPR_PAT_BANK"] * BANK, self.inc["SPR_COL_BANK"] * BANK
+        sprites = [struct.unpack_from("<bbBBHHHH", d, o + 8 + 12 * i) for i in range(nspr)]
+        lo = hi = None
+        dx = 0
+        for dy, sdx, pbit, _abit, pat, col, _p1, _c1 in sprites:
+            if not pbit:
+                dx = sdx                                # (a B sprite: at its A's dx, record()'s rule)
+            bits = d[pat0 + 32 * pat:pat0 + 32 * pat + 32]
+            cols = d[col0 + 16 * col:col0 + 16 * col + 16]
+            for x in range(16):
+                if any((bits[16 * (x >> 3) + y] >> (7 - (x & 7))) & 1 and cols[y] & 15 for y in range(16)):
+                    lo = dx + x if lo is None else min(lo, dx + x)
+                    hi = dx + x if hi is None else max(hi, dx + x)
+        return None if lo is None else (lo, hi)
 
     def look(self, o: int, one_layer: bool = False) -> tuple[np.ndarray, int, int]:
         """The composition at o drawn (joint palette indices, 0 transparent) -> (image, y0, x0):

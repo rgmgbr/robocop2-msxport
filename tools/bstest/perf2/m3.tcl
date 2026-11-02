@@ -38,7 +38,8 @@
 #   samp:   every 0.2 ms: pc act_8000 act_a000 CE (S#2 bit 0); "T tick time" lines at ticks
 #   notes:  what the set-up found: the addresses, a probe left out (a label this build lacks)
 # Rules kept: no vwait, exit, max or min; every channel closed on every path (hz_clean's wrapper);
-# breakpoints on A000h code conditioned on act_a000 = the code's bank.
+# breakpoints on A000h code taken while the cartridge maps the code's bank there (pf_bankc: the ROM's
+# romblocks debuggable, not act_a000, which the VBLANK sound player's bank switch leaves behind).
 
 # ----- labels and addresses
 
@@ -60,6 +61,15 @@ proc pf_lab {name {def ""}} {
 	if {[info exists ::pf_L($name)]} { return $::pf_L($name) }
 	if {$def ne ""} { return [expr {$def}] }
 	error "no label $name"
+}
+
+# a breakpoint condition true while the cartridge (the ROM file ROM) maps one of BANKS (8 KiB block
+# numbers, e.g. [pf_lab BANK_FIELD]) at ADDR: the ROM's "romblocks" debuggable, exact however the bank was
+# mapped. act_a000 / act_8000 (the bank the main code last selected) are not: the VBLANK interrupt's
+# sound player maps its own bank at A000h without them (msx/sound.asm snd_bk), so a breakpoint on banked
+# code conditioned on act_a000 also fired when the player passed the same address in its bank
+proc pf_bankc {rom addr banks} {
+	return "\[debug read {[file tail $rom] romblocks} $addr\] in {$banks}"
 }
 
 # a ROM file offset: the fixed area 4000h-7FFFh is the image's first 16 KiB, a banked address is
@@ -199,11 +209,11 @@ proc m3_setup {name dir rom labels drive n {mode lean}} {
 	set notes [list "rom $rom" "mode $mode" "drive $drive rows $n"]
 	if {[info exists ::m3_a(BANK_FIELD)]} {
 		set bf $::m3_a(BANK_FIELD)
-		set c "\[peek $::m3_aa\] == $bf"
+		set c [pf_bankc $rom $::m3_a(fcg_ld) $bf]
 		if {[info exists ::m3_a(fcg_ld)] && [info exists ::m3_a(fcg_dn)]} {
 			debug set_bp $::m3_a(fcg_ld) $c m3_fcld
-			debug set_bp $::m3_a(fcg_dn) $c m3_fcdn
-			if {[info exists ::m3_a(fcg_ln)]} { debug set_bp $::m3_a(fcg_ln) $c {incr ::m3_fcl} }
+			debug set_bp $::m3_a(fcg_dn) [pf_bankc $rom $::m3_a(fcg_dn) $bf] m3_fcdn
+			if {[info exists ::m3_a(fcg_ln)]} { debug set_bp $::m3_a(fcg_ln) [pf_bankc $rom $::m3_a(fcg_ln) $bf] {incr ::m3_fcl} }
 		}
 	}
 	set ::m3_fds 0
@@ -216,7 +226,7 @@ proc m3_setup {name dir rom labels drive n {mode lean}} {
 		foreach s $::m3_csites {
 			lassign $s site addr off spo where
 			if {$where eq "field"} {
-				debug set_bp $addr "\[peek $::m3_aa\] == $::m3_a(BANK_FIELD)" [list m3_cmd $site $off $spo]
+				debug set_bp $addr [pf_bankc $rom $addr $::m3_a(BANK_FIELD)] [list m3_cmd $site $off $spo]
 			} else {
 				debug set_bp $addr {} [list m3_cmd $site $off $spo]
 			}

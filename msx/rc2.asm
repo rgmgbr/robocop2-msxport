@@ -539,6 +539,7 @@ l1_end:
         include "special.asm"
         include "frame.asm"
         include "plmove.asm"        ; RoboCop's player_move (player.asm game_tick)
+        include "rcedge.inc"        ; RoboCop's reach for plmove.asm rc_bound (tools/mkrom.py rcedge)
         include "at_c3.inc"
 lc3_end:
         ds 0xA000 - lc3_end, 0xFF

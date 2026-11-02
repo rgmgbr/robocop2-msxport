@@ -26,8 +26,7 @@ set ::cen_names {budget ln_fill ft_lines bg_tot sprites_tick fl_hit ft_give ft_d
 proc pf_bp {rom addr cmd {banks {}}} {
 	if {$addr < 0x8000 || $addr >= 0xC000} { return [debug set_bp $addr {} $cmd] }
 	if {![llength $banks]} { error "pf_bp: [format %04X $addr] is banked: name its bank" }
-	set rb "[file tail $rom] romblocks"
-	return [debug set_bp $addr "\[debug read {$rb} $addr\] in {$banks}" $cmd]
+	return [debug set_bp $addr [pf_bankc $rom $addr $banks] $cmd]
 }
 
 # the banks a census label's code can be in: none (fixed area, RAM), the level banks (an msx/lvshared.asm

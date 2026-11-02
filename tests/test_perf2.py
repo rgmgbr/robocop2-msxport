@@ -15,6 +15,12 @@
   spread; FB_HOLD pictures and tears: highest + spread; a field class none of them shows); a control
   lacking a run fails; a teleport's stall and the field records past a drive's end are left out; the kit's
   tables match gates.tcl's (drives, windows) and gate.sh's level-3 lock build is LOCKSTEP=48.
+- Batch 3 (docs/HARNESS.md 12.3): the ground floor judged by parts, 1600-1765 per trajectory (a run 2 %
+  slower than its trajectory fails, a run of the other trajectory passes, the V9938's odd trajectory
+  against the pooled Z80 machines'; mixed or uncovered: every run); holds.py adds the trajectory controls to
+  the reference, its slack scaled to the reference's size; lockgate.py compares every list whose
+  displayed cameras agree (a difference past a camera difference fails; cameras that never agree again
+  fail); pgsum.py fails a page-path use on a page not shown; pf_logic_jobs puts l3_cont3 last.
 """
 import json
 import py_compile
@@ -77,7 +83,7 @@ class KitFilesTests(unittest.TestCase):
             else:
                 self.assertEqual(ref.DRIVES[d[0]][0], drv, w)
                 n += 1
-        self.assertEqual(n, 18)
+        self.assertEqual(n, 19)
         gate = (KIT / "gate.sh").read_text()
         self.assertIn("b L/l3/lock.rom EXTJOY=1 LV_TEST=3 LOCKSTEP=48", gate)
         self.assertNotIn("0x0890", (ROOT / "tools" / "bstest" / "fieldcheck.py").read_text())
@@ -107,13 +113,20 @@ class KitVerdictTests(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     # m3.tcl's records: ticks "tick_n time ...", pics "time tick fb_hold game_frame vblank"
-    def speed_run(self, d, name, slow=1.0, extra_hold=False, ticks=1900):
+    def speed_run(self, d, name, slow=1.0, extra_hold=False, ticks=1900, parity=0, gf=1.0, idle=False):
+        # (and the frames record: two ticks a frame, starting on even ticks, odd ones with parity 1; gf: the
+        #  ticks from 1600 on take gf times longer; idle: a frame without a tick after each one from 1600 on)
         t = 10.0
-        with open(d / f"{name}_ticks.txt", "w") as ft, open(d / f"{name}_pics.txt", "w") as fp:
+        with open(d / f"{name}_ticks.txt", "w") as ft, open(d / f"{name}_pics.txt", "w") as fp, \
+                open(d / f"{name}_frames.txt", "w") as ff:
             for k in range(ticks):
                 ft.write(f"{k} {t:.6f} 0 0 0 0 0.0 0 0 0 0 0\n")
                 fp.write(f"{t + 0.01:.6f} {k} {8 if (k % 400 == 0 or (extra_hold and k == 777)) else 0} {k} {k}\n")
-                t += 0.1 * slow
+                if k % 2 == parity:
+                    ff.write(f"{t:.6f} {k} 10 2 2\n")
+                    if idle and k >= 1600:
+                        ff.write(f"{t + 0.001:.6f} {k} 1 0 2\n")
+                t += 0.1 * slow * (gf if k >= 1600 else 1.0)
 
     def test_win_and_holds(self):
         for d in (self.base, self.new):
@@ -145,6 +158,74 @@ class KitVerdictTests(unittest.TestCase):
         r = run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("control", r.stdout)
+
+    def test_win_ground_floor_by_trajectory(self):
+        # kill 1500-1765 is judged by its parts; 1600-1765 per trajectory: BASE and two controls on the Z80
+        # machines, the fast (even) trajectory everywhere but the FS-A1FX's controls, which took the odd one
+        # 6 % slower; trajectory controls (speed/traj/) join the parts' reference
+        sp = self.base / "speed"
+        for tag in ("m2", "ex", "fx"):
+            self.speed_run(sp, f"kill_{tag}")
+        for c, g2, gx in (("ct1", 1.002, 1.060), ("ct2", 0.998, 1.062)):
+            (sp / "ctl" / c).mkdir(parents=True)
+            self.speed_run(sp / "ctl" / c, "kill_m2", gf=g2)
+            self.speed_run(sp / "ctl" / c, "kill_ex", gf=g2)
+            self.speed_run(sp / "ctl" / c, "kill_fx", gf=gx, parity=1)
+        (sp / "traj" / "hz1").mkdir(parents=True)
+        for tag in ("m2", "ex", "fx"):
+            self.speed_run(sp / "traj" / "hz1", f"kill_{tag}", gf=1.001)
+
+        def gate(**kw):
+            for tag in ("m2", "ex", "fx"):
+                self.speed_run(self.new / "speed", f"kill_{tag}", **kw.get(tag, {}))
+            return run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
+        r = gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("judged by its parts", r.stdout)
+        self.assertIn("1600-1765", r.stdout)
+        # the C-BIOS_MSX2 in the odd trajectory, as slow as the FS-A1FX's: passes against the pooled Z80 runs
+        r = gate(m2={"parity": 1, "gf": 1.061})
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("trajectory odd", r.stdout)
+        self.assertIn("runs of the Z80 machines", r.stdout)
+        # with an odd run of the Expert, the V9938 pool comes first
+        self.speed_run(sp / "traj" / "hz1", "kill_ex", parity=1, gf=1.07)
+        r = gate(m2={"parity": 1, "gf": 1.071})
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("runs of the V9938 machines", r.stdout)
+        r = gate(m2={"parity": 1, "gf": 1.071 * 1.025})
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.speed_run(sp / "traj" / "hz1", "kill_ex", gf=1.001)
+        # 2.5 % slower than its trajectory: fails, in either trajectory
+        r = gate(m2={"parity": 1, "gf": 1.061 * 1.025})
+        self.assertEqual(r.returncode, 1, r.stdout)
+        r = gate(ex={"gf": 1.025})
+        self.assertEqual(r.returncode, 1, r.stdout)
+        r = gate(ex={"gf": 1.004})
+        self.assertEqual(r.returncode, 0, r.stdout)
+        # a run that switches trajectory (mixed) or runs frames without ticks (idle): every run of its machines
+        r = gate(fx={"idle": True})
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("trajectory idle", r.stdout)
+        # without a frames record the trajectory cannot be read: fails
+        r = gate()
+        (self.new / "speed" / "kill_m2_frames.txt").unlink()
+        r = run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        # the approach, 1500-1600, by the range rule (4 %, a short window): 5 % slower fails
+        for tag in ("m2", "ex", "fx"):
+            self.speed_run(self.new / "speed", f"kill_{tag}")
+        p = self.new / "speed" / "kill_m2_ticks.txt"
+        rows = []
+        for line in p.read_text().splitlines():
+            f = line.split()
+            k = int(f[0])
+            t = float(f[1]) + (0.1 * 0.05 * (min(k, 1600) - 1500) if k > 1500 else 0.0)
+            rows.append(" ".join([f[0], f"{t:.6f}"] + f[2:]))
+        p.write_text("\n".join(rows) + "\n")
+        r = run(KIT / "win.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("1500-1600", [x for x in r.stdout.splitlines() if x.endswith("FAIL")][0])
 
     def test_win_and_holds_leave_teleports_out(self):
         # a drive with a teleport at tick 500: NEW stalls 30 s there (its ticks held while the engines walk)
@@ -196,6 +277,24 @@ class KitVerdictTests(unittest.TestCase):
         r = run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed")
         self.assertEqual(r.returncode, 0, r.stdout)
         self.holds_run(self.new / "speed", "boss_fx", 10)
+        r = run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_holds_with_trajectory_controls(self):
+        # BASE 4, controls 6 and 3, and 12 trajectory controls 2-12 (speed/traj/): 15 runs 2-12, FAIL above
+        # 12 + max(10 x 4 / 15, 2) = 14.67; batch 2's rule over BASE and the controls alone failed above 9
+        self.holds_run(self.base / "speed", "boss_fx", 4)
+        for c, n in (("ct1", 6), ("ct2", 3)):
+            (self.base / "speed" / "ctl" / c).mkdir(parents=True)
+            self.holds_run(self.base / "speed" / "ctl" / c, "boss_fx", n)
+        for k in range(12):
+            (self.base / "speed" / "traj" / f"t{k}").mkdir(parents=True)
+            self.holds_run(self.base / "speed" / "traj" / f"t{k}", "boss_fx", 2 + (k * 10) // 11)
+        self.holds_run(self.new / "speed", "boss_fx", 14)
+        r = run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("12 trajectory controls 2-12", r.stdout)
+        self.holds_run(self.new / "speed", "boss_fx", 15)
         r = run(KIT / "holds.py", "--gate", self.base / "speed", self.new / "speed")
         self.assertEqual(r.returncode, 1, r.stdout)
 
@@ -409,14 +508,15 @@ class KitVerdictTests(unittest.TestCase):
         r = run(KIT / "fieldsum.py", "gate", self.base / "field", self.new / "field")
         self.assertEqual(r.returncode, 1, r.stdout)          # 40 against 1: a gross rise of a known class
 
-    def lock_record(self, path, sat_byte=0, late=""):
+    def lock_record(self, path, sat_byte=0, late="", cams=None, sat_at=150):
         park = 217
         lines = ["0 0 217 0 " + "d8" * 256 + " " + "00" * 512 + " " + "00" * 2048 + " " + "00" * 128 + " 0 0"]
         for gf in range(2, 202, 2):
             sat = bytes([100, 50, (4 * (gf % 3)) & 255, 0]) + bytes([216]) + bytes(251)
-            if gf == 150 and sat_byte:
+            if gf == sat_at and sat_byte:
                 sat = bytes([100, 50 + sat_byte]) + sat[2:]
-            lines.append(f"{gf // 2} {gf} {park} 0 {sat.hex()} {'0f' * 512} {'aa' * 2048} {'00' * 128} 100 200")
+            cx, cy = (cams or {}).get(gf, (100, 200))
+            lines.append(f"{gf // 2} {gf} {park} 0 {sat.hex()} {'0f' * 512} {'aa' * 2048} {'00' * 128} {cx} {cy}")
         path.write_text("\n".join(lines) + "\n")
         Path(str(path)[:-4] + ".over").write_text(late or "late 0 at \n")
 
@@ -434,6 +534,77 @@ class KitVerdictTests(unittest.TestCase):
         self.lock_record(self.base / "lock" / "boss_m2.txt")
         self.assertEqual(run(KIT / "lockgate.py", self.base / "lock", self.new / "lock").returncode, 1)
         self.assertEqual(run(KIT / "lockgate.py", self.base / "lock", self.new / "lock", "--partial").returncode, 0)
+
+    def test_lockgate_past_camera_differences(self):
+        # the lists whose displayed cameras differ (the V9938's camera moved in the engine's idle time: W2S's
+        # kill_m2, game frames 300 and 304) are not compared, every other list is: a SAT difference after them
+        # fails; cameras that differ up to the last list, or in more than CAM_MAX % of the lists, fail
+        lk = lambda *a: run(KIT / "lockgate.py", self.base / "lock", self.new / "lock", *a)
+        self.lock_record(self.base / "lock" / "kill_m2.txt")
+        cams = {100: (101, 200), 104: (99, 200)}
+        self.lock_record(self.new / "lock" / "kill_m2.txt", cams=cams)
+        r = lk()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("98 lists judged", r.stdout)
+        self.assertIn("2 lists with other displayed cameras", r.stdout)
+        self.lock_record(self.new / "lock" / "kill_m2.txt", cams=cams, sat_byte=1, sat_at=150)
+        self.assertEqual(lk().returncode, 1)
+        self.lock_record(self.new / "lock" / "kill_m2.txt", cams=cams, sat_byte=1, sat_at=100)
+        self.assertEqual(lk().returncode, 0)                   # (the list with another camera: not compared)
+        self.lock_record(self.new / "lock" / "kill_m2.txt", cams={g: (101, 200) for g in range(190, 202, 2)})
+        r = lk()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("to the last list", r.stdout)
+        self.lock_record(self.new / "lock" / "kill_m2.txt", cams={g: (101, 200) for g in range(20, 40, 2)})
+        r = lk()
+        self.assertEqual(r.returncode, 1, r.stdout)            # 10 of 100 lists
+        self.assertIn("more than", r.stdout)
+
+    def test_pgsum(self):
+        # flash-1's page path by the state of its page: the page shown and the V9958's ring pass, a use on the
+        # V9938's page beside (synced or being built) fails, and so does a record without its summary line
+        d = self.tmp / "pg"
+        (d / "kill1560_m2").mkdir(parents=True)
+        p = d / "kill1560_m2" / "pg.txt"
+        g = "G 5 100.0 1600 {cur}0000000000000000000000 FF FF 1 {vis} {back} {bsync} 1 3 0 {eng}"
+        summary = "# page-path uses 2: ring 0 shown 2 back-synced 0 back-rebuild 0; new targets 0"
+        p.write_text("\n".join([g.format(cur="00", vis=0, back=144, bsync=144, eng=1),
+                                g.format(cur="01", vis=1, back=144, bsync=255, eng=1), summary]) + "\n")
+        r = run(KIT / "pgsum.py", d)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("shown 2", r.stdout)
+        p.write_text("\n".join([g.format(cur="01", vis=0, back=144, bsync=255, eng=1), summary]) + "\n")
+        r = run(KIT / "pgsum.py", d)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("back-rebuild 1", r.stdout)
+        p.write_text("\n".join([g.format(cur="01", vis=0, back=144, bsync=144, eng=0), summary]) + "\n")
+        self.assertEqual(run(KIT / "pgsum.py", d).returncode, 0)
+        p.write_text(g.format(cur="00", vis=0, back=144, bsync=144, eng=1) + "\n")
+        self.assertEqual(run(KIT / "pgsum.py", d).returncode, 1)
+
+
+class KitTclJobTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("tclsh"), "needs tclsh")
+    def test_logic_jobs_end_with_l3_cont3(self):
+        # openMSX 21 crashed on the machine switch after l3_cont3's job: pf_logic_jobs puts the continue's
+        # traces last, l3_cont3 (C-BIOS_MSX2) the very last, and pf_gate_jobs puts the logic jobs last
+        script = f"""
+            set ::pf_emu /x/emu
+            set ::hz_root /x
+            proc m3_job {{args}} {{ return [list [lindex $args 0] m] }}
+            proc cnt_job {{args}} {{ return [list [lindex $args 0] m] }}
+            source {{{ROOT / 'tools' / 'bstest' / 'hz.tcl'}}}
+            rename file file_orig
+            proc file {{args}} {{ if {{[lindex $args 0] eq "mkdir"}} return; return [uplevel 1 file_orig $args] }}
+            source {{{KIT / 'gates.tcl'}}}
+            set j [pf_logic_jobs /w/logic /r]
+            puts [lindex [lindex $j end] 0]
+            puts [lindex [lindex $j end-1] 0]
+            puts [lindex [lindex [pf_gate_jobs /w /r {{logic speed}}] end] 0]
+            puts [llength [pf_logic_jobs /w/logic /r {{l3_cont3}}]]
+        """
+        r = subprocess.run(["tclsh"], input=script, capture_output=True, text=True)
+        self.assertEqual(r.stdout.split(), ["l3_cont3", "l3_cont3_tr", "l3_cont3", "1"], r.stderr)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,10 @@ tools/msxscreen.py's model (sprite mode 2 included) and compared with the expect
   - the HUD as the Amiga panel would be after drawing what msx/hud.asm records as shown
     (digits, energy level, heads, weapon icon; tools/hudmodel.py) plus the message line
     (MSX 7 px rule); while a HUD job (head, icon, full can) is half written the HUD is not
-    checked;
+    checked; while the message ticker types (or erases) a message, the cell it wrote last is
+    not checked (msx/hud.asm text_put records the glyph, then text_draw writes the cell: a
+    snapshot between them shows it half drawn, the end count's message at kill's game frame
+    1790);
   - every sprite object the list shows (pub_spr: RoboCop and BOBs, msx/sprites.asm) as
     tools/msxsprites.py converts its composition (full OR version, or the single-layer
     fallback for the bands the budget dropped), in SAT order (the hit spark's object, then
@@ -76,6 +79,7 @@ PUB_SEQ, APP_SEQ, VDP_ID = 0xC005, 0xC006, 0xC000
 SPR_VBLANK = 0xC0E5
 HUD_SHOWN, EN_SHOWN, HUD_CHARS, HEADS_G, ICON_SHOWN = 0xC608, 0xC618, 0xC626, 0xC63B, 0xC63D
 JOB_LINES, JOBQ_N = 0xC63E, 0xC646
+MSG_QUEUE, MSG_RD, MSG_COL, MSG_COUNT = 0xC61A, 0xC622, 0xC624, 0xC625   # msx/hud.asm's ticker (msx/msx.inc)
 LISTS = (0xC080, 0xC0A0)
 MAX_OBJ = 16
 SPARK_OBJ = MAX_OBJ - 1                         # msx/sprites.asm: first in the SAT
@@ -404,6 +408,31 @@ def over_lines(vram: bytes, regs: list[int]) -> set[int]:
     return {line for line in range(VIEW) if count[line] > 8}
 
 
+def text_busy(ram: bytes) -> tuple[str, set[tuple[int, int]]]:
+    """The message cell msx/hud.asm's ticker wrote last while it types or erases a message, and the frame
+    pixels its text_draw rewrites (the cell's 7 px and the next cell's first, which shows the cell's
+    column 7; one more on each side for the odd cells' byte phase): ("", set()) when no message is being
+    typed or erased. hud_ticker's text_put records the glyph in hud_chars and text_draw then writes the
+    cell's HUD bytes; a snapshot taken in between (the HUD split's interrupt, hud_frame running late
+    after a long frame) shows the cell half drawn against the glyph recorded."""
+    import hudmodel
+    import msxhud
+    rd = ram[MSG_RD - RAM_BASE] & 6
+    lo, hi = ram[MSG_QUEUE - RAM_BASE + rd], ram[MSG_QUEUE - RAM_BASE + rd + 1]
+    if hi:                                      # (a live pointer: being typed)
+        c, what = ram[MSG_COL - RAM_BASE] - 1, "typed"
+    elif lo == 0x80 and ram[MSG_COUNT - RAM_BASE] < hudmodel.TEXT_CELLS:
+        c, what = ram[MSG_COUNT - RAM_BASE], "erased"     # (printed, its columns erased from the right)
+    else:
+        return "", set()
+    if not 0 <= c < hudmodel.TEXT_CELLS:
+        return "", set()
+    x0 = hudmodel.text_x() + hudmodel.TEXT_PITCH * c
+    y0 = HUD_TOP + hudmodel.TEXT_PANEL_Y - msxhud.FIRST_LINE
+    px = {(x, y) for x in range(x0 - 1, x0 + hudmodel.TEXT_PITCH + 2) for y in range(y0, y0 + hudmodel.TEXT_LINES)}
+    return f"message cell {c} being {what}", px
+
+
 def hud_expected(ram: bytes) -> list[list[int]] | None:
     """HUD colour indices for the state msx/hud.asm records (None while a job is pending)."""
     if ram[JOB_LINES - RAM_BASE] or ram[JOBQ_N - RAM_BASE]:
@@ -471,6 +500,8 @@ def main() -> int:
         vpage = 0 if 26 in play else (regs_play[2] >> 5) & 1  # (the V9958's ring: page 0's looks)
     prgb, hrgb = rgb9(pal_play), rgb9(pal_hud)
     hud_want = hud_expected(ram)
+    busy_what, busy = text_busy(ram) if hud_want is not None else ("", set())
+    busy_px = 0
     sat_pending = ram[SPR_VBLANK - RAM_BASE] and ram[PUB_SEQ - RAM_BASE] == ram[APP_SEQ - RAM_BASE]
     cut = int(sys.argv[sys.argv.index("--cut") + 1]) if "--cut" in sys.argv else None
     cut_removed = [0]
@@ -524,6 +555,9 @@ def main() -> int:
                 want = border[:3]
             elif hud_want is None:
                 continue                            # a HUD job is half written
+            elif (x, y) in busy:
+                busy_px += 1                        # (the message cell being drawn)
+                continue
             else:
                 want = bytes(hrgb[hud_want[y - HUD_TOP][x]])
             if sat_pending and y < VIEW and got != want:
@@ -550,6 +584,8 @@ def main() -> int:
         print(f"  cut at screen line {cut}: {cut_removed[0]} of RoboCop's and the spark's pixels below it left out")
     if hud_want is None:
         print("  HUD job pending: HUD not checked")
+    if busy:
+        print(f"  {busy_what}: its {busy_px} pixels not checked")
     if over:
         print(f"  {len(over)} lines with more than 8 sprites in the SAT shown (transient), their sprite pixels "
               f"not checked: {min(over)}..{max(over)}")

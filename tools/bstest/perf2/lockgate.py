@@ -2,8 +2,17 @@
 """lockgate.py BASE NEW [--partial]: G-LOCK, the LOCKSTEP display records of two builds (performance
 campaign 2's kit, docs/HARNESS.md section 12; docs/PERF2_PLAN.md 5.4): every record BASE holds (gates.tcl
 pf_lock_jobs: DIR/<run>_<tag>.txt with its .over) compared with NEW's by tools/dispcmp.py's rules (per list,
-the SAT, each shown entry's colour row and pattern, what the list records as shown; it stops where the
-displayed cameras differ). A record NEW lacks FAILs (--partial: listed, not judged).
+the SAT, each shown entry's colour row and pattern, what the list records as shown). A record NEW lacks
+FAILs (--partial: listed, not judged).
+
+The displayed cameras (each list's last two fields). The V9938's scroll engine moves the displayed camera
+in its idle time, which LOCKSTEP does not pin: a build whose CPU side takes another time can show a list
+with the camera one step behind or ahead (W2S's and W2C's kill_m2 against BASE: game frames 300 and 304,
+cam_x 1423 against 1428). tools/dispcmp.py stops at the first such list, which left 746 of kill_m2's 896
+lists unjudged; since batch 3 (docs/HARNESS.md 12.3) every list whose displayed cameras agree is compared
+(lane W2S's dispcam.py), and the lists whose cameras differ are counted apart, not compared. FAIL too when
+the cameras differ in more than CAM_MAX % of the common lists, or still differ at the last common list (a
+camera that never comes back: a shifted view would otherwise leave every list unjudged).
 
 Under LOCKSTEP=K a frame of two ticks starts every K VBLANKs whatever the CPU time; a frame that takes
 longer starts late (its .over file: "late N at GAME_FRAMES") and the record is exact only before it. The
@@ -18,6 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import dispcmp  # noqa: E402  (tools/dispcmp.py)
+
+CAM_MAX = 5.0           # % of the common lists whose displayed cameras may differ (each left uncompared)
 
 
 def late(path):
@@ -36,12 +47,12 @@ def compare(pa, pb):
     cut = min(late(pa) + late(pb), default=None)
     common = sorted(set(A) & set(B))
     judged = differ = after = 0
-    stop = None
+    cams = []
     first = None
     for gf in common:
         if A[gf][8:] != B[gf][8:]:
-            stop = gf
-            break
+            cams.append(gf)
+            continue
         x, y = dispcmp.shown(A[gf]), dispcmp.shown(B[gf])
         same = x == y
         if cut is not None and gf >= cut:
@@ -52,8 +63,16 @@ def compare(pa, pb):
             differ += 1
             if first is None:
                 first = gf
+    cam_bad = None
+    if cams and common and cams[-1] == common[-1]:
+        k = len(cams) - 1                       # (the stretch that reaches the end)
+        while k > 0 and common.index(cams[k - 1]) == common.index(cams[k]) - 1:
+            k -= 1
+        cam_bad = f"the displayed cameras differ from game frame {cams[k]} to the last list"
+    elif common and 100.0 * len(cams) / len(common) > CAM_MAX:
+        cam_bad = f"the displayed cameras differ in {len(cams)} of {len(common)} lists (more than {CAM_MAX:g} %)"
     return {'lists_a': len(A), 'lists_b': len(B), 'judged': judged, 'differ': differ, 'first': first,
-            'late_from': cut, 'after_late_differ': after, 'stop': stop}
+            'late_from': cut, 'after_late_differ': after, 'cams': cams, 'cam_bad': cam_bad}
 
 
 def main(argv):
@@ -80,15 +99,18 @@ def main(argv):
             continue
         judged += 1
         r = compare(pb, os.path.join(new, fn))
-        fail = r['differ'] > 0 or r['lists_b'] < r['lists_a']
+        fail = r['differ'] > 0 or r['lists_b'] < r['lists_a'] or r['cam_bad'] is not None
         bad += fail
         s = f"{fn}: {r['judged']} lists judged ({r['lists_a']} / {r['lists_b']}), {r['differ']} differ"
         if r['first'] is not None:
             s += f" (first at game frame {r['first']})"
         if r['late_from'] is not None:
             s += f"; a late frame at game frame {r['late_from']}: {r['after_late_differ']} lists after it differ (not judged)"
-        if r['stop'] is not None:
-            s += f"; stopped at game frame {r['stop']} (the displayed cameras differ)"
+        if r['cams']:
+            g = ', '.join(map(str, r['cams'][:8])) + (' ...' if len(r['cams']) > 8 else '')
+            s += f"; {len(r['cams'])} lists with other displayed cameras, not compared (game frames {g})"
+        if r['cam_bad']:
+            s += f"; {r['cam_bad']}"
         print(s + ('  FAIL' if fail else ''))
     if not judged:
         print("no record judged")

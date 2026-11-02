@@ -85,8 +85,8 @@ proc lp_setup {name dir rom labels drive n wins dt} {
 	debug set_bp $::lp_a(iv_take) {$::lp_on} lp_take
 	debug set_bp $::lp_a(cd_cap) {$::lp_on} lp_cad
 	set bf $::lp_a(BANK_FIELD)
-	debug set_bp $::lp_a(fcg_ld) "\$::lp_on && \[peek $::lp_a(act_a000)\] == $bf" [list lp_ev F]
-	debug set_bp $::lp_a(fcg_dn) "\$::lp_on && \[peek $::lp_a(act_a000)\] == $bf" [list lp_ev G]
+	debug set_bp $::lp_a(fcg_ld) "\$::lp_on && [pf_bankc $rom $::lp_a(fcg_ld) $bf]" [list lp_ev F]
+	debug set_bp $::lp_a(fcg_dn) "\$::lp_on && [pf_bankc $rom $::lp_a(fcg_dn) $bf]" [list lp_ev G]
 	set ::lp_pb [debug probe set_bp VDP.commandExecuting {$::lp_on} lp_ce]
 	if {$dt > 0} { set ::hz_afters [list [after time $dt lp_samp]] }
 	return "lp $name set"

@@ -688,3 +688,305 @@ pl_cellof:
         sub 7
         ld (p_col),a
         ret
+
+; ----- rc-edge: may the frame's ticks run? (player.asm rc_safe, for the cadence) -----
+
+; The logic's other moves of his x within a tick, besides his own step (pl_xstep's, RC_VX): rc_bound adds their
+; reach to the frame's growth on each side (docs/MSX_ARCHITECTURE.md "RoboCop at the picture's edge").
+RC_BELT:    equ 8                   ; level 1's conveyors carry him 4 px a tick (mapobj.asm act_cv; entries 15 and 16
+                                    ; of its object list are one belt twice: 8); its barriers' push (act_1c) and the
+                                    ; vehicle's ride (sp_vehicle) are 4
+RC_PUSH:    equ 8                   ; level 3's type 21 pushes him 8 px a tick (level3obj.asm obj_push): the way it
+                                    ; faces, and once it stands away from it (t21_st turns it to face him)
+RC_PUSHD:   equ 96                  ; ... a walker whose x is within this of his: its push zones (his x - its x
+                                    ; 28..43 facing right, -20..-5 facing left) and the frame's moves (his 3 px a
+                                    ; tick, its steps of up to 11 px every other tick: t21_step)
+RC_SNAPD:   equ 32                  ; a mount's entry within this of his x: its snap (rc_snap)
+
+; -> C when the view shown is the one the game wants (no lag: at the map's ends he may walk to its
+; edge), when RoboCop is not shown, or when his next picture keeps every opaque pixel on the columns
+; the VDP shows whatever the frame's ticks do: within k = min(B, RC_K) ticks his place moves at most
+; Gr to the right and Gl to the left (rc_grow: his steps, level 1's conveyors, level 3's type-21
+; walkers, a mount's snap) and his drawing reaches at most his state's rc_reach columns (gen/rcedge.inc,
+; tools/mkrom.py rcedge: from the sprite pool's pixels, the compositions of his state's records and those
+; any state starts with, against O_X - p_hotx), against SAT x 0-255 (the V9938's R#18 moves the sprites
+; with the picture: spr_xadj) or 8-255 (the V9958's MSK hides 0-7). NC with D = 0 (the cadence's tick
+; cap: none: the scroll catches up first) otherwise. B = the ticks due. Keeps BC.
+rc_bound:
+        ld hl,(v_x)
+        ld de,(cam_x)
+        or a
+        sbc hl,de
+        scf
+        ret z                       ; (no lag)
+        ld ix,obj_tab
+        bit 7,(ix+O_FLAGS)
+        scf
+        ret z                       ; (not shown)
+        push bc
+        ld a,b                      ; k = min(B, RC_K) ticks
+        cp RC_K
+        jr c,rcb_k
+        ld a,RC_K
+rcb_k:  ld b,a
+        call rc_grow                ; C = Gr, B = Gl
+        jr c,rcb_no                 ; (256 px or more: hold)
+        push bc
+        ld a,(p_state + 1)
+        or a
+        jr nz,rcb_ng                ; (a state the table lacks: hold)
+        ld a,(p_state)
+        cp RC_STATES
+        jr nc,rcb_ng
+        add a,a
+        ld e,a
+        ld d,0
+        ld hl,rc_reach
+        add hl,de
+        ld a,(hl)                   ; A = the leftmost column,
+        inc hl
+        ld b,(hl)                   ; B = the rightmost
+        push af
+        ld l,(ix+O_X)
+        ld h,(ix+O_X+1)
+        ld de,(p_hotx)
+        or a
+        sbc hl,de                   ; his place P
+        ld a,(spr_xadj)
+        ld e,a
+        rla
+        sbc a,a
+        ld d,a
+        add hl,de
+        ex de,hl                    ; DE = Q: his place in SAT x
+        ld l,b
+        ld a,b
+        rla
+        sbc a,a
+        ld h,a
+        add hl,de                   ; Q + the rightmost
+        ld a,c
+        add a,l
+        ld l,a
+        jr nc,rcb_r
+        inc h                       ; + Gr
+rcb_r:  ld a,h                      ; (at most 255: H 0, or negative)
+        or a
+        jr z,rcb_l
+        jp p,rcb_nf                 ; (past SAT x 255)
+rcb_l:  pop af
+        pop bc                      ; B = Gl
+        ld l,a
+        rla
+        sbc a,a
+        ld h,a
+        add hl,de                   ; Q + the leftmost
+        ld e,b
+        ld d,0
+        or a
+        sbc hl,de                   ; - Gl
+        ld a,(hud_msk)
+        or a
+        jr z,rcb_m
+        ld de,8
+        or a
+        sbc hl,de                   ; (the V9958: from SAT x 8)
+rcb_m:  bit 7,h
+        pop bc
+        jr nz,rcb_nd                ; (left of the first column)
+        scf
+        ret
+rcb_nf: pop af
+rcb_ng: pop bc                      ; (Gr, Gl)
+rcb_no: pop bc
+rcb_nd: ld d,0
+        or a
+        ret
+
+; B = k ticks -> C = Gr, B = Gl, NC: his place's largest move to the right and to the left within them: his step
+; a tick (rc_step) and the pushes that way (rc_push), times k, and a mount's snap that way (rc_snap); C when
+; either reaches 256 px.
+rc_grow:
+        call rc_snap                ; D = the snap right, E = left
+        push de
+        call rc_push                ; D = the pushes a tick right, E = left (keeps BC)
+        call rc_step                ; A = the step a tick (keeps BC, DE, HL)
+        ld c,a
+        add a,e
+        call rc_mulk                ; HL = (the step + the pushes left) x k
+        push hl
+        ld a,c
+        add a,d
+        call rc_mulk                ; HL = (the step + the pushes right) x k
+        pop de                      ; DE = the left one
+        pop bc                      ; B = the snap right, C = left
+        ld a,b
+        call rc_adda                ; HL = Gr
+        ex de,hl
+        ld a,c
+        call rc_adda                ; HL = Gl, DE = Gr
+        ld a,h
+        or d
+        scf
+        ret nz                      ; (256 px or more)
+        ld b,l
+        ld c,e
+        or a
+        ret
+
+; HL += A.
+rc_adda:
+        add a,l
+        ld l,a
+        ret nc
+        inc h
+        ret
+
+; HL = A x B (B = k: 0 gives 0). Keeps BC, DE.
+rc_mulk:
+        push bc
+        push de
+        ld e,a
+        ld d,0
+        ld hl,0
+        inc b
+        jr rmul_1
+rmul_l: add hl,de
+rmul_1: djnz rmul_l
+        pop de
+        pop bc
+        ret
+
+; -> A = his largest step a tick: RC_VX (pl_xstep's), in level 1 + RC_BELT (its conveyors). Keeps BC, DE, HL.
+rc_step:
+        ld a,(AG + 0x8050)          ; (the level, 0-2: the word's low byte)
+        or a
+        ld a,RC_VX + RC_BELT
+        ret z                       ; (level 1)
+        ld a,RC_VX
+        ret
+
+; -> D = the pushes his x may take to the right in a tick, E = to the left: in level 3, RC_PUSH for each type-21
+; walker (the enemy slots, objects.asm) whose x is within RC_PUSHD of his: to the right when it faces right or
+; he is right of it, to the left when it faces left or he is left of it. Keeps BC, IX.
+rc_push:
+        ld de,0
+        ld a,(AG + 0x8050)
+        cp 2
+        ret nz                      ; (levels 1 and 2)
+        push bc
+        push ix
+        ld ix,OBJ_SLOTS
+        ld b,(OBJ_END - OBJ_SLOTS) / 4
+rpu_lp: ld a,(ix+OS_TYPE)
+        cp 21
+        jr nz,rpu_n
+        push de
+        ld e,(ix+OS_X)
+        ld d,(ix+OS_X+1)
+        ld hl,(p_x)
+        or a
+        sbc hl,de                   ; his x - its x
+        ld de,RC_PUSHD
+        add hl,de                   ; (within RC_PUSHD: 1 .. 2 RC_PUSHD - 1)
+        pop de
+        ld a,h
+        or a
+        jr nz,rpu_n
+        ld a,l
+        or a
+        jr z,rpu_n
+        cp 2 * RC_PUSHD
+        jr nc,rpu_n
+        ld c,a                      ; C = his x - its x + RC_PUSHD
+        ld a,(ix+OS_FACE)
+        or a
+        jr z,rpu_r                  ; (facing right)
+        ld a,c
+        cp RC_PUSHD
+        jr c,rpu_l                  ; (facing left, he left of it: to the left only)
+rpu_r:  ld a,d
+        add a,RC_PUSH
+        ld d,a                      ; (to the right)
+        ld a,(ix+OS_FACE)
+        or a
+        jr nz,rpu_l                 ; (facing left: to the left as well)
+        ld a,c
+        cp RC_PUSHD
+        jr nc,rpu_n                 ; (facing right, he right of it: to the right only)
+rpu_l:  ld a,e
+        add a,RC_PUSH
+        ld e,a                      ; (to the left)
+rpu_n:  push de
+        ld de,4
+        add ix,de                   ; (the next slot)
+        pop de
+        djnz rpu_lp
+        pop ix
+        pop bc
+        ret
+
+; -> D = a mount's snap of his x to the right within the frame, E = to the left (none: 0, 0), for an entry of
+; the lifts table (special.asm sp_entry) within RC_SNAPD px of his x: a trolley's (10h wide; level 2,
+; sp_trolley: his x becomes its left once he hangs, up to 15 px left, with the landing tick's step of 2 either
+; way) he does not hang on yet (state 14/15): 4 and 14h; the vehicle's (36h wide; level 1, sp_vehicle: its
+; left + 12h once he rides, up to 18 px right or 35 left) he did not ride at the last tick ($16D8): 14h and 28h.
+; A lift's entry (30h wide) moves him in y only. Keeps BC, HL, IX.
+rc_snap:
+        push hl
+        push bc
+        push ix
+        ld ix,lifts
+        ld b,4
+rsn_lp: ld l,(ix+8)
+        ld h,(ix+9)                 ; its right edge (0: an empty entry)
+        ld a,h
+        or l
+        jr z,rsn_n
+        ld e,(ix+0)
+        ld d,(ix+1)                 ; DE = its left edge
+        or a
+        sbc hl,de                   ; its width
+        ld a,h
+        or a
+        jr nz,rsn_n
+        ld c,l
+        ld a,l
+        cp 0x10
+        jr z,rsn_t
+        cp 0x36
+        jr nz,rsn_n                 ; (a lift's)
+        ld a,(AM + (0x16D8 ^ 1))
+        or a
+        jr nz,rsn_n                 ; (the vehicle he rides)
+        jr rsn_d
+rsn_t:  ld a,(p_state)
+        and 0xFE
+        cp 14
+        jr z,rsn_n                  ; (the trolley he hangs on)
+rsn_d:  ld hl,(p_x)
+        or a
+        sbc hl,de
+        ld de,RC_SNAPD
+        add hl,de                   ; his x - its left + RC_SNAPD: within reach 0 .. width + 2 RC_SNAPD - 1
+        ld a,h
+        or a
+        jr nz,rsn_n
+        ld a,c
+        add a,2 * RC_SNAPD - 1
+        cp l
+        jr c,rsn_n                  ; (beyond)
+        ld de,0x0414                ; (the trolley's: 4 right, 14h left)
+        ld a,c
+        cp 0x10
+        jr z,rsn_x
+        ld de,0x1428                ; (the vehicle's: 14h right, 28h left)
+        jr rsn_x
+rsn_n:  inc ix
+        inc ix
+        djnz rsn_lp
+        ld de,0
+rsn_x:  pop ix
+        pop bc
+        pop hl
+        ret

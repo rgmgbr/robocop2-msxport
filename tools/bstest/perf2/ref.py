@@ -13,7 +13,9 @@ check's classes, the speed of a window): they scatter, because the game's pictur
 A gate folder's controls are its subfolders ctl/<name>/, in the gate folder's own layout
 (BASE/speed/ctl/ct1/kill_m2_ticks.txt, BASE/field/ctl/ct1/kill300_m2/ ...). A verdict judges NEW
 against the range BASE and its controls span (docs/HARNESS.md 12.2); with no controls, against BASE
-alone as before.
+alone as before. The speed folder may also hold trajectory controls (BASE/speed/traj/<name>/: more
+timing controls, recorded on the kill drive only), which win.py adds to the reference of the window it
+judges per trajectory (the ground floor: docs/HARNESS.md 12.3).
 
 The drives (gates.tcl ::pf_drives): each run's drive file in build/emu, its teleports (the file's second
 line, "tick:x:y ..."): the test drive pokes RoboCop's place and the camera at those game frames, and the
@@ -44,6 +46,18 @@ TELE_TICKS = 2          # a teleport's stall: the tick intervals from its game f
 def controls(d):
     """the timing controls' folders of gate folder d (d/ctl/<name>/), sorted by name"""
     c = Path(d) / 'ctl'
+    if not c.is_dir():
+        return []
+    return [p for p in sorted(c.iterdir()) if p.is_dir()]
+
+
+def trajectory_controls(d):
+    """the trajectory controls' folders of a speed folder d (d/traj/<name>/, sorted by name): more timing
+    controls of BASE, recorded only on the drives of win.py's windows judged per trajectory (the ground
+    floor, kill 1500-1765: win.py CLASSIFIED), so that the reference set holds runs of every trajectory a
+    decision-identical build can take there (docs/HARNESS.md 12.3). A run one of them lacks is not judged
+    against it; the whole controls (d/ctl/) stay what every window needs."""
+    c = Path(d) / 'traj'
     if not c.is_dir():
         return []
     return [p for p in sorted(c.iterdir()) if p.is_dir()]
@@ -104,6 +118,8 @@ def main(argv):
         d = Path(argv[0]) / g
         if d.is_dir():
             print(f"{g}: {d}; controls: {', '.join(p.name for p in controls(d)) or 'none'}")
+            if trajectory_controls(d):
+                print(f"{g}: trajectory controls: {', '.join(p.name for p in trajectory_controls(d))}")
     for name in DRIVES:
         print(f"{name}: {DRIVES[name][0]}, {DRIVES[name][1]} rows, teleports {teleports(name) or '-'}")
     return 0
