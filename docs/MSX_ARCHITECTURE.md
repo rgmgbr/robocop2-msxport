@@ -592,7 +592,15 @@ which as sprites were striped, cut or left out.
       change queued before the sync began brings that page to the list there; its cells waiting for the
       BOBs among them).
     Every rectangle done, the marker (`fs_mark`: `fb_bsync` once `fn_take` takes it, then the flip may
-    come). The tiles the scroll engine draws on that page from the sync's start meet its list
+    come). `fn_take` takes it in the same `fb_work` call as `fb_go` started the sync's last copy, which runs
+    for tens of ms (an HMMM from page to page, not a 64 x 64 piece): so at a flip `fb_frame` waits for the
+    VDP (`vdp_wait`; not at the first picture since `fb_init`, `fb_vlast` FFh) before the picture that shows
+    the page is published, and no command started while the page was hidden (at any time) still writes it
+    when that picture goes on screen. Until the lane's review a list went in with a copy unfinished in 18 of
+    70 runs on C-BIOS_MSX2 and the Expert (kill's and boss's with timing controls among them), 19 times, 5
+    of them with bytes still old: at most 9.6 ms and 20 lines of a 176 x 79 copy on `l3_boss`, the beam
+    behind the copy in those runs. The tiles the scroll engine draws on that page from the sync's start
+    meet its list
     (`tiles.asm` `fb_mark38` tests `fb_bsq`: a cell item of that page; until then such a tile went into
     `fb_bb`, which the sync had already taken). A new target without a flip (the view turned back,
     `fb_bbinit`) drops the page being built's work for the target before: a copy of the sync prepared and

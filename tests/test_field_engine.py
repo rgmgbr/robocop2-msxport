@@ -311,6 +311,17 @@ class V9938SyncTests(unittest.TestCase):
     fn_take, after the page shown's published items), its list from the start (fb_bsq: tiles.asm fb_mark38's
     tiles on that page meet it), a change of the page shown meanwhile marks what it has not copied (fs_dirty)."""
 
+    def test_a_flip_waits_for_the_vdp(self):
+        # (the sync's last copy, started at any time while its page was hidden, may still run when the marker
+        #  lets the flip come: fb_frame's flip waits for the VDP before the picture that shows it is published)
+        f = code("field.asm", "fbf_38", "fbf_b")
+        k = f.index("call nz,vdp_wait")
+        self.assertEqual(f[k - 3:k + 2], ["ld b,(hl)", "ld (hl),a", "inc b", "call nz,vdp_wait", "ld a,(hl)"])
+        self.assertLess(k, f.index("call fq_purge"))      # (not at the first picture since fb_init: fb_vlast FFh)
+        main = code("rc2.asm", "mainloop", "ml_tk")
+        self.assertLess(main.index("call do_update"), main.index("ld hl,fb_frame"))
+        self.assertLess(main.index("ld hl,fb_frame"), main.index("call do_publish"))
+
     def test_the_hooks(self):
         self.assertEqual(code("field.asm", "fb_next", "fn_take"),
                          ["ld a,(fb_qn)", "or a", "jr nz,fn_take", "xor a", "ld (fb_qlk),a", "or 1", "ret"])

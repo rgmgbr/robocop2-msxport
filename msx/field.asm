@@ -120,7 +120,13 @@ fbf_38: ld a,(s38_vis_page)
         ld hl,fb_vlast
         cp (hl)
         jr z,fbf_b
+        ld b,(hl)                   ; (FFh: the first picture since fb_init, no flip)
         ld (hl),a                   ; a flip: the page hidden now is built again from the other
+        inc b
+        call nz,vdp_wait            ; (the commands that started while the page now shown was hidden,
+        ld a,(hl)                   ;  at any time, end before the picture that shows it is published:
+                                    ;  the sync's last copy, ending.asm fs_copy, an HMMM of tens of ms,
+                                    ;  may still run when its marker lets the flip come)
         xor 1
         push af
         call fb_dnp
