@@ -767,6 +767,89 @@ si_col: push bc
         jp scroll_publish
 
 
+        if CAM38
+; ----- CAM38 (tools/mkrom.py): the MSX2's camera, for the user's choice (scroll9938.asm, player.asm) -----
+; The V9938 engine shows the view the game wants (v_x) but for its page's edge: while the next page is built the
+; view waits there, and the flip shows it 16 px further at once (RoboCop walks on in the picture, then the view
+; throws him back). 1 (lock): the view shown catches up at most CAM_K px a picture faster than the game's view
+; (s38_glide), and the ticks wait while it lags CAM_LK px or more (cam_lock): RoboCop stays where the game's
+; camera puts him, the scene waits for the page instead. The V9958 as always.
+CAM_K:      equ 4
+CAM_LK:     equ 4
+
+; The view shown in x (cam_x = v_x, s38_update) moves at most the game's view's step since the last picture +
+; CAM_K px from the last picture's (sp_cam_x); a jump of the game's view (64 px or more from the view shown: a
+; level's start, a teleport) is shown at once. The page's own hold comes after it, as always.
+s38_glide:
+        ld hl,(v_x)
+        ld de,(s38_lv)
+        ld (s38_lv),hl
+        or a
+        sbc hl,de
+        call sg_abs                 ; HL = the game's view's step
+        ld a,h
+        or a
+        ret nz                      ; (a jump)
+        ld a,l
+        add a,CAM_K
+        ret c
+        ld c,a                      ; C = the most the view shown moves now
+        ld hl,(v_x)
+        ld de,(sp_cam_x)
+        or a
+        sbc hl,de                   ; HL = v_x - the view shown last
+        ld b,0                      ; (B = 0: v_x on its right)
+        jr nc,sg_r
+        inc b
+        call sg_neg
+sg_r:   ld a,h
+        or a
+        ret nz                      ; (a jump)
+        ld a,l
+        cp 64
+        ret nc                      ; (a jump)
+        cp c
+        ret c                       ; (within the step: v_x)
+        ld l,c
+        ld h,0
+        dec b
+        jr nz,sg_set
+        call sg_neg
+sg_set: add hl,de                   ; the view shown last + or - C
+        ld (cam_x),hl
+        ret
+sg_abs: bit 7,h
+        ret z
+sg_neg: xor a                       ; HL = -HL
+        sub l
+        ld l,a
+        sbc a,a
+        sub h
+        ld h,a
+        ret
+
+; The cadence (player.asm): E = 0 (D = 0) while the V9938 engine's view shown lags CAM_LK px or more behind the
+; game's in x: no tick (the view catches up first, RoboCop waits with the scene); else E = 1. Keeps BC.
+cam_lock:
+        ld de,1
+        ld a,(fb_eng)
+        or a
+        ret z                       ; (the V9958's ring: as always)
+        ld hl,(v_x)
+        ld de,(cam_x)
+        or a
+        sbc hl,de
+        call sg_abs
+        ld de,CAM_LK
+        or a
+        sbc hl,de
+        ld de,0
+        ret nc
+        inc e
+        ret
+        endif
+
+
 ; (scroll9938.asm)
 s38_init:
         xor a
@@ -781,6 +864,10 @@ s38_init:
         xor a
         ld (s38_vis_page),a
         ld (s38_flip_wait),a
+        if CAM38
+        ld hl,(v_x)                 ; (CAM38: the game's view's last step from here)
+        ld (s38_lv),hl
+        endif
         ld a,0xFF
         ld (s38_back_c0),a
         ld (s38_rq),a

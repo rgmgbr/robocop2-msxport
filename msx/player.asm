@@ -64,6 +64,13 @@ cd_set: ld c,a
         ld d,0                      ; none while the view shown is LAG_MAX pixels or more behind
         call cam_lag                ; the one the game wants, or lags at all with RoboCop at the
         jr nc,cd_cap                ; screen's edge (the scroll catches up first: he never runs off
+        if CAM38
+        ld hl,cam_lock              ; (CAM38: none while the V9938's view lags CAM_LK px or more in
+        call f2_call                ;  x: E = 0, D = 0; ending.asm)
+        inc e
+        dec e
+        jr z,cd_cap
+        endif
         call rc_safe                ; the screen), else at most CAD_MAX, CAD_HOLD while the V9938
         jr nc,cd_cap                ; scroll kept the camera at a page's edge (its next page comes
         ld d,CAD_MAX                ; sooner)

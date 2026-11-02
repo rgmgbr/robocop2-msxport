@@ -85,6 +85,10 @@ s38_update:
         ld (iw_more),a              ; (there may be work for s38_work from now on)
         ld hl,(v_x)
         ld (cam_x),hl
+        if CAM38
+        ld hl,s38_glide             ; (CAM38: the view shown catches up a few px a picture, ending.asm)
+        call f2_call
+        endif
         ld hl,(v_y)
         ld (cam_y),hl
         xor a
