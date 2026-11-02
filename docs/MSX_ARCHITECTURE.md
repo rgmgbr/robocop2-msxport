@@ -159,7 +159,10 @@ its sheet of blocks, page 2 its TV pictures (the tiles are uploaded again at its
   never has to change; the user's choice), the boxes that keep their OR layer being the same in
   every frame of an animation (summed gain; `robocop.json` "prefer"): 5.2 sprites on average. Per
   composition: a header (sprites, lines, bands, leftmost and rightmost dx, A sprites, most
-  sprites on a line at full quality and on one layer), the sprites in SAT order (per band, per
+  sprites on a line at full quality and on one layer, and since 2026-11-02 its bands with B
+  sprites, which `obj_set` copies into `O_BMASK` where it walked the band table, 81 T-states a
+  band: 405 for RoboCop's five; `COMP_HDR` 9, `SPR_COMP_HDR` in the pool's equates, a build with
+  an older conversion stops), the sprites in SAT order (per band, per
   box: A, then B), each with its offset, a park bit (B), an A1 bit (A: one colour per line,
   every pixel, shown when its band's OR layer is dropped) and the ids of its pattern, colour row
   and A1 versions; then the **band table** (from the lowest band up: dy, A and B sprites,

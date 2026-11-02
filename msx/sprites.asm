@@ -57,7 +57,7 @@ O_EC:       equ 5                   ; 80h: its sprites use the early clock; bits
                                     ; version record)
 O_X:        equ 6                   ; 2 bytes: screen x of the composition's top-left
 O_Y:        equ 8                   ; 2 bytes: screen y
-O_NSPR:     equ 10                  ; composition header (COMP_HDR bytes): sprites,
+O_NSPR:     equ 10                  ; composition header (its first COMP_HDR - 1 bytes): sprites,
 O_NLINES:   equ 11                  ;   lines covered,
 O_NBANDS:   equ 12                  ;   bands,
 O_MINDX:    equ 13                  ;   leftmost and rightmost sprite dx,
@@ -76,7 +76,7 @@ O_TIER:     equ 25                  ; budget: 3 RoboCop (never touched), 2 the s
 O_GONE:     equ 26                  ;   sprites its dropped bands remove,
 O_OUT:      equ 27                  ;   1: left out this tick,
 O_HOLD:     equ 28                  ;   a character's bands dropped for good (the total's last resort)
-O_BMASK:    equ 30                  ; its bands that have B sprites
+O_BMASK:    equ 30                  ; its bands that have B sprites (the header's last byte)
 LAY_SIZE:   equ 16                  ; version record (disp: shown; pend: being prepared):
 V_ON:       equ 0                   ;   80h: present,
 V_BANK:     equ 1                   ;   bank, composition (2), dropped columns, early clock and
@@ -110,8 +110,12 @@ BUD_MAX:    equ SAT_MAX - 2         ; the budget's total: entries 0-1 stay the s
 RC_HOLD:    equ 120                 ; VBLANKs RoboCop's largest recent sprite count holds (budget)
 RC_RUN:     equ 2                   ; RoboCop's first SAT entry
 PARK_LINE:  equ 200                 ; screen line of parked sprites (HUD: sprites off there)
-COMP_HDR:   equ 8                   ; composition: nspr, nlines, nbands, min dx, max dx, A sprites,
-                                    ; most sprites on a line, the same on one layer
+COMP_HDR:   equ 9                   ; composition: nspr, nlines, nbands, min dx, max dx, A sprites,
+                                    ; most sprites on a line, the same on one layer (as O_NSPR..
+                                    ; O_MONE), its bands with B sprites (O_BMASK; 2026-11-02)
+        if SPR_COMP_HDR != COMP_HDR
+COMP_HDR:                           ; (an error: the sprite pool's format is another one: make msx)
+        endif
 REC_SIZE:   equ 12                  ; sprite record: dy, dx, park bit, A1 bit, 4 words
 BAND_SIZE:  equ 4                   ; band table entry: dy, A sprites, B sprites, gain
 UP_TOTAL:   equ 400                 ; work per frame (units of about 100 T-states) that the HUD,
@@ -331,8 +335,11 @@ os_idx: add hl,de
         ld a,e
         add a,O_NSPR
         ld e,a                      ; (an obj_tab entry does not cross a 256-byte boundary)
-        ld bc,COMP_HDR
-        ldir                        ; the header; HL = first sprite record
+        ld bc,COMP_HDR - 1
+        ldir                        ; the header,
+        ld a,(hl)
+        ld (ix+O_BMASK),a           ; its bands with B sprites (the converter's, where a walk of the
+        inc hl                      ; band table took 81 T-states a band); HL = first sprite record
         ld a,(ix+O_NSPR)
         ld e,a
         add a,a
@@ -342,28 +349,11 @@ os_idx: add hl,de
         ex de,hl
         add hl,hl
         add hl,hl                   ; *12
-        add hl,de                   ; rank list
-        ld d,0
+        add hl,de
         ld (ix+O_BANDT),l           ; its band table, after the records
         ld (ix+O_BANDT+1),h
         ld a,1
         ld (bu_dirty),a             ; (the budget looks at the composition)
-        ld b,(ix+O_NBANDS)
-        ld c,0
-        ld e,1
-os_bm:  inc hl                      ; the bands with B sprites
-        inc hl
-        ld a,(hl)
-        or a
-        jr z,os_bn
-        ld a,c
-        or e
-        ld c,a
-os_bn:  inc hl
-        inc hl
-        sla e
-        djnz os_bm
-        ld (ix+O_BMASK),c
         set 7,(ix+O_FLAGS)
         call fl_on                  ; (the plan's look visits it: pl_fl)
 os_mode_set:

@@ -60,7 +60,9 @@ FORMAT (all little-endian words; banks relative to the first sprite bank):
                        db nspr, db nlines (end of the last sprite, from the top), db nbands,
                        db min dx, db max dx (signed: left edges of the leftmost and
                        rightmost sprites), db sprites of the one-layer version (A boxes),
-                       db most sprites on a line, db the same for the one-layer version
+                       db most sprites on a line, db the same for the one-layer version,
+                       db its bands with B sprites (band k: bit 1 << k, as below; msx/sprites.asm
+                       obj_set's O_BMASK: COMP_HDR = 9 header bytes, SPR_COMP_HDR in the .inc)
                        nspr x 12 bytes in SAT order (per band from the top, per box: A, then B):
                          db dy, db dx (signed), db park bit (B sprite: its band's bit, else 0),
                          db A1 bit (A sprite: its band's bit, else 0), dw pattern, dw colour,
@@ -122,6 +124,8 @@ from planar import write_png  # noqa: E402
 
 COLS, MAP_OFFSET = 160, 0x10000
 BANK = 0x2000
+COMP_HDR = 9      # a composition's header bytes (FORMAT; SPR_COMP_HDR in the .inc, msx/sprites.asm COMP_HDR):
+                  # 8 until 2026-11-02, the 9th the bands with B sprites (O_BMASK, no longer walked at run time)
 PAIRS = [(p, q) for p in range(1, 8) for q in range(p + 1, 8)]           # RoboCop: OR-closed 1..7
 PAIRS_ALL = [(p, q) for p in range(1, 16) for q in range(p + 1, 16)]     # BOBs: any two colours
 FLASHES = (0x100B0, 0x10092, 0x100CE, 0x100EC, 0x10074, 0x1010A)  # $F80E's palettes, PAL_ENEMYHIT..PAL_REVERSE
@@ -1175,8 +1179,10 @@ def encode(lay: list[tuple[int, list[dict]]], pats: "Pool", cols_pool: "Pool") -
     nlines = max(y for _, y, *_ in sprites) + 16
     dxs = [x for x, *_ in sprites]
     n_a = sum(1 for s in sprites if not s[2])
-    out = bytearray(struct.pack("<BBBbbBBB", len(sprites), nlines, nb, min(dxs), max(dxs), n_a,
-                                max_per_line(lay), max_per_line(lay, False)))
+    bmask = sum(1 << (nb - 1 - j) for j, (_, _, nbb, _) in enumerate(table) if nbb)   # (band k from the lowest)
+    out = bytearray(struct.pack("<BBBbbBBBB", len(sprites), nlines, nb, min(dxs), max(dxs), n_a,
+                                max_per_line(lay), max_per_line(lay, False), bmask))
+    assert len(out) == COMP_HDR
     for x, y, pbit, abit, p, c, p1, c1 in sprites:
         out += struct.pack("<bbBBHHHH", y, x, pbit, abit, p, c, p1, c1)
     for y, na, nbb, g in reversed(table):
@@ -1436,6 +1442,7 @@ class SpriteData:
     def __init__(self, bin_path: Path, inc_path: Path):
         self.data = bin_path.read_bytes()
         self.inc = read_inc(inc_path)
+        self.hdr = self.inc.get("SPR_COMP_HDR", 8)     # (a pool converted before 2026-11-02: 8, no band mask)
 
     def entry(self, n: int) -> int:
         """Index entry n (RoboCop's from 0, the BOBs' from (SPR_BOB_INDEX - 8000h) / 3) -> its
@@ -1448,13 +1455,16 @@ class SpriteData:
         return self.entry(idx // 3 + k)
 
     def record(self, o: int) -> dict:
-        """The composition at o: its header, sprites (dy, dx, park bit, A1 bit, pattern, colour,
-        pattern A1, colour A1), bands (dy, A, B, gain) and its bands as converted layouts (per
-        band: dy, boxes with x, full and fallback looks: msxframe.py's layouts)."""
+        """The composition at o: its header (the first 8 bytes), its bands with B sprites (bmask:
+        the 9th byte; computed from the bands, as msx/sprites.asm obj_set did, in an older pool),
+        sprites (dy, dx, park bit, A1 bit, pattern, colour, pattern A1, colour A1), bands (dy, A, B,
+        gain, from the lowest) and its bands as converted layouts (per band: dy, boxes with x, full
+        and fallback looks: msxframe.py's layouts)."""
         d = self.data
         nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1 = struct.unpack_from("<BBBbbBBB", d, o)
-        sprites = [struct.unpack_from("<bbBBHHHH", d, o + 8 + 12 * i) for i in range(nspr)]
-        bands = [struct.unpack_from("<bBBB", d, o + 8 + 12 * nspr + 4 * j) for j in range(nb)]
+        sprites = [struct.unpack_from("<bbBBHHHH", d, o + self.hdr + 12 * i) for i in range(nspr)]
+        bands = [struct.unpack_from("<bBBB", d, o + self.hdr + 12 * nspr + 4 * j) for j in range(nb)]
+        bmask = d[o + 8] if self.hdr > 8 else sum(1 << k for k, (_, _, nbb, _) in enumerate(bands) if nbb)
         pat0, col0 = self.inc["SPR_PAT_BANK"] * BANK, self.inc["SPR_COL_BANK"] * BANK
 
         def bits(p: int) -> np.ndarray:
@@ -1478,8 +1488,8 @@ class SpriteData:
             if not lay or lay[-1][0] != dy:
                 lay.append((dy, []))
             lay[-1][1].append({"x": dx, "full": full.astype(np.uint8), "fallback": fb.astype(np.uint8)})
-        return {"header": (nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1), "sprites": sprites, "bands": bands,
-                "layout": lay}
+        return {"header": (nspr, nlines, nb, mindx, maxdx, n_a, ml, ml1), "bmask": bmask, "sprites": sprites,
+                "bands": bands, "layout": lay}
 
     def look(self, o: int, one_layer: bool = False) -> tuple[np.ndarray, int, int]:
         """The composition at o drawn (joint palette indices, 0 transparent) -> (image, y0, x0):
@@ -2187,6 +2197,7 @@ def pool_level2(a, level: "Level", pal: np.ndarray, comps: list, index: list, bl
     spark = lambda bl: next((f["id"] for f in bl if f.get("spark")), 0)  # noqa: E731
     p.with_suffix(".inc").write_text(
         "; generated by tools/msxsprites.py --pool: the global sprite pool of levels 1, 2" + (" and 3" if l3 else "") + "\n"
+        f"SPR_COMP_HDR: equ {COMP_HDR}                 ; a composition's header bytes (FORMAT)\n"
         f"SPR_PAT_BANK: equ {comp_banks}                 ; relative to the first sprite bank\n"
         f"SPR_COL_BANK: equ {comp_banks + pat_banks}\n"
         f"SPR_COMPS: equ {len(comps)}\nSPR_RECORDS: equ {len(level.records)}\n"
@@ -2532,6 +2543,7 @@ def main() -> int:
     a.out.with_suffix(".bin").write_bytes(data)
     a.out.with_suffix(".inc").write_text(
         "; generated by tools/msxsprites.py\n"
+        f"SPR_COMP_HDR: equ {COMP_HDR}                 ; a composition's header bytes (FORMAT)\n"
         f"SPR_PAT_BANK: equ {comp_banks}                 ; relative to the first sprite bank\n"
         f"SPR_COL_BANK: equ {comp_banks + pat_banks}\n"
         f"SPR_COMPS: equ {len(comps)}\nSPR_RECORDS: equ {len(level.records)}\n"

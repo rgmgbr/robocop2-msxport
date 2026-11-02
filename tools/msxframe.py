@@ -53,7 +53,8 @@ the objects of its tick while the screen shows none or the set before (docs/leve
 
 Per level (--sprites POOL --level N): the sprite objects' looks come from the global pool of
 tools/msxsprites.py --pool (POOL.bin, .inc), the records the ROM holds, decoded (level N's BOB
-index; RoboCop's is both levels'), and the silhouettes from level N's colour rows; without it they
+index; RoboCop's is both levels'; msxsprites.SpriteData reads either composition header, the .inc's
+SPR_COMP_HDR: 9 bytes since 2026-11-02, 8 before), and the silhouettes from level N's colour rows; without it they
 are level 1's, converted again from build/msx/robocop.json as tools/msxsprites.py cut them.
 
 usage: msxframe.py SNAPDIR LEVEL_PREFIX HUD_PREFIX OUT.png [--sprites POOL --level N] [--field] [--cut LINE]
