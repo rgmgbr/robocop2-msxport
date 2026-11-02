@@ -9,7 +9,9 @@
 #                            field commands prepared (fb_issue) since the last fb_wants, then the list
 #                            (frame:x:y:owner, comma-separated)
 #   B time                   fbb_df: a BOB put off because the VDP was busy (fc_get / fb_dyn refused)
-# Banked addresses conditioned on act_a000 = BANK_FIELD; RAM addresses from the build's labels. A label the
+# Banked addresses taken while the cartridge maps BANK_FIELD there (m3.tcl pf_bankc: the ROM's romblocks,
+# not act_a000, which the VBLANK sound player's bank switch leaves behind); RAM addresses from the build's
+# labels. A label the
 # build lacks leaves its event out (noted as an "N label missing" line). Compare logs with flcmp.py.
 #   fl_jobs DIR ROM LABELS DRIVE N TAG TAGS   DIR/fl_<TAG>_<tag>.txt per machine of TAGS ({tag machine ...})
 # No exit, vwait, max, min; one file, closed.
@@ -26,11 +28,9 @@ proc fl_setup {out rom labels drive n} {
 	set ::fl_fbh [pf_lab fb_hold 0xF1EB]
 	set ::fl_fbn [pf_lab fb_n 0x1F9C]
 	set ::fl_fbnew [pf_lab fb_new 0x1F9D]
-	set aa [pf_lab act_a000 0xC07D]
 	set lv [pf_lab lv_cur 0xF1A0]
 	debug set_bp $ts "\[peek $ts\] == 0xCD && \[rc2_w [expr {$ts + 1}]\] == $gt && \[peek $lv\] == [pf_lab BANK_L3]" {lappend ::fl_log "T [rc2_w $::fl_tn] [machine_info time]"}
 	set bf [pf_lab BANK_FIELD]
-	set c "\[peek $aa\] == $bf"
 	foreach {lb cmd} {
 		fcg_ld {lappend ::fl_log "U [machine_info time] [format %d [expr {[reg bc] >> 8}]] [format %d [expr {[reg bc] & 255}]] [format %d [expr {[reg de] & 255}]]"}
 		fcg_dn {lappend ::fl_log "D [machine_info time]"}
@@ -39,7 +39,7 @@ proc fl_setup {out rom labels drive n} {
 		fb_wants fl_wants
 		fb_issue {incr ::fl_cmds}} {
 		if {[info exists ::pf_L($lb)]} {
-			debug set_bp $::pf_L($lb) $c $cmd
+			debug set_bp $::pf_L($lb) [pf_bankc $rom $::pf_L($lb) $bf] $cmd
 		} else {
 			lappend ::fl_log "N $lb missing"
 		}

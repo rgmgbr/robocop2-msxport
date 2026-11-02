@@ -14,9 +14,13 @@ teleport T of the drive) are left out.
   holds.py --table DIR [--json OUT] every run in DIR (DRIVE_TAG, m3.tcl's names) over its whole drive
   holds.py --gate BASE NEW         every judged run of BASE (the baseline's records; kill, boss, tour3,
                                    l2tour): FAIL when NEW's FB_HOLD pictures over the whole drive exceed
-                                   the highest count of BASE and its timing controls (BASE/ctl/<name>/:
-                                   ref.py) by more than their spread (highest - lowest) and at least by
-                                   SLACK (2) pictures:  NEW > highest + max(spread, SLACK); without
+                                   the highest count of BASE, its timing controls (BASE/ctl/<name>/:
+                                   ref.py) and the trajectory controls that have the run (BASE/traj/,
+                                   batch 3) by more than their spread scaled to the reference's size and
+                                   at least by SLACK (2) pictures: NEW > highest + max(spread x 4 / N,
+                                   SLACK), N the reference's runs (N = 4, BASE and three controls: batch
+                                   2's highest + max(spread, SLACK); the more runs, the more of the tail
+                                   the highest already holds: docs/HARNESS.md 12.3); without
                                    controls, when they exceed BASE's (batch 1's rule, per minute then);
                                    when NEW's run does not span BASE's ticks (a run that ended early), or
                                    when NEW lacks the run (--partial: listed, not judged); a gate that
@@ -90,12 +94,21 @@ def table(d, hold, emu=None, strict=False):
     return res
 
 
+def threshold(vals):
+    """the reference's FAIL threshold: highest + max(spread x 4 / N, SLACK) (batch 2's highest + max(spread,
+    SLACK) for N = 4)"""
+    lo, hi, sp = ref.span(vals)
+    return hi + max(sp * 4 / max(len(vals), 4), SLACK)
+
+
 def gate(base_dir, new_dir, hold, partial, emu=None, strict=False):
     base, new = table(base_dir, hold, emu, strict), table(new_dir, hold, emu, strict)
     ctls = [(c.name, table(str(c), hold, emu, strict)) for c in ref.controls(base_dir)]
+    trajs = [table(str(c), hold, emu, strict) for c in ref.trajectory_controls(base_dir)]
     if ctls:
-        print(f"reference: BASE and its controls {', '.join(n for n, _ in ctls)} (whole drives; NEW above "
-              f"highest + max(spread, {SLACK}) FAILs)")
+        print(f"reference: BASE and its controls {', '.join(n for n, _ in ctls)}"
+              f"{f' and {len(trajs)} trajectory controls (the runs they have)' if trajs else ''} (whole drives; NEW "
+              f"above highest + max(spread x 4 / runs, {SLACK}) FAILs)")
     else:
         print("reference: BASE alone (no controls: more FB_HOLD pictures a minute than BASE FAILs)")
     bad = judged = 0
@@ -115,9 +128,11 @@ def gate(base_dir, new_dir, hold, partial, emu=None, strict=False):
             why = f"  FAIL: the controls {', '.join(n for (n, _), c in zip(ctls, cs) if not c)} lack the run"
         if ctls and not why:
             vals = [b['fb_hold']] + [c['fb_hold'] for c in cs]
-            lo, hi, sp = ref.span(vals)
-            thr = hi + max(sp, SLACK)
-            rt = f"reference {lo}-{hi} ({', '.join(str(v) for v in vals)}), FAIL above {thr}"
+            tv = [t[name]['fb_hold'] for t in trajs if name in t and (t[name]['from'], t[name]['to']) == (b['from'], b['to'])]
+            lo, hi, sp = ref.span(vals + tv)
+            thr = threshold(vals + tv)
+            rt = (f"reference {lo}-{hi} ({', '.join(str(v) for v in vals)}"
+                  f"{f'; {len(tv)} trajectory controls {min(tv)}-{max(tv)}' if tv else ''}), FAIL above {thr:g}")
             if r['fb_hold'] > thr:
                 why = '  FAIL'
         elif not why:

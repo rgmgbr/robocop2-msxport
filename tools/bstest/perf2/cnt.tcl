@@ -3,7 +3,10 @@
 #
 #   cnt_job NAME MACHINE DIR ROM LABELS DRIVE N ?NAMES? ?MAP?
 #     NAMES: labels to count, each "label" (fixed area or RAM) or "label@BANK" (banked code: the breakpoint
-#     counts only while act_8000 or act_a000, as the address says, holds the bank label's value), e.g.
+#     counts only while the cartridge maps the bank label's block at the label's address, the ROM's
+#     "romblocks" debuggable, cen.tcl pf_bp: exact however the bank was mapped; act_8000 / act_a000's test
+#     also counted the VBLANK sound player's passes over the same address in its own bank, which writes
+#     the bank register without them, sound.asm snd_bk), e.g.
 #     {map_write get_tile fb_inval@BANK_FIELD lt2_off@BANK_L3 tur_put@BANK_L3B}
 #     -> DIR/NAME_cnt.txt: "# tick time NAMES", then per tick "tick_n time c1 c2 ..." (cumulative)
 #     MAP 1 (default) -> DIR/NAME_map.txt: at the tick_start of every tick_n multiple of 100 (before the
@@ -36,9 +39,7 @@ proc cnt_setup {name dir rom labels drive n names map} {
 		lassign [split $k @] lb bk
 		set a [pf_lab $lb]
 		if {$bk ne ""} {
-			set bv [pf_lab $bk]
-			set port [expr {$a >= 0xA000 ? $::m3_aa : $::m3_a8}]
-			debug set_bp $a "\[peek $port\] == $bv" [list incr ::cnt($k)]
+			pf_bp $rom $a [list incr ::cnt($k)] [list [pf_lab $bk]]
 		} else {
 			if {$a >= 0x8000 && $a < 0xC000} { error "cnt: $lb is banked code ([format %04X $a]): count it as $lb@BANK" }
 			debug set_bp $a {} [list incr ::cnt($k)]
