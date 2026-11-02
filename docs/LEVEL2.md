@@ -1010,7 +1010,7 @@ bench (4.1). What each new routine becomes:
 | Amiga | Port | Bank | Notes |
 |---|---|---|---|
 | `$871A` (level 2's part) | `l2_init` | `BANK_L2` | copies the lists (`lv_fresh`), the vat phases and `vat_shown`'s start (the static map's look of each of the 103 columns, a table `tools/mapcells.py` derives: fresh starts only), reads the header fields into AM and `AC_VARS` (timer 7:30, delay 2Eh, mask 7, the start, the relocation target, `$F89D` = Ah) as `l1_init` does |
-| `$8F02` | `sp_trolley` | LC3 | its own window (1B0h, 118h) beside `sp_seen` (1A0h, C4h); never at rest; **`sp_d7` = BCh** after its BOB (Q3); its BOB in the field's `fb_late` group, as the lift's |
+| `$8F02` | `sp_trolley` | LC3 | its own window (1B0h, 118h) beside `sp_seen` (1A0h, C4h); never at rest (`sp_update`'s dispatch tests handler 4 first: performance campaign 2's logic-6); **`sp_d7` = BCh** after its BOB (Q3); its BOB in the field's `fb_late` group, as the lift's |
 | `$9150` | `hz_update` + one line | LC3 | `vat_cut_line` = CAh every tick |
 | `$91BC` | **`lt1`** | `BANK_L2` | the phases exact (46 B, Q4); per column it stores the row-table index d / 2 (`vat_shown`, 103 B) and marks the vat changed; **no `map_write` for the 604 cells**; the cut line; the death |
 | `$9EE8` | `act_0c` | LC2 | after `ao_copy`, when the look is `$A4A2`, writes cell (c0 + 2, r0) with the word from the game frame (`map_write_lin`: one patch per mine, 4 cells in all, among the 289 the pools count) |
@@ -1704,7 +1704,7 @@ requests, while the original applies it to every effect (2.12).
 | `tools/msxconv.py` | as is (`--rows 50 --joint` palette C); the docstring's 432 slots → 256 |
 | `tools/msxlvpal.py` (new, stdlib) | palette C from level 1's joint `.pal`/`.remap` and the two Amiga palettes; checks: entries 0-7 equal level 1's, entries 2, 3, 7 free of background colours, colour 0 black, mean ΔE ≤ option A's |
 | `tools/mapcells.py` | `--level`: level 2's object list, `act_0c`'s second word, the pools (146/143 of 255), the codes; the vats' own checks: attributes 0 in every vat word and vat cell, no object cell in a vat, every vat word's tile in the sheet. It leaves the vats out of the pools |
-| `tools/cellmasks.py` | `SW_MAX` 40, 5-byte masks; `cells_l2.inc` |
+| `tools/cellmasks.py` | `SW_MAX` 40, 5-byte masks; `cells_l2.inc`; the object list's y masks `ao_ym_l2` (44 entries, 6-byte masks) in `objmasks.inc` (`BANK_LC2`, `mapobj.asm` `ao_ykey`) |
 | `tools/amitab.py` | as is; `analysis/amiga_tables.tsv` gets bank `l2` (below) |
 | `tools/bobcatalog.py` | level 2's REA-verified frames; the table walk that stopped at the first repeated offset; BLTSIZE from a table; the type 4 / `$4ED26` scan errors dropped |
 | `tools/msxsprites.py` | one run for several levels: the global pool, per level the BOB index, ids, `FIELD_ID0`, `SPR_SPARK`, atlas, field tables, the `FIELD_*` sets; joint compositions; level 2's frames against palette C |

@@ -572,8 +572,36 @@ sc_yes: or 1
 ; The lift check ($BD72): on lift 3, 2, 1 or 0 (x in [left, right), y in (top - 15, top], not in
 ; the air going up) -> Carry, DE = top - 4, x moved by the lift's dx, its flag ($167A + index)
 ; set. The lifts' table (left, right, top, dx, index: 4 words each) is the special objects'.
+; (The port: special.asm sp_update clears every entry's right edge and fills entries 0, 1, ... from
+; $168C = 0 on, 2 a filled entry; with $168C below 8 the entries from $168C / 2 on keep right 0 and an
+; x not negative is right of them, so the loop starts at the last entry filled, or ends at once with
+; none: the loop's own result.)
 pl_lift:
-        ld b,4
+        ld hl,(AM + 0x168C)
+        ld a,h
+        or l
+        jr z,pli_0                  ; (no entry filled)
+        ld a,h
+        or a
+        jr nz,pli_go
+        ld a,l
+        cp 8
+        jr nc,pli_go                ; (four or more: every entry)
+        ld a,(p_x + 1)
+        rla
+        jr c,pli_go                 ; (x negative: every entry)
+        ld e,l
+        ld d,h
+        ld ix,lifts - 2
+        add ix,de                   ; the last entry filled
+        ld a,l
+        rrca
+        ld b,a                      ; the entries filled
+        jr pli_lp
+pli_0:  ld a,(p_x + 1)
+        rla
+        ret nc                      ; (NC: on no lift)
+pli_go: ld b,4
         ld ix,lifts + 6
 pli_lp: ld a,(p_air)
         or a

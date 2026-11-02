@@ -508,6 +508,7 @@ lc1_end:
         org 0x8000
         include "mapobj.asm"
         include "at_c2.inc"
+        include "objmasks.inc"      ; the object lists' camera-cell masks (tools/cellmasks.py)
 lc2_end:
         ds 0xA000 - lc2_end, 0xFF
 

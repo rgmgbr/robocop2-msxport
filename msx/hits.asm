@@ -201,6 +201,12 @@ phb_end:
 pht_lp: ld a,(ix+OS_TYPE)
         or a
         jp z,pht_nx
+        ld l,(ix+OS_X)              ; (the port: this test first, the type's size loaded only for
+        ld h,(ix+OS_X+1)            ;  the next ones; A keeps the type)
+        ld de,(ph_x1)
+        or a
+        sbc hl,de
+        jp p,pht_nx                 ; x >= D4
         ld l,a
         ld h,0
         add hl,hl
@@ -218,12 +224,6 @@ pht_lp: ld a,(ix+OS_TYPE)
         inc hl
         ld d,(hl)
         ld (ph_h),de
-        ld l,(ix+OS_X)
-        ld h,(ix+OS_X+1)
-        ld de,(ph_x1)
-        or a
-        sbc hl,de
-        jp p,pht_nx                 ; x >= D4
         ld l,(ix+OS_X)
         ld h,(ix+OS_X+1)
         ld de,(ph_w)

@@ -777,6 +777,45 @@ which as sprites were striped, cut or left out.
   every level bank holds right after the header at the same addresses (level 2's bank a copy
   with its labels suffixed, `tools/mkrom.py` `gen/lvshared_l2.asm`), so `objects.asm` and
   `special.asm` call it at level 1's addresses.
+- **More shortcuts (performance campaign 2's batch 2: logic-4 and logic-6, 2026-11-02)**, the same rule
+  (the logic and the map the original's tick for tick). (7) `activate_objects` passes by the candidates
+  whose y no camera y of the camera's 64-pixel cell brings into its window (y in camera y − 20h..AFh):
+  the original's visit of such an entry loads its look cache, its Amiga address, IY, x and y and ends at
+  the y test. `mapobj.asm` `ao_ykey`, after `ao_cands` and after `act_10`'s jump, flags them with bit 7
+  of their `ao_cand` byte from the level's masks (`tools/cellmasks.py` writes `gen/objmasks.inc` into
+  `BANK_LC2` beside `mapobj.asm`: per level `ao_ym_l1`, `_l2`, `_l3`, a mask of `AO_MB_<level>` bytes per
+  cell of camera y, 13 cells from y 0, from the routine's own 16-bit test at each of the cell's 64
+  camera positions: 104, 78 and 26 bytes; `tests/test_tools.py` checks that every entry the window holds
+  at any camera y has its bit), and only when the cell changed or `ao_cands` built the list again
+  (`ao_ykc`, the byte after the list's 60: the cell the flags are for, FEh none, FFh a camera outside the
+  cells, no flag). `ao_lp` passes a flagged candidate in 60 T-states (69 with the MSX's M1 wait
+  states) against 495-534 (547-591) for its visit, and a candidate it visits costs 14 (16) more; the
+  last candidate, flagged or not, is visited, its y test failing as before, so that `ao_curn`,
+  `ao_lkc`, `ao_a1`, IY, `ao_x`, `ao_y` and `ao_cnd` are left as the original's last visit leaves them.
+  The masks live in `BANK_LC2`, not in the level banks: level 2's bank has 28 bytes free in the
+  `VAT_ANIM=1` sets. No store reaches an entry's y (`objl_ram` +10/+11) after the level's copy. (8)
+  `plmove.asm` `pl_lift`: `sp_update` clears every entry's right edge and fills entries 0, 1, ... with
+  `$168C` 0, 2, ... (2 a filled entry), so with `$168C` below 8 the entries from `$168C` / 2 on have right 0
+  and `x < right` fails there for an x not negative: the loop starts at the last entry filled (its own
+  order, entry 3 first) and, with none filled, returns NC at once (64 T-states against about 950 for
+  four entries RoboCop is right of); `$168C` 8 or more or a negative x take every entry, as before. (9)
+  `sp_update`'s dispatch tests the trolleys (handler 4) first: 14 T-states less a trolley, 14 more the
+  vehicle, a lift the same. (Running a trolley at once, before the rest shortcut's flag and rest
+  lookups, was measured too: 81 T-states a tick less in `l2_tour`, but 73 and 74 more in `l3_kill` and
+  `l3_tour3` and 169 more in `drive_play`, whose lifts paid its test: not kept.) (10) `hits.asm` `pl_hits`
+  tests an enemy's x against the box's right edge before loading its type's size (a reorder: LC1's
+  bytes unchanged): 162 T-states less for each enemy at or right of that edge (`ph_w`, `ph_h`, read only
+  by the next tests, are loaded for the enemies that reach them). Measured on the FS-A1FX (the `EXTJOY`
+  drive builds, the CPU's T-states a tick inside each routine with the interrupts left out, against the
+  same builds of batch 1's tip): `activate_objects` 6,509 -> 5,227 in `l2_tour` (ticks 20-1589), 3,885 ->
+  3,447 in `l3_kill` (130-1764), 7,404 -> 7,111 in `drive_play` (40-1449), 2,430 -> 2,388 in `l3_tour3`
+  (0-1399) and 2,628 -> 2,598 in `l3_park` (40-1199); `pl_lift` 1,094 -> 522 (l2_tour, where a lift or a
+  trolley is nearly always seen: 1,092 when only the none-filled case returned at once), 1,061 -> 71
+  (kill), 1,053 -> 71 (drive_play), 1,053 -> 78 (park), 1,189 -> 416 (tour3); `pl_hits` 26 to 191 less;
+  `sp_update` 9,451 -> 9,388 in l2_tour; the four together 1,943 a tick less in l2_tour, 1,619 in kill,
+  941 in tour3, 1,085 in park and 1,442 in drive_play (`hz_update`, unchanged, within 3). A watch on every
+  store to an entry's y over `l3_tour3`,
+  `l3_park`, `l3_boss`, `l3_kill`, `l2_tour` and `drive_play`: none after the level's copy at tick 0.
 - **The cracked wall** (map object 25 of level 1, type 5Ch, activator `obj_relocate` `$9FC4`,
   `mapobj.asm` `act_10`): after 80 ticks of "up" in front of it RoboCop and the camera go to
   the level header's +20/+22 (`$15D6`/`$15D8`, set by `level1.asm` `l1i_hdr` as `level_init`

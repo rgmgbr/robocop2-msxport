@@ -287,7 +287,12 @@ slot_ref:   equ 0xCB00              ; 64: entries of shown or prepared versions 
 lk_cache:   equ 0xCB42              ; LK_CACHE_N x 2: per object-list entry the look last written
 LK_CACHE_N: equ 60                  ;   into the map (Amiga address; 0: none) (mapobj.asm)
 ao_cand:    equ 0xCBC0              ; up to 61: activate_objects' candidates (entry numbers, FFh
-                                    ; after the last; within one 256-byte page)
+                                    ; after the last; within one 256-byte page; bit 7 of an entry
+                                    ; set when its y is outside the window for the camera's y cell:
+                                    ; mapobj.asm ao_ykey), at most AO_MAX + 1 bytes, then:
+AO_MAX:     equ 59                  ;   the object list's entries at most (tools/cellmasks.py)
+ao_ykc:     equ ao_cand + AO_MAX + 1 ;  the y cell ao_cand's flags were made for (FEh: none;
+                                    ;   FFh: the camera outside the cells, no entry flagged)
 so_x:       equ 0xF380              ; 2 x 60: the object list's x sorted (page 3's BIOS area: free
 so_n:       equ 0xF400              ;   once the BIOS is not used), their entry numbers
 obj_tab:    equ 0xCC00              ; MAX_OBJ x 32 bytes (sprites.asm: O_...; 256-byte aligned)

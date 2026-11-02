@@ -615,7 +615,7 @@ Nothing to convert. Step D logs level 3's requests per tick on the three chip se
 | `tools/l3drives.py` (new, from `l2drives.py`) | the drives and references: `tour3` (the building, the beams, the lifts, a relocation), `park` (the car park: the truck, the turrets, types 37, 51), `boss` (the roof, the chase, Cain's projectiles), `kill` (Cain down and dead; the level's end), `cont3` (a game over with a credit), `flow_l3` (level 2's end into level 3) |
 | `analysis/amiga_ram_l3.tsv`, `tools/tracecmp.py --fields` | level 3's trace fields: `$B00-$16EB`, `$8000-$80FF` and `CODE_BLOCKS_L3` |
 | `tools/bstest/hz.tcl` (`hz_l3`), `openmsx_rc2.tcl` (`rc2_l3_arm`) | the MSX trace of `LV_TEST=3` builds, as `hz_l2` (*as built: `hz_l3`, `hz_l3_jobs`; `openmsx_rc2.tcl` unchanged, `rc2_l2_arm` arms at the next `lv_next`*) |
-| `tools/cellmasks.py` | `cells_l3.inc` (39 entries: `SW_MAX` 40 holds them) |
+| `tools/cellmasks.py` | `cells_l3.inc` (39 entries: `SW_MAX` 40 holds them); the object list's y masks `ao_ym_l3` (15 entries, 2-byte masks) in `objmasks.inc` (`BANK_LC2`, `mapobj.asm` `ao_ykey`) |
 | `tools/amitab.py` | `analysis/amiga_tables.tsv` bank `l3`: `spawn_l3`, `objl_l3`, `sp_l3`, `mk_tab3` (with `markers_off`), `hz_l3`, `beam2_*`, the types' tables, copies of the shared tables |
 | `tools/mapcells.py` | `--level 3`: the beams' and turrets' cells, `act_20`'s looks |
 | `tools/bobcatalog.py`, `tools/msxsprites.py`, `tools/msxframe.py`, `tools/recframes.py`, `tools/msxchooser.py` | level 3 (3.5) |

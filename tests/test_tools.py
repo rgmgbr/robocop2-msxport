@@ -131,6 +131,74 @@ class GameLogicToolTests(unittest.TestCase):
         inc_msx = (ROOT / "msx" / "msx.inc").read_text()
         self.assertRegex(inc_msx, rf"(?m)^SW_MAX:\s+equ {cellmasks.SW_MAX}\s")
         self.assertRegex(inc_msx, rf"(?m)^SW_MB:\s+equ {cellmasks.SW_MB}\s")
+        self.assertRegex(inc_msx, rf"(?m)^AO_MAX:\s+equ {cellmasks.AO_MAX}\s")
+
+    @staticmethod
+    def _ao_window(y, cy):
+        """msx/mapobj.asm ao_lp's y test step by step as the Z80 runs it: HL = y - camera y, then
+        HL - (-20h) (jp m: out), then HL - D0h (jp p: out), each sbc's sign from bit 15."""
+        hl = (y - cy) & 0xFFFF
+        hl = (hl + 0x20) & 0xFFFF
+        if hl & 0x8000:
+            return False
+        hl = (hl - 0xD0) & 0xFFFF
+        return bool(hl & 0x8000)
+
+    @staticmethod
+    def _ao_masks(inc, level):
+        """A level's object list y masks objmasks.inc defines (ao_ym_<level>, AO_MB_<level> bytes a cell)."""
+        import re
+        n = int(re.search(rf"(?m)^AO_N_{level}:\s+equ (\d+)", inc)[1])
+        mb = int(re.search(rf"(?m)^AO_MB_{level}:\s+equ (\d+)", inc)[1])
+        body = inc.split(f"\nao_ym_{level}:", 1)[1].split("\n")[1:]
+        masks = []
+        for line in body:
+            m = re.match(r"\s+db ((?:0x[0-9A-F]{2},?)+)", line)
+            if not m:
+                break
+            vals = [int(v, 16) for v in m[1].split(",")]
+            assert len(vals) == mb
+            masks.append(sum(v << (8 * i) for i, v in enumerate(vals)))
+        return n, mb, masks
+
+    def test_object_masks_hold_every_entry_the_window_can_reach(self):
+        # the model is ao_lp's test: y in camera y - 20h .. camera y + AFh, with the 16-bit edges
+        self.assertTrue(cellmasks.object_y(0x100, 0x120))         # 20h above: in
+        self.assertFalse(cellmasks.object_y(0x0FF, 0x120))        # 21h above: out
+        self.assertTrue(cellmasks.object_y(0x1CF, 0x120))         # AFh below: in
+        self.assertFalse(cellmasks.object_y(0x1D0, 0x120))        # B0h below: out
+        for y in (-0x40, -1, 0, 0x10, 0x7FF0, 0x8000 - 0x10):
+            for cy in (0, 0x20, 0x7FE0, 0x8000, 0xFFF0):
+                self.assertEqual(cellmasks.object_y(y, cy), self._ao_window(y, cy), (y, cy))
+        # a superset per cell, and no wider than the cell's own camera positions
+        ys = [0, 0x50, 0x100, 0x13F, 0x140, 0x2C0, 0x330]
+        inc = cellmasks.obj_inc_text([("l1", [0x100] * 9), ("l3", ys)], 13, "test")
+        self.assertRegex(inc, r"(?m)^AO_YN:\s+equ 13\s")
+        self.assertEqual(self._ao_masks(inc, "l1")[:2], (9, 2))
+        n, mb, masks = self._ao_masks(inc, "l3")
+        self.assertEqual((n, mb, len(masks)), (7, 1, 13))
+        for c, m in enumerate(masks):
+            for k, y in enumerate(ys):
+                reach = any(self._ao_window(y, cy) for cy in range(64 * c, 64 * c + 64))
+                self.assertEqual(bool(m >> k & 1), reach, (c, k))
+
+    @unittest.skipUnless(LEVEL1_RAM.exists(), "needs build/ram/level1_full.bin (make ram)")
+    def test_every_levels_object_masks_are_supersets_of_the_window(self):
+        rows = {r["label"]: r for r in amitab.parse(ROOT / "analysis" / "amiga_tables.tsv")}
+        img = LEVEL1_RAM.read_bytes()
+        for lv, count in (("l1", 59), ("l2", 44), ("l3", 15)):
+            ys = cellmasks.object_entries(img, rows[f"objl_{lv}"]["addr"])
+            self.assertEqual(len(ys), count, lv)
+            self.assertLessEqual(len(ys), cellmasks.AO_MAX)
+            inc = cellmasks.obj_inc_text([(lv, ys)], 13, "test")
+            n, mb, masks = self._ao_masks(inc, lv)
+            self.assertEqual((n, mb, len(masks)), (count, (count + 7) // 8, 13), lv)
+            for c, m in enumerate(masks):
+                for cy in range(64 * c, 64 * c + 64):
+                    for k, y in enumerate(ys):
+                        if self._ao_window(y, cy):
+                            self.assertTrue(m >> k & 1, f"{lv}: entry {k} (y {y}) in the window at camera y {cy}")
+                self.assertEqual(m >> count, 0, lv)     # (no bit past the list)
 
     def test_lvshared_copy_renames_labels_and_level_data(self):
         src = ("; a comment naming t3 and sw_xm stays\n"
