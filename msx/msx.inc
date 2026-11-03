@@ -330,6 +330,9 @@ j_jumpp:    equ 0xEDFF              ; j_jumpb of the game frame before (player.a
                                     ;   go only on a new press of trigger B (plmove.asm pm_14)
 j_stick:    equ 0xC5FE              ; nonzero: this game frame's bits are the joystick's (player.asm joy_read;
                                     ;   0 in INPUT_SCRIPT builds): a trolley's catch wins (plmove.asm pm_6)
+j_hang:     equ 0xC5FF              ; the game frames RoboCop has hung on a trolley, up to J_HANG (0 in other
+                                    ;   states): trigger B lets go only after them (plmove.asm pm_14)
+J_HANG:     equ 12                  ;   (about half a second)
 split_dly:  equ 0xE5A8              ; the split's delays on this machine (isr.asm split_cal, every
 split_dly2: equ 0xE5A9              ;   level start): before its blank, before its display-on
 sp_palp:    equ 0xE5AA              ; 2: the palette the split writes (SR_PAL; split_cal: pf_pal)
@@ -1119,7 +1122,7 @@ pf_pal:     equ 0xEA40              ; 32: the play field's palette (V9938 format
 ; (E100h-E4FFh: pat_slot; E5C0h-E6FFh: the split's RAM code; E700h-E7FFh: the slots' tables;
 ; E800h-E8FFh: bf_htab; EA22h-EA3Fh: SR_PAL; C0ECh-C0EEh, C0F2h-C0F3h (C2B6h-C2C1h and
 ; C2C5h-C2D8h: tune.asm's; C2D9h-C2FFh and C5D0h-C5F6h: the high scores' table since the ending's
-; step; C5F7h-C5FDh lb_st since 2026-11-02; C5FEh j_stick since 2026-11-03; C5FFh free), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
+; step; C5F7h-C5FDh lb_st since 2026-11-02; C5FEh j_stick and C5FFh j_hang since 2026-11-03), C6D5h-C6EFh and C6F1h-C6FEh (the bonus stages' while they run; the
 ; game's C68Ah-C6D4h lv_pal and lv_voffy, C6F0h fo_cont),
 ; F1CFh, F1E2h, F271h-F27Fh (below the stack): free (2026-10-24 audit; E0FEh-E0FFh and 074Bh: the
 ; V9938's sync, fb_sbi, fb_sdm, fb_bsq, since performance campaign 2's V9938-SYNC; ECF0h-ED0Fh:

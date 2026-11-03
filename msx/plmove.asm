@@ -48,14 +48,22 @@ pm_10:  ld a,(pm_d5)
         ld (pm_d0),a
         ld hl,g_joy
         res 4,(hl)
-pm_14:  ld a,(pm_d5)
+pm_14:  ld hl,j_hang
+        ld a,(pm_d5)
         cp 0x0E
-        jr nz,pm_8
-        ld a,(j_jumpp)              ; (the port: a new press of the joystick's trigger B does there
-        or a                        ;  what the Amiga's up does, as when crouching: up only aims, and
-        jr nz,pm_14u                ;  RoboCop hung on a level-2 trolley with no way down: the user's
-        ld a,(j_jumpb)              ;  report, 2026-11-02; B still held from the jump that caught the
-        or a                        ;  trolley let go of it at once: the user's report, 2026-11-03)
+        jr z,pm_14h
+        ld (hl),0                   ; (not hung: j_hang 0)
+        jr pm_8
+pm_14h: ld a,(hl)                   ; (the port: a new press of the joystick's trigger B does there
+        cp J_HANG                   ;  what the Amiga's up does, as when crouching: up only aims, and
+        jr nc,pm_14b                ;  RoboCop hung on a level-2 trolley with no way down: the user's
+        inc (hl)                    ;  report, 2026-11-02; but not in the first J_HANG game frames
+        jr pm_14u                   ;  hung, and not B held from before: a press near the catch let
+pm_14b: ld a,(j_jumpp)              ;  go of the trolley at once, the user's report, 2026-11-03)
+        or a
+        jr nz,pm_14u
+        ld a,(j_jumpb)
+        or a
         jr z,pm_14u
         xor a
         ld (j_nojump),a
@@ -84,7 +92,10 @@ pm_6:   ld a,(pm_d5)
         ld a,(pm_d2)                ;  2026-11-03; the keyboard keeps the Amiga's rule)
         and 0xFE
         cp 14
-        jr z,pm_step
+        jr nz,pm_6d
+        xor a                       ; (the landing's frame more is over, as when nothing is held,
+        ld (p_jwait),a              ;  pm_b142: left, up held stood him for a frame once he hung)
+        jr pm_step
 pm_6d:  ld a,(pm_d0)
         bit 2,a
         jr z,pm_right
@@ -161,12 +172,9 @@ pm_b0fe:
         cp 4
         jr nc,pm_nb
         ld a,(pm_d2)                ; (a trolley's catch asked for, special.asm sp_trolley: trigger B
-        and 0xFE                    ;  held since before the landing on it waits for a new press, as
-        cp 14                       ;  in states 14/15 (pm_14); it had stood, then jumped off the
-        jp nz,pm_jb                 ;  trolley: the user's report, 2026-11-03)
-        ld a,(j_jumpp)
-        or a
-        jp z,pm_jb
+        and 0xFE                    ;  does not stand or jump there, the catch goes on; it had stood,
+        cp 14                       ;  then jumped off the trolley: the user's report, 2026-11-03)
+        jp nz,pm_jb
 pm_nb:  ld a,(pm_d0)
         and 0x0C
         jp nz,pm_b170
