@@ -1,8 +1,9 @@
 """Read-only access to the level-2 RAM image (build/ram/level2_full.bin): big-endian words, longs, hex."""
 import struct
 
-IMG = ("/Users/rodrigogarcia/Library/Mobile Documents/com~apple~CloudDocs/Projects/VSCode Projects/"
-       "msxports/build/ram/level2_full.bin")
+from pathlib import Path
+
+IMG = Path(__file__).resolve().parents[4] / "build/ram/level2_full.bin"   # (the repository's build/)
 RAM = open(IMG, "rb").read()
 
 

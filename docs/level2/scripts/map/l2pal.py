@@ -13,7 +13,9 @@ Options (16 MSX colours, RoboCop's at the OR-closed indices 1..7):
      sprite data (indices 1..7) and every shared frame stay byte-identical;
   D  (reference only) 0..7 fixed, 8..15 refitted freely to level 2's background (the best a free
      fit could do; it would change the meaning of 8..15 for the frames level 1 already holds).
-usage: l2pal.py REPO OUTDIR   (run with the project's venv python, -I -B)
+usage: l2pal.py REPO OUTDIR RESEARCH   (RESEARCH: the level-2 research folder, with level2/conv and
+level2/l2_B3)
+  (run with the project's venv python, -I -B)
 """
 import itertools
 import struct
@@ -30,7 +32,7 @@ from planar import write_png  # noqa: E402
 from msxbright import BRIGHT  # noqa: E402
 
 COLS, ROWS = 160, 50
-S = Path("/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space")
+S = Path(sys.argv[3])
 
 
 def lab(rgb):

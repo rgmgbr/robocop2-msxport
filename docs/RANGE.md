@@ -1674,7 +1674,7 @@ Inferences the defaults rest on:
 `$RS` = this workflow's scratch folder (temporary: the reports are not in the repository; their
 facts that the port uses are in sections 2 and 10, in `docs/AMIGA_ANALYSIS.md` and in the tools'
 docstrings),
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/range`
+`<scratchpad>/space/range`
 (not in the repository, and temporary):
 
 | Report | Spec | What it holds |

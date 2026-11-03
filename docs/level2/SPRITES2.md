@@ -4,7 +4,7 @@ Written 2026-10-27 for the level-2 phase. Repository read at `781005e` (branch `
 repository was written. No emulator was run.
 
 All paths below are relative to this folder:
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/sprites/`.
+`<scratchpad>/space/l2/sprites/`.
 
 Evidence and method:
 - **Amiga code.** Read with REA (Ghidra provider, raw-binary m68k, entry 0x0, seeds `analysis/ghidra_seeds.tsv`)

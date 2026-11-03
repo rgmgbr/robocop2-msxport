@@ -14,7 +14,7 @@ command and result, the open issues.
 
 **Done.** The base is 8507734 (no msx/ or mkrom.py change since; 2eca210 and 711e4f1 add only harness
 files and docs, so every ROM at 711e4f1 equals 8507734's). Records in `$IMPL/base`, with
-`IMPL=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/impl`
+`IMPL=<scratchpad>/space/l2/impl`
 (this folder); the range's base (cb7c9ef) is `$IMPL/../../range/impl/base`. Commits **2eca210**
 (and **711e4f1**: the job counts in HARNESS.md and l2base.sh's header): `tools/bstest/fieldcheck.py`,
 `sess_fxlog.tcl` (copied in), `l2base.sh`, `l2base.tcl`, `l2base.py` (new), `docs/HARNESS.md` 5.21
@@ -1881,7 +1881,7 @@ on level2 7aecb40's code), `sp*`, `spf` (speeds), `snap` + `map` (the map agains
 **Done.** One commit (10 files, explicit paths: its hash is in `git log`): `tools/msxpuzl.py`, `tools/mkrom.py`,
 `msx/puzl.asm`, `Makefile`, `tools/bstest/stepcheck.py`, `tools/bstest/check_all.sh`, `tests/test_msxpuzl.py`,
 `tests/test_bstest.py`, `docs/HARNESS.md` (5.5's rows, 7's milestone-3 note), this file. Records in `$S20` =
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s20`:
+`<scratchpad>/l2/s20`:
 `A` (20 option-set builds of HEAD e0e3dc4) and `A2` (its `regress.sh builds` and `rgr_chain all` records, made
 this step's base: no new l2base path was written when it started), `C`, `C2` (the same of this commit), `B`, `B2`
 (the plan's mechanism, rejected: below), `look` (extra visit-2 runs), `png`, logs, and the scratch scripts
@@ -1992,7 +1992,7 @@ this step's base: no new l2base path was written when it started), `C`, `C2` (th
 ## Level 2's base made again, from main 6082d3a (2026-10-31)
 
 **Done.** macOS wiped the scratchpad on 2026-10-30: `$IMPL/base` (8507734) and the range's base are gone.
-**The base is now `$L2/base`**, with `L2=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2`:
+**The base is now `$L2/base`**, with `L2=<scratchpad>/l2`:
 main **6082d3a** (the range's two cameras: the V9958's rings, the V9938's 16-column steps), recorded
 and checked by level2 e0e3dc4's harness. Keep it; other agents only read it. Every "as the base" check
 from now on: `sh tools/bstest/l2base.sh check W $L2/base` (THE ONE CHECK at the top, with this path).
@@ -2053,7 +2053,7 @@ sh tools/bstest/l2base.sh check $L2/base $L2/base          # l2base: PASS ($L2/b
 
 **Done.** Branch `l2-s18` (worktree
 `scratchpad/l2/wt18`, from level2 b1d4714). Records in `$S18` =
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s18`:
+`<scratchpad>/l2/s18`:
 `B` (level2 head's records, below), `W` (this step's gate: `W/R`, `W/X`, `W/V`, `W/S`, `W/L`, `W/L2R` the
 level-2 builds, `W/O`, `W/fresh`, `W/l1`), `T` (the first runs), `variants`, the logs.
 
@@ -2672,7 +2672,7 @@ frame chooser page written to `build/review/quadros.html`.
 
 **Done.** Branch `l2-s21` (worktree `scratchpad/l2/wt21`,
 from level2 a7c465d), cherry-picked onto level2 0b63ec2 (step 14 integrated meanwhile). Records in `$S21` =
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/l2/s21`:
+`<scratchpad>/l2/s21`:
 `R` (`hz.sh fxbuilds`, `R/cheat`), `fx` (the 26 sound logs and their `.check` verdicts), `neg` (the mutated
 ROMs), `cheat` (the keyboard run, its snapshots and renders), `var0`/`var1` (a7c465d's and this step's option
 sets), `W` (the gate), the logs. One openMSX: a private MSX-AI MCP session (`mcpd.py $S21/mcp`, `mx.sh`).

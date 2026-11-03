@@ -2440,7 +2440,7 @@ The as-built record: `docs/level2/HANDOFF.md` (each step's account, records and 
 review of 2026-10-31 (8.1), and the source at `level2`'s head. The plan's sources:
 
 `$L2` = this workflow's scratch folder,
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2`
+`<scratchpad>/space/l2`
 (not in the repository, and temporary):
 
 | Report | Spec | What it holds |

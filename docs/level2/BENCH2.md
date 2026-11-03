@@ -10,7 +10,7 @@ frame-exact against the Amiga, the way level 1 was proved (`docs/HARNESS.md` 5.2
 
 No repository file was changed, and no emulator ran. Everything below lives in this folder:
 
-`B=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/bench`
+`B=<scratchpad>/space/l2/bench`
 
 | Path under `$B` | What it is |
 |---|---|
@@ -492,7 +492,7 @@ references come from the same drives.
 The prototype, now. All writes stay under `$B`.
 
 ```sh
-B=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/bench
+B=<scratchpad>/space/l2/bench
 PY=~/.venvs/msxports/bin/python
 cd $B
 # the drives (section 4), then their references: 11 runs, about 100 s on 2 cores

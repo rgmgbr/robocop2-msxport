@@ -554,7 +554,7 @@ keep drawn, with every tile the writers can put in them.
 ## 9. Files of this area
 
 All under
-`/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/map/`:
+`<scratchpad>/space/l2/map/`:
 
 | Path | What |
 |---|---|

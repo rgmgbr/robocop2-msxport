@@ -1,6 +1,6 @@
 #!/bin/zsh
 # try.sh JOY TELE GFRAMES [CARRY] [GOD]: runs l2bench with a drive made from JOY/TELE, prints rows every 10 frames from $4
-B=/private/tmp/claude-501/-Users-rodrigogarcia-Library-Mobile-Documents-com-apple-CloudDocs-Projects-VSCode-Projects-msxports/0d8bec81-2242-4472-bdb7-9edaf3f21500/scratchpad/space/l2/bench
+B=${B:?set B to the l2bench working folder}
 cd $B
 GOD=${6:---god}
 python3 -I tools/drivejoy.py --joy "$1" --tele "$2" $GOD $B/drives/try.drive > /dev/null
