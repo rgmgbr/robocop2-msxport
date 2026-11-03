@@ -142,8 +142,8 @@ class ColumnBurstTests(unittest.TestCase):
             ram = {"split_armed": armed, "fb_busy": busy, "fb_cq": cq, "vat_fr + VF_RDY": rdy}
             want = bool(busy) or (vat and bool(rdy)) or bool(cq & 1) or pend
             self.assertEqual(stop(STOP, ram, pend, vat), (want, armed == 0), (armed, busy, cq, rdy, pend, vat))
-        self.assertEqual(code("scroll9938.asm", "s38_rburst", "s38_redraw")[:4],
-                         ["ld b,RD_BURST*2", "ld a,(split_armed)", "or a", "ret nz"])
+        self.assertEqual(code("scroll9938.asm", "s38_rburst", "s38_redraw")[:3],
+                         ["ld b,RD_BURST*2", "call rd_win", "ret nz"])   # (on into the blank after the VBLANK)
 
     def test_front2_reaches_only_fixed_code(self):
         """The burst runs in BANK_FRONT2 at A000h: the routines it calls are the fixed area's (scroll9938.asm,

@@ -1435,6 +1435,22 @@ which as sprites were striped, cut or left out.
   shows partly changed; on the V9938 a beam cell may wait about 20 frames for its redraw (two
   pages to draw); until 2026-10-31 a cell drawn "at once" outside the blank could tear for one
   picture (the 15-machine batch: 1-6 in 40 s), which the window above ended.
+- **Level 1's crushers on screen (2026-11-03)**: the map objects of type 58h (`mapobj.asm` `act_1c`, the
+  original's `act_barrier` `$A0D4`) write the shaft's three words at the head's row and then the head's at
+  its new row every tick they run, also while retracted (the same row: the head over the shaft at once).
+  Each crusher in view so queued 3 redraws a tick that changed nothing, and a crush (the head 1-4 rows
+  down and back, one row a tick, every 64 ticks while RoboCop is within D2h px) waited behind them: on
+  all four machines the head seldom showed moving (`S/l1haz`, a drive standing between the crushers at
+  x 1220, 1300, 1800, 1880: of 39 crushes the screen showed the head at least at its deepest row but one
+  in 5 / 5 / 6 / 17 on C-BIOS_MSX2 / Gradiente / FS-A1FX / FS-A1GT; never off its top row in 31 / 31 /
+  23 / 17). The port writes the shaft's words only when the head moves (the map, its patches and
+  attributes end the same; the logic traces unchanged). The changed cells' window also takes the blank
+  after the VBLANK (`vdp.asm` `rd_win`: S#2 VR, as level 2's vats, with no V9938 flip waiting and no
+  play-field work; `vdp_cmd_q` tests it with the interrupts off before R#46), and the V9938's burst goes
+  on into it: a cell's copy costs the Z80 about 1.5 ms a page on the V9938 (`fb_redraw`, `fb_mark38`,
+  `get_tile`), so the window alone gave about one cell a picture. After both: 16-29 / 20-26 / 36 / 39 of
+  the 39 crushes shown to their deepest row but one (two runs on the V9938s), the poses shown 0.6-0.8 /
+  0.6-0.8 / 0.1-0.2 / 0.07 pictures late on average.
 - **Verification**: test ROMs play a joystick script (`tools/mkrom.py ... JOY=F:C:KEYS,...`,
   `TELE=`, `GOD=1`), or are driven from openMSX (`EXTJOY=1`: `tools/openmsx_rc2.tcl`
   `rc2_drive_rom` / `rc2_drive_trace` feed each tick the joystick byte, teleports, god mode

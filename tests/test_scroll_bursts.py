@@ -124,7 +124,9 @@ class BurstTests(unittest.TestCase):
             want = bool(cq & 1) or pend or (vat_anim and rdy != 0)
             self.assertEqual(stop(STOP, ram, pend, vat_anim), (want, armed == 0), (vat_anim, armed, rdy, cq, pend))
         red = code("scroll9958.asm", "sw_redraw", "swr_one")
-        self.assertEqual(red[:2], ["ld b,RD_BURST", "push bc"])      # (up to RD_BURST cells, each in the window)
+        self.assertEqual(red[:6], ["ld b,RD_BURST", "ld a,(split_armed)", "or a", "jr z,swr_lp", "ld b,1",
+                                   "push bc"])                       # (up to RD_BURST cells in the window, one
+                                                                     #  a call in the blank after the VBLANK)
         work = code("scroll9958.asm", "scroll_work", "sw_idle")
         self.assertEqual(work[2:5], ["ld a,(split_armed)", "or a", "jr nz,sw_vb"])
         self.assertEqual(work[5], "call sw_redraw")                  # (the same window at scroll_work's start)

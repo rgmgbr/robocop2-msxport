@@ -256,11 +256,16 @@ sw_idle:
 
 ; The cells the game changed (tiles.asm rd_queue) that are in the kept area: between the HUD split
 ; and the VBLANK up to RD_BURST in a row (vdp_cmd_q: started where the beam is off the play area,
-; each waiting for the one before); at other times they wait for that window (the ring is always on
+; each waiting for the one before), in the blank after the VBLANK one a call (vdp.asm rd_win, since
+; 2026-11-03); at other times they wait for that window (the ring is always on
 ; screen: until 2026-10-31 the oldest was drawn at once, and a cell the beam passed while its copy
 ; ran showed half drawn for one picture, 1-4 times a minute in both levels' busy places).
 sw_redraw:
         ld b,RD_BURST
+        ld a,(split_armed)
+        or a
+        jr z,swr_lp
+        ld b,1                      ; (in the blank after the VBLANK, vdp.asm rd_win: one a call, no wait)
 swr_lp: push bc
         call swr_one
         pop bc
@@ -290,8 +295,7 @@ swr_one:
         xor a
         call fb_redraw
         jr nz,swr_drop              ; (the play-field BOBs compose it: tiles.asm)
-        ld a,(split_armed)
-        or a
+        call rd_win
         jr nz,swr_none              ; (the beam in the play area: the cell waits for the window)
         ld a,d
         call dt_prep
