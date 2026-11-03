@@ -971,11 +971,38 @@ a1c_st: ld a,(iy+3)                 ; (tst.b (2,A1))
         ld de,4
 a1c_x:  add hl,de
         ld (p_x),hl
+; The shaft's three words go at row + rows, then the head's at row + the new rows. (The port: with the
+; rows unchanged, the head's words overwrite the shaft's in the same cells at once, so the shaft's are
+; not written: the map ends the same, and no redraw is queued for a cell that does not change. Every
+; crusher in view did so every tick while retracted, 3 cells each: the queue's oldest requests were
+; theirs, and a crush's cells waited behind them, so the head seldom showed moving, on every machine.)
 a1c_draw:
         ld a,(iy+3)                 ; rows down (the look's high byte)
+        ld c,a                      ; (C: the rows before)
         ld b,a
+        ld a,(iy+2)                 ; (tst.b (3,A1))
+        or a
+        jr z,a1c_back
+        ld a,b
+        cp 4
+        jr nz,a1c_dn
+        ld (iy+2),0                 ; at 4 rows: off (clr.b (3,A1)), and back this frame
+        jr a1c_back
+a1c_dn: inc b
+        jr a1c_set
+a1c_back:
+        ld a,b
+        or a
+        jr z,a1c_set
+        dec b
+a1c_set:
+        ld (iy+3),b
+        ld a,b
+        cp c
+        jr z,a1c_end
+        push bc
         ld a,(ao_row)
-        add a,b
+        add a,c
         ld d,a
         ld a,(ao_col)
         ld e,a                      ; D = row + rows, E = column
@@ -987,25 +1014,7 @@ a1c_draw:
         inc e
         ld hl,0x0D00
         call map_write_lin
-        ld a,(iy+3)
-        ld b,a
-        ld a,(iy+2)                 ; (tst.b (3,A1))
-        or a
-        jr z,a1c_back
-        ld a,b
-        cp 4
-        jr nz,a1c_dn
-        ld (iy+2),0                 ; at 4 rows: off (clr.b (3,A1)), and back this frame
-        jr a1c_back
-a1c_dn: inc b
-        ld (iy+3),b
-        jr a1c_end
-a1c_back:
-        ld a,b
-        or a
-        jr z,a1c_end
-        dec b
-        ld (iy+3),b
+        pop bc
 a1c_end:
         ld a,(ao_row)
         add a,b

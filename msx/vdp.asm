@@ -54,14 +54,11 @@ vdp_cmd:
         ld (cmd_lock),a
         ret
 
-; vdp_cmd for a command drawing into lines the screen shows (HL = its 15 bytes, the VDP idle):
-; R#32-R#45 now, the start (R#46) only between the HUD split and the VBLANK interrupt
-; (split_armed = 0), tested and written with the interrupts off, so that it is done long before
-; the beam draws those lines again. Z when it started, NZ (nothing started) otherwise.
+; vdp_cmd for a command drawing into lines the screen shows (HL = its 15 bytes, the VDP idle): a changed
+; cell's tile (scroll9938.asm s38_redraw, scroll9958.asm swr_one, after their rd_win): R#32-R#45 now, the
+; start (R#46) only in rd_win's window, tested and written with the interrupts off, so that it is done long
+; before the beam draws those lines again. Z when it started, NZ (nothing started) otherwise.
 vdp_cmd_q:
-        ld a,(split_armed)
-        or a
-        ret nz
         ld a,1
         ld (cmd_lock),a
         call vdp_busy
@@ -76,8 +73,7 @@ vdp_cmd_q:
         otir                        ; R#32-R#45
         ld b,(hl)                   ; (the command)
         di
-        ld a,(split_armed)
-        or a
+        call rd_wdi
         jr nz,vcq_late
         ld a,b
         out (VDP_CTRL),a
@@ -93,6 +89,41 @@ vcq_no: xor a
         ld (cmd_lock),a
         inc a
         ret
+
+; -> Z when a changed cell's tile may go onto the page shown now: between the HUD split and the VBLANK
+; (split_armed 0), or in the blank after the VBLANK (S#2 VR, as level 2's vats: vats.asm) with no V9938
+; flip waiting (s38_flip_wait: that VBLANK may have put it on screen while scroll9938.asm s38_shown still
+; names the old page) and no work of the play-field BOBs (fb_busy: their copies onto the page shown keep
+; their own timing). A 16 x 16 copy started before the play area's first line keeps ahead of the beam (a
+; line of the cell in about 50 us, a line of the screen in 63.5). Until 2026-11-03 only the first: the main
+; loop, busy with the game's tick, met it in about half the pictures. Keeps B, DE, HL; rd_wdi with the
+; interrupts off (kept off).
+rd_win: di
+        call rd_wdi
+        ei
+        ret
+rd_wdi: ld a,(split_armed)
+        or a
+        ret z
+        if VAT_ANIM
+        ret                         ; (VAT_ANIM builds: that blank is the vats' columns')
+        else
+        ld a,(fb_eng)
+        or a
+        jr z,rdw_bob                ; (the V9958's ring: no flip; s38_flip_wait is the V9938's)
+        ld a,(s38_flip_wait)
+        or a
+        ret nz
+rdw_bob:
+        ld a,(fb_busy)
+        or a
+        ret nz
+        ld c,VDP_CTRL
+        call ifg_idle               ; (isr.asm: A bit 6 = S#2 VR)
+        cpl
+        and 0x40                    ; (Z: VR, the vertical blank)
+        ret
+        endif
 
 ; Sets the VRAM write address E:HL (E = bit 16) for port 98h; the stream that follows ends
 ; with vram_done (isr.asm: the VBLANK interrupt writes the SAT of a new list itself).

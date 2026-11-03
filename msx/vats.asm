@@ -9,7 +9,7 @@
 ;   with no cell there yet takes vat_shown, which that page then holds, so that a row or a column
 ;   the scroll uncovers shows the look of the rest of its column.
 ; - vat_run draws a column whose look on the page shown is not vat_shown's: one column a window
-;   between the HUD split and the VBLANK, its first part started by vdp_cmd_q's rule (only before
+;   between the HUD split and the VBLANK, its first part started by vdp_cmd_q's first rule (only before
 ;   the VBLANK), the others right after each other (cmd_lock keeps the interrupts' commands off),
 ;   only when it ends before the beam reaches its first line on the screen even when it starts
 ;   just before the VBLANK (vat_fits), and only where it meets no play-field BOB nor their work
@@ -644,7 +644,7 @@ vat_cdst:
         ret
 
 ; vat_cmd = the chain's next part: the first only while the beam is outside the play area (between the
-; HUD split and the VBLANK, VF_FS bit 0: vdp.asm vdp_cmd_q's rule; in the blank after it, S#2 VR, bit 1;
+; HUD split and the VBLANK, VF_FS bit 0: split_armed 0, vdp.asm rd_win's first rule; in the blank after it, S#2 VR, bit 1;
 ; cmd_lock then stays 1: the interrupts start no command of theirs between the parts), the others once
 ; the one before is done -> C when the first was too late (nothing started). Keeps BC.
 vat_emit:

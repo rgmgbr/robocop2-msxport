@@ -405,6 +405,20 @@ counter `$8034` goes negative; PICF by `$11C54` at the end. **[verified]** (Sect
   cells are rewritten every frame (top `$93CA`[random & 6], body `$93D2`[(random + x + 2n) &
   3Eh]); off: E800h and D00h.
 
+### Level 1's crushers (`act_barrier` `$A0D4`, map objects of type 58h) **[verified: REA's decompile of
+`$A0D4` (2026-11-03); the port's logic traces]**
+
+- Seven entries of level 1's object list (x 1168, 1248, 1328, 1760, 1840, 1920 at y 80, 1376 at y 176;
+  activator 1Ch). The look's high byte is the head's row below the entry's cell (0-4), its low byte "on".
+- Every frame the entry runs: on when RoboCop is D2h px or more away (sideways), or within that on the
+  frame where (x + game frame) & 3Fh is 0 (then sound 19h); RoboCop under it (his y 20h-50h below its
+  y, his x + 8 - its x in 0..27h) is hit (palette flash, sound 14h, the shown energy's high byte FFh, 4 px
+  back). Then the shaft (`0D00h 7980h 0D00h`) goes at the head's row, the row moves (on: +1, at 4 off and
+  -1; off: -1 down to 0) and the head (`CD80h CE00h CE80h`) goes at the new row: also when the row did not
+  change (the shaft's words overwritten at once).
+- So near RoboCop a crusher strikes every 64 frames: rows 1, 2, 3, 4, 3, 2, 1, 0, one game frame each (two
+  50 Hz pictures); farther it stays down, 3 and 4 alternating every frame.
+
 ### Random word (`$BDCE`) **[verified]**
 
 - Every game frame (last in main_loop): `$B32` rotated left by CIA-A timer A's low byte and

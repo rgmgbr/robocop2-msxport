@@ -332,13 +332,13 @@ s38w_idle:                          ; the back page ready, or none, and no chang
         ret
 
 ; Between the HUD split and the VBLANK: up to RD_BURST changed cells in a row (s38_redraw's
-; steps, each waiting for the one before).
+; steps, each waiting for the one before), on into the blank after the VBLANK (vdp.asm rd_win, since
+; 2026-11-03: a burst the main loop began late in the window drew one cell before).
 s38_rburst:
         ld b,RD_BURST*2
 s38b_lp:
-        ld a,(split_armed)
-        or a
-        ret nz                      ; (the VBLANK came)
+        call rd_win
+        ret nz                      ; (the beam back in the play area, or a flip waiting)
         push bc
         call vdp_wait
         call s38_redraw
@@ -348,7 +348,8 @@ s38b_lp:
         ret
 
 ; One step of the oldest cell the game changed (tiles.asm rd_queue), when it is in the kept
-; rows: the page on screen (only between the HUD split and the VBLANK, through vdp_cmd_q: until
+; rows: the page on screen (only between the HUD split and the VBLANK or in the blank after it, vdp.asm
+; rd_win and vdp_cmd_q, since 2026-11-03: before, the first only; until
 ; 2026-10-31 at other times at once, and a cell the beam passed while its copy ran showed half
 ; drawn for one picture), then the other one: the page being built, or during a flip not on screen
 ; yet the new displayed page (each draws only the columns it holds; a flip in between starts the
@@ -380,8 +381,7 @@ s38_redraw:
         call s38_shown
         call fb_redraw
         jr nz,s38r_fb               ; (the play-field BOBs compose it there: tiles.asm)
-        ld a,(split_armed)
-        or a
+        call rd_win
         jr nz,s38r_wait             ; (the beam in the play area: the window, the other work first)
         call s38_shown
         ld b,d
