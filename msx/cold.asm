@@ -536,6 +536,7 @@ pl_init:
         ld (jump_pend),a
         ld (j_nojump),a
         ld (j_jumpb),a
+        ld (j_stick),a
         ld (split_dly),a            ; (split_cal's defaults 0 / 2 / 11 until display_on's
         ld a,2                      ;  split_cal, which runs before any split: the front end shows
         ld (split_dly1),a           ;  none before a level)

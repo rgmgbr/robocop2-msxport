@@ -736,6 +736,8 @@ joy_read:
         call key_bits
         endif
         ld (g_keys),a
+        ld a,(j_jumpb)              ; (the frame before's trigger B: plmove.asm pm_14)
+        ld (j_jumpp),a
         ld a,(g_lock)
         or a
         jr nz,jr_lock
@@ -745,6 +747,10 @@ joy_read:
         call stick_bits
         endif
         and 0x7F
+        if INPUT_SCRIPT
+        else
+        ld (j_stick),a              ; (the joystick's bits, or 0: the keyboard's; plmove.asm pm_6)
+        endif
         jr nz,jr_set
         xor a
         ld (j_nojump),a             ; (the keyboard: up jumps, as on the Amiga)

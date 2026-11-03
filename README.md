@@ -84,8 +84,9 @@ then it shows for 5 seconds, as the original's do when they come from memory.
 
 **Controls.**
 - RoboCop: joystick port 1 (button A fires, button B jumps, also while walking or firing and from a
-  crouch, up aims) or the keyboard as on the Amiga (cursor keys, up jumps; SPACE or RETURN fire). The
-  bonus stages take the same joystick or keys.
+  crouch, up aims; on level 2's trolleys RoboCop catches the hook even with B or a direction held, and
+  a new press of B lets go) or the keyboard as on the Amiga (cursor keys, up jumps; SPACE or RETURN
+  fire). The bonus stages take the same joystick or keys.
 - The text screens (statistics, briefings, the stages' intros and results, WELL DONE, the table) end
   with fire after their first second; a movie still after 5 s or with fire (pressed once released:
   the fire that ended the screen before does not skip it); the game-over picture after 30 s or with
