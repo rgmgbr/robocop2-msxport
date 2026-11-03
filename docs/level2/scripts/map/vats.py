@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-REPO = Path("/Users/rodrigogarcia/Library/Mobile Documents/com~apple~CloudDocs/Projects/VSCode Projects/msxports")
+REPO = Path(__file__).resolve().parents[4]   # (docs/level2/scripts/map/ -> the repository)
 sys.path.insert(0, str(REPO / "tools"))
 from planar import write_png  # noqa: E402
 
