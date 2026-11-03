@@ -12,6 +12,15 @@ present, and on a turbo R the game runs on the R800 (the title on the Z80; see
 The ADFs live in `amiga/` and **must not be committed or distributed**, and neither must
 anything generated in `build/`.
 
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![The title screen](docs/media/01_title.png)<br>The title screen, with its music | ![Level 1](docs/media/02_level1.png)<br>Level 1, the River Rouge complex: firing at the henchmen above |
+| ![A movie still](docs/media/03_movie_still.png)<br>One of the original's movie stills, shown before level 3 | ![Level 2](docs/media/04_level2.png)<br>Level 2, the Tokugawa brewery: a trolley ride over the vats |
+| ![Level 3's beams](docs/media/05_level3_beams.png)<br>Level 3, the Civic Centrum: the electric beams | ![Cain's chase](docs/media/06_cain_chase.png)<br>Level 3: the chase after Cain across the roof |
+| ![The ground-floor fight](docs/media/07_ground_floor.png)<br>Level 3: the fight with Cain on the ground floor | ![The ending](docs/media/08_ending.png)<br>The ending: the final picture, with the end tune |
+
 ## Requirements
 
 - An MSX2, MSX2+ or MSX turbo R with 128 KiB of VRAM and 64 KiB of RAM.
