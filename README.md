@@ -307,3 +307,17 @@ sprites and checks that the tile area of VRAM is untouched. `rc2_prof SECS LOG L
 - [The rest of the game: the user's last changes, level 3 and the ending, step by step](docs/level3/HANDOFF.md)
 - [The game completed and the high scores](docs/ENDING.md)
 - [The bonus stages' acceptance harness (`tools/bstest/`)](docs/HARNESS.md)
+
+## License and legal
+
+- The port's own source code, tools and documentation in this repository are released under the
+  MIT License ([LICENSE](LICENSE)).
+- ROBOCOP 2 for the Amiga (1990) was published by Ocean Software Ltd. The original game's code,
+  graphics, music, sounds and texts belong to their respective rights holders, and RoboCop is a
+  trademark of its owners. This project is an unofficial, non-commercial fan port, not affiliated
+  with or endorsed by them.
+- The repository holds none of the original game's files: the tools read its data from the user's
+  own copy of the Amiga disks at build time. The released ROM and the screenshots contain material
+  converted from the original game; they are distributed free of charge, for non-commercial use
+  only.
+- Rights holders who want something removed can open an issue: it will be taken down.
