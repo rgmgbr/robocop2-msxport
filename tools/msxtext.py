@@ -72,7 +72,8 @@ high scores").
   below RoboCop's chin, the strokes in the logo's light grey-blue and their shadow in dark blue
   (G7 bytes: the text screens' green and blue are too dark over the picture); the pixels between
   them keep the picture. OUT.png is its preview. (The pictures keep the plain colours: the
-  colour grade made them look blown out, the user's choice, 2026-10-22.)
+  colour grade made them look blown out, the user's choice, 2026-10-22.) The release's version
+  (the repository's VERSION file) in its bottom right corner, in a small 3 x 5 font.
 - GAME OVER under the game over picture (with OVER.sc8 and OUT2.sc8, the user's choice: PIC9
   has no text): a black band of BAND lines below it with the words in the same font and colours
   at twice the size, centred (front.asm pic_show centres the taller picture).
@@ -104,6 +105,18 @@ CREDIT = ((158, "2026 PORT BY RODRIGO G.M. GARCIA"),   # (picture line, text): t
           (178, "OCEAN SOFTWARE LTD"))
 CREDIT_INK = 0xDB                   # G7 (GGGRRRBB): the strokes (glyph colour 1),
 CREDIT_SHADE = 0x21                 #   their shadow (colour 4)
+# The release's version in the title's bottom right corner (the user's choice, 2026-11-03): "V" and
+# the repository's VERSION file in a small 3 x 5 font of the port's own, right-aligned VERSION_RIGHT,
+# lines VERSION_TOP.., in a light grey; none without the file.
+VERSION_FILE = ROOT / "VERSION"
+VERSION_RIGHT, VERSION_TOP, VERSION_INK = 252, 192, 0xB6
+SMALL_FONT = {                      # 3 x 5, a row a string ('#' set)
+    "V": ("#.#", "#.#", "#.#", "#.#", ".#."), ".": ("...", "...", "...", "...", ".#."),
+    "0": ("###", "#.#", "#.#", "#.#", "###"), "1": (".#.", "##.", ".#.", ".#.", "###"),
+    "2": ("###", "..#", "###", "#..", "###"), "3": ("###", "..#", ".##", "..#", "###"),
+    "4": ("#.#", "#.#", "###", "..#", "..#"), "5": ("###", "#..", "###", "..#", "###"),
+    "6": ("###", "#..", "###", "#.#", "###"), "7": ("###", "..#", "..#", "..#", "..#"),
+    "8": ("###", "#.#", "###", "#.#", "###"), "9": ("###", "#.#", "###", "..#", "###")}
 OVER_TEXT = "GAME OVER"
 BAND = 16                           # lines below the game over picture (the text: 192 lines, 6 banks as PIC9)
 VIEW_LINES = 162                    # msx/msx.inc: the play area, display lines 0-161 of page 0
@@ -764,11 +777,29 @@ def draw_text(ram: bytes, out: bytearray, top: int, text: str, scale: int = 1) -
                     out[o] = CREDIT_SHADE
 
 
+def draw_small(out: bytearray, text: str, right: int, top: int, ink: int) -> None:
+    """text in SMALL_FONT into the SCREEN 8 picture out, right-aligned at x right, from line top
+    (a column between the glyphs; the '.' one column wide)."""
+    cols = []
+    for ch in text:
+        g = SMALL_FONT[ch]
+        cols += [[g[y][1] for y in range(5)]] if ch == "." else [[g[y][x] for y in range(5)] for x in range(3)]
+        cols.append(["."] * 5)
+    cols.pop()
+    x0 = right - len(cols)
+    for x, col in enumerate(cols):
+        for y, c in enumerate(col):
+            if c == "#":
+                out[(top + y) * 256 + x0 + x] = ink
+
+
 def credit_sc8(ram: bytes, pic: bytes) -> bytes:
-    """The title picture with CREDIT drawn into it."""
+    """The title picture with CREDIT drawn into it, and the release's version (VERSION_FILE)."""
     out = bytearray(pic)
     for top, text in CREDIT:
         draw_text(ram, out, top, text)
+    if VERSION_FILE.exists():
+        draw_small(out, "V" + VERSION_FILE.read_text().strip(), VERSION_RIGHT, VERSION_TOP, VERSION_INK)
     return bytes(out)
 
 
