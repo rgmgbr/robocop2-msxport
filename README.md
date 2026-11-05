@@ -52,6 +52,13 @@ anything generated in `build/`.
 Details: [docs/ROM_BUDGET.md](docs/ROM_BUDGET.md) 6.1 (the devices, the bank test) and
 [docs/MSX_ARCHITECTURE.md](docs/MSX_ARCHITECTURE.md) (decision 2, "2 MiB").
 
+### Inside the 2 MiB ROM
+
+Release 1.0.0's image, bank by bank (256 banks of 8 KiB): the code, the sprite pool, the three
+levels, the pictures, the bonus stages and the sound take 1,520 KiB (74 %); 528 KiB are free.
+
+![The 2 MiB ROM of release 1.0.0, bank by bank](docs/media/rom_map_v1.0.0.png)
+
 ## Playing
 
 The complete game, in order:
